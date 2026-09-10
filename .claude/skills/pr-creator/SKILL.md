@@ -93,8 +93,17 @@ Follow these steps to create a Pull Request:
       # 3. Remove the temporary file
       rm <temp_file_path>
       ```
-    - If `gh` is not available (for example in Claude Code on the web), use the
-      GitHub MCP tool `create_pull_request` with the same title and body.
+    - If `gh` is not available (for example in Claude Code on the web), fall
+      back in this order, using the same title and body:
+      1. A GitHub MCP tool that creates pull requests, if this session has one
+         — check the available tools rather than assuming a name; it is
+         typically `create_pull_request` (exposed as
+         `mcp__github__create_pull_request`). Do not assume any specific tool
+         exists: MCP toolsets differ per environment, and some are read-only.
+      2. Otherwise, stop and hand the user the compare URL to open the PR
+         themselves, along with the drafted title and body to paste in:
+         `https://github.com/<owner>/<repo>/compare/<base>...<head>?expand=1`
+         Never report the PR as created when no tool actually created it.
     - **Title**: Ensure the title follows the
       [Conventional Commits](https://www.conventionalcommits.org/) format if the
       repository uses it (e.g., `feat(ui): add new button`,
