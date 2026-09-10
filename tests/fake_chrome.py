@@ -135,6 +135,11 @@ class FakeChrome:
         for connection in list(self._ws.connections):
             connection.send(json.dumps(event))
 
+    @property
+    def open_connections(self) -> int:
+        """How many WebSockets are still attached. A leak shows up here."""
+        return len(self._ws.connections)
+
     def target(self, target_id: str) -> FakeTarget | None:
         return next((item for item in self.targets if item.id == target_id), None)
 
