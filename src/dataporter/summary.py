@@ -1,4 +1,4 @@
-"""The §9 block, and the reasons behind it.
+"""The §9 block, the §10 counters, and the reasons behind them.
 
 `05` is the first slice whose output an operator reads as a number rather than as
 a file: `import --dry-run` prints what a run *would* do, and `inspect` prints the
@@ -11,17 +11,22 @@ same plan and `19` reports it, so the dry run's numbers, the progress block's
 numbers and the report's numbers are the same numbers by construction rather than
 by three counters agreeing.
 
-The formats are golden strings; `MIN_WIDTH` and `COUNT_WIDTH` are the whole rule,
-and `tests/test_summary.py` compares bytes. No title, no message and no file name
-appears in anything this module returns: what it prints is labels this file owns,
-reason slugs and counts.
+`06` adds the four counter lines `status` prints, which are the same alignment
+rule with a different floor — `18` builds the progress bar and the redraw on top
+of them, and this is the module that owns the rule.
+
+The formats are golden strings; `MIN_WIDTH`, `COUNTERS_MIN_WIDTH` and
+`COUNT_WIDTH` are the whole rule, and `tests/test_summary.py` compares bytes. No
+title, no message and no file name appears in anything this module returns: what
+it prints is labels this file owns, reason slugs and counts.
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from dataporter.plan import MigrationPlan, PlanTotals
 from dataporter.render import AttachmentClass
+from dataporter.state import MigrationState, status_counts
 
 MIN_WIDTH = 27
 """Narrowest the §9 block ever gets.
@@ -29,6 +34,13 @@ MIN_WIDTH = 27
 The brief's example is hand-aligned: `Messages:             4,821` is 27 columns
 wide and nothing in the fixture's own labels and values forces that, so the floor
 is part of the rule rather than a consequence of it.
+"""
+
+COUNTERS_MIN_WIDTH = 13
+"""Narrowest the §10 counters block ever gets.
+
+`18`'s rule, and self-consistent with the brief's own block: `Completed:` is the
+longest label at 10 columns, which with a two-digit count is exactly 13.
 """
 
 COUNT_WIDTH = 5
@@ -51,10 +63,38 @@ this block precisely to find out which of the three a file landed in.
 UNSUPPORTED_REASONS_HEADER = "Unsupported reasons:"
 ATTACHMENTS_HEADER = "Attachments:"
 
+STATUS_LABELS: tuple[tuple[str, str], ...] = (
+    ("Completed:", "completed"),
+    ("Partial:", "partial"),
+    ("Failed:", "failed"),
+    ("Pending:", "pending"),
+)
+"""§10's four counter lines, in the brief's order, and the `status_counts` key
+each one reads."""
+
 
 def _number(value: int) -> str:
     """A count as the block prints it: `,` thousands separators."""
     return f"{value:,}"
+
+
+def _column_width(rows: Sequence[tuple[str, str]], minimum: int) -> int:
+    """`max(minimum, longest label + 1 + longest value)`.
+
+    One rule for both blocks: §9's five lines and §10's four are aligned the same
+    way and differ only in their floor.
+    """
+    return max(
+        minimum,
+        max(len(label) for label, _ in rows)
+        + 1  # at least one space between the longest label and its value
+        + max(len(value) for _, value in rows),
+    )
+
+
+def _aligned(rows: Sequence[tuple[str, str]], width: int) -> list[str]:
+    """`label`, spaces, right-aligned value, every line `width` columns wide."""
+    return [f"{label}{value:>{width - len(label)}}" for label, value in rows]
 
 
 def _groups(totals: PlanTotals) -> list[list[tuple[str, str]]]:
@@ -82,18 +122,12 @@ def totals_lines(totals: PlanTotals) -> list[str]:
     come back byte-identical — see the spec's design notes.
     """
     groups = _groups(totals)
-    rows = [row for group in groups for row in group]
-    width = max(
-        MIN_WIDTH,
-        max(len(label) for label, _ in rows)
-        + 1  # at least one space between the longest label and its value
-        + max(len(value) for _, value in rows),
-    )
+    width = _column_width([row for group in groups for row in group], MIN_WIDTH)
     lines: list[str] = []
     for index, group in enumerate(groups):
         if index:
             lines.append("")
-        lines.extend(f"{label}{value:>{width - len(label)}}" for label, value in group)
+        lines.extend(_aligned(group, width))
     return lines
 
 
@@ -159,3 +193,24 @@ def inspect_report(plan: MigrationPlan) -> str:
         lines += ["", *_breakdown_lines(UNSUPPORTED_REASONS_HEADER, reasons)]
     lines += ["", *_breakdown_lines(ATTACHMENTS_HEADER, attachment_classes(plan))]
     return "".join(f"{line}\n" for line in lines)
+
+
+def counters_lines(counts: Mapping[str, int]) -> list[str]:
+    """§10's four counter lines, from `state.status_counts`.
+
+    `18` prints these under a progress bar and a header; `06`'s `status` prints
+    them alone, because a bar that only ever redraws once is a picture of a number
+    the line beside it already gives.
+    """
+    rows = [(label, _number(counts[key])) for label, key in STATUS_LABELS]
+    return _aligned(rows, _column_width(rows, COUNTERS_MIN_WIDTH))
+
+
+def status_report(state: MigrationState) -> str:
+    """What `status` prints, newline-terminated.
+
+    Titles are in `state.json` because §7 puts them there. They never reach this
+    block: §10 says no conversation content during normal operation, and a title
+    is content.
+    """
+    return "".join(f"{line}\n" for line in counters_lines(status_counts(state)))
