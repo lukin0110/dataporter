@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §8, §9, §10, §17 (the command surface, exit and output conventions every later slice relies on)
 **Depends on:** nothing
 **Enables:** everything
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -110,6 +110,46 @@ error taxonomy and an exit-code convention. No migration behaviour.
   decoration would break byte comparison.
 - `transient` is a property of the class so that `13` and `19` can derive "retry
   recommended" without a per-call guess.
+
+Resolved while building:
+
+- **`transient` is `bool | None`, not `bool`.** The three rows marked *per instance* (`ui`,
+  `browser`, `verification`) default to `None`, meaning "unknown", which is what `13` records
+  as a null `retry_recommended` and `19` renders as `retry=unknown`. Only those three accept
+  a `transient=` argument; passing one to a fixed row raises `TypeError`, because that is
+  exactly the per-call guess this design forbids. **`09` currently writes
+  `HermesError(transient=…)`, which this rejects** — either `09` drops the argument or the
+  `hermes` row moves to *per instance* here. Whoever builds `09` decides; it fails loudly.
+- **`detail` is keyword-only** on every error class, so it cannot slide into `transient`.
+- **`conversation_id` is the canonical identifier field name in logs.** `08` already uses it;
+  `13` currently writes `uuid` and should follow. Where a banned field name is wanted for a
+  path, the path spelling is legal: `seed_path`, `stdout_path`.
+- **`ContentGuard` also scans nested mappings**, not just top-level field names, because
+  `extra={"result": {"text": …}}` leaks just as effectively. What no name filter can catch is
+  content interpolated into the message itself, so the standing rule is: log messages are
+  constants, all variable data goes in `extra`.
+- **The run log is opt-in per command** (`log.enable_run_log(workspace)`), not installed by
+  the root callback. `05` requires `import --dry-run` to leave no workspace directory behind;
+  making the file sink explicit turns that from "nobody logs on this path" into an invariant.
+  The handler also opens lazily, so `logs/` appears only when a record is really written.
+- **`config.toml` is always read from the bootstrap workspace** (`--workspace` > `HCM_WORKSPACE`
+  > `./migration`). A `workspace` key inside it still sets the workspace, but does not
+  relocate config discovery — otherwise resolution would be a fixed-point iteration with a
+  possible cycle.
+- **Exit `2` covers a malformed or invalid `config.toml`**, not just bad arguments; the table
+  already says "usage or configuration error". `workspace` is stored absolute, since `09` runs
+  Hermes with `cwd=<workspace>`.
+- **The flag surface is exactly the list above.** Later specs reference `--all` (`15`, `21`),
+  `--delay`, `--max-retries`, `--timeout` (`15`), `--force-unlock` (`06`),
+  `browser --target/--expect/--messages` (`08`, `17`) and a `judge` command (`20`). The slice
+  that adds the behaviour adds the flag.
+- **`typer` ≥ 0.20 vendors `click`** rather than depending on it, so there is no `click`
+  import. `add_completion=False`, `pretty_exceptions_enable=False` and `rich_markup_mode=None`
+  are all required to get the plain, stable `--help` this slice promises. An unhandled
+  exception is turned into exit `70` by a `TyperGroup` subclass, and the `dataporter` logger
+  always carries a `NullHandler` so `logging.lastResort` cannot print a traceback to stderr.
+- **`ruff` is scoped to `src` and `tests`.** It formats Python blocks inside Markdown, which
+  would rewrite these specs.
 
 ## Acceptance criteria
 

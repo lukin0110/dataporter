@@ -1,0 +1,58 @@
+[project]
+name = "dataporter"
+version = "0.1.0"
+description = "Migrate a Claude data export into another Claude account via Hermes."
+# readme: 21 writes README.md and adds the key.
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "typer>=0.12",
+    # Declared here, first used in 07 for a synchronous CDP client
+    # (websockets.sync.client). No asyncio anywhere.
+    "websockets>=12",
+]
+
+[project.optional-dependencies]
+# Declared now, empty of use until 20 (semantic-fidelity judge).
+judge = ["pydantic-ai"]
+
+[project.scripts]
+hermes-claude-migrate = "dataporter.cli:app"
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-cov",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dataporter"]
+
+[tool.hatch.build.targets.sdist]
+# 10 adds spikes/; it is never part of the distribution.
+exclude = ["spikes", "specs", "docs"]
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+# The specs are normative prose. ruff formats Python blocks inside Markdown, which
+# would rewrite them; they are documents, not code.
+extend-exclude = ["specs", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+mypy_path = "src"
+strict = true
+python_version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

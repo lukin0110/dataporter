@@ -1,0 +1,246 @@
+"""Structured logging that cannot leak conversation content.
+
+Two sinks, both optional:
+
+- a JSON-lines file at `<workspace>/logs/run-<UTC ts>.jsonl`, installed by
+  `enable_run_log()`;
+- one human line per record on **stderr**, installed by `configure_logging()` only
+  at `--verbose`.
+
+stdout is never a log sink. `18` owns stdout during a run and `08`'s browser
+helpers print exactly one JSON object there, so a stray log line would corrupt
+output that is compared byte for byte.
+
+The file sink is opt-in per command rather than installed at startup, because `05`
+requires `import --dry-run` to leave no workspace directory behind. Commands that
+write to the workspace call `enable_run_log()`; dry runs and the read-only helpers
+do not. The handler also opens lazily, so even then the directory appears only if a
+record is actually written.
+
+## Content guard
+
+Records carry identifiers, step names, counts, durations, categories and details —
+never message text. `ContentGuard` enforces the "never" half: any record carrying a
+field named `text`, `seed`, `title`, `content`, `snapshot` or `stdout` is rejected.
+It raises in strict mode (the test suite) and drops the record otherwise, so a
+mistake fails loudly in CI and silently in an operator's terminal rather than
+writing content to disk.
+
+The guard sits on every *handler*, never on a logger: `Logger.callHandlers` walks
+ancestor loggers' handlers directly and never consults their filters, so a filter
+on the `dataporter` logger would not see records from `dataporter.cli`. Handlers
+are only ever constructed by `_guarded()` below, which is what makes that a
+guarantee rather than a convention.
+
+What the guard cannot catch is content interpolated into the message itself
+(`log.info("seed=%s", seed)`). The rule that closes that hole is not enforceable by
+a name filter: **log messages are constants, all variable data goes in `extra`.**
+
+## Field-name conventions
+
+`conversation_id` is the canonical identifier spelling. Where a banned name is
+genuinely wanted for a path, the path spelling is legal and the content is not:
+`seed_path`, `stdout_path`.
+"""
+
+import json
+import logging
+import os
+import sys
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from io import TextIOWrapper
+from pathlib import Path
+from typing import Any
+
+LOGGER_NAME = "dataporter"
+LOGS_DIRNAME = "logs"
+STRICT_ENV_VAR = "DATAPORTER_LOG_STRICT"
+
+FORBIDDEN_FIELDS = frozenset({"text", "seed", "title", "content", "snapshot", "stdout"})
+"""Field names that would carry conversation content. See `01` and §10 of the brief."""
+
+_MAX_SCAN_DEPTH = 5
+
+_RESERVED_RECORD_ATTRS = frozenset(
+    logging.LogRecord("", 0, "", 0, "", (), None).__dict__
+) | {"message", "asctime"}
+"""Derived, not hardcoded, so stdlib additions (`taskName` in 3.12) stay reserved."""
+
+_strict_default = False
+
+_NULL_HANDLER = logging.NullHandler()
+"""Always attached. Without a handler, `logging.lastResort` prints the record —
+traceback and all — straight to stderr, which is exactly what exit code 70 exists
+to avoid. A NullHandler discards everything, so it needs no content guard."""
+
+
+class ContentLeak(AssertionError):
+    """A log record carried a field that could contain conversation content."""
+
+
+def _extras(record: logging.LogRecord) -> dict[str, Any]:
+    """The caller-supplied `extra` fields, with stdlib record attributes removed."""
+    return {
+        key: value
+        for key, value in record.__dict__.items()
+        if key not in _RESERVED_RECORD_ATTRS
+    }
+
+
+def _forbidden_names(fields: Mapping[str, Any], depth: int = 0) -> set[str]:
+    """Forbidden field names in `fields`, including inside nested mappings.
+
+    The spec says "fields are named", i.e. top level. Nested mappings are scanned
+    too because `extra={"result": {"text": ...}}` leaks just as effectively and the
+    JSON formatter would serialise it happily.
+    """
+    found = {key for key in fields if key in FORBIDDEN_FIELDS}
+    if depth < _MAX_SCAN_DEPTH:
+        for value in fields.values():
+            if isinstance(value, Mapping):
+                found |= _forbidden_names(value, depth + 1)
+    return found
+
+
+class ContentGuard(logging.Filter):
+    """Rejects any record whose fields could carry conversation content."""
+
+    def __init__(self, *, strict: bool = False) -> None:
+        super().__init__()
+        self.strict = strict
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        offending = _forbidden_names(_extras(record))
+        if not offending:
+            return True
+        if self.strict:
+            # Raised outside Handler.emit's try/except, so it reaches the caller
+            # rather than being swallowed by logging.handleError.
+            raise ContentLeak(
+                f"log record carries content field(s): {', '.join(sorted(offending))}"
+            )
+        return False
+
+
+class JsonlFormatter(logging.Formatter):
+    """One JSON object per line."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "ts": datetime.fromtimestamp(record.created, UTC)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z"),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "event": record.getMessage(),
+        }
+        payload.update(_extras(record))
+        if record.exc_info and record.exc_info[0] is not None:
+            # The type only. An exception's message is not guaranteed content-free.
+            payload["exception"] = record.exc_info[0].__name__
+        return json.dumps(payload, default=str)
+
+
+class HumanFormatter(logging.Formatter):
+    """One plain line per record. No colour: `--verbose` output is read by people
+    and by tests, and terminal decoration breaks byte comparison."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        stamp = datetime.fromtimestamp(record.created, UTC).strftime("%H:%M:%S")
+        line = f"{stamp} {record.levelname.lower():<7} {record.getMessage()}"
+        extras = _extras(record)
+        if extras:
+            line += " " + " ".join(f"{k}={v}" for k, v in sorted(extras.items()))
+        return line
+
+
+class _JsonlFileHandler(logging.FileHandler):
+    """A file handler that creates `logs/` only when it actually writes."""
+
+    def _open(self) -> TextIOWrapper:
+        Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+        return super()._open()
+
+
+def _guarded(handler: logging.Handler, *, strict: bool) -> logging.Handler:
+    """The only place an emitting handler is added to this package's logger."""
+    handler.addFilter(ContentGuard(strict=strict))
+    return handler
+
+
+def package_logger() -> logging.Logger:
+    """The `dataporter` logger, guaranteed to have at least a NullHandler."""
+    logger = logging.getLogger(LOGGER_NAME)
+    if _NULL_HANDLER not in logger.handlers:
+        logger.addHandler(_NULL_HANDLER)
+    return logger
+
+
+def strict_by_default() -> bool:
+    """Whether new handlers raise on a content field rather than dropping it."""
+    return _strict_default or os.environ.get(STRICT_ENV_VAR, "") not in ("", "0")
+
+
+def run_log_path(workspace: Path, now: datetime | None = None) -> Path:
+    """`<workspace>/logs/run-<UTC ts>.jsonl`.
+
+    Basic ISO 8601 — no colons, so it is a legal filename everywhere, and it sorts
+    lexicographically by time.
+    """
+    stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
+    return workspace / LOGS_DIRNAME / f"run-{stamp}.jsonl"
+
+
+def configure_logging(*, verbose: bool = False, strict: bool | None = None) -> None:
+    """Install the stderr sink. Called once, from the CLI's root callback.
+
+    `--quiet` is not an argument here: it suppresses stdout progress output (`18`)
+    and has nothing to say about diagnostics on stderr, so `-v -q` is a coherent
+    combination rather than a contradiction.
+    """
+    global _strict_default
+    _strict_default = strict_by_default() if strict is None else strict
+
+    reset_logging()
+    logger = package_logger()
+    logger.setLevel(logging.DEBUG)
+    # Nothing from this package reaches the root logger, and nothing a third-party
+    # library logs reaches our sinks. Containment, not filtering.
+    logger.propagate = False
+
+    if verbose:
+        stderr: logging.Handler = logging.StreamHandler(sys.stderr)
+        stderr.setFormatter(HumanFormatter())
+        logger.addHandler(_guarded(stderr, strict=_strict_default))
+
+
+def enable_run_log(workspace: Path, *, strict: bool | None = None) -> Path:
+    """Install the JSON-lines file sink and return its path.
+
+    Only commands that already write to the workspace call this.
+    """
+    path = run_log_path(workspace)
+    handler = _JsonlFileHandler(path, mode="a", encoding="utf-8", delay=True)
+    handler.setFormatter(JsonlFormatter())
+    guard_strict = _strict_default if strict is None else strict
+    package_logger().addHandler(_guarded(handler, strict=guard_strict))
+    return path
+
+
+def reset_logging() -> None:
+    """Remove every emitting handler this package installed. For tests and re-entry."""
+    logger = logging.getLogger(LOGGER_NAME)
+    for handler in list(logger.handlers):
+        if handler is _NULL_HANDLER:
+            continue
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def get_logger(name: str) -> logging.Logger:
+    """A logger under the package root, e.g. `get_logger(__name__)`."""
+    package_logger()
+    if name == LOGGER_NAME or name.startswith(f"{LOGGER_NAME}."):
+        return logging.getLogger(name)
+    return logging.getLogger(f"{LOGGER_NAME}.{name}")

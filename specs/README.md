@@ -97,7 +97,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 
 | Spec | Title | Implements | Status |
 | ---- | ----- | ---------- | ------ |
-| [01](impl/01-foundation.md) | Foundation | §8, §9, §10, §17 | Not started |
+| [01](impl/01-foundation.md) | Foundation | §8, §9, §10, §17 | Done |
 | [02](impl/02-export-model.md) | Export model | §2, §6 | Not started |
 | [03](impl/03-classification.md) | Classification | §6, §14 | Not started |
 | [04](impl/04-seed-generation.md) | Seed generation | §3, §6, §15 | Not started |
