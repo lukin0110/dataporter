@@ -219,6 +219,25 @@ def test_every_mutation_goes_through_a_tmp_file(
     ]
 
 
+def test_the_directory_entry_is_flushed_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Flushing the file's bytes is half of it: without the directory, a power
+    loss can leave the new contents on disk under the old name."""
+    synced: list[int] = []
+    original = os.fsync
+
+    def record(fd: int) -> None:
+        synced.append(os.fstat(fd).st_ino)
+        original(fd)
+
+    monkeypatch.setattr(os, "fsync", record)
+    store = StateStore(tmp_path)
+    store.update(ORDER[0], title="")
+    assert os.stat(tmp_path).st_ino in synced
+    assert os.stat(store.state_path).st_ino in synced
+
+
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="POSIX only")
 def test_a_kill_between_tmp_and_replace_leaves_the_previous_file(
     tmp_path: Path,
