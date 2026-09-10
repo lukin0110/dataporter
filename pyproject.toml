@@ -5,6 +5,7 @@ description = "Migrate a Claude data export into another Claude account via Herm
 # readme: 21 writes README.md and adds the key.
 requires-python = ">=3.12"
 dependencies = [
+    "orval>=0.0.11",
     "pydantic>=2",
     "pydantic-settings>=2",
     # >=0.27 specifically: `typer.TyperException` (the base of the vendored click
