@@ -7,7 +7,14 @@ import pytest
 
 from dataporter.browser import cdp
 from dataporter.errors import BrowserError, Category
-from fake_chrome import Call, FakeChrome, FakeTarget, dialog_event, free_port
+from fake_chrome import (
+    BROKEN_TARGET,
+    Call,
+    FakeChrome,
+    FakeTarget,
+    dialog_event,
+    free_port,
+)
 
 
 @pytest.fixture
@@ -67,6 +74,33 @@ def test_targets_carry_host_and_kind(client: cdp.CdpClient) -> None:
 def test_close_target_removes_the_tab(client: cdp.CdpClient) -> None:
     client.close_target("page-1")
     assert [item.id for item in client.targets()] == ["worker-1"]
+
+
+def test_closing_a_target_that_is_already_gone_is_fine(client: cdp.CdpClient) -> None:
+    """Chrome answers `404 No such target id` — the outcome the call wanted.
+
+    `08`'s close-extra-tabs lists targets and then closes them one at a time, so
+    a tab that closed itself in between is a race, not a failure.
+    """
+    client.close_target("page-1")
+    client.close_target("page-1")  # again, now that it is gone
+    client.close_target("never-existed")
+
+
+def test_a_close_that_fails_for_another_reason_still_raises(
+    client: cdp.CdpClient,
+) -> None:
+    """Only the 404 is forgiven. A browser answering 500 is a real failure."""
+    with pytest.raises(BrowserError, match="answered 500"):
+        client.close_target(BROKEN_TARGET)
+
+
+def test_an_http_status_carries_it(chrome: FakeChrome) -> None:
+    client = cdp.CdpClient(port=chrome.port, timeout=5.0)
+    with pytest.raises(cdp.HttpStatusError) as caught:
+        cdp.http_get(f"{client.base_url}/json/nothing-here", 5.0)
+    assert caught.value.status == 404
+    assert caught.value.category is Category.BROWSER
 
 
 def test_attaching_to_an_unknown_target_fails(client: cdp.CdpClient) -> None:
