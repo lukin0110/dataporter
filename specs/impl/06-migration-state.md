@@ -95,6 +95,12 @@ Resolved while building:
   `summary` beside the §9 block, because they are the same alignment rule with a different
   floor (`13` instead of `27`); `18` builds the header, the bar and the redraw on top of
   `counters_lines` rather than restating the rule.
+- **An atomic write flushes twice, not once.** The file's own bytes, and then the
+  directory entry `os.replace` rewrote — without the second, a power loss can leave the
+  new contents on disk while the name still points at the old ones. The directory flush
+  is best effort (a directory cannot be opened for reading on Windows), which costs
+  nothing this spec promises: `os.replace` is atomic either way, so the SIGKILL criterion
+  above holds regardless. Raised in review on `11`.
 - **`run.json` gains an `interrupted` counter.** The spec says crash recovery is "counted
   as `interrupted` in `run.json`" without naming a field. It is one of `COUNTERS`, so
   `bump_counter` reaches it and `19` can read it the same way as the other three.

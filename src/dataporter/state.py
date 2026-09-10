@@ -339,8 +339,10 @@ def write_atomically(path: Path, text: str) -> None:
     """Write `<path>.tmp`, flush it to disk, then `os.replace` it into place.
 
     `os.replace` is atomic on every platform this runs on, so a process killed at
-    any point leaves either the previous file or the new one. The `fsync` is what
-    makes that true after a power loss as well as after a `SIGKILL`.
+    any point leaves either the previous file or the new one. Surviving a power
+    loss takes two flushes rather than one: the file's own bytes, and then the
+    directory entry the replace rewrote — without the second, the new contents
+    can be on disk while the name still points at the old ones.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + TMP_SUFFIX)
@@ -351,6 +353,28 @@ def write_atomically(path: Path, text: str) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(tmp, path)
+    _fsync_directory(path.parent)
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Flush the directory entry `os.replace` has just rewritten.
+
+    Best effort by necessity: a directory cannot be opened for reading on
+    Windows, and some filesystems refuse to sync one. Neither weakens the
+    guarantee this module actually promises and tests — `os.replace` is still
+    atomic, so a killed process still finds one whole file or the other — it
+    only means durability across a power loss is the platform's to give.
+    """
+    try:
+        handle = os.open(directory, os.O_RDONLY)
+    except OSError:  # pragma: no cover - Windows, and directories we cannot open
+        return
+    try:
+        os.fsync(handle)
+    except OSError:  # pragma: no cover - filesystems that refuse to sync a dir
+        pass
+    finally:
+        os.close(handle)
 
 
 def _dump(model: BaseModel) -> str:
