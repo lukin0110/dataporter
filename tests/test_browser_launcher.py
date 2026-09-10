@@ -317,12 +317,13 @@ def test_a_browser_that_never_opens_the_port_times_out(
     tmp_path: Path, rig: Rig
 ) -> None:
     rig.fail_to_start = True
-    settings = make_settings(tmp_path)
-    settings = settings.model_copy(
+    settings = make_settings(tmp_path).model_copy(
         update={"timeouts": TimeoutSettings(browser_start_s=0.5, cdp_call_s=0.5)}
     )
     with pytest.raises(BrowserError, match="did not open its debug port"):
         launcher.launch(settings, "https://claude.ai/new")
+    # And no marker: the workspace does not claim a browser that never ran.
+    assert launcher.read_marker(settings.browser_profile_dir) is None
 
 
 def test_a_browser_that_cannot_be_started_at_all(
@@ -352,14 +353,49 @@ def test_close_asks_the_browser_to_exit(tmp_path: Path, rig: Rig) -> None:
     assert not session.client.responding()
 
 
-def test_closing_a_browser_that_is_already_gone_does_nothing(
+def test_a_browser_whose_port_has_gone_but_whose_process_has_not(
     tmp_path: Path, rig: Rig
 ) -> None:
+    """A dead debug port does not mean a dead Chrome. There is nothing to send
+    `Browser.close` to, so the process is ended rather than left behind."""
     settings = make_settings(tmp_path)
     session = launcher.launch(settings, "https://claude.ai/new")
     rig.browsers[0].stop()
     session.close()
-    assert rig.processes[0].returncode is None  # never waited on
+    assert rig.processes[0].terminated
+    assert rig.processes[0].returncode == 0
+
+
+def test_a_browser_that_never_opened_its_port_is_not_orphaned(
+    tmp_path: Path, rig: Rig
+) -> None:
+    """The failure `wait_for_port` reports: Chrome started, hung, and never
+    answered. Leaving it there would hold our profile and the next run's port."""
+    rig.fail_to_start = True
+    settings = make_settings(tmp_path).model_copy(
+        update={"timeouts": TimeoutSettings(browser_start_s=0.3, cdp_call_s=0.3)}
+    )
+    with pytest.raises(BrowserError, match="did not open its debug port"):
+        launcher.launch(settings, "https://claude.ai/new")
+    assert rig.processes[0].terminated
+    assert rig.processes[0].returncode == 0
+
+
+def test_a_browser_that_is_gone_entirely_is_left_alone(
+    tmp_path: Path, rig: Rig
+) -> None:
+    """Nothing on the port and nothing running: `close` has no work to do, and
+    an adopted session has no process to sign for either."""
+    settings = make_settings(tmp_path)
+    session = launcher.launch(settings, "https://claude.ai/new")
+    rig.browsers[0].stop()
+    rig.processes[0].returncode = 3  # exited on its own
+    session.close()
+    assert not rig.processes[0].terminated
+    assert rig.processes[0].returncode == 3
+
+    adopted = launcher.BrowserSession(client=session.client, profile=session.profile)
+    adopted.close(timeout=0.2)  # no process, no port: nothing to wait for
 
 
 def test_a_browser_that_will_not_exit_is_terminated(tmp_path: Path, rig: Rig) -> None:
