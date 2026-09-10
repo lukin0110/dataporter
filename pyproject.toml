@@ -58,9 +58,15 @@ extend-exclude = ["specs", "docs"]
 select = ["E", "F", "I", "UP", "ANN"]
 ignore = ["ANN401"]
 
-[tool.ty.environment]
+[tool.ty.environment]  # https://docs.astral.sh/ty/configuration/
 python-version = "3.12"
-root = ["src"]
+root = ["./src"]
+
+[tool.ty.terminal]
+output-format = "github"
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
