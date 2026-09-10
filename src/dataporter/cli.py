@@ -11,6 +11,7 @@ the progress block and `08`'s helpers print exactly one JSON object there.
 """
 
 import importlib.metadata
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
@@ -19,9 +20,12 @@ import typer
 from typer.core import TyperGroup
 
 from dataporter import log
+from dataporter import seed as seeding
 from dataporter.config import ConfigError, Settings, load_settings
 from dataporter.errors import ExportError
 from dataporter.exit_codes import ExitCode
+from dataporter.export import Conversation, load_export
+from dataporter.export import Export as ParsedExport
 
 PROGRAM_NAME = "hermes-claude-migrate"
 
@@ -225,6 +229,8 @@ Export = Annotated[
     str,
     typer.Argument(metavar="EXPORT", help="Path to the Claude data export."),
 ]
+"""The *path* to an export, as typed. `export.Export` — the parsed thing — is
+imported as `ParsedExport` above so the two cannot be confused here."""
 Only = Annotated[
     list[str] | None,
     typer.Option(
@@ -314,6 +320,27 @@ def inspect_cmd(
     not_implemented(ctx)
 
 
+def selected_conversations(
+    export: ParsedExport, only: Sequence[str]
+) -> list[Conversation]:
+    """The conversations `--only` names, or all of them, in export order.
+
+    Export order rather than the order the flags were typed: two runs of the same
+    command must write the same files and print the same lines, and `06` will
+    make selection its own concern anyway. An unknown uuid is an operator
+    mistake, not an empty selection — silently doing nothing is how a typo turns
+    into "the tool skipped my conversation".
+    """
+    if not only:
+        return list(export.conversations)
+    wanted = set(only)
+    known = {conversation.uuid for conversation in export.conversations}
+    missing = [uuid for uuid in only if uuid not in known]
+    if missing:
+        fail(f"conversation not in export: {missing[0]}")
+    return [item for item in export.conversations if item.uuid in wanted]
+
+
 @app.command()
 def seeds(
     ctx: typer.Context,
@@ -327,8 +354,33 @@ def seeds(
     ] = None,
 ) -> None:
     """Generate migration seeds without touching a browser."""
-    require_export(export)
-    not_implemented(ctx)
+    path = require_export(export)
+    context = app_context(ctx)
+    root = out if out is not None else context.settings.seeds_dir
+    log.enable_run_log(context.settings.workspace)
+
+    conversations = selected_conversations(load_export(path), only or [])
+    generator = seeding.SeedGenerator(context.settings)
+    written = 0
+    for outcome in generator.seeds(conversations):
+        if outcome.seed is None:
+            # stderr, not stdout: stdout is one line per *written* seed, and an
+            # operator who asked for one conversation by uuid is owed the reason
+            # nothing appeared. `05` is where the full accounting lives.
+            print(
+                f"skipped {outcome.short_id}: {outcome.reason}",
+                file=typer.get_text_stream("stderr"),
+            )
+            continue
+        seeding.write_seed(outcome.seed, root)
+        written += 1
+        if not context.quiet:
+            print(
+                f"{outcome.short_id}  parts={len(outcome.seed.chunks)}  "
+                f"chars={outcome.seed.total_chars}"
+            )
+    if not written:
+        raise typer.Exit(ExitCode.NOTHING_TO_DO)
 
 
 @app.command()

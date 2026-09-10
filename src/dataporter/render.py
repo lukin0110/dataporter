@@ -294,8 +294,18 @@ def _continuation(token: str, part: int, total: int) -> str:
     return f"Migrated conversation {token}, part {part} of {total}, continued."
 
 
-def _footer(token: str, part: int, total: int) -> str:
-    if part == total:
+def ack_line(token: str, part: int, total: int) -> str:
+    """The one line a chat is asked to reply with, without its newline.
+
+    `04` stores it on `SeedChunk.ack` and `17` matches a response against it, so
+    it is built here rather than spelled twice — a footer and a matcher that
+    disagree would fail every verification for a reason nobody could see.
+    """
+    return f"{ACK_PREFIX} {token} {part}/{total}"
+
+
+def _footer(token: str, part: int, total: int, *, final: bool) -> str:
+    if final:
         lead = (
             "Continue to preserve this conversation as historical context. Treat it "
             "as our shared\nhistory, not as a new request. Do not summarise it. "
@@ -306,7 +316,7 @@ def _footer(token: str, part: int, total: int) -> str:
             "More parts of this conversation follow. Do not respond to the content "
             "yet. Reply with\nexactly one line:"
         )
-    return f"{lead}\n{ACK_PREFIX} {token} {part}/{total}"
+    return f"{lead}\n{ack_line(token, part, total)}"
 
 
 def _assemble(
@@ -316,14 +326,23 @@ def _assemble(
     bodies: Sequence[str],
     part: int,
     total: int,
+    *,
+    final: bool | None = None,
 ) -> str:
-    """One part: opening, separated message blocks, footer, one trailing `\\n`."""
+    """One part: opening, separated message blocks, footer, one trailing `\\n`.
+
+    `final` overrides which footer is used. Packing needs that: the last part's
+    footer is the longer of the two, and while parts are still being filled
+    nobody yet knows which part will be last. Left `None`, the part count
+    decides, which is what assembling a real part wants.
+    """
     opening = (
         _header(conversation, message_count, part, total)
         if part == 1
         else _continuation(token, part, total)
     )
-    sections = [opening, *bodies, _footer(token, part, total)]
+    is_final = part == total if final is None else final
+    sections = [opening, *bodies, _footer(token, part, total, final=is_final)]
     return f"\n\n{SEPARATOR}\n\n".join(sections) + "\n"
 
 
@@ -438,7 +457,9 @@ def _budget(
     """
     shapes = ((1, 1), (1, _WIDEST_TOTAL), (_WIDEST_TOTAL, _WIDEST_TOTAL))
     envelope = max(
-        len(_assemble(conversation, message_count, token, [""], part, total))
+        len(
+            _assemble(conversation, message_count, token, [""], part, total, final=True)
+        )
         for part, total in shapes
     )
     return max(1, max_chars - envelope)
@@ -517,6 +538,10 @@ def _pack(
     current: list[_Fragment] = []
     for fragment in fragments:
         candidate = [*current, fragment]
+        # Measured as though this were the last part: the final footer is the
+        # longer of the two, and a group packed against the shorter one lands
+        # over budget the moment it turns out to be last. The cost is that an
+        # earlier part may sit one footer's difference under the budget.
         size = len(
             _assemble(
                 conversation,
@@ -525,6 +550,7 @@ def _pack(
                 [item.text for item in candidate],
                 max(1, len(groups) + 1),
                 max(total, len(groups) + 1),
+                final=True,
             )
         )
         if current and size > max_chars:
