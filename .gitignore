@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Default workspace, created next to wherever the tool is run.
+migration/
