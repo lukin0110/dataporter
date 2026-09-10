@@ -4,7 +4,7 @@
 check:
 	uv run ruff check src tests
 	uv run ruff format --check src tests
-	uv run mypy --strict src
+	uv run ty check --error-on-warning src
 	uv run pytest
 
 fmt:
