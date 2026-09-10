@@ -24,6 +24,9 @@ from typing import Any, Self
 
 from websockets.sync.server import Server, ServerConnection, serve
 
+BROKEN_TARGET = "boom"
+"""A target id the fake answers with a 500, for the failure that is not a race."""
+
 
 def free_port() -> int:
     """A port that was free a moment ago. As good as this gets without binding."""
@@ -176,10 +179,19 @@ class FakeChrome:
                     self._json(fake._list())
                 elif self.path.startswith("/json/close/"):
                     target_id = self.path.rsplit("/", 1)[-1]
+                    if target_id == BROKEN_TARGET:
+                        self.send_error(500)
+                        return
                     with fake._lock:
+                        known = fake.target(target_id) is not None
                         fake.targets = [
                             item for item in fake.targets if item.id != target_id
                         ]
+                    if not known:
+                        # What a real Chrome does, verified against Chromium 141:
+                        # `No such target id: X`, with a 404.
+                        self.send_error(404, f"No such target id: {target_id}")
+                        return
                     self._text("Target is closing")
                 else:
                     self.send_error(404)

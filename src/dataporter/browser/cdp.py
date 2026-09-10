@@ -86,11 +86,31 @@ class Target:
         )
 
 
+class HttpStatusError(BrowserError):
+    """A CDP HTTP endpoint answered with an error status.
+
+    Carries the status because one of them is not really an error: Chrome
+    answers `/json/close/<id>` with `404 No such target id` for a tab it does
+    not have, which is the outcome the caller wanted. Everything else is a
+    failure like any other, so this stays a `BrowserError`.
+    """
+
+    def __init__(self, *, detail: str, status: int) -> None:
+        super().__init__(detail=detail)
+        self.status = status
+
+
 def http_get(url: str, timeout: float) -> str:
     """GET a CDP HTTP endpoint and return its body."""
     try:
         with _NO_PROXY.open(url, timeout=timeout) as response:
             return str(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        # Before URLError, which it subclasses. A status is a considered answer
+        # from a browser that is there, not a browser that is not.
+        raise HttpStatusError(
+            detail=f"{url} answered {exc.code}", status=exc.code
+        ) from exc
     except urllib.error.URLError as exc:
         # Includes the ordinary "nothing is listening" case, which callers turn
         # into "no browser on this port" rather than into a failure.
@@ -392,8 +412,18 @@ class CdpClient:
         raise BrowserError(detail=f"no such target: {log.safe_token(target_id)}")
 
     def close_target(self, target_id: str) -> None:
-        """Close one tab. Idempotent: a target that is already gone is fine."""
-        http_get(f"{self.base_url}/json/close/{target_id}", self.timeout)
+        """Close one tab. Idempotent: a target that is already gone is fine.
+
+        Chrome answers `404 No such target id` for a tab it does not have, and
+        that is this call's goal already met. `08`'s `close-extra-tabs`
+        enumerates targets and then closes them one by one, so a tab that closed
+        itself in between is an ordinary race and not a failure to report.
+        """
+        try:
+            http_get(f"{self.base_url}/json/close/{target_id}", self.timeout)
+        except HttpStatusError as exc:
+            if exc.status != 404:
+                raise
 
     @contextmanager
     def browser_connection(self) -> Iterator[Connection]:
