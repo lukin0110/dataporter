@@ -105,6 +105,37 @@ def test_allowed_fields_survive(workspace: Path) -> None:
     assert str(record["ts"]).endswith("Z")
 
 
+@pytest.mark.parametrize("field", sorted(log.SCHEMA_FIELDS))
+def test_strict_mode_raises_on_a_schema_collision(workspace: Path, field: str) -> None:
+    log.configure_logging(verbose=True, strict=True)
+    with pytest.raises(log.SchemaClash, match=field):
+        log.get_logger("test").info("oops", extra={field: "BOGUS"})
+
+
+def test_extras_never_overwrite_the_schema(workspace: Path) -> None:
+    """`13` plans `{event: "retry", uuid, ...}`; without this, `event` would stop
+    meaning the message and `19`'s parser would silently misread every record."""
+    log.configure_logging(verbose=False, strict=False)
+    path = log.enable_run_log(workspace, strict=False)
+    log.get_logger("test").info(
+        "retry scheduled",
+        extra={"event": "retry", "level": "BOGUS", "attempt": 2},
+    )
+    (record,) = read_lines(path)
+    assert record["event"] == "retry scheduled"
+    assert record["level"] == "info"
+    # The record is kept: a naming mistake should not cost a diagnostic.
+    assert record["attempt"] == 2
+
+
+def test_schema_collision_does_not_drop_the_record(workspace: Path) -> None:
+    """Unlike a content leak, which must never be written, a collision is survivable."""
+    log.configure_logging(verbose=False, strict=False)
+    path = log.enable_run_log(workspace, strict=False)
+    log.get_logger("test").info("kept", extra={"logger": "BOGUS"})
+    assert len(read_lines(path)) == 1
+
+
 def test_nothing_is_created_until_a_record_is_written(workspace: Path) -> None:
     """`05` requires `import --dry-run` to leave no workspace behind."""
     target = workspace / "ws"

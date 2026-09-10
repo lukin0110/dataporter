@@ -124,6 +124,14 @@ Resolved while building:
 - **`conversation_id` is the canonical identifier field name in logs.** `08` already uses it;
   `13` currently writes `uuid` and should follow. Where a banned field name is wanted for a
   path, the path spelling is legal: `seed_path`, `stdout_path`.
+- **The record's own keys are reserved** (`ts`, `level`, `logger`, `event`, `exception`). An
+  `extra` field with one of those names would redefine the schema `19` parses, so the log
+  message *is* the event name. **`13`'s planned retry record `{event: "retry", uuid, …}` hits
+  this** and needs writing as `log.info("retry", extra={"attempt": …})`. Extras can never
+  overwrite a schema key, and `ContentGuard` raises on a collision in strict mode.
+- **`typer>=0.27` specifically.** `typer.TyperException`, the base of the vendored click
+  exception hierarchy that the exit-`70` guard catches, does not exist in 0.26 or earlier —
+  verified against 0.20, 0.21, 0.23 and 0.26, where typer still depends on real click.
 - **`ContentGuard` also scans nested mappings**, not just top-level field names, because
   `extra={"result": {"text": …}}` leaks just as effectively. What no name filter can catch is
   content interpolated into the message itself, so the standing rule is: log messages are

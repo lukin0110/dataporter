@@ -41,6 +41,10 @@ a name filter: **log messages are constants, all variable data goes in `extra`.*
 `conversation_id` is the canonical identifier spelling. Where a banned name is
 genuinely wanted for a path, the path spelling is legal and the content is not:
 `seed_path`, `stdout_path`.
+
+The record's own keys (`SCHEMA_FIELDS`) are reserved: the log message is the event
+name, so `event`, `level`, `ts`, `logger` and `exception` are never passed as
+fields. `ContentGuard` raises on either violation in strict mode.
 """
 
 import json
@@ -60,6 +64,15 @@ STRICT_ENV_VAR = "DATAPORTER_LOG_STRICT"
 FORBIDDEN_FIELDS = frozenset({"text", "seed", "title", "content", "snapshot", "stdout"})
 """Field names that would carry conversation content. See `01` and §10 of the brief."""
 
+SCHEMA_FIELDS = frozenset({"ts", "level", "logger", "event", "exception"})
+"""Keys the JSON-lines record owns.
+
+An `extra` field with one of these names would redefine the schema `19` parses —
+`extra={"level": "BOGUS"}` makes `level` stop meaning the log level. The message
+*is* the event name, so none of these is ever passed as a field. `13`'s planned
+retry record (`{event: "retry", uuid, …}`) needs rewriting as
+`log.info("retry", extra={"attempt": …})` for this reason."""
+
 _MAX_SCAN_DEPTH = 5
 
 _RESERVED_RECORD_ATTRS = frozenset(
@@ -77,6 +90,10 @@ to avoid. A NullHandler discards everything, so it needs no content guard."""
 
 class ContentLeak(AssertionError):
     """A log record carried a field that could contain conversation content."""
+
+
+class SchemaClash(AssertionError):
+    """A log record carried a field that would redefine a JSON-lines schema key."""
 
 
 def _extras(record: logging.LogRecord) -> dict[str, Any]:
@@ -104,23 +121,40 @@ def _forbidden_names(fields: Mapping[str, Any], depth: int = 0) -> set[str]:
 
 
 class ContentGuard(logging.Filter):
-    """Rejects any record whose fields could carry conversation content."""
+    """Enforces the two field-naming rules: no content, no schema collisions.
+
+    The two failures are not equally severe, so they are not handled the same way.
+    A content field is dropped — writing it is the thing we must never do. A schema
+    collision is let through, because `JsonlFormatter` already refuses to let extras
+    overwrite schema keys, and losing a diagnostic record to a naming mistake would
+    be a worse trade. Both raise in strict mode, so tests catch either at once.
+    """
 
     def __init__(self, *, strict: bool = False) -> None:
         super().__init__()
         self.strict = strict
 
     def filter(self, record: logging.LogRecord) -> bool:
-        offending = _forbidden_names(_extras(record))
-        if not offending:
-            return True
-        if self.strict:
-            # Raised outside Handler.emit's try/except, so it reaches the caller
-            # rather than being swallowed by logging.handleError.
-            raise ContentLeak(
-                f"log record carries content field(s): {', '.join(sorted(offending))}"
+        fields = _extras(record)
+
+        offending = _forbidden_names(fields)
+        if offending:
+            if self.strict:
+                # Raised outside Handler.emit's try/except, so it reaches the caller
+                # rather than being swallowed by logging.handleError.
+                raise ContentLeak(
+                    f"log record carries content field(s): "
+                    f"{', '.join(sorted(offending))}"
+                )
+            return False
+
+        clashing = SCHEMA_FIELDS & set(fields)
+        if clashing and self.strict:
+            raise SchemaClash(
+                f"log record redefines schema field(s): {', '.join(sorted(clashing))}; "
+                f"the message is the event name"
             )
-        return False
+        return True
 
 
 class JsonlFormatter(logging.Formatter):
@@ -135,10 +169,14 @@ class JsonlFormatter(logging.Formatter):
             "logger": record.name,
             "event": record.getMessage(),
         }
-        payload.update(_extras(record))
         if record.exc_info and record.exc_info[0] is not None:
             # The type only. An exception's message is not guaranteed content-free.
             payload["exception"] = record.exc_info[0].__name__
+        # Extras never overwrite a schema key: `extra={"level": ...}` would make
+        # `level` stop meaning the log level, silently, for every downstream parser.
+        for key, value in _extras(record).items():
+            if key not in SCHEMA_FIELDS:
+                payload[key] = value
         return json.dumps(payload, default=str)
 
 
