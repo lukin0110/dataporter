@@ -518,6 +518,7 @@ name = "dataporter"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "orval" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "typer" },
@@ -539,6 +540,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "orval", specifier = ">=0.0.11" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pydantic-ai", marker = "extra == 'judge'" },
     { name = "pydantic-settings", specifier = ">=2" },
@@ -1096,6 +1098,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8f/73/0cbdebcb4cf545fdd328da14f5137e37d0770c3f26185e478b0d15d94f50/opentelemetry_semantic_conventions-0.65b0.tar.gz", hash = "sha256:f9b2b81e9d5b64f11bc952075e7e9c7fb0aab075c7fd1c46d597f1b919852d60", size = 148774, upload-time = "2026-07-16T15:25:46.902Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a6/0e/49df70d9b81fb5cbae4bbf2a49d865b09bcbcbc4eb53f5851b1027738d78/opentelemetry_semantic_conventions-0.65b0-py3-none-any.whl", hash = "sha256:1cacde7b0ad306f84c5ef08c3dbe1bbaf20165bba6f8bff43b670e555a086bcb", size = 204645, upload-time = "2026-07-16T15:25:30.688Z" },
+]
+
+[[package]]
+name = "orval"
+version = "0.0.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/0c/81736a4b82a323e0c7e7b97956353c72b3911359296f47fec6adc1100bce/orval-0.0.11.tar.gz", hash = "sha256:1affa6162f0e24ef292e2182edf06a57ac4ea4b4e01dfa374983880d0bb30502", size = 21958, upload-time = "2026-09-08T19:32:13.211Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/a8/4070e56890fb21861ce2f4bc58fb617ab6abe2d611546745521aedf8a0cf/orval-0.0.11-py3-none-any.whl", hash = "sha256:7c9533c1fe70093ed42dbe85c68fc3847875bf50353c9fbf59409a0229519ad9", size = 24244, upload-time = "2026-09-08T19:32:12.133Z" },
 ]
 
 [[package]]
