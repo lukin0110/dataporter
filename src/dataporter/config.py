@@ -191,7 +191,14 @@ class Settings(BaseSettings):
 
 
 def bootstrap_workspace(workspace: Path | None = None) -> Path:
-    """Where to look for `config.toml`: CLI flag > environment > default."""
+    """Where to look for `config.toml`: CLI flag > environment > default.
+
+    Written out rather than as an `orval.coalesce_lazy` chain, which is what this
+    is: `coalesce_lazy` is typed `-> T | None` even when its last argument cannot
+    be `None`, so `ty` rejects it against `-> Path`. Reaching for a helper and
+    then adding a `cast` to silence what it cost is not a trade worth making.
+    See `docs/orval-candidates.md` (D2).
+    """
     if workspace is not None:
         return workspace
     from_env = os.environ.get(WORKSPACE_ENV_VAR, "").strip()

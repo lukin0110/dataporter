@@ -13,7 +13,6 @@ Nothing in this module may log content. `file_name` is safe; a title, a message 
 a rendered seed is not (`log.FORBIDDEN_FIELDS`).
 """
 
-import re
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Literal
@@ -66,14 +65,15 @@ this is the fallback, not the other way round.
 """
 
 _UNSAFE_IN_NAME = ("/", "\\")
-_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
-"""No ordinary file or directory name carries one.
+"""The separators. `:`, `*` and `?` are *not* rejected: they are legal on the
+systems these exports come from, and refusing them would report a file that is
+really there as bytes we do not have.
 
+Control characters are refused as well, through `log.CONTROL_CHARACTERS` rather
+than a second copy of the same pattern — an export is trusted or distrusted once.
 NUL alone was the original rule; a newline or a carriage return is the same kind
-of thing and reaches further — such a name is joined into a path here and printed
-by `04` when the conversation is skipped. `:`, `*` and `?` are *not* rejected:
-they are legal on the systems these exports come from, and refusing them would
-report a file that is really there as bytes we do not have.
+of thing and reaches further, since such a name is joined into a path here and
+printed by `04` when the conversation is skipped.
 """
 
 
@@ -485,7 +485,7 @@ def safe_component(value: str) -> bool:
     """
     if not value or value in (".", ".."):
         return False
-    if _CONTROL_CHARACTERS.search(value):
+    if log.CONTROL_CHARACTERS.search(value):
         return False
     return not any(character in value for character in _UNSAFE_IN_NAME)
 

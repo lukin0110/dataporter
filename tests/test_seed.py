@@ -7,6 +7,7 @@ to make a test pass — a change to them is a change to what a destination chat
 receives.
 """
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -143,6 +144,17 @@ def test_every_chunk_ends_with_its_acknowledgement_line(
             assert chunk.ack == expected
             assert chunk.text.endswith(f"{expected}\n")
             assert (chunk.index, chunk.total) == (position, total)
+
+
+def test_sha256_of_is_sha256_over_utf8_bytes() -> None:
+    """The digest is `orval.hashify`'s now, and `08` compares it against what a
+    browser composer holds — so pin it to the definition rather than trust it.
+
+    Non-ASCII on purpose: any encoding but UTF-8 would agree on plain text and
+    part ways exactly where a real conversation does.
+    """
+    text = "Grüße, 世界\n---\nMIGRATION-ACK\n"
+    assert seeding.sha256_of(text) == hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def test_every_sha256_is_the_hash_of_its_own_text(
