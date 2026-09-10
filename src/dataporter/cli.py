@@ -19,13 +19,14 @@ from typing import Annotated, Any, NoReturn
 import typer
 from typer.core import TyperGroup
 
-from dataporter import log
+from dataporter import log, summary
 from dataporter import seed as seeding
-from dataporter.config import ConfigError, Settings, load_settings
+from dataporter.config import ConfigError, Settings, load_settings, with_attachments_dir
 from dataporter.errors import ExportError
 from dataporter.exit_codes import ExitCode
 from dataporter.export import Conversation, load_export
 from dataporter.export import Export as ParsedExport
+from dataporter.plan import MigrationPlan, build_plan
 
 PROGRAM_NAME = "hermes-claude-migrate"
 
@@ -243,6 +244,85 @@ JsonOutput = Annotated[
     bool,
     typer.Option("--json", help="Emit machine-readable JSON instead of text."),
 ]
+Limit = Annotated[
+    int | None,
+    typer.Option(
+        "--limit",
+        metavar="N",
+        # Not a literal default: `15` must be able to tell an explicit
+        # --limit 10 from an unset flag falling back to run.max_conversations.
+        help="Migrate at most N conversations. Defaults to the configured maximum.",
+    ),
+]
+AttachmentsDir = Annotated[
+    Path | None,
+    typer.Option(
+        "--attachments-dir",
+        metavar="DIR",
+        help="Attachment bytes. Defaults to <workspace>/attachments.",
+    ),
+]
+"""`01` gave this to `import` only. `05` gives it to `inspect` too: whether a file
+is attachment class 2 or class 3 depends on it, and `inspect` is the command whose
+job is to explain that."""
+
+
+# --------------------------------------------------------------------------- #
+# Selection, and the plan it produces
+# --------------------------------------------------------------------------- #
+
+
+def selected_conversations(
+    export: ParsedExport, only: Sequence[str], limit: int | None = None
+) -> list[Conversation]:
+    """The conversations `--only` names, or all of them, in export order.
+
+    Export order rather than the order the flags were typed: two runs of the same
+    command must write the same files and print the same lines, and `06` will
+    make selection its own concern anyway. An unknown uuid is an operator
+    mistake, not an empty selection — silently doing nothing is how a typo turns
+    into "the tool skipped my conversation".
+
+    `--limit` truncates last, so `--only` picks *which* and `--limit` picks *how
+    many*. Its default is `06`'s `run.max_conversations`, which does not exist
+    yet; until then an unset flag means every selected conversation, and a dry run
+    of an export reports the whole export.
+    """
+    if limit is not None and limit < 0:
+        fail("--limit must not be negative")
+    if only:
+        wanted = set(only)
+        known = {conversation.uuid for conversation in export.conversations}
+        missing = [uuid for uuid in only if uuid not in known]
+        if missing:
+            fail(f"conversation not in export: {missing[0]}")
+        chosen = [item for item in export.conversations if item.uuid in wanted]
+    else:
+        chosen = list(export.conversations)
+    return chosen if limit is None else chosen[:limit]
+
+
+def plan_for(
+    ctx: typer.Context,
+    export_path: Path,
+    *,
+    only: Sequence[str] = (),
+    limit: int | None = None,
+    attachments_dir: Path | None = None,
+) -> MigrationPlan:
+    """Load, select, classify. Writes nothing and contacts nothing.
+
+    The selection is applied *before* the plan is built, so what the dry run
+    counts is what this run would do rather than what the export happens to
+    contain. The fingerprint stays the export's: it identifies the file, not the
+    subset of it somebody asked about.
+    """
+    settings = with_attachments_dir(app_context(ctx).settings, attachments_dir)
+    export = load_export(export_path)
+    conversations = selected_conversations(export, only, limit)
+    return build_plan(
+        export.model_copy(update={"conversations": conversations}), settings
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -264,16 +344,7 @@ def import_cmd(
         bool,
         typer.Option("--dry-run", help="Parse and report; change no account."),
     ] = False,
-    limit: Annotated[
-        int | None,
-        typer.Option(
-            "--limit",
-            metavar="N",
-            # Not a literal default: `15` must be able to tell an explicit
-            # --limit 10 from an unset flag falling back to run.max_conversations.
-            help="Migrate at most N conversations. Defaults to the configured maximum.",
-        ),
-    ] = None,
+    limit: Limit = None,
     only: Only = None,
     retry_failed: Annotated[
         bool,
@@ -293,52 +364,52 @@ def import_cmd(
         bool,
         typer.Option("--skip-attachments", help="Do not upload attachments."),
     ] = False,
-    attachments_dir: Annotated[
-        Path | None,
-        typer.Option(
-            "--attachments-dir",
-            metavar="DIR",
-            help="Attachment bytes. Defaults to <workspace>/attachments.",
-        ),
-    ] = None,
+    attachments_dir: AttachmentsDir = None,
     pilot: Annotated[
         bool,
         typer.Option("--pilot", help="Run the controlled pilot selection."),
     ] = False,
 ) -> None:
     """Migrate conversations from an export into the destination account."""
-    require_export(export)
-    not_implemented(ctx)
+    path = require_export(export)
+    if not dry_run:
+        not_implemented(ctx)
+
+    # Nothing below this line writes, and nothing below it is allowed to: no run
+    # log, so not even `<workspace>/logs/` comes into existence. §9 says no Claude
+    # account is modified by a dry run; a workspace appearing next to the export
+    # is the local half of the same promise.
+    plan = plan_for(
+        ctx, path, only=only or [], limit=limit, attachments_dir=attachments_dir
+    )
+    if not plan.conversations:
+        # `06`'s rule, and the one `seeds` already follows: an empty selection is
+        # exit `4`, not a block of zeros that reads like a finished run.
+        raise typer.Exit(ExitCode.NOTHING_TO_DO)
+    # Printed even under `--quiet`: `-q` suppresses progress, and this block is
+    # the command's whole result rather than a report of its progress.
+    print(summary.dry_run_report(plan.totals), end="")
 
 
 @app.command("inspect")
 def inspect_cmd(
-    ctx: typer.Context, export: Export, json_output: JsonOutput = False
+    ctx: typer.Context,
+    export: Export,
+    attachments_dir: AttachmentsDir = None,
+    json_output: JsonOutput = False,
 ) -> None:
     """Report what an export contains and what can be migrated."""
-    require_export(export)
-    not_implemented(ctx)
-
-
-def selected_conversations(
-    export: ParsedExport, only: Sequence[str]
-) -> list[Conversation]:
-    """The conversations `--only` names, or all of them, in export order.
-
-    Export order rather than the order the flags were typed: two runs of the same
-    command must write the same files and print the same lines, and `06` will
-    make selection its own concern anyway. An unknown uuid is an operator
-    mistake, not an empty selection — silently doing nothing is how a typo turns
-    into "the tool skipped my conversation".
-    """
-    if not only:
-        return list(export.conversations)
-    wanted = set(only)
-    known = {conversation.uuid for conversation in export.conversations}
-    missing = [uuid for uuid in only if uuid not in known]
-    if missing:
-        fail(f"conversation not in export: {missing[0]}")
-    return [item for item in export.conversations if item.uuid in wanted]
+    path = require_export(export)
+    plan = plan_for(ctx, path, attachments_dir=attachments_dir)
+    if json_output:
+        # The plan itself, and nothing else on stdout: this is what `12` and `19`
+        # read, so a header line would be a header line in somebody's `jq`.
+        print(plan.model_dump_json(indent=2))
+        return
+    # An empty export prints a block of zeros rather than exiting `4`: `inspect`
+    # answers a question about a file, and "it contains nothing" is the answer,
+    # not a refusal to run.
+    print(summary.inspect_report(plan), end="")
 
 
 @app.command()
