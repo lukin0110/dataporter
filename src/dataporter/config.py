@@ -11,9 +11,11 @@ read from there. A `workspace` key inside `config.toml` therefore still sets the
 workspace — it just does not relocate config discovery, so there is no fixed-point
 to iterate and no possible cycle.
 
-This slice defines the mechanism and the `workspace` field. Later slices add their
-own sections (`browser`, `hermes`, `seed`, `pacing`, `retries`, `timeouts`, `run`,
-`attachments`, `fidelity`) as nested models; nothing here needs to change for them.
+`01` defined the mechanism and the `workspace` field. Later slices add their own
+sections (`browser`, `hermes`, `pacing`, `retries`, `timeouts`, `run`, `fidelity`)
+as nested models; nothing here needs to change for them. `03` is the first to do
+it, adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS`
+and a `[attachments]` table in `config.toml` work with no new machinery.
 """
 
 import os
@@ -22,7 +24,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -34,6 +36,7 @@ from pydantic_settings import (
 DEFAULT_WORKSPACE = Path("migration")
 CONFIG_FILENAME = "config.toml"
 WORKSPACE_ENV_VAR = "HCM_WORKSPACE"
+ATTACHMENTS_DIRNAME = "attachments"
 
 _config_file: ContextVar[Path | None] = ContextVar("_config_file", default=None)
 """Set by `load_settings` so the TOML source knows which file to read."""
@@ -41,6 +44,68 @@ _config_file: ContextVar[Path | None] = ContextVar("_config_file", default=None)
 
 class ConfigError(Exception):
     """Configuration could not be loaded. The CLI reports this as exit code 2."""
+
+
+class SeedSettings(BaseModel):
+    """How much rendered conversation goes into one chat, and into one message."""
+
+    max_chars: int = 50_000
+    """Budget for a single seed part. `04` splits on it; `03` counts parts with it.
+
+    Declared here rather than in `04` because `ConversationPlan.chunk_count` is a
+    `03` field and a chunk count without a chunk budget is not a number. `10`
+    measures what the composer really accepts and owns the value from then on.
+    """
+
+    hard_max_chars: int = 400_000
+    """Above this a conversation is not migrated at all.
+
+    Chunking spreads a seed across messages but not across a chat's context, so
+    there is a size no number of parts rescues. `10` may lower it.
+    """
+
+
+class AttachmentSettings(BaseModel):
+    """The operator's observed claude.ai upload limits.
+
+    *Assumed* until `10` and `16` confirm them against the real UI.
+    """
+
+    dir: Path | None = None
+    """Where attachment bytes are, when the operator has them. `None` means
+    `<workspace>/attachments`; read `Settings.attachments_dir`, never this."""
+
+    max_bytes: int = 30_000_000
+    max_per_chat: int = 20
+    accepted_types: tuple[str, ...] = (
+        "csv",
+        "docx",
+        "gif",
+        "html",
+        "jpeg",
+        "jpg",
+        "js",
+        "json",
+        "md",
+        "pdf",
+        "png",
+        "py",
+        "ts",
+        "txt",
+        "webp",
+        "xlsx",
+        "xml",
+        "yaml",
+    )
+    """Extensions, lowercase, without a dot. Sorted so the default reads as a set
+    rather than as a ranking; `03` matches against it and never iterates it."""
+
+    @field_validator("accepted_types")
+    @classmethod
+    def _normalise(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        # `03` compares against a casefolded suffix, so `PDF` or `.pdf` in an
+        # operator's config.toml would silently accept nothing.
+        return tuple(item.strip().lstrip(".").casefold() for item in value)
 
 
 class Settings(BaseSettings):
@@ -56,6 +121,22 @@ class Settings(BaseSettings):
     workspace: Path = DEFAULT_WORKSPACE
     """Holds state, seeds, logs, the browser profile and the report. Never inside
     the export."""
+
+    seed: SeedSettings = SeedSettings()
+    attachments: AttachmentSettings = AttachmentSettings()
+
+    @property
+    def attachments_dir(self) -> Path:
+        """Where `03` looks for attachment bytes.
+
+        A property rather than a validator default because `attachments.dir` and
+        `workspace` are set from different sources at different precedences, and
+        resolving one against the other at validation time would freeze whichever
+        happened to be validated first.
+        """
+        if self.attachments.dir is not None:
+            return Path(os.path.abspath(self.attachments.dir))
+        return self.workspace / ATTACHMENTS_DIRNAME
 
     @field_validator("workspace")
     @classmethod

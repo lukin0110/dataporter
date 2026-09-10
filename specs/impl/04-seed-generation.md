@@ -15,6 +15,13 @@ verifier can check for.
 
 ## In scope
 
+- The rendering below **already exists**, in `dataporter/render.py`, landed with `03`:
+  `03` cannot compute `no_representable_text`, `estimated_seed_chars` or `chunk_count`
+  without it, and `03` comes first. `render_conversation` returns the parts, the messages
+  fully contained in each and the limitation counts. What is left for this slice is the
+  artefacts: the models below, each part's sha256, the files, the command and the golden
+  tests. The format is still this slice's to change — `03` measures whatever it says — but
+  it is changed in `render.py` and not restated here.
 - `dataporter/seed.py`:
 
   ```python
@@ -109,7 +116,8 @@ verifier can check for.
   Class 2: `[File: {file_name} — attached to this chat]`. Class 3:
   `[File: {file_name} — not reproduced: {reason}]`.
 
-- Chunking: `seed.max_chars` (default `50000`, owned by `10`). Split at message
+- Chunking: `seed.max_chars` (default `50000`, owned by `10`; declared in `config.py` by
+  `03`, which needs a chunk budget to report a chunk count). Split at message
   boundaries so each chunk's `text` ≤ `max_chars`. A single message longer than the budget
   is split at paragraph boundaries; each fragment after the first is prefixed
   `(continued)` on its own line. `Seed.chunks[*].total` is `N`.
@@ -127,6 +135,8 @@ verifier can check for.
 
 - The brief calls the format an implementation detail to be evaluated experimentally (§3).
   This is the first candidate; `20` evaluates it and this file changes if it loses.
+- `render.py` renders an artifact inside a fence longer than any run of backticks the
+  artifact itself contains, so an artifact about Markdown cannot close its own block.
 - The acknowledgement line turns "did Claude accept the seed" into a string match instead
   of a judgement call. It is also what lets `17` verify a chat after the fact.
 - Thinking blocks are omitted rather than included because they are not part of what the

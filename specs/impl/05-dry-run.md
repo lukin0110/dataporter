@@ -53,7 +53,14 @@ unsupported count. Nothing is written anywhere, nothing is contacted.
   applies the selection (`06`) before counting, so the dry run shows what *this* run would
   do. `--dry-run` never writes `plan.json`, `state.json` or `seeds/`.
 - `Messages` counts active-path messages of all conversations found; `Attachments` counts
-  `attachments[] + files[] + files_v2[]` entries of all conversations found.
+  `MigrationPlan.totals.attachments` — one entry per distinct file per message, since `03`
+  drops a `files_v2[]` entry that repeats a `files[]` one. Counting the raw arrays instead
+  would print two attachments where the operator's UI showed one file.
+- `inspect` needs `--attachments-dir` too, which `01` gave only to `import`: whether a file
+  is class 2 or class 3 depends on it, and `inspect` is the command that explains the
+  unsupported list. This slice adds the flag and turns it into an `attachments.dir`
+  override; `03` declared the setting but wired no flag, because every command that would
+  read one still exits `69`.
 
 ## Out of scope
 
