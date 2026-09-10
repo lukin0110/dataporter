@@ -1,14 +1,21 @@
 ---
 name: pr-creator
 description:
-  Use this skill when asked to create a pull request (PR). It ensures all PRs
-  follow the repository's established templates and standards.
+  Use this skill when asked to create a pull request (PR), or to watch, monitor,
+  babysit or autofix one that is already open. It ensures all PRs follow the
+  repository's established templates and standards, and that an open PR is
+  driven to a green, mergeable state.
 ---
 
 # Pull Request Creator
 
 This skill guides the creation of high-quality Pull Requests that adhere to the
-repository's standards.
+repository's standards, and the follow-through afterwards: watching an open PR
+and addressing CI failures and review feedback until it is mergeable.
+
+Creating the PR is half the job. A PR that sits red or unanswered is not
+delivered work, so steps 9 and 10 are part of the workflow, not an optional
+extra.
 
 Ported from the Gemini CLI skill of the same name
 (`.gemini/skills/pr-creator` in google-gemini/gemini-cli), with the preflight
@@ -66,7 +73,7 @@ Follow these steps to create a Pull Request:
 6.  **Preflight Check**: Before creating the PR, run the checks CI runs, and
     fix anything they report.
     ```bash
-    make check   # ruff check, ruff format --check, mypy --strict, pytest
+    make check   # ruff check, ruff format --check, ty check, pytest
     ```
     `make check` is the single command CI runs (see `Makefile` and
     `.github/workflows/ci.yml`); keep them identical. If any check fails,
@@ -109,10 +116,97 @@ Follow these steps to create a Pull Request:
       repository uses it (e.g., `feat(ui): add new button`,
       `fix(core): resolve crash`).
 
+9.  **Offer to Watch**: Once the PR exists, report its URL and ask the user
+    whether you should watch it — explain that watching means picking up CI
+    results and review comments as they arrive and pushing fixes. Subscribe only
+    if they say yes; watching is follow-through the user opted into, not
+    something to start unannounced.
+    - Use whichever subscription tool this session has — check the available
+      tools rather than assuming a name; it is typically
+      `subscribe_pr_activity`. Do not assume any specific tool exists.
+    - If no such tool is available, say so plainly and offer the alternative:
+      the user pings you when something needs attention, and you pick it up from
+      the PR state.
+
+10. **Report**: Tell the user what was created and what you did, honestly.
+    - Give the PR URL, the preflight result, and anything you could not verify.
+    - If a step was skipped (no template found, a check not run), say which and
+      why. Never report the PR as created, checked, or watched when it wasn't.
+
+## Watching an Open PR
+
+Applies once you are subscribed, and equally when the user simply asks you to
+fix up a PR that is already open. A subscription is not finished until the PR is
+merged or closed.
+
+### On every event
+
+Look at the whole PR on its **current head** — merge state, CI on the latest
+commit, open review threads — not just the event that woke you. A design
+question in one review does not excuse leaving the nits in the same review
+unaddressed. Then work in this order:
+
+1.  **Merge conflict** → merge the base branch into the PR head and resolve it.
+    Regenerate lockfiles (`uv.lock`) with `uv lock`, never by hand. On a branch
+    you created, follow the repository's convention; never rewrite history on
+    someone else's branch — no rebase, amend, or force-push, since a merge
+    commit keeps their checkout valid.
+2.  **CI red** → diagnose from the actual job logs, not from the check name.
+    Reproduce the failure locally first (`make check`, or the single failing
+    command), fix it, and confirm the same check passes before pushing.
+3.  **Review comments** → implement and push small, local asks (nits, renames,
+    an added test, a one-function refactor). For larger asks on a PR you do not
+    own — multi-file refactors, API changes, open-ended design feedback — reply
+    with your proposal and let the author decide, rather than pushing.
+    - Findings from review bots are bug reports: verify them, and push the fix
+      if they are right. "Design-level" is not a reason to skip one.
+    - Resolve the threads you actually addressed, and re-request review from a
+      human reviewer after pushing changes they asked for.
+
+### Before every push
+
+The same preflight as step 6 applies to every fix, not just the first commit:
+
+```bash
+make check
+```
+
+A push that turns CI red costs a cycle and the reviewers' trust. Keep each fix
+minimal — what the failure or comment needs, and no more. Do not widen the PR's
+scope on your own initiative.
+
+### Never
+
+- **Never skip, disable, or quarantine a test** to get a green check.
+- **Never lower the coverage threshold** (`fail_under` in `pyproject.toml`) to
+  make a run pass. It records coverage the suite actually has; raise it when the
+  real number rises, and treat a drop as a missing test.
+- **Never push an empty commit** or close and reopen the PR to kick CI.
+- **Never call a failure a flake** without evidence. A re-run is justified when
+  the job died before any test body ran, or when the same commit passed earlier
+  — at most once. A second failure is real.
+
+### Reply sparingly
+
+The diff is the record. Comment when a round resolves the task, hits a real
+blocker, or raises a question you need answered — not to narrate each fix. Every
+comment you post should end with the attribution footer if this repository's
+convention (or your harness) calls for one.
+
+### When to stop
+
+Stop when the PR is merged or closed, or the moment the user asks you to —
+unsubscribe and push nothing further. If CI is green and the PR is mergeable,
+say so and hand it back; a green PR waits on human reviewers, not on you.
+
 ## Principles
 
-- **Ask First**: Only open a PR when the user asked for one.
+- **Ask First**: Only open a PR when the user asked for one, and only watch it
+  when they agreed to that too.
 - **Safety First**: NEVER push to `main`. This is your highest priority.
 - **Compliance**: Never ignore the PR template. It exists for a reason.
 - **Completeness**: Fill out all relevant sections.
 - **Accuracy**: Don't check boxes for tasks you haven't done.
+- **Follow Through**: A PR you opened is yours until it is mergeable. Never end
+  a red-CI event having done nothing — push a fix, or say plainly what is
+  blocking and why you are standing down.
