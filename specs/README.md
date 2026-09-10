@@ -172,6 +172,10 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   them.
 - **Secrets:** the tool never sees a Claude password (§8). It also never reads or stores the
   API key Hermes uses; that is Hermes's `.env`.
+- **Repo tooling:** [Graft](https://github.com/trailhq/Graft) indexes the repo into a code
+  graph that coding agents query instead of re-reading the source. Development tooling only —
+  no slice depends on it, `make check` never runs it, and the graph itself is git-ignored.
+  `docs/graft.md` says what is committed and how to build your own.
 
 ## Open questions
 
