@@ -14,14 +14,11 @@ from dataporter.exit_codes import ExitCode
 # Every command in `specs/impl/01-foundation.md`, written out rather than derived
 # from the app, so that a command silently disappearing fails this test.
 COMMANDS: list[list[str]] = [
-    ["login"],
     ["resume"],
     ["verify"],
     ["report"],
     ["setup"],
     ["doctor"],
-    ["session", "status"],
-    ["session", "logout"],
     ["browser", "probe"],
     ["browser", "paste"],
     ["browser", "attach"],
@@ -29,12 +26,22 @@ COMMANDS: list[list[str]] = [
     ["browser", "close-extra-tabs"],
 ]
 
-EXCLUDED_FROM_69: list[list[str]] = [["import"], ["seeds"], ["inspect"], ["status"]]
+EXCLUDED_FROM_69: list[list[str]] = [
+    ["import"],
+    ["seeds"],
+    ["inspect"],
+    ["status"],
+    ["login"],
+    ["session", "status"],
+    ["session", "logout"],
+]
 """Commands `--help` must still list that the 69 test cannot cover as written.
 
 `import` still exits 69 without `--dry-run`, but it needs an existing export path,
 so it has `test_import_without_dry_run_still_reaches_69` of its own. `seeds` (`04`),
-`inspect` (`05`) and `status` (`06`) are implemented and no longer exit 69 at all."""
+`inspect` (`05`), `status` (`06`), `login` and `session …` (`07`) are implemented
+and no longer exit 69 at all; the last three are exercised in
+`test_browser_session.py`, where the fake browser they need lives."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -146,8 +153,8 @@ def test_unhandled_exception_becomes_exit_70(
 def test_invoked_name_skips_the_program_name(
     runner: CliRunner, workspace: Path
 ) -> None:
-    result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
-    assert result.stderr == "not implemented in this build: session logout\n"
+    result = runner.invoke(cli.app, ["browser", "probe"], catch_exceptions=False)
+    assert result.stderr == "not implemented in this build: browser probe\n"
 
 
 def test_a_malformed_export_is_exit_2_not_an_internal_error(

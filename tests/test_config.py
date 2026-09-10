@@ -184,3 +184,32 @@ def test_accepted_types_are_normalised(workspace: Path) -> None:
         '[attachments]\naccepted_types = [".PDF", "Png"]\n',
     )
     assert load_settings().attachments.accepted_types == ("pdf", "png")
+
+
+def test_the_browser_profile_lives_in_the_workspace(workspace: Path) -> None:
+    """Not configurable: the point of the dedicated profile is that it is ours,
+    and that `session logout` knows where to find it (§17)."""
+    settings = load_settings()
+    assert settings.browser_profile_dir == settings.workspace / "browser-profile"
+
+
+def test_the_browser_section_comes_from_the_config_file(workspace: Path) -> None:
+    write_config(
+        workspace / DEFAULT_WORKSPACE,
+        '[browser]\ncdp_port = 9333\nexecutable = "/opt/chromium"\n',
+    )
+    settings = load_settings()
+    assert settings.browser.cdp_port == 9333
+    assert settings.browser.executable == Path("/opt/chromium")
+    assert settings.browser.extra_args == ()
+
+
+def test_timeouts_have_defaults_and_can_be_overridden(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert load_settings().timeouts.login_s == 600.0
+    monkeypatch.setenv("HCM_TIMEOUTS__LOGIN_S", "30")
+    settings = load_settings()
+    assert settings.timeouts.login_s == 30.0
+    assert settings.timeouts.browser_start_s == 30.0
+    assert settings.timeouts.cdp_call_s == 20.0

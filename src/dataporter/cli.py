@@ -22,8 +22,10 @@ from typer.core import TyperGroup
 
 from dataporter import log, state, summary
 from dataporter import seed as seeding
+from dataporter.browser import cdp, launcher, probe
+from dataporter.browser import session as browser_session
 from dataporter.config import ConfigError, Settings, load_settings, with_attachments_dir
-from dataporter.errors import ExportError
+from dataporter.errors import BrowserError, ExportError
 from dataporter.exit_codes import ExitCode
 from dataporter.export import Conversation, load_export
 from dataporter.export import Export as ParsedExport
@@ -126,6 +128,16 @@ class _RootGroup(TyperGroup):
             # invariant violations in `state` are `ValueError`s and fall through
             # to `70`, which is where a bug in us belongs.
             fail(str(exc))
+        except launcher.PortInUse as exc:
+            # A browser failure that is nonetheless the operator's to fix by
+            # closing something, so exit `2` and not `6`. Before the broader
+            # BrowserError clause, which it is a subclass of.
+            fail(exc.detail or type(exc).__name__)
+        except BrowserError as exc:
+            # Exit `6`, the "environment not ready" row: no browser installed,
+            # a debug port that never opened, a CDP call that went unanswered.
+            # `doctor` (`09`) is what an operator runs next.
+            fail(exc.detail or type(exc).__name__, ExitCode.ENVIRONMENT)
         except ExportError as exc:
             # A malformed export is operator-fixable, not an internal error, and
             # exit `2` is the table's "usage or configuration error" row — the
@@ -355,10 +367,36 @@ def plan_for(
 # --------------------------------------------------------------------------- #
 
 
+LOGIN_PROMPT = "Log in to Claude in the browser window that just opened."
+SIGNED_IN = "logged in"
+SIGNED_OUT = f"not logged in — run: {PROGRAM_NAME} login"
+
+
 @app.command()
 def login(ctx: typer.Context) -> None:
     """Open Claude in a dedicated browser profile and wait for sign-in."""
-    not_implemented(ctx)
+    settings = app_context(ctx).settings
+    log.enable_run_log(settings.workspace)
+    browser = launcher.launch(settings, probe.NEW_CHAT_URL)
+    try:
+        if not browser_session.signed_in(browser):
+            # Printed rather than logged: it is an instruction to the person at
+            # the keyboard, and it is the only thing this command asks of them.
+            print(LOGIN_PROMPT)
+            arrived = browser_session.wait_for_login(
+                browser, timeout_s=settings.timeouts.login_s
+            )
+            if arrived is None:
+                fail(
+                    f"timed out after {settings.timeouts.login_s:g}s waiting for login",
+                    ExitCode.NOT_AUTHENTICATED,
+                )
+        print(f"Logged in. Session stored in {settings.browser_profile_dir}/.")
+    finally:
+        # Always, on every path: Chrome writes its cookie jar and session store
+        # out on exit, so a profile that is never closed can come back signed
+        # out — and a browser left running would hold the next run's port.
+        browser.close()
 
 
 @app.command("import")
@@ -566,13 +604,44 @@ def doctor(ctx: typer.Context) -> None:
 @session_app.command("status")
 def session_status(ctx: typer.Context) -> None:
     """Report whether the destination account is signed in."""
-    not_implemented(ctx)
+    settings = app_context(ctx).settings
+    client = cdp.CdpClient(
+        port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s
+    )
+    # Raises `PortInUse` when the port answers and the browser on it is not
+    # ours, which is the right answer to "what is my session doing" as well.
+    running = launcher.adopt(client, settings.browser_profile_dir)
+    if running is None and not settings.browser_profile_dir.exists():
+        # No profile and no browser: there is nothing that could be signed in,
+        # and starting Chrome to be told so would cost ten seconds and a window.
+        print(SIGNED_OUT)
+        raise typer.Exit(ExitCode.NOT_AUTHENTICATED)
+
+    browser = running or launcher.launch(settings, probe.NEW_CHAT_URL)
+    try:
+        answer = browser_session.signed_in(browser)
+    finally:
+        # A browser this command started is a browser this command cleans up;
+        # one that was already running belongs to whoever started it.
+        if running is None:
+            browser.close()
+    print(SIGNED_IN if answer else SIGNED_OUT)
+    if not answer:
+        raise typer.Exit(ExitCode.NOT_AUTHENTICATED)
 
 
 @session_app.command("logout")
 def session_logout(ctx: typer.Context) -> None:
     """Sign the destination account out and clear the browser profile."""
-    not_implemented(ctx)
+    settings = app_context(ctx).settings
+    removed = browser_session.remove_profile(settings)
+    # Local only, and said so: the account itself is untouched, and a session on
+    # another machine is not ended by this.
+    print(
+        f"Removed {settings.browser_profile_dir}/."
+        if removed
+        else f"Nothing to remove: {settings.browser_profile_dir}/ does not exist."
+    )
 
 
 @browser_app.command("probe")
