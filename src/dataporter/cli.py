@@ -368,7 +368,10 @@ def seeds(
             # operator who asked for one conversation by uuid is owed the reason
             # nothing appeared. `05` is where the full accounting lives.
             print(
-                f"skipped {outcome.short_id}: {outcome.reason}",
+                # The short id is the head of a uuid the export chose, and a
+                # skipped conversation is the one case where that uuid may be
+                # malformed. One line per conversation, whatever it contains.
+                f"skipped {log.safe_token(outcome.short_id)}: {outcome.reason}",
                 file=typer.get_text_stream("stderr"),
             )
             continue

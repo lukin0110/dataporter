@@ -12,8 +12,9 @@ or an environment variable, and every part is written UTF-8 with `\\n` endings, 
 the sha256 recorded in memory is the sha256 of the bytes on disk on every
 platform.
 
-Nothing in this module may reach a log record. A chunk is conversation content and
-`Conversation.name` is a title; ids, counts and paths are what a record may carry.
+No conversation content may reach a log record from here. A chunk is content and
+`Conversation.name` is a title; what the records below carry is ids, counts and
+paths, and an id that came out of the export goes through `log.safe_token` first.
 """
 
 import hashlib
@@ -169,7 +170,7 @@ class SeedGenerator:
             # that would end the run into one skipped conversation.
             _logger.warning(
                 "conversation id rejected as a directory name",
-                extra={"conversation_id": token},
+                extra={"conversation_id": log.safe_token(token)},
             )
             return SeedOutcome(conversation.uuid, token, reason=UNSAFE_CONVERSATION_ID)
         return SeedOutcome(conversation.uuid, token, seed=from_rendered(rendered))

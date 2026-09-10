@@ -182,3 +182,13 @@ def test_package_logger_does_not_propagate(workspace: Path) -> None:
 def test_get_logger_stays_under_the_package_root() -> None:
     assert log.get_logger("browser.cdp").name == "dataporter.browser.cdp"
     assert log.get_logger("dataporter.cli").name == "dataporter.cli"
+
+
+def test_safe_token_cannot_forge_a_second_line() -> None:
+    """The guard rejects a content *field*; it says nothing about a newline inside
+    a legal value, which is what would split one record into two."""
+    assert log.safe_token("chart\n.png") == "chart?.png"
+    assert log.safe_token("a\x00b\x7fc") == "a?b?c"
+    assert log.safe_token("ordinary-name.png") == "ordinary-name.png"
+    assert log.safe_token("x" * 300) == "x" * 120
+    assert log.safe_token("") == "(empty)"
