@@ -21,9 +21,9 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
+from orval import utcnow
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import log
@@ -334,9 +334,11 @@ def launch(settings: Settings, url: str) -> BrowserSession:
                 port=client.port,
                 browser_id=client.browser_id(),
                 pid=process.pid,
-                started=datetime.now(UTC)
-                .isoformat(timespec="seconds")
-                .replace("+00:00", "Z"),
+                # `utcnow()` rather than `datetime.now(UTC)`: `docs/orval-
+                # candidates.md` on main adopts it as this repo's spelling.
+                # The `Z` suffix is hand-rolled because orval has no `iso_utc`
+                # yet — candidate C3 in that document.
+                started=utcnow().isoformat(timespec="seconds").replace("+00:00", "Z"),
             ),
         )
     except BrowserError:
