@@ -211,9 +211,14 @@ class _DirectorySource(ExportSource):
         return sorted(item.name for item in self._root.iterdir() if item.is_file())
 
     def read(self, member: str) -> bytes:
-        target = self._root / member
+        # Membership first, never a bare path join: `self._root / "../secrets"`
+        # resolves outside the export, and this class is public. It also makes an
+        # absent member fail exactly the way it does in an archive — the two
+        # backends are interchangeable or they are not worth having.
+        if member not in self.names():
+            raise ExportError(detail=f"{member} missing from export: {self.display}")
         try:
-            return target.read_bytes()
+            return (self._root / member).read_bytes()
         except OSError as exc:
             raise ExportError(
                 detail=f"cannot read {member} ({exc.strerror}): {self.display}"

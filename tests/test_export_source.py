@@ -375,3 +375,33 @@ def test_the_source_is_a_context_manager(export_zip: Path) -> None:
     with ExportSource.open(export_zip) as source:
         assert CONVERSATIONS_FILE in source.names()
         assert source.is_archive
+
+
+# The two backends have to be interchangeable, so a member that is not part of
+# the export has to fail identically in both — including a name that would
+# resolve outside it, which a bare path join in the directory backend would have
+# happily read.
+OUTSIDE = ["../conversations.json", "/etc/hostname", "nested/conversations.json"]
+
+
+@pytest.mark.parametrize("member", OUTSIDE, ids=lambda value: str(value))
+def test_a_member_outside_the_export_is_refused(
+    member: str, export_dir: Path, export_zip: Path
+) -> None:
+    for subject in (export_dir, export_zip):
+        with ExportSource.open(subject) as source:
+            with pytest.raises(ExportError) as excinfo:
+                source.read(member)
+        assert excinfo.value.detail == f"{member} missing from export: {subject}"
+
+
+def test_both_backends_refuse_an_absent_member_alike(
+    export_dir: Path, export_zip: Path
+) -> None:
+    details = []
+    for subject in (export_dir, export_zip):
+        with ExportSource.open(subject) as source:
+            with pytest.raises(ExportError) as excinfo:
+                source.read("nope.json")
+        details.append(excinfo.value.detail.replace(str(subject), "<export>"))
+    assert details[0] == details[1] == "nope.json missing from export: <export>"

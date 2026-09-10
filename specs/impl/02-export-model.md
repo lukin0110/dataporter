@@ -184,6 +184,10 @@ Resolved while building:
 - **`Conversation.updated_at` stays required**, per the block above, but it is the field
   most likely to make a real export fatal. If it does, the fix is `| None = None` plus a
   shape-drift log, not a change to the tolerance model.
+- **`read(member)` checks membership, never joins a bare path.** The directory backend
+  would otherwise resolve `../` outside the export, and an absent member would fail
+  differently in a directory than in an archive. The two backends are interchangeable or
+  they are not worth having.
 - **Never log a model or a dump of one.** `ToolResultBlock` has a field literally named
   `content` and `Conversation.name` is the title, so either in an `extra` mapping trips
   `ContentGuard`. The shape record carries counts, file names and block *type* tokens.
