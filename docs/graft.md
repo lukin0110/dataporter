@@ -37,11 +37,11 @@ the graph against the working tree before answering, so an answer describes the 
 now, uncommitted edits included. `graft build --deep` adds LLM-written summaries and needs a
 key for the provider you choose; nothing in this repo requires that pass.
 
-## Two local edits to the generated wiring
+## Three local edits to the generated wiring
 
-`graft init --agents claude --no-global` generated all of the above. Two things were changed
-by hand afterwards, and both will be reverted by a plain re-run of `init` — reapply them, or
-keep the re-run out of the commit:
+`graft init --agents claude --no-global` generated all of the above. Three things were changed
+by hand afterwards, and all three will be reverted by a plain re-run of `init` — reapply them,
+or keep the re-run out of the commit:
 
 - **`const BAKED` in both `.claude/helpers/*.cjs` is blanked.** `init` bakes in the absolute
   path of the npx cache it happened to run from, which exists on exactly one machine. The
@@ -51,3 +51,10 @@ keep the re-run out of the commit:
   Node toolchain of its own, so a global install is not a safe assumption to bury in a
   committed config. `npx` uses the global install when there is one and fetches the package
   when there is not. It is the form Graft's own README gives for registering by hand.
+- **The Bash allowlist is cut to the two commands this repo actually runs**, `graft:*` and
+  `npx -y @nanonets/graft:*`. `init` also pre-approves `npx graft:*`, `graft-dev:*` and
+  `node dist/cli.js:*`. The first is not this package at all — `graft` on npm is an unrelated
+  *"Full-Stack JavaScript Through Microservices"* library, and `npx graft …` would fetch and
+  run it. The other two are the aliases Graft uses when developing Graft itself (`dist/cli.js`
+  is its own `bin` entry); there is no `dist/` here, so they only widen what runs unprompted.
+  Raised by Copilot in review on #12.
