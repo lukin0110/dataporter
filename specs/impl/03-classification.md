@@ -135,6 +135,16 @@ Resolved while building:
 - **An artifact gets a fence longer than any run of backticks inside it.** An artifact
   containing ``` would otherwise close its own block and spill the rest of the conversation
   into the transcript as prose.
+- **`source_path` records the resolved target, not the name that reached it.** The
+  containment check follows symlinks, so storing the link would let the target be swapped
+  between planning and `16`'s upload — the check would have been of one file and the read of
+  another. Raised by the review on this PR.
+- **A whitespace-only block does not reach the seed.** Its characters count against
+  `seed.max_chars` and the hard cap while its content is a gap the blank line between parts
+  already supplies. Raised by the review on this PR.
+- **An attachment the export did not size is rendered `unknown size`.** `04` writes
+  `{file_size} bytes`, which for a missing size describes the file as empty directly above
+  its own contents. Raised by the review on this PR.
 
 ## Acceptance criteria
 

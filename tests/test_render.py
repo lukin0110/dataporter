@@ -150,6 +150,21 @@ def test_an_empty_content_list_falls_back_to_the_message_text() -> None:
     assert rendered.has_original_content
 
 
+def test_a_whitespace_only_block_does_not_reach_the_seed() -> None:
+    """Its characters are counted against the budget; its content is a gap the
+    join already supplies."""
+    rendered = render.render_message(
+        message(
+            content=[
+                {"type": "text", "text": "Yes"},
+                {"type": "text", "text": "   \n  "},
+                {"type": "text", "text": "Really"},
+            ]
+        )
+    )
+    assert rendered.text == "User (2024-05-03 09:00 UTC):\nYes\n\nReally"
+
+
 def test_a_message_with_neither_text_nor_content_has_nothing_to_migrate() -> None:
     rendered = render.render_message(message())
     assert rendered.text == "User (2024-05-03 09:00 UTC):"
@@ -186,6 +201,19 @@ def test_an_inline_attachment_reproduces_its_text() -> None:
         "[Attachment: q3.txt (text/plain, 61 bytes)]\n<<<\nQ3 revenue: flat.\n>>>"
         in rendered.text
     )
+
+
+def test_an_inline_attachment_of_unknown_size_says_so() -> None:
+    """`0 bytes` above a file's own contents describes it as empty."""
+    unsized = render.AttachmentRender(
+        file_name="q3.txt",
+        file_type=None,
+        file_size=None,
+        klass="inline",
+        extracted_content="Q3 revenue: flat.",
+    )
+    rendered = render.render_message(message(), [unsized])
+    assert "[Attachment: q3.txt (unknown, unknown size)]" in rendered.text
 
 
 def test_an_upload_and_an_unsupported_attachment_render_as_one_line_each() -> None:

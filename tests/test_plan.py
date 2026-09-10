@@ -104,7 +104,7 @@ def test_dropping_the_bytes_in_flips_the_file_to_upload(
     ).attachments
     upload = next(item for item in attachments if item.file_name == "q3-chart.png")
     assert upload.klass == "upload"
-    assert upload.source_path == target / "q3-chart.png"
+    assert upload.source_path == (target / "q3-chart.png").resolve()
     assert upload.file_size == 8
 
 
@@ -118,7 +118,7 @@ def test_bytes_beside_the_directory_are_found_too(
     ).attachments
     upload = next(item for item in attachments if item.file_name == "q3-chart.png")
     assert upload.klass == "upload"
-    assert upload.source_path == attachments_dir / "q3-chart.png"
+    assert upload.source_path == (attachments_dir / "q3-chart.png").resolve()
 
 
 def test_the_same_file_in_files_and_files_v2_is_one_attachment(
@@ -341,6 +341,39 @@ def test_a_file_name_cannot_reach_outside_the_attachments_directory(
     item = only(export, settings_for(attachments_dir))
     assert item.attachments[0].klass == "unsupported"
     assert item.attachments[0].source_path is None
+
+
+def test_a_symlink_is_recorded_at_the_target_that_was_checked(
+    export_dir: Path, attachments_dir: Path
+) -> None:
+    """`16` must upload the file `_within` validated, not whatever the link points
+    at by then."""
+    real = attachments_dir / "store"
+    real.mkdir()
+    (real / "chart.png").write_bytes(b"x")
+    (attachments_dir / "q3-chart.png").symlink_to(real / "chart.png")
+
+    attachments = find(
+        plan_of(export_dir, attachments_dir), ATTACHMENT_CONVERSATION
+    ).attachments
+    upload = next(item for item in attachments if item.file_name == "q3-chart.png")
+    assert upload.klass == "upload"
+    assert upload.source_path == (real / "chart.png").resolve()
+
+
+def test_a_symlink_out_of_the_attachments_directory_is_refused(
+    export_dir: Path, attachments_dir: Path
+) -> None:
+    outside = attachments_dir.parent / "chart.png"
+    outside.write_bytes(b"x")
+    (attachments_dir / "q3-chart.png").symlink_to(outside)
+
+    attachments = find(
+        plan_of(export_dir, attachments_dir), ATTACHMENT_CONVERSATION
+    ).attachments
+    missing = next(item for item in attachments if item.file_name == "q3-chart.png")
+    assert missing.klass == "unsupported"
+    assert missing.reason == planning.BYTES_NOT_IN_EXPORT
 
 
 def test_an_attachment_on_a_dropped_branch_is_not_planned(

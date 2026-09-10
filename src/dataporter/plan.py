@@ -13,7 +13,6 @@ Nothing in this module may log content. `file_name` is safe; a title, a message 
 a rendered seed is not (`log.FORBIDDEN_FIELDS`).
 """
 
-import os
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Literal
@@ -358,7 +357,12 @@ class Planner:
 
         for candidate in candidates:
             if candidate.is_file() and _within(root, candidate):
-                return Path(os.path.abspath(candidate))
+                # The *resolved* path, not the name that led to it: `_within`
+                # validates where a symlink points, and recording the link
+                # instead would let the target be swapped between planning and
+                # `16`'s upload — the check would have been of one file and the
+                # read of another.
+                return candidate.resolve()
         return None
 
 

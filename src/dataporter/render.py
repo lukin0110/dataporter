@@ -160,7 +160,10 @@ def render_message(
 
     role = _ROLE.get(message.sender, message.sender.capitalize())
     header = f"{role} ({format_timestamp(message.created_at)}):"
-    body = "\n\n".join(part for part in body_parts if part)
+    # `strip()`, not truth: a whitespace-only block renders as a gap that is
+    # already there — every part is joined with a blank line — but its characters
+    # would still be counted against `seed.max_chars` and the hard cap.
+    body = "\n\n".join(part for part in body_parts if part.strip())
     text = f"{header}\n{body}" if body else header
     return RenderedMessage(
         uuid=message.uuid,
@@ -228,8 +231,15 @@ def _render_attachment(attachment: AttachmentRender) -> tuple[str, bool]:
     if attachment.klass == "inline":
         content = attachment.extracted_content or ""
         file_type = attachment.file_type or "unknown"
-        size = attachment.file_size if attachment.file_size is not None else 0
-        header = f"[Attachment: {attachment.file_name} ({file_type}, {size} bytes)]"
+        # A missing size is unknown, not zero. `04` writes `{file_size} bytes`,
+        # but a file the export never sized would then be described as empty
+        # directly above its own contents.
+        size = (
+            f"{attachment.file_size} bytes"
+            if attachment.file_size is not None
+            else "unknown size"
+        )
+        header = f"[Attachment: {attachment.file_name} ({file_type}, {size})]"
         return f"{header}\n<<<\n{content}\n>>>", bool(content.strip())
     if attachment.klass == "upload":
         return f"[File: {attachment.file_name} — attached to this chat]", False
