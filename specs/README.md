@@ -101,7 +101,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [02](impl/02-export-model.md) | Export model | §2, §6 | In progress |
 | [03](impl/03-classification.md) | Classification | §6, §14 | Done |
 | [04](impl/04-seed-generation.md) | Seed generation | §3, §6, §15 | Done |
-| [05](impl/05-dry-run.md) | Dry run and inspect | §9 | Not started |
+| [05](impl/05-dry-run.md) | Dry run and inspect | §9 | Done |
 | [06](impl/06-migration-state.md) | Migration state | §6, §7 | Not started |
 | [07](impl/07-browser-session.md) | Browser session and login | §8 | Not started |
 | [08](impl/08-browser-helpers.md) | Browser helpers | §4, §5, §17 | Not started |

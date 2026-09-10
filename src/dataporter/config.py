@@ -190,6 +190,26 @@ def config_file_for(workspace: Path | None = None) -> Path:
     return bootstrap_workspace(workspace) / CONFIG_FILENAME
 
 
+def with_attachments_dir(settings: Settings, directory: Path | None) -> Settings:
+    """Apply `--attachments-dir`, which outranks every other source.
+
+    A copy of the loaded settings rather than a reload with an init override:
+    `attachments.dir` is one field of a nested model, and handing
+    `attachments={"dir": ...}` to `Settings` would replace the whole `[attachments]`
+    table, silently dropping whatever else an operator put in `config.toml`.
+
+    `None` means the flag was not given, and returns the settings unchanged —
+    passing it through as a value would blank a configured directory.
+    """
+    if directory is None:
+        return settings
+    return settings.model_copy(
+        update={
+            "attachments": settings.attachments.model_copy(update={"dir": directory})
+        }
+    )
+
+
 def load_settings(*, workspace: Path | None = None) -> Settings:
     """Build `Settings`, honouring the precedence ladder.
 

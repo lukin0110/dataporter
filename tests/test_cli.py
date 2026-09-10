@@ -15,7 +15,6 @@ from dataporter.exit_codes import ExitCode
 # from the app, so that a command silently disappearing fails this test.
 COMMANDS: list[list[str]] = [
     ["login"],
-    ["inspect", "."],
     ["status"],
     ["resume"],
     ["verify"],
@@ -31,12 +30,12 @@ COMMANDS: list[list[str]] = [
     ["browser", "close-extra-tabs"],
 ]
 
-EXCLUDED_FROM_69: list[list[str]] = [["import"], ["seeds"]]
+EXCLUDED_FROM_69: list[list[str]] = [["import"], ["seeds"], ["inspect"]]
 """Commands `--help` must still list that the 69 test cannot cover as written.
 
-`import` is not implemented — it needs an existing export path, so it has
-`test_import_reaches_69_once_the_export_exists` of its own. `seeds` is
-implemented by `04` and no longer exits 69 at all."""
+`import` still exits 69 without `--dry-run`, but it needs an existing export path,
+so it has `test_import_without_dry_run_still_reaches_69` of its own. `seeds` (`04`)
+and `inspect` (`05`) are implemented and no longer exit 69 at all."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -74,16 +73,14 @@ def test_unimplemented_commands_exit_69(
     assert result.stdout == ""
 
 
-def test_import_reaches_69_once_the_export_exists(
-    runner: CliRunner, workspace: Path
+def test_import_without_dry_run_still_reaches_69(
+    runner: CliRunner, workspace: Path, export_dir: Path
 ) -> None:
-    export = workspace / "export"
-    export.mkdir()
-    result = runner.invoke(
-        cli.app, ["import", str(export), "--dry-run"], catch_exceptions=False
-    )
+    """`05` implements the dry run only; the migration itself is `12`."""
+    result = runner.invoke(cli.app, ["import", str(export_dir)], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_IMPLEMENTED
     assert result.stderr == "not implemented in this build: import\n"
+    assert result.stdout == ""
 
 
 def test_help_lists_every_command(runner: CliRunner) -> None:
