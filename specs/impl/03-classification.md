@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §6 Phase 1 ("which conversations can be migrated and which contain unsupported data"), §14 (attachment classes)
 **Depends on:** [02](02-export-model.md)
 **Enables:** [04](04-seed-generation.md), [05](05-dry-run.md), [16](16-attachments.md)
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -80,6 +80,61 @@ dry run prints and the import loop executes.
   across messages but not across context. The default is generous and `10` may lower it.
 - Attachment limits are the operator's observed claude.ai limits at the time of writing,
   marked *assumed* until `10` and `16` confirm them.
+
+Resolved while building:
+
+- **`04`'s renderer lands with this slice, in `render.py`.** `no_representable_text`,
+  `estimated_seed_chars`, `chunk_count` and every limitation counter are defined in terms of
+  `04`'s rendering table, and `04` depends on `03`. Something had to move. Estimating the
+  sizes here and letting `04` replace them was rejected: it puts two renderers in flight and
+  breaks the one property this slice exists to provide — that the dry run, the progress block
+  and the report quote the same numbers. So `render.py` holds the block table, the attachment
+  lines, the envelope and the chunker, and `04` keeps the artefacts built on them:
+  `Seed`/`SeedChunk`, each part's sha256, `part-NN.txt`, the `seeds` command and the golden
+  files. The format is still `04`'s to change; `03` measures whatever it says.
+- **"No representable text" means no *original* content, not no characters.** The spec's own
+  example — a conversation of `tool_result` blocks — renders as `[Tool result omitted]`,
+  which is characters. `RenderedMessage.has_original_content` is true only for a non-blank
+  `text` block, an artifact with content, a non-blank fallback `ChatMessage.text` or a
+  non-blank inline attachment; every placeholder is text that reproduces nothing.
+- **Attachment types are matched on the file name's extension.** The table above lists
+  extensions, but the export carries a MIME type on `attachments[]` (`text/plain`) and
+  nothing at all on `files[]`, so a MIME match would be undecidable for exactly the entries
+  class 2 is about. The name is authoritative and a small MIME table covers a name with no
+  suffix.
+- **Class 3 reasons are decided in a fixed order: `type_not_accepted`,
+  `bytes_not_in_export`, `too_large`, `too_many_for_chat`.** It runs from what is knowable
+  without touching a disk to what is knowable only after finding the file, and it puts the
+  one reason an operator can act on — supply the bytes — after the one no directory can fix,
+  so nobody hunts for a file that would be refused on arrival.
+- **`max_per_chat` is a conversation-wide cap on uploads only.** Applied last, over the
+  entries that survived every other rule, in document order: the first N stay `upload`, the
+  rest become `too_many_for_chat`. An `inline` attachment is text inside the seed and never
+  touches the file picker, so it does not consume the cap.
+- **One `AttachmentPlan` per distinct file per message.** A real export carries the same file
+  in `files[]` and `files_v2[]` — the fixture does — and counting it twice would show the
+  operator two attachments where the UI showed one, then upload it twice. An entry whose
+  `file_uuid` *or* whose name has already been seen on that message is dropped. That makes
+  `totals.attachments` the number of planned attachments rather than the number of array
+  entries, which is a correction owed to `05`.
+- **Both path components are checked before they are joined.** `file_name` and the
+  conversation uuid come from the export, so `../../etc/passwd` must not resolve out of the
+  attachments directory — the finding `02`'s review raised against `ExportSource.read`. A
+  rejected name is reported as `bytes_not_in_export`, because that is what it is.
+- **An empty conversation reports no seed at all** (`estimated_seed_chars` and `chunk_count`
+  both `0`) rather than the length of an envelope wrapped around nothing. Every other
+  non-migratable conversation keeps its real numbers, because `seed_over_hard_cap` without
+  the size that triggered it is not a reason anyone can act on.
+- **`Planner` holds the settings** and `plan(export)` takes only the export; `build_plan(
+  export, settings)` keeps the spec's call shape. Every private step needs the settings, and
+  one planner replanning under different settings has no caller.
+- **The envelope is measured against a three-digit part count.** `Part {i} of {N}` and the
+  acknowledgement line both grow with `N`, so a budget measured at one part underestimates a
+  multi-part seed and would split a message that did not need splitting. A thousand parts is
+  fifty megabytes, well past the hard cap, so three digits costs two characters of slack.
+- **An artifact gets a fence longer than any run of backticks inside it.** An artifact
+  containing ``` would otherwise close its own block and spill the rest of the conversation
+  into the transcript as prose.
 
 ## Acceptance criteria
 

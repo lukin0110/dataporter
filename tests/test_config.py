@@ -132,3 +132,55 @@ def test_nested_sections_follow_the_same_ladder(
         assert override.pacing.delay_between_conversations_s == 9
     finally:
         config._config_file.reset(token)
+
+
+# --------------------------------------------------------------------------- #
+# The sections `03` added
+# --------------------------------------------------------------------------- #
+
+
+def test_seed_and_attachment_defaults_are_the_spec_values(workspace: Path) -> None:
+    settings = load_settings()
+    assert settings.seed.max_chars == 50_000
+    assert settings.seed.hard_max_chars == 400_000
+    assert settings.attachments.max_bytes == 30_000_000
+    assert settings.attachments.max_per_chat == 20
+    assert "pdf" in settings.attachments.accepted_types
+    assert "exe" not in settings.attachments.accepted_types
+
+
+def test_a_real_section_takes_an_environment_override(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mechanism `01` built, on the first sections to actually use it."""
+    monkeypatch.setenv("HCM_SEED__MAX_CHARS", "1234")
+    assert load_settings().seed.max_chars == 1234
+
+
+def test_a_real_section_is_read_from_the_config_file(workspace: Path) -> None:
+    write_config(
+        workspace / DEFAULT_WORKSPACE,
+        "[attachments]\nmax_per_chat = 3\n",
+    )
+    assert load_settings().attachments.max_per_chat == 3
+
+
+def test_the_attachments_directory_defaults_to_the_workspace(workspace: Path) -> None:
+    settings = load_settings()
+    assert settings.attachments_dir == settings.workspace / "attachments"
+
+
+def test_an_explicit_attachments_directory_wins_and_is_absolute(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HCM_ATTACHMENTS__DIR", "elsewhere")
+    assert load_settings().attachments_dir == workspace / "elsewhere"
+
+
+def test_accepted_types_are_normalised(workspace: Path) -> None:
+    """`03` matches a casefolded suffix, so `.PDF` in a config must still match."""
+    write_config(
+        workspace / DEFAULT_WORKSPACE,
+        '[attachments]\naccepted_types = [".PDF", "Png"]\n',
+    )
+    assert load_settings().attachments.accepted_types == ("pdf", "png")

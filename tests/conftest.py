@@ -54,6 +54,14 @@ def export_dir() -> Path:
 
 
 @pytest.fixture
+def attachments_dir(tmp_path: Path) -> Path:
+    """Where `03` looks for attachment bytes. Empty until a test drops a file in."""
+    target = tmp_path / "attachments"
+    target.mkdir()
+    return target
+
+
+@pytest.fixture
 def export_zip(export_dir: Path, tmp_path: Path) -> Path:
     """The same fixture as an archive, built here rather than checked in.
 
