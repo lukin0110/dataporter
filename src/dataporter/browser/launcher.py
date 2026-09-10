@@ -123,9 +123,23 @@ class BrowserSession:
         Closing matters more than it looks: Chrome flushes cookies and the
         session store on exit, so a profile that is never closed cleanly can
         come back logged out.
+
+        A dead debug port is not the end of the job. A browser we started that
+        never opened its port — a sandbox that hangs rather than exits — cannot
+        be asked to close, and leaving it there would orphan a Chrome holding
+        our profile and the next run's port. So the request is best effort and
+        the process is dealt with either way.
         """
+        asked = self._ask_to_close()
+        if self.process is not None:
+            self._wait_for_exit(timeout, asked=asked)
+        elif asked:
+            self._wait_for_port_to_go_quiet(timeout)
+
+    def _ask_to_close(self) -> bool:
+        """Send `Browser.close`. False when there was nothing to send it to."""
         if not self.client.responding():
-            return
+            return False
         try:
             with self.client.browser_connection() as connection:
                 connection.send("Browser.close")
@@ -133,22 +147,28 @@ class BrowserSession:
             # Chrome usually closes the socket rather than answering. That is
             # the request being honoured, not a failure.
             pass
-        if self.process is not None:
-            self._wait_for_exit(timeout)
-            return
-        self._wait_for_port_to_go_quiet(timeout)
+        return True
 
-    def _wait_for_exit(self, timeout: float) -> None:
+    def _wait_for_exit(self, timeout: float, *, asked: bool) -> None:
+        """See the process out. Ours to end: we started it.
+
+        `asked` is what earns the browser its grace period. Waiting `timeout`
+        for a process nobody has asked to exit is `timeout` spent watching a
+        hung browser do nothing, on top of whatever the caller already waited.
+        """
         process = self.process
         if process is None:  # pragma: no cover - guarded by the caller
             return
-        try:
-            process.wait(timeout=timeout)
-            return
-        except subprocess.TimeoutExpired:
-            _logger.warning(
-                "browser did not exit; terminating", extra={"pid": process.pid}
-            )
+        if asked:
+            try:
+                process.wait(timeout=timeout)
+                return
+            except subprocess.TimeoutExpired:
+                _logger.warning(
+                    "browser did not exit; terminating", extra={"pid": process.pid}
+                )
+        elif process.poll() is not None:
+            return  # already gone, and reaped by `poll`
         process.terminate()
         try:
             process.wait(timeout=timeout)
@@ -306,18 +326,24 @@ def launch(settings: Settings, url: str) -> BrowserSession:
         raise BrowserError(detail=f"cannot start {executable}: {exc}") from exc
 
     session = BrowserSession(client=client, profile=profile, process=process)
-    wait_for_port(session, settings.timeouts.browser_start_s)
-    write_marker(
-        profile,
-        ProfileMarker(
-            port=client.port,
-            browser_id=client.browser_id(),
-            pid=process.pid,
-            started=datetime.now(UTC)
-            .isoformat(timespec="seconds")
-            .replace("+00:00", "Z"),
-        ),
-    )
+    try:
+        wait_for_port(session, settings.timeouts.browser_start_s)
+        write_marker(
+            profile,
+            ProfileMarker(
+                port=client.port,
+                browser_id=client.browser_id(),
+                pid=process.pid,
+                started=datetime.now(UTC)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z"),
+            ),
+        )
+    except BrowserError:
+        # Everything from here on is ours to undo: the process exists because
+        # this call created it, and nothing else knows about it yet.
+        session.close()
+        raise
     return session
 
 
@@ -339,7 +365,9 @@ def wait_for_port(session: BrowserSession, timeout: float) -> None:
                 detail=f"browser exited immediately with code {process.returncode}"
             )
         time.sleep(POLL_INTERVAL_S)
-    session.close(timeout=CLOSE_TIMEOUT_S)
+    # The browser is not closed here: `launch` owns the process it started and
+    # closes it on any failure, so doing it twice would only get the ordering
+    # wrong in one of the two places.
     raise BrowserError(
         detail=f"browser did not open its debug port within {timeout:g}s"
     )
