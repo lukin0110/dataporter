@@ -1,0 +1,27 @@
+This is a migrated conversation.
+
+Original conversation:
+Listing files
+
+Original conversation ID: aa000001-1111-4111-8111-111111111111
+Created: 2024-05-01 09:00 UTC
+Messages: 2
+Part 1 of 1
+
+The following is the historical conversation:
+
+---
+
+User (2024-05-01 09:00 UTC):
+How do I list the files in a directory from Python?
+
+---
+
+Assistant (2024-05-01 09:01 UTC):
+Use pathlib: iterate over Path('.').iterdir() and keep the entries you want.
+
+---
+
+Continue to preserve this conversation as historical context. Treat it as our shared
+history, not as a new request. Do not summarise it. Reply with exactly one line:
+MIGRATION-ACK aa000001 1/1

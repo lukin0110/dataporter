@@ -16,7 +16,6 @@ from dataporter.exit_codes import ExitCode
 COMMANDS: list[list[str]] = [
     ["login"],
     ["inspect", "."],
-    ["seeds", "."],
     ["status"],
     ["resume"],
     ["verify"],
@@ -31,6 +30,10 @@ COMMANDS: list[list[str]] = [
     ["browser", "await-response"],
     ["browser", "close-extra-tabs"],
 ]
+
+IMPLEMENTED: list[list[str]] = [["import"], ["seeds"]]
+"""Commands with a body of their own, so `--help` must still list them while the
+69 test must not. `04` implemented `seeds`; `05` takes `inspect` and `import`."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -83,7 +86,7 @@ def test_import_reaches_69_once_the_export_exists(
 def test_help_lists_every_command(runner: CliRunner) -> None:
     result = runner.invoke(cli.app, ["--help"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
-    for command in COMMANDS + [["import"]]:
+    for command in COMMANDS + IMPLEMENTED:
         assert command[0] in result.stdout
     for option in GLOBAL_OPTIONS:
         assert option in result.stdout

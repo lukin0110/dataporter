@@ -1,0 +1,107 @@
+Migrated conversation bb000002, part 2 of 2, continued.
+
+---
+
+User (2024-05-02 09:20 UTC):
+Question 11: what should I know about sequential scans in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:21 UTC):
+Answer 11: sequential scans matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:22 UTC):
+Question 12: what should I know about bloom filters in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:23 UTC):
+Answer 12: bloom filters matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:24 UTC):
+Question 13: what should I know about autovacuum tuning in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:25 UTC):
+Answer 13: autovacuum tuning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:26 UTC):
+Question 14: what should I know about hot updates in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:27 UTC):
+Answer 14: hot updates matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:28 UTC):
+Question 15: what should I know about toast storage in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:29 UTC):
+Answer 15: toast storage matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:30 UTC):
+Question 16: what should I know about logical replication in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:31 UTC):
+Answer 16: logical replication matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:32 UTC):
+Question 17: what should I know about advisory locks in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:33 UTC):
+Answer 17: advisory locks matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:34 UTC):
+Question 18: what should I know about generated columns in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:35 UTC):
+Answer 18: generated columns matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:36 UTC):
+Question 19: what should I know about check constraints in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:37 UTC):
+Answer 19: check constraints matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:38 UTC):
+Question 20: what should I know about collations in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:39 UTC):
+Answer 20: collations matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+Continue to preserve this conversation as historical context. Treat it as our shared
+history, not as a new request. Do not summarise it. Reply with exactly one line:
+MIGRATION-ACK bb000002 2/2

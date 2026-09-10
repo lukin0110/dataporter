@@ -176,6 +176,47 @@ class Planner:
 
     # -- one conversation --------------------------------------------------- #
 
+    def render_conversation(
+        self, conversation: Conversation
+    ) -> render.RenderedConversation | None:
+        """The seed rendering for one conversation, or `None` when it has no
+        messages on its active path.
+
+        Named for what it wraps rather than plain `render`: a method of that name
+        would shadow the `render` module inside this class body, where several
+        signatures below name `render.AttachmentRender`.
+
+        Public because `04` builds its `Seed` from exactly this: a seed written
+        from a different rendering than the one the plan measured would carry a
+        `chunk_count` that no file on disk agrees with. It classifies the
+        attachments again rather than taking them from a `ConversationPlan`,
+        because an inline attachment's text is deliberately not in the plan
+        (`19` reads `plan.json`, and a report is not the place for the contents
+        of someone's spreadsheet).
+        """
+        active = conversation.active_path()
+        if not active:
+            return None
+        _, by_message = self._attachments(conversation, active)
+        return self._render(
+            conversation, active, by_message, len(conversation.off_path())
+        )
+
+    def _render(
+        self,
+        conversation: Conversation,
+        active: Sequence[ChatMessage],
+        by_message: dict[str, list[render.AttachmentRender]],
+        off_path: int,
+    ) -> render.RenderedConversation:
+        return render.render_conversation(
+            conversation,
+            active,
+            by_message,
+            max_chars=self._settings.seed.max_chars,
+            branches_dropped=off_path,
+        )
+
     def _conversation(self, conversation: Conversation) -> ConversationPlan:
         # `active_path()` and `off_path()` each recompute the split; `02` leaves
         # the caching to this slice, so both are taken once here.
@@ -198,19 +239,10 @@ class Planner:
                 chunk_count=0,
             )
 
-        rendered = render.render_conversation(
-            conversation,
-            active,
-            by_message,
-            max_chars=self._settings.seed.max_chars,
-            branches_dropped=off_path,
-        )
+        rendered = self._render(conversation, active, by_message, off_path)
 
-        reasons: list[str] = []
-        if not rendered.has_original_content:
-            reasons.append(NO_REPRESENTABLE_TEXT)
-        elif rendered.total_chars > self._settings.seed.hard_max_chars:
-            reasons.append(SEED_OVER_HARD_CAP)
+        blocking = blocking_reason(rendered, self._settings)
+        reasons: list[str] = [] if blocking is None else [blocking]
         migratable = not reasons
         reasons.extend(rendered.limitations.slugs())
 
@@ -343,7 +375,7 @@ class Planner:
         because that is what it is — we will not go and fetch it.
         """
         root = self._attachments_dir
-        if not _safe_component(file_name):
+        if not safe_component(file_name):
             _logger.warning(
                 "attachment name rejected",
                 extra={"conversation_id": conversation_uuid, "file_name": file_name},
@@ -351,7 +383,7 @@ class Planner:
             return None
 
         candidates = []
-        if _safe_component(conversation_uuid):
+        if safe_component(conversation_uuid):
             candidates.append(root / conversation_uuid / file_name)
         candidates.append(root / file_name)
 
@@ -364,6 +396,25 @@ class Planner:
                 # read of another.
                 return candidate.resolve()
         return None
+
+
+def blocking_reason(
+    rendered: render.RenderedConversation | None, settings: Settings
+) -> str | None:
+    """The first migratability rule that fails, or `None` when none does.
+
+    `None` for `rendered` is the empty conversation: there is no rendering to
+    judge. Shared with `04` rather than reimplemented there, so that a
+    conversation the plan calls unmigratable can never end up with a seed file on
+    disk — the two would then disagree about what a run is going to do.
+    """
+    if rendered is None:
+        return EMPTY_CONVERSATION
+    if not rendered.has_original_content:
+        return NO_REPRESENTABLE_TEXT
+    if rendered.total_chars > settings.seed.hard_max_chars:
+        return SEED_OVER_HARD_CAP
+    return None
 
 
 def build_plan(export: Export, settings: Settings) -> MigrationPlan:
@@ -411,8 +462,12 @@ def _extension(file_name: str, file_type: str | None) -> str:
     return _MIME_EXTENSIONS.get(mime, "")
 
 
-def _safe_component(value: str) -> bool:
-    """True when `value` is a single, ordinary path component."""
+def safe_component(value: str) -> bool:
+    """True when `value` is a single, ordinary path component.
+
+    Public because `04` joins a conversation uuid to a directory as well, and one
+    export can only be trusted or distrusted once.
+    """
     if not value or value in (".", ".."):
         return False
     return not any(character in value for character in _UNSAFE_IN_NAME)

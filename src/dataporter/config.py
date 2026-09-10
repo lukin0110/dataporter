@@ -37,6 +37,7 @@ DEFAULT_WORKSPACE = Path("migration")
 CONFIG_FILENAME = "config.toml"
 WORKSPACE_ENV_VAR = "HCM_WORKSPACE"
 ATTACHMENTS_DIRNAME = "attachments"
+SEEDS_DIRNAME = "seeds"
 
 _config_file: ContextVar[Path | None] = ContextVar("_config_file", default=None)
 """Set by `load_settings` so the TOML source knows which file to read."""
@@ -137,6 +138,15 @@ class Settings(BaseSettings):
         if self.attachments.dir is not None:
             return Path(os.path.abspath(self.attachments.dir))
         return self.workspace / ATTACHMENTS_DIRNAME
+
+    @property
+    def seeds_dir(self) -> Path:
+        """Where `04` writes `part-NN.txt` and `12` reads them from.
+
+        Not configurable: the seeds are an intermediate artefact of one workspace,
+        and `seeds --out` already covers wanting them somewhere else for a look.
+        """
+        return self.workspace / SEEDS_DIRNAME
 
     @field_validator("workspace")
     @classmethod

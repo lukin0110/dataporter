@@ -284,6 +284,18 @@ def test_parts_stay_within_the_budget() -> None:
     assert all(len(chunk) <= 2_000 for chunk in rendered.chunks)
 
 
+def test_the_last_part_is_packed_against_its_own_footer() -> None:
+    """The final footer is 62 characters longer than "more parts follow", so a
+    part packed against the shorter one goes over budget the moment it turns out
+    to be the last. `04`'s golden files and its budget criterion both depend on
+    this not happening; the sweep is what catches it, since it only bites when a
+    part lands within those 62 characters of the budget."""
+    for length in range(110, 260):
+        messages = [message(f"m{i}", text="x" * length, minute=i) for i in range(9)]
+        rendered = render_one(messages, max_chars=1_000)
+        assert all(len(chunk) <= 1_000 for chunk in rendered.chunks), length
+
+
 def test_a_message_larger_than_a_part_splits_at_paragraphs() -> None:
     body = "\n\n".join("para " + "y" * 200 for _ in range(10))
     rendered = render_one([message(text=body)], max_chars=1_200)

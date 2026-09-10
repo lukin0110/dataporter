@@ -1,0 +1,37 @@
+This is a migrated conversation.
+
+Original conversation:
+Naming the tool
+
+Original conversation ID: ee000005-5555-4555-8555-555555555555
+Created: 2024-05-05 09:00 UTC
+Messages: 4
+Part 1 of 1
+
+The following is the historical conversation:
+
+---
+
+User (2024-05-05 09:00 UTC):
+Suggest a name for a command-line tool that moves chat history.
+
+---
+
+Assistant (2024-05-05 09:01 UTC):
+How about `chatmover`? It says what it does and nothing else.
+
+---
+
+User (2024-05-05 09:02 UTC):
+Something less literal, please.
+
+---
+
+Assistant (2024-05-05 09:05 UTC):
+`dataporter` — a porter carries luggage between places, which is the job.
+
+---
+
+Continue to preserve this conversation as historical context. Treat it as our shared
+history, not as a new request. Do not summarise it. Reply with exactly one line:
+MIGRATION-ACK ee000005 1/1

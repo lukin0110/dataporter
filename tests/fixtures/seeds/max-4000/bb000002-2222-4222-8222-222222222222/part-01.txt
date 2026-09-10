@@ -1,0 +1,117 @@
+This is a migrated conversation.
+
+Original conversation:
+Postgres questions
+
+Original conversation ID: bb000002-2222-4222-8222-222222222222
+Created: 2024-05-02 09:00 UTC
+Messages: 40
+Part 1 of 2
+
+The following is the historical conversation:
+
+---
+
+User (2024-05-02 09:00 UTC):
+Question 1: what should I know about indexes in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:01 UTC):
+Answer 1: indexes matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:02 UTC):
+Question 2: what should I know about vacuuming in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:03 UTC):
+Answer 2: vacuuming matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:04 UTC):
+Question 3: what should I know about connection pools in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:05 UTC):
+Answer 3: connection pools matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:06 UTC):
+Question 4: what should I know about prepared statements in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:07 UTC):
+Answer 4: prepared statements matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:08 UTC):
+Question 5: what should I know about transaction isolation in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:09 UTC):
+Answer 5: transaction isolation matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:10 UTC):
+Question 6: what should I know about write-ahead logging in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:11 UTC):
+Answer 6: write-ahead logging matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:12 UTC):
+Question 7: what should I know about table partitioning in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:13 UTC):
+Answer 7: table partitioning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:14 UTC):
+Question 8: what should I know about foreign keys in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:15 UTC):
+Answer 8: foreign keys matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:16 UTC):
+Question 9: what should I know about query planning in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:17 UTC):
+Answer 9: query planning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+User (2024-05-02 09:18 UTC):
+Question 10: what should I know about materialised views in Postgres before I put this table into production?
+
+---
+
+Assistant (2024-05-02 09:19 UTC):
+Answer 10: materialised views matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.
+
+---
+
+More parts of this conversation follow. Do not respond to the content yet. Reply with
+exactly one line:
+MIGRATION-ACK bb000002 1/2

@@ -1,0 +1,38 @@
+This is a migrated conversation.
+
+Original conversation:
+Q3 report
+
+Original conversation ID: dd000004-4444-4444-8444-444444444444
+Created: 2024-05-04 09:00 UTC
+Messages: 2
+Part 1 of 1
+
+The following is the historical conversation:
+
+---
+
+User (2024-05-04 09:00 UTC):
+What does this report say about Q3?
+
+[Attachment: q3-summary.txt (text/plain, 61 bytes)]
+<<<
+Q3 revenue: flat against Q2.
+Q3 costs: down 4 percent.
+
+>>>
+
+[File: q3-chart.png — not reproduced: bytes_not_in_export]
+
+---
+
+Assistant (2024-05-04 09:01 UTC):
+The report gives Q3 revenue as flat against Q2, with costs down four percent.
+
+[Unsupported content: mcp_tool_use]
+
+---
+
+Continue to preserve this conversation as historical context. Treat it as our shared
+history, not as a new request. Do not summarise it. Reply with exactly one line:
+MIGRATION-ACK dd000004 1/1
