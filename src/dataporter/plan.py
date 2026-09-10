@@ -13,6 +13,7 @@ Nothing in this module may log content. `file_name` is safe; a title, a message 
 a rendered seed is not (`log.FORBIDDEN_FIELDS`).
 """
 
+import re
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Literal
@@ -64,7 +65,16 @@ The spec lists *extensions* while the export carries a MIME type on
 this is the fallback, not the other way round.
 """
 
-_UNSAFE_IN_NAME = ("/", "\\", "\x00")
+_UNSAFE_IN_NAME = ("/", "\\")
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+"""No ordinary file or directory name carries one.
+
+NUL alone was the original rule; a newline or a carriage return is the same kind
+of thing and reaches further — such a name is joined into a path here and printed
+by `04` when the conversation is skipped. `:`, `*` and `?` are *not* rejected:
+they are legal on the systems these exports come from, and refusing them would
+report a file that is really there as bytes we do not have.
+"""
 
 
 # --------------------------------------------------------------------------- #
@@ -378,7 +388,12 @@ class Planner:
         if not safe_component(file_name):
             _logger.warning(
                 "attachment name rejected",
-                extra={"conversation_id": conversation_uuid, "file_name": file_name},
+                extra={
+                    "conversation_id": log.safe_token(conversation_uuid),
+                    # The name is being logged *because* it is malformed, so it is
+                    # exactly the value that must not reach a record as it stands.
+                    "file_name": log.safe_token(file_name),
+                },
             )
             return None
 
@@ -469,6 +484,8 @@ def safe_component(value: str) -> bool:
     export can only be trusted or distrusted once.
     """
     if not value or value in (".", ".."):
+        return False
+    if _CONTROL_CHARACTERS.search(value):
         return False
     return not any(character in value for character in _UNSAFE_IN_NAME)
 

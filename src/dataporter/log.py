@@ -36,6 +36,11 @@ What the guard cannot catch is content interpolated into the message itself
 (`log.info("seed=%s", seed)`). The rule that closes that hole is not enforceable by
 a name filter: **log messages are constants, all variable data goes in `extra`.**
 
+Nor can it catch a control character *inside* a legal value: a `file_name` with a
+`\n` in it turns one human-formatted record into two, and the same value printed
+for an operator forges a line of output. `safe_token()` is what callers pass
+export-derived strings through before either.
+
 ## Field-name conventions
 
 `conversation_id` is the canonical identifier spelling. Where a banned name is
@@ -50,6 +55,7 @@ fields. `ContentGuard` raises on either violation in strict mode.
 import json
 import logging
 import os
+import re
 import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -74,6 +80,23 @@ retry record (`{event: "retry", uuid, …}`) needs rewriting as
 `log.info("retry", extra={"attempt": …})` for this reason."""
 
 _MAX_SCAN_DEPTH = 5
+
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+_TOKEN_LIMIT = 120
+
+
+def safe_token(value: str, limit: int = _TOKEN_LIMIT) -> str:
+    """An export-derived string, reduced to something that cannot forge a line.
+
+    A name, an id or a reason may legally contain a newline — the export is not
+    ours — and neither the content guard nor `JsonlFormatter` stops one from
+    splitting a `HumanFormatter` record in two or from adding a line to what an
+    operator reads on stderr. Control characters become `?` and the result is
+    bounded; nothing else is altered, because this is for identifiers, not for
+    display.
+    """
+    return _CONTROL_CHARACTERS.sub("?", value)[:limit] or "(empty)"
+
 
 _RESERVED_RECORD_ATTRS = frozenset(
     logging.LogRecord("", 0, "", 0, "", (), None).__dict__

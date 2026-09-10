@@ -31,9 +31,12 @@ COMMANDS: list[list[str]] = [
     ["browser", "close-extra-tabs"],
 ]
 
-IMPLEMENTED: list[list[str]] = [["import"], ["seeds"]]
-"""Commands with a body of their own, so `--help` must still list them while the
-69 test must not. `04` implemented `seeds`; `05` takes `inspect` and `import`."""
+EXCLUDED_FROM_69: list[list[str]] = [["import"], ["seeds"]]
+"""Commands `--help` must still list that the 69 test cannot cover as written.
+
+`import` is not implemented — it needs an existing export path, so it has
+`test_import_reaches_69_once_the_export_exists` of its own. `seeds` is
+implemented by `04` and no longer exits 69 at all."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -86,7 +89,7 @@ def test_import_reaches_69_once_the_export_exists(
 def test_help_lists_every_command(runner: CliRunner) -> None:
     result = runner.invoke(cli.app, ["--help"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
-    for command in COMMANDS + IMPLEMENTED:
+    for command in COMMANDS + EXCLUDED_FROM_69:
         assert command[0] in result.stdout
     for option in GLOBAL_OPTIONS:
         assert option in result.stdout

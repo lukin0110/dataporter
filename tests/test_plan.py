@@ -329,7 +329,16 @@ def test_an_inline_attachment_does_not_consume_the_upload_cap(
     assert [entry.klass for entry in item.attachments] == ["inline", "upload"]
 
 
-ESCAPING_NAMES = ["../outside.png", "..", "nested/inside.png", "sub\\inside.png"]
+ESCAPING_NAMES = [
+    "../outside.png",
+    "..",
+    "nested/inside.png",
+    "sub\\inside.png",
+    # Not a traversal, but not an ordinary name either: joined into a path here
+    # and printed by `04` when a conversation is skipped for it.
+    "chart\n.png",
+    "chart\x00.png",
+]
 
 
 @pytest.mark.parametrize("file_name", ESCAPING_NAMES, ids=lambda value: str(value))
@@ -341,6 +350,13 @@ def test_a_file_name_cannot_reach_outside_the_attachments_directory(
     item = only(export, settings_for(attachments_dir))
     assert item.attachments[0].klass == "unsupported"
     assert item.attachments[0].source_path is None
+
+
+def test_a_name_a_posix_filesystem_allows_is_still_accepted() -> None:
+    """`:` and `*` are legal where these exports come from; refusing them would
+    report a file that is really there as bytes we do not have."""
+    assert planning.safe_component("notes: draft *2.png")
+    assert not planning.safe_component("notes\rdraft.png")
 
 
 def test_a_symlink_is_recorded_at_the_target_that_was_checked(

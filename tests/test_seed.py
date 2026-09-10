@@ -289,6 +289,16 @@ def test_a_conversation_over_the_hard_cap_is_skipped(
     assert skipped["bb000002"] == "seed_over_hard_cap"
 
 
+def test_a_conversation_id_with_a_control_character_is_refused(tmp_path: Path) -> None:
+    """It is not a traversal, but it is not a directory name either — and its
+    short id would otherwise put a newline in the `skipped` line."""
+    outcome = seeding.SeedGenerator(Settings(workspace=tmp_path)).seed(
+        one_turn("Hello", uuid="aa00\n001-1111-4111-8111-111111111111")
+    )
+    assert outcome.seed is None
+    assert outcome.reason == seeding.UNSAFE_CONVERSATION_ID
+
+
 def test_a_conversation_id_that_is_not_a_path_component_is_refused(
     tmp_path: Path,
 ) -> None:
