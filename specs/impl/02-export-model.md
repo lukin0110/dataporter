@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §2 (import/parser), §6 Phase 1
 **Depends on:** [01](01-foundation.md)
 **Enables:** [03](03-classification.md), [04](04-seed-generation.md), [05](05-dry-run.md)
-**Status:** Not started
+**Status:** In progress
 
 ## Goal
 
@@ -17,6 +17,12 @@ export.
 A real export from the operator's source account is inspected before this slice is
 written. `docs/export-format.md` records what is actually in it; the model below is the
 shape reported by several independent parsers and is corrected from that observation.
+
+**Unmet.** No export was available when this was built. The parser was written to the
+model below and `docs/export-format.md` marks every factual claim *assumed*, with the
+procedure that converts them to *observed*. That is why this slice is `In progress` and
+not `Done`: the first acceptance criterion ("the real export parses end to end") is the
+one criterion still open, and everything else is met.
 
 ## In scope
 
@@ -110,6 +116,77 @@ shape reported by several independent parsers and is corrected from that observa
   limitation whenever `off_path()` is non-empty.
 - `text` on a message is treated as a fallback: the `content` blocks are authoritative when
   present, because exports have been seen with empty `text` and populated `content`.
+
+Resolved while building:
+
+- **The `ContentBlock` sketch above cannot be built as written.** A pydantic v2
+  discriminated union requires every member's discriminator to be a `Literal`, so
+  `UnknownBlock(type: str)` cannot be a member of `Field(discriminator="type")`. The
+  catch-all therefore sits *in front of* the union as a `BeforeValidator`, with the five
+  known blocks kept behind a real tagged union in a `TypeAdapter`. A plain (smart) union
+  was rejected: `UnknownBlock` is `extra="allow"` with one `str` field, so it structurally
+  matches almost any mapping and member order would silently decide whether a slightly-off
+  `text` block is text. Deciding in front of the union keeps dispatch exact and buys one
+  thing the union could not: a *known* tag whose payload will not validate is also kept
+  whole, counted as `malformed_block:<tag>`.
+- **`ExportSource` lives in `export/source.py`, the models in `export/model.py`.** The
+  split makes "the model layer performs no I/O and never raises `ExportError`" checkable
+  with `grep`, which matters because `03`, `04` and `05` build `Conversation` objects in
+  memory in their own tests and must never need a filesystem.
+- **`Export` gains `fingerprint`** — the sha256 of `conversations.json` as read. `03`
+  declares `MigrationPlan.export_fingerprint` but `Planner.plan(export, settings)` receives
+  only the `Export`, so without it the planner would have to re-open the archive it was
+  handed a parse of.
+- **`ChatMessage.text` and `.content` both default.** The design note above says either may
+  be empty and the other authoritative; requiring both would make an export that omits one
+  fatal, which is the opposite of parsing tolerantly. A message with neither is `03`'s
+  `no_representable_text`, which is where that judgement belongs.
+- **`index` uniqueness is evaluated across the active path, not the conversation.** A
+  regenerated sibling legitimately carries the same `index` as the message it replaces, so
+  a conversation-wide check would disqualify `index` exactly when branches exist. The
+  fixture's branch conversation has two siblings both at `index: 3` and proves it.
+- **The parent walk decides membership; the ordering rule decides order.** Where a
+  lineage's timestamps disagree with its parent chain, the ordering rule wins, because that
+  is the rule this slice pins and `docs/export-format.md` publishes.
+- **A dangling `current_leaf_message_uuid` is not an error.** It falls back to the derived
+  leaf and logs `export leaf not found`. One bad pointer must not make a whole export
+  unreadable, and there is nothing un-modelled here for an `UnsupportedItem` to describe —
+  it is shape drift, which is what the log is for. Cycles and missing parents are handled
+  the same way.
+- **`UnsupportedItem`s are aggregated by `(path, reason)` and sorted.** `path` is the member
+  name for a top-level file and `conversations.json:<conversation-uuid>` for anything
+  inside; a per-block path would make `count` structurally always 1. Reasons are stable
+  slugs — `unknown_file`, `unparsable_file`, `unknown_sender:<value>`,
+  `unknown_block_type:<tag>`, `malformed_block:<tag>`, `untyped_block`,
+  `duplicate_message_uuid` — with the token from the export sanitised, since it reaches
+  `report.json`.
+- **A conversation that fails validation is fatal; a malformed *optional* file is not.**
+  The models are already maximally tolerant, so what still fails is a missing required
+  field — structural drift the operator must see before migrating 127 conversations, and
+  skipping it silently would make `05`'s "Conversations found" undercount. `users.json` and
+  friends decide nothing, so they degrade to `unparsable_file` and an empty list.
+- **`JSONDecodeError.pos` is a character offset, not a byte offset**, and the two diverge as
+  soon as the file contains anything non-ASCII. The bytes are decoded explicitly first so
+  the offset can be converted; that also gives a non-UTF-8 archive its own message.
+- **`str(ValidationError)` leaks content.** It appends `input_value='…'`, which `19` would
+  print verbatim into the report. Only `loc` and `msg` are used, and a test asserts the
+  offending value never appears in `detail`.
+- **A `.zip` suffix counts as well as the magic bytes.** `zipfile.is_zipfile` reads the
+  end-of-central-directory record, which is exactly what a truncated archive has lost, so
+  dispatching on it alone would tell the operator their `.zip` "is not a zip". An archive
+  whose members sit under a single wrapping directory is also accepted.
+- **`cli.py` gained an `ExportError` clause** rather than waiting for `05`. `_RootGroup`
+  mapped everything but `ConfigError` to exit `70`, so a malformed export would have
+  reached the operator as `internal error: ExportError`. Exit `2`, matching
+  `require_export`'s existing message and `01`'s "usage or configuration error" row. Only
+  this category: `auth` and `browser` map to codes of their own, and the slice that adds
+  that behaviour adds its clause.
+- **`Conversation.updated_at` stays required**, per the block above, but it is the field
+  most likely to make a real export fatal. If it does, the fix is `| None = None` plus a
+  shape-drift log, not a change to the tolerance model.
+- **Never log a model or a dump of one.** `ToolResultBlock` has a field literally named
+  `content` and `Conversation.name` is the title, so either in an `extra` mapping trips
+  `ContentGuard`. The shape record carries counts, file names and block *type* tokens.
 
 ## Acceptance criteria
 

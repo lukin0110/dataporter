@@ -1,0 +1,1047 @@
+[
+  {
+    "uuid": "aa000001-1111-4111-8111-111111111111",
+    "name": "Listing files",
+    "summary": "",
+    "created_at": "2024-05-01T09:00:00.000000Z",
+    "updated_at": "2024-05-01T09:01:00.000000Z",
+    "account": {
+      "uuid": "acct-0000-0000-0000-000000000000"
+    },
+    "chat_messages": [
+      {
+        "uuid": "aa000001-0000-0000-0000-0000000000m1",
+        "text": "How do I list the files in a directory from Python?",
+        "content": [
+          {
+            "type": "text",
+            "text": "How do I list the files in a directory from Python?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-01T09:00:00.000000Z",
+        "updated_at": "2024-05-01T09:00:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 0,
+        "parent_message_uuid": null
+      },
+      {
+        "uuid": "aa000001-0000-0000-0000-0000000000m2",
+        "text": "Use pathlib: iterate over Path('.').iterdir() and keep the entries you want.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use pathlib: iterate over Path('.').iterdir() and keep the entries you want."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-01T09:01:00.000000Z",
+        "updated_at": "2024-05-01T09:01:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 1,
+        "parent_message_uuid": "aa000001-0000-0000-0000-0000000000m1"
+      }
+    ],
+    "current_leaf_message_uuid": "aa000001-0000-0000-0000-0000000000m2"
+  },
+  {
+    "uuid": "bb000002-2222-4222-8222-222222222222",
+    "name": "Postgres questions",
+    "summary": "",
+    "created_at": "2024-05-02T09:00:00.000000Z",
+    "updated_at": "2024-05-02T09:39:00.000000Z",
+    "account": {
+      "uuid": "acct-0000-0000-0000-000000000000"
+    },
+    "chat_messages": [
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000000",
+        "text": "Question 1: what should I know about indexes in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 1: what should I know about indexes in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:00:00.000000Z",
+        "updated_at": "2024-05-02T09:00:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 0,
+        "parent_message_uuid": null
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000001",
+        "text": "Answer 1: indexes matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 1: indexes matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:01:00.000000Z",
+        "updated_at": "2024-05-02T09:01:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 1,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000000"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000002",
+        "text": "Question 2: what should I know about vacuuming in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 2: what should I know about vacuuming in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:02:00.000000Z",
+        "updated_at": "2024-05-02T09:02:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 2,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000001"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000003",
+        "text": "Answer 2: vacuuming matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 2: vacuuming matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:03:00.000000Z",
+        "updated_at": "2024-05-02T09:03:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 3,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000002"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000004",
+        "text": "Question 3: what should I know about connection pools in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 3: what should I know about connection pools in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:04:00.000000Z",
+        "updated_at": "2024-05-02T09:04:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 4,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000003"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000005",
+        "text": "Answer 3: connection pools matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 3: connection pools matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:05:00.000000Z",
+        "updated_at": "2024-05-02T09:05:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 5,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000004"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000006",
+        "text": "Question 4: what should I know about prepared statements in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 4: what should I know about prepared statements in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:06:00.000000Z",
+        "updated_at": "2024-05-02T09:06:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 6,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000005"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000007",
+        "text": "Answer 4: prepared statements matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 4: prepared statements matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:07:00.000000Z",
+        "updated_at": "2024-05-02T09:07:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 7,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000006"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000008",
+        "text": "Question 5: what should I know about transaction isolation in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 5: what should I know about transaction isolation in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:08:00.000000Z",
+        "updated_at": "2024-05-02T09:08:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 8,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000007"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000009",
+        "text": "Answer 5: transaction isolation matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 5: transaction isolation matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:09:00.000000Z",
+        "updated_at": "2024-05-02T09:09:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 9,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000008"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000010",
+        "text": "Question 6: what should I know about write-ahead logging in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 6: what should I know about write-ahead logging in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:10:00.000000Z",
+        "updated_at": "2024-05-02T09:10:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 10,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000009"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000011",
+        "text": "Answer 6: write-ahead logging matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 6: write-ahead logging matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:11:00.000000Z",
+        "updated_at": "2024-05-02T09:11:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 11,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000010"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000012",
+        "text": "Question 7: what should I know about table partitioning in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 7: what should I know about table partitioning in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:12:00.000000Z",
+        "updated_at": "2024-05-02T09:12:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 12,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000011"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000013",
+        "text": "Answer 7: table partitioning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 7: table partitioning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:13:00.000000Z",
+        "updated_at": "2024-05-02T09:13:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 13,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000012"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000014",
+        "text": "Question 8: what should I know about foreign keys in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 8: what should I know about foreign keys in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:14:00.000000Z",
+        "updated_at": "2024-05-02T09:14:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 14,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000013"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000015",
+        "text": "Answer 8: foreign keys matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 8: foreign keys matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:15:00.000000Z",
+        "updated_at": "2024-05-02T09:15:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 15,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000014"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000016",
+        "text": "Question 9: what should I know about query planning in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 9: what should I know about query planning in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:16:00.000000Z",
+        "updated_at": "2024-05-02T09:16:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 16,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000015"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000017",
+        "text": "Answer 9: query planning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 9: query planning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:17:00.000000Z",
+        "updated_at": "2024-05-02T09:17:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 17,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000016"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000018",
+        "text": "Question 10: what should I know about materialised views in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 10: what should I know about materialised views in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:18:00.000000Z",
+        "updated_at": "2024-05-02T09:18:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 18,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000017"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000019",
+        "text": "Answer 10: materialised views matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 10: materialised views matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:19:00.000000Z",
+        "updated_at": "2024-05-02T09:19:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 19,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000018"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000020",
+        "text": "Question 11: what should I know about sequential scans in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 11: what should I know about sequential scans in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:20:00.000000Z",
+        "updated_at": "2024-05-02T09:20:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 20,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000019"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000021",
+        "text": "Answer 11: sequential scans matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 11: sequential scans matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:21:00.000000Z",
+        "updated_at": "2024-05-02T09:21:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 21,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000020"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000022",
+        "text": "Question 12: what should I know about bloom filters in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 12: what should I know about bloom filters in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:22:00.000000Z",
+        "updated_at": "2024-05-02T09:22:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 22,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000021"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000023",
+        "text": "Answer 12: bloom filters matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 12: bloom filters matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:23:00.000000Z",
+        "updated_at": "2024-05-02T09:23:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 23,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000022"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000024",
+        "text": "Question 13: what should I know about autovacuum tuning in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 13: what should I know about autovacuum tuning in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:24:00.000000Z",
+        "updated_at": "2024-05-02T09:24:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 24,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000023"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000025",
+        "text": "Answer 13: autovacuum tuning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 13: autovacuum tuning matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:25:00.000000Z",
+        "updated_at": "2024-05-02T09:25:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 25,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000024"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000026",
+        "text": "Question 14: what should I know about hot updates in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 14: what should I know about hot updates in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:26:00.000000Z",
+        "updated_at": "2024-05-02T09:26:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 26,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000025"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000027",
+        "text": "Answer 14: hot updates matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 14: hot updates matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:27:00.000000Z",
+        "updated_at": "2024-05-02T09:27:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 27,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000026"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000028",
+        "text": "Question 15: what should I know about toast storage in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 15: what should I know about toast storage in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:28:00.000000Z",
+        "updated_at": "2024-05-02T09:28:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 28,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000027"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000029",
+        "text": "Answer 15: toast storage matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 15: toast storage matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:29:00.000000Z",
+        "updated_at": "2024-05-02T09:29:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 29,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000028"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000030",
+        "text": "Question 16: what should I know about logical replication in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 16: what should I know about logical replication in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:30:00.000000Z",
+        "updated_at": "2024-05-02T09:30:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 30,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000029"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000031",
+        "text": "Answer 16: logical replication matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 16: logical replication matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:31:00.000000Z",
+        "updated_at": "2024-05-02T09:31:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 31,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000030"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000032",
+        "text": "Question 17: what should I know about advisory locks in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 17: what should I know about advisory locks in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:32:00.000000Z",
+        "updated_at": "2024-05-02T09:32:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 32,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000031"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000033",
+        "text": "Answer 17: advisory locks matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 17: advisory locks matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:33:00.000000Z",
+        "updated_at": "2024-05-02T09:33:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 33,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000032"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000034",
+        "text": "Question 18: what should I know about generated columns in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 18: what should I know about generated columns in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:34:00.000000Z",
+        "updated_at": "2024-05-02T09:34:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 34,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000033"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000035",
+        "text": "Answer 18: generated columns matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 18: generated columns matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:35:00.000000Z",
+        "updated_at": "2024-05-02T09:35:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 35,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000034"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000036",
+        "text": "Question 19: what should I know about check constraints in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 19: what should I know about check constraints in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:36:00.000000Z",
+        "updated_at": "2024-05-02T09:36:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 36,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000035"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000037",
+        "text": "Answer 19: check constraints matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 19: check constraints matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:37:00.000000Z",
+        "updated_at": "2024-05-02T09:37:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 37,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000036"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000038",
+        "text": "Question 20: what should I know about collations in Postgres before I put this table into production?",
+        "content": [
+          {
+            "type": "text",
+            "text": "Question 20: what should I know about collations in Postgres before I put this table into production?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-02T09:38:00.000000Z",
+        "updated_at": "2024-05-02T09:38:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 38,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000037"
+      },
+      {
+        "uuid": "bb000002-0000-0000-0000-000000000039",
+        "text": "Answer 20: collations matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Answer 20: collations matter most under write load. Measure first, change one thing, and re-measure on a copy of production data before you ship the change."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-02T09:39:00.000000Z",
+        "updated_at": "2024-05-02T09:39:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 39,
+        "parent_message_uuid": "bb000002-0000-0000-0000-000000000038"
+      }
+    ],
+    "current_leaf_message_uuid": "bb000002-0000-0000-0000-000000000039"
+  },
+  {
+    "uuid": "cc000003-3333-4333-8333-333333333333",
+    "name": "Shorter loop",
+    "summary": "",
+    "created_at": "2024-05-03T09:00:00.000000Z",
+    "updated_at": "2024-05-03T09:01:00.000000Z",
+    "account": {
+      "uuid": "acct-0000-0000-0000-000000000000"
+    },
+    "chat_messages": [
+      {
+        "uuid": "cc000003-0000-0000-0000-0000000000m1",
+        "text": "Can you make this shorter?\n\n```python\ntotal = 0\nfor n in values:\n    total = total + n\n```",
+        "content": [
+          {
+            "type": "text",
+            "text": "Can you make this shorter?\n\n```python\ntotal = 0\nfor n in values:\n    total = total + n\n```"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-03T09:00:00.000000Z",
+        "updated_at": "2024-05-03T09:00:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 0,
+        "parent_message_uuid": null
+      },
+      {
+        "uuid": "cc000003-0000-0000-0000-0000000000m2",
+        "text": "Yes — sum() does it:\n\n```python\ntotal = sum(values)\n```",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "The loop is a fold; sum is the builtin."
+          },
+          {
+            "type": "token_budget"
+          },
+          {
+            "type": "text",
+            "text": "Yes — sum() does it:\n\n```python\ntotal = sum(values)\n```"
+          },
+          {
+            "type": "tool_use",
+            "name": "artifacts",
+            "input": {
+              "title": "Shorter sum",
+              "language": "python",
+              "content": "total = sum(values)"
+            }
+          },
+          {
+            "type": "tool_result",
+            "content": [
+              {
+                "type": "text",
+                "text": "created"
+              }
+            ]
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-03T09:01:00.000000Z",
+        "updated_at": "2024-05-03T09:01:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 1,
+        "parent_message_uuid": "cc000003-0000-0000-0000-0000000000m1"
+      }
+    ],
+    "current_leaf_message_uuid": "cc000003-0000-0000-0000-0000000000m2"
+  },
+  {
+    "uuid": "dd000004-4444-4444-8444-444444444444",
+    "name": "Q3 report",
+    "summary": "",
+    "created_at": "2024-05-04T09:00:00.000000Z",
+    "updated_at": "2024-05-04T09:01:00.000000Z",
+    "account": {
+      "uuid": "acct-0000-0000-0000-000000000000"
+    },
+    "chat_messages": [
+      {
+        "uuid": "dd000004-0000-0000-0000-0000000000m1",
+        "text": "What does this report say about Q3?",
+        "content": [
+          {
+            "type": "text",
+            "text": "What does this report say about Q3?"
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-04T09:00:00.000000Z",
+        "updated_at": "2024-05-04T09:00:00.000000Z",
+        "attachments": [
+          {
+            "file_name": "q3-summary.txt",
+            "file_size": 61,
+            "file_type": "text/plain",
+            "extracted_content": "Q3 revenue: flat against Q2.\nQ3 costs: down 4 percent.\n"
+          }
+        ],
+        "files": [
+          {
+            "file_name": "q3-chart.png",
+            "file_uuid": "dd000004-file-0000-0000-000000000001"
+          }
+        ],
+        "files_v2": [
+          {
+            "file_name": "q3-chart.png",
+            "file_uuid": "dd000004-file-0000-0000-000000000001"
+          }
+        ],
+        "index": 0,
+        "parent_message_uuid": null
+      },
+      {
+        "uuid": "dd000004-0000-0000-0000-0000000000m2",
+        "text": "The report gives Q3 revenue as flat against Q2, with costs down four percent.",
+        "content": [
+          {
+            "type": "text",
+            "text": "The report gives Q3 revenue as flat against Q2, with costs down four percent."
+          },
+          {
+            "type": "mcp_tool_use",
+            "server": "reports",
+            "tool": "summarise",
+            "arguments": {
+              "quarter": "Q3"
+            }
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-04T09:01:00.000000Z",
+        "updated_at": "2024-05-04T09:01:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 1,
+        "parent_message_uuid": "dd000004-0000-0000-0000-0000000000m1"
+      }
+    ],
+    "current_leaf_message_uuid": "dd000004-0000-0000-0000-0000000000m2"
+  },
+  {
+    "uuid": "ee000005-5555-4555-8555-555555555555",
+    "name": "Naming the tool",
+    "summary": "",
+    "created_at": "2024-05-05T09:00:00.000000Z",
+    "updated_at": "2024-05-05T09:05:00.000000Z",
+    "account": {
+      "uuid": "acct-0000-0000-0000-000000000000"
+    },
+    "chat_messages": [
+      {
+        "uuid": "ee000005-0000-0000-0000-0000000000m1",
+        "text": "Suggest a name for a command-line tool that moves chat history.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Suggest a name for a command-line tool that moves chat history."
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-05T09:00:00.000000Z",
+        "updated_at": "2024-05-05T09:00:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 0,
+        "parent_message_uuid": null
+      },
+      {
+        "uuid": "ee000005-0000-0000-0000-0000000000m2",
+        "text": "How about `chatmover`? It says what it does and nothing else.",
+        "content": [
+          {
+            "type": "text",
+            "text": "How about `chatmover`? It says what it does and nothing else."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-05T09:01:00.000000Z",
+        "updated_at": "2024-05-05T09:01:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 1,
+        "parent_message_uuid": "ee000005-0000-0000-0000-0000000000m1"
+      },
+      {
+        "uuid": "ee000005-0000-0000-0000-0000000000m3",
+        "text": "Something less literal, please.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Something less literal, please."
+          }
+        ],
+        "sender": "human",
+        "created_at": "2024-05-05T09:02:00.000000Z",
+        "updated_at": "2024-05-05T09:02:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 2,
+        "parent_message_uuid": "ee000005-0000-0000-0000-0000000000m2"
+      },
+      {
+        "uuid": "ee000005-0000-0000-0000-0000000000m4",
+        "text": "`ferry` — short, and it carries things across.",
+        "content": [
+          {
+            "type": "text",
+            "text": "`ferry` — short, and it carries things across."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-05T09:03:00.000000Z",
+        "updated_at": "2024-05-05T09:03:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 3,
+        "parent_message_uuid": "ee000005-0000-0000-0000-0000000000m3"
+      },
+      {
+        "uuid": "ee000005-0000-0000-0000-0000000000m5",
+        "text": "`dataporter` — a porter carries luggage between places, which is the job.",
+        "content": [
+          {
+            "type": "text",
+            "text": "`dataporter` — a porter carries luggage between places, which is the job."
+          }
+        ],
+        "sender": "assistant",
+        "created_at": "2024-05-05T09:05:00.000000Z",
+        "updated_at": "2024-05-05T09:05:00.000000Z",
+        "attachments": [],
+        "files": [],
+        "files_v2": [],
+        "index": 3,
+        "parent_message_uuid": "ee000005-0000-0000-0000-0000000000m3"
+      }
+    ],
+    "current_leaf_message_uuid": "ee000005-0000-0000-0000-0000000000m5"
+  },
+  {
+    "uuid": "ff000006-6666-4666-8666-666666666666",
+    "name": "",
+    "summary": "",
+    "created_at": "2024-05-06T09:00:00.000000Z",
+    "updated_at": "2024-05-06T09:00:00.000000Z",
+    "account": {
+      "uuid": "acct-0000-0000-0000-000000000000"
+    },
+    "chat_messages": [],
+    "current_leaf_message_uuid": null
+  }
+]
