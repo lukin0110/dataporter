@@ -1,0 +1,12 @@
+<!doctype html>
+<!-- A stand-in for a chat with a modal over it: the composer is still in the
+     DOM, and `probe.dialogs` is what says it cannot be used. -->
+<meta charset="utf-8">
+<title>Migrated conversation</title>
+<main>
+  <div contenteditable="true" role="textbox" aria-label="Write your prompt"></div>
+  <button aria-label="Send message">Send</button>
+  <div role="dialog" aria-label="Rate limit reached">
+    <button>Got it</button>
+  </div>
+</main>

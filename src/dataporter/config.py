@@ -16,7 +16,7 @@ sections (`browser`, `hermes`, `pacing`, `retries`, `timeouts`, `fidelity`) as
 nested models; nothing here needs to change for them. `03` is the first to do it,
 adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS` and
 a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
-`run`.
+`run`; `07` adds `browser` and `timeouts`.
 """
 
 import os
@@ -39,6 +39,7 @@ CONFIG_FILENAME = "config.toml"
 WORKSPACE_ENV_VAR = "HCM_WORKSPACE"
 ATTACHMENTS_DIRNAME = "attachments"
 SEEDS_DIRNAME = "seeds"
+BROWSER_PROFILE_DIRNAME = "browser-profile"
 
 _config_file: ContextVar[Path | None] = ContextVar("_config_file", default=None)
 """Set by `load_settings` so the TOML source knows which file to read."""
@@ -110,6 +111,47 @@ class AttachmentSettings(BaseModel):
         return tuple(item.strip().lstrip(".").casefold() for item in value)
 
 
+class BrowserSettings(BaseModel):
+    """The Chrome our tool owns (`07`)."""
+
+    executable: Path | None = None
+    """The browser binary. `None` means "look for one"; see
+    `browser.launcher.find_executable`."""
+
+    cdp_port: int = 9222
+    """The remote-debugging port, always bound to `127.0.0.1`. The address is not
+    configurable: a debug port reachable from another machine is a full-privilege
+    handle on a signed-in Claude account."""
+
+    extra_args: tuple[str, ...] = ()
+    """Extra command-line flags, appended after the fixed ones and before the URL.
+
+    Empty by design: the migration runs headed (§12 needs a window a human can act
+    in), and every flag the run depends on is fixed in `launcher.LAUNCH_FLAGS` so
+    that two operators launch the same browser. This exists for environments that
+    cannot run that browser at all — a CI container with no display and no user
+    namespaces needs `--headless=new --no-sandbox` — and the test suite is its
+    only user today.
+    """
+
+
+class TimeoutSettings(BaseModel):
+    """How long each wait is allowed to take, in seconds.
+
+    `07` needs three; `08` adds `attach_s` and `response_s` when it lands.
+    """
+
+    browser_start_s: float = 30.0
+    """From spawning the browser to its debug port answering."""
+
+    cdp_call_s: float = 20.0
+    """One CDP request. Every call has one, so a wedged browser cannot hang a run."""
+
+    login_s: float = 600.0
+    """How long `login` waits for the operator to sign in. Ten minutes: it covers
+    a password manager, an email code and a second factor without hurrying."""
+
+
 class RunSettings(BaseModel):
     """How much one invocation is allowed to do."""
 
@@ -139,6 +181,8 @@ class Settings(BaseSettings):
 
     seed: SeedSettings = SeedSettings()
     attachments: AttachmentSettings = AttachmentSettings()
+    browser: BrowserSettings = BrowserSettings()
+    timeouts: TimeoutSettings = TimeoutSettings()
     run: RunSettings = RunSettings()
 
     @property
@@ -162,6 +206,16 @@ class Settings(BaseSettings):
         and `seeds --out` already covers wanting them somewhere else for a look.
         """
         return self.workspace / SEEDS_DIRNAME
+
+    @property
+    def browser_profile_dir(self) -> Path:
+        """Chrome's `--user-data-dir` (`07`).
+
+        Inside the workspace and not configurable: the point of the dedicated
+        profile is that it is *ours*, created by us, deletable by
+        `session logout`, and never the operator's everyday one (§17).
+        """
+        return self.workspace / BROWSER_PROFILE_DIRNAME
 
     @field_validator("workspace")
     @classmethod

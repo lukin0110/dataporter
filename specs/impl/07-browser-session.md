@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §8
 **Depends on:** [01](01-foundation.md)
 **Enables:** [08](08-browser-helpers.md), [10](10-attach-spike.md)
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -33,10 +33,13 @@ stores a password.
     <url>
     ```
 
-    then polls `http://127.0.0.1:<port>/json/version` until it answers (timeout
-    `timeouts.browser_start_s`, default `30`). If the port already answers before launch,
-    the running instance is adopted only if its `/json/version` reports our profile
-    (`userDataDir` matches); otherwise exit `2` `port 9222 is used by another browser`.
+    plus `browser.extra_args` (empty by default; see *Design notes*), then polls
+    `http://127.0.0.1:<port>/json/version` until it answers (timeout
+    `timeouts.browser_start_s`, default `30`). A browser that exits while we wait is
+    reported as itself rather than as a timeout. If the port already answers before
+    launch, the running instance is adopted only if it is the one we started —
+    `<profile>/dataporter-cdp.json` records the port and the browser target's uuid, and
+    both must match; otherwise exit `2` `port 9222 is used by another browser`.
   - `close()` sends CDP `Browser.close`, waits for exit, then SIGTERM after 10 s.
 - `dataporter/browser/cdp.py` — a minimal synchronous CDP client on
   `websockets.sync.client`, used only by our own code, never by an LLM:
@@ -44,6 +47,9 @@ stores a password.
   `evaluate(expression) -> value`, `navigate(url)`, `insert_text(text)`,
   `set_file_input_files(selector, paths)`, `close_target(target_id)`. Every call has a
   timeout (`timeouts.cdp_call_s`, default `20`) and raises `BrowserError` on failure.
+  `Target` has an id, a type, a URL and a socket — and deliberately no `title`, because a
+  claude.ai tab's title is a conversation title (§10). Unsolicited events are kept rather
+  than dropped, which is where `probe`'s JavaScript dialogs come from.
 - `dataporter/browser/probe.py` — `probe(page) -> PageState`, the one place that knows
   what claude.ai looks like. First version (refined by `10`):
 
@@ -55,22 +61,33 @@ stores a password.
   | `composer_chars` | `innerText.length` of that element |
   | `generating` | a button whose `aria-label` contains `Stop` is present and visible |
   | `send_enabled` | a button whose `aria-label` contains `Send` is present and not disabled |
-  | `dialogs` | `pending_dialogs` from CDP `Page.javascriptDialogOpening` events plus any `[role=dialog]` visible |
+  | `dialogs` | `javascript:<kind>` per CDP `Page.javascriptDialogOpening` not yet matched by a `…Closed`, plus `dom` per visible `[role=dialog]`. Kinds only: the message is page text |
   | `conversation_id` | uuid from `/chat/<uuid>` or `null` |
   | `tab_count` | number of `page` targets with host `claude.ai` |
 
+- `dataporter/browser/session.py` — the flows the three commands are made of: choose the
+  claude.ai tab (an existing one, else a blank one navigated rather than a second window
+  opened, else a created one), probe it, wait for a login, delete the profile. `12` asks
+  the same questions without going through the CLI.
 - `hermes-claude-migrate login`: launches with `https://claude.ai/new`, prints
   `Log in to Claude in the browser window that just opened.`, polls `probe` every 2 s
   until `logged_in` or `timeouts.login_s` (default `600`), then prints
   `Logged in. Session stored in <workspace>/browser-profile/.` and closes Chrome so the
   profile flushes to disk. Timeout → exit `3`.
-- `hermes-claude-migrate session status`: if the port answers, probes it; else launches,
-  probes, closes. Prints `logged in` (exit `0`) or `not logged in — run: hermes-claude-migrate
-  login` (exit `3`).
+- `hermes-claude-migrate session status`: if the port answers, probes the browser it
+  adopts; else launches, probes, closes. A workspace with no profile *and* no browser on
+  the port answers without starting anything. Prints `logged in` (exit `0`) or
+  `not logged in — run: hermes-claude-migrate login` (exit `3`).
 - `hermes-claude-migrate session logout`: deletes `<workspace>/browser-profile/` after
-  confirming Chrome is not running on the port. Local only; nothing is sent to claude.ai.
+  confirming Chrome is not running on the port; a browser still on it is exit `2` and the
+  profile is left alone. Local only; nothing is sent to claude.ai.
 - `browser-profile/` is created `0700`; the workspace gets a `.gitignore` containing
-  `browser-profile/`, `hermes/`, `seeds/`, `logs/`.
+  `browser-profile/`, `hermes/`, `seeds/`, `logs/`, merged into whatever is already there
+  rather than overwriting it.
+- Exit codes: a missing browser, a port that never opens and a CDP call that goes
+  unanswered are `BrowserError` → exit `6`; `PortInUse` — the port is occupied by a
+  browser we must not touch — is its own subclass and exits `2`, because nothing is
+  missing and the operator fixes it by closing something.
 
 ## Out of scope
 
@@ -85,17 +102,41 @@ stores a password.
   throughput (§13). A `--headless` flag is not offered in this slice.
 - Login detection is "a composer is visible on a non-login page". It does not read who is
   logged in; the brief asks to identify the logged-in *state*, not the identity.
+- **Adoption is by marker, not by `userDataDir`.** This spec assumed `/json/version` would
+  report the profile. It does not — Chrome does not expose `--user-data-dir` over CDP at
+  all — so `launch` writes `<profile>/dataporter-cdp.json` with the port, the pid and the
+  browser target's uuid, and adopts only when the uuid on the port matches. The uuid is
+  minted per browser process, so a match means the same instance and not merely the same
+  port. Anything else is `PortInUse`: attaching to the operator's everyday Chrome would
+  put the run inside the profile §17 exists to stay out of, and closing it afterwards
+  would shut their windows.
+- **`browser.extra_args`** is an escape hatch for environments that cannot show a window:
+  a CI container has no display and may have no user namespaces, so the probe test passes
+  `--headless=new --no-sandbox`. It is empty by default and the migration stays headed;
+  every flag a run depends on is fixed in `launcher.LAUNCH_FLAGS` so that two operators
+  launch the same browser.
+- `probe` opens a connection per call and closes it, so the tab is resolved afresh each
+  time and a login flow that replaces the tab is followed rather than watched from a
+  target that no longer exists. The cost is that a JavaScript dialog opened before the
+  connection existed is invisible to it — not a hole in practice, since a modal `alert()`
+  blocks the page's JavaScript and the probe's own `Runtime.evaluate` then times out —
+  and `12`, which holds one connection open for a whole conversation, sees the events.
 
 ## Acceptance criteria
 
 - `login` against a fresh workspace on macOS opens Chrome at claude.ai; after a manual
   login it prints the success line and exits `0`; `session status` then reports
-  `logged in` without any interaction.
+  `logged in` without any interaction. *(Manual: it needs a real account. Everything
+  below is automated.)*
 - `session status` in a workspace with no profile exits `3` with the instruction line.
 - A unit test for `probe` runs against static HTML fixtures (`login.html`, `new.html`,
-  `chat.html`, `generating.html`) served to a real Chrome and asserts every field.
+  `chat.html`, `generating.html`, `dialog.html`) served over HTTP at claude.ai's own paths
+  to a real Chrome, and asserts every field. It skips where no browser is installed, so
+  every line it covers is covered by the fake browser as well.
 - Launching twice with the same port and a foreign profile on it exits `2`.
-- `grep -r password src/` finds nothing but this sentence's test.
+- `grep -r password src/` finds two sentences promising not to ask for one, and no name,
+  field, prompt or key — `test_the_tool_never_asks_for_a_password` parses the package and
+  checks the code rather than the prose.
 
 ## Risks
 
