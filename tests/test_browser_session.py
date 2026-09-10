@@ -2,6 +2,7 @@
 
 import ast
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from dataporter.browser.probe import NEW_CHAT_URL
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import BrowserError
 from dataporter.exit_codes import ExitCode
+from dataporter.state import StateError
 from fake_chrome import Call, FakeChrome, FakeTarget, free_port, page_state
 
 
@@ -95,6 +97,29 @@ def test_a_tab_is_created_when_there_is_none(tmp_path: Path) -> None:
         finally:
             page.close()
         assert "Target.createTarget" in chrome.methods()
+
+
+def test_a_failed_navigation_does_not_leak_the_connection(tmp_path: Path) -> None:
+    """`wait_for_login` retries every two seconds for ten minutes. One WebSocket
+    left open per failed attempt would be three hundred of them."""
+
+    def responder(fake: FakeChrome, call: Call) -> dict[str, object] | None:
+        if call.method != "Page.navigate":
+            return None
+        return {"result": {"errorText": "net::ERR_CONNECTION_REFUSED"}}
+
+    with FakeChrome(
+        targets=[FakeTarget(id="page-1", url="about:blank", evaluate=page_state())],
+        responder=responder,
+    ) as chrome:
+        session = session_for(chrome, tmp_path)
+        for _ in range(3):
+            with pytest.raises(BrowserError, match="ERR_CONNECTION_REFUSED"):
+                browser_session.open_claude_tab(session, NEW_CHAT_URL)
+        deadline = time.monotonic() + 5.0
+        while chrome.open_connections and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert chrome.open_connections == 0
 
 
 def test_claude_tabs_ignores_other_sites_and_workers(tmp_path: Path) -> None:
@@ -209,6 +234,43 @@ def test_remove_profile_deletes_the_directory(tmp_path: Path) -> None:
 def test_remove_profile_on_a_workspace_with_none(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, free_port())
     assert not browser_session.remove_profile(settings)
+
+
+def test_a_profile_that_cannot_be_deleted_is_reported_not_crashed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read-only filesystem or a permission is fixable at the keyboard. An
+    escaping `OSError` would reach the operator as `internal error` and exit
+    `70`, which is where a bug in us belongs, not a locked directory."""
+    settings = make_settings(tmp_path, free_port())
+    profile = launcher.ensure_profile(settings)
+
+    def refuse(path: object, *args: object, **kwargs: object) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(browser_session.shutil, "rmtree", refuse)
+    with pytest.raises(StateError, match="cannot remove .*: Permission denied"):
+        browser_session.remove_profile(settings)
+    assert profile.exists()
+
+
+def test_session_logout_reports_a_locked_profile_as_exit_2(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = make_settings(tmp_path, free_port())
+    launcher.ensure_profile(settings)
+
+    def refuse(path: object, *args: object, **kwargs: object) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(browser_session.shutil, "rmtree", refuse)
+    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
+    result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
+    assert result.exit_code == ExitCode.USAGE
+    assert result.stderr.startswith("error: cannot remove ")
+    assert "Permission denied" in result.stderr
+    assert "Traceback" not in result.output
 
 
 def test_remove_profile_refuses_while_a_browser_is_running(tmp_path: Path) -> None:

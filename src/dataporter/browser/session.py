@@ -15,6 +15,7 @@ from dataporter.browser.launcher import BrowserSession, PortInUse
 from dataporter.browser.probe import CLAUDE_HOST, NEW_CHAT_URL, PageState, probe
 from dataporter.config import Settings
 from dataporter.errors import BrowserError
+from dataporter.state import StateError
 
 _logger = log.get_logger(__name__)
 
@@ -45,7 +46,15 @@ def open_claude_tab(session: BrowserSession, url: str = NEW_CHAT_URL) -> Page:
     blank = [target for target in session.client.pages() if target.url in BLANK_URLS]
     if blank:
         page = session.client.attach(blank[0].id)
-        page.navigate(url)
+        try:
+            page.navigate(url)
+        except BrowserError:
+            # The connection belongs to this function until it is handed back.
+            # `wait_for_login` treats a failed probe as "not yet" and tries again
+            # every two seconds, so a navigation that keeps failing would leave
+            # one open WebSocket per attempt for the whole ten-minute wait.
+            page.close()
+            raise
         return page
 
     with session.client.browser_connection() as connection:
@@ -132,6 +141,13 @@ def remove_profile(settings: Settings) -> bool:
     profile: Path = settings.browser_profile_dir
     if not profile.exists():
         return False
-    shutil.rmtree(profile)
+    try:
+        shutil.rmtree(profile)
+    except OSError as exc:
+        # A read-only filesystem, a permission the operator can grant, a file
+        # another process is holding. All fixable at the keyboard, so this is
+        # `StateError` — "the workspace cannot be used as asked", exit `2` —
+        # rather than the exit `70` an escaping OSError would earn.
+        raise StateError(f"cannot remove {profile}: {exc.strerror or exc}") from exc
     _logger.info("browser profile removed")
     return True
