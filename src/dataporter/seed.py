@@ -17,11 +17,11 @@ No conversation content may reach a log record from here. A chunk is content and
 paths, and an id that came out of the export goes through `log.safe_token` first.
 """
 
-import hashlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from orval import hashify
 from pydantic import BaseModel, ConfigDict
 
 from dataporter import log, render
@@ -46,8 +46,14 @@ def part_filename(index: int) -> str:
 
 
 def sha256_of(text: str) -> str:
-    """The hash `08`'s paste helper compares against, over UTF-8 bytes."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    """The hash `08`'s paste helper compares against, over UTF-8 bytes.
+
+    `orval.hashify` of a `str` is sha256 over `str.encode()`, which is UTF-8: the
+    same digest this has always produced. Pinned by a test rather than trusted,
+    because `08` compares this value against what a browser composer holds, and a
+    change upstream would fail every paste for a reason nobody could see.
+    """
+    return hashify(text)
 
 
 # --------------------------------------------------------------------------- #

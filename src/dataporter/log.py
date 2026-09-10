@@ -24,7 +24,9 @@ never message text. `ContentGuard` enforces the "never" half: any record carryin
 field named `text`, `seed`, `title`, `content`, `snapshot` or `stdout` is rejected.
 It raises in strict mode (the test suite) and drops the record otherwise, so a
 mistake fails loudly in CI and silently in an operator's terminal rather than
-writing content to disk.
+writing content to disk. `DATAPORTER_LOG_STRICT` turns strict mode on for any
+spelling `orval.to_bool` reads as true (`1`, `true`, `yes`, `y`, `t`, `on`);
+anything else, an unrecognised value included, leaves it off.
 
 The guard sits on every *handler*, never on a logger: `Logger.callHandlers` walks
 ancestor loggers' handlers directly and never consults their filters, so a filter
@@ -63,6 +65,8 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
 
+from orval import to_bool, utcnow
+
 LOGGER_NAME = "dataporter"
 LOGS_DIRNAME = "logs"
 STRICT_ENV_VAR = "DATAPORTER_LOG_STRICT"
@@ -81,7 +85,14 @@ retry record (`{event: "retry", uuid, …}`) needs rewriting as
 
 _MAX_SCAN_DEPTH = 5
 
-_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+"""Characters no legitimate identifier, name or reason carries.
+
+Public because `03` needs the same set for a different reason: here one would
+forge a line of output, and in `plan.safe_component` one would reach a path.
+The export is trusted or distrusted once, so both read the same rule.
+"""
+
 _TOKEN_LIMIT = 120
 
 
@@ -95,7 +106,7 @@ def safe_token(value: str, limit: int = _TOKEN_LIMIT) -> str:
     bounded; nothing else is altered, because this is for identifiers, not for
     display.
     """
-    return _CONTROL_CHARACTERS.sub("?", value)[:limit] or "(empty)"
+    return CONTROL_CHARACTERS.sub("?", value)[:limit] or "(empty)"
 
 
 _RESERVED_RECORD_ATTRS = frozenset(
@@ -239,8 +250,14 @@ def package_logger() -> logging.Logger:
 
 
 def strict_by_default() -> bool:
-    """Whether new handlers raise on a content field rather than dropping it."""
-    return _strict_default or os.environ.get(STRICT_ENV_VAR, "") not in ("", "0")
+    """Whether new handlers raise on a content field rather than dropping it.
+
+    `to_bool` rather than "neither empty nor `0`": that spelling made
+    `DATAPORTER_LOG_STRICT=false` turn strict mode *on*, which is the opposite of
+    what anyone typing it meant. An unrecognised value leaves it off for the same
+    reason — a setting nobody can explain must not change how the logger behaves.
+    """
+    return _strict_default or to_bool(os.environ.get(STRICT_ENV_VAR, ""), default=False)
 
 
 def run_log_path(workspace: Path, now: datetime | None = None) -> Path:
@@ -249,7 +266,7 @@ def run_log_path(workspace: Path, now: datetime | None = None) -> Path:
     Basic ISO 8601 — no colons, so it is a legal filename everywhere, and it sorts
     lexicographically by time.
     """
-    stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
+    stamp = (now or utcnow()).strftime("%Y%m%dT%H%M%SZ")
     return workspace / LOGS_DIRNAME / f"run-{stamp}.jsonl"
 
 

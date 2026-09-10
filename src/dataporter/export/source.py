@@ -331,6 +331,9 @@ def read_export(source: ExportSource) -> Export:
         )
 
     raw = source.read(CONVERSATIONS_FILE)
+    # Not `orval.hashify`, which `04` uses for seed text: it hashes a `str`
+    # directly but *pickles* everything else, so on these bytes it would
+    # return the digest of a pickle rather than the sha256 of the file.
     fingerprint = hashlib.sha256(raw).hexdigest()
     decoded = source.parse(source.decode(raw, CONVERSATIONS_FILE), CONVERSATIONS_FILE)
     if not isinstance(decoded, list):

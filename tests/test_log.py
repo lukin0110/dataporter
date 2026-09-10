@@ -136,6 +136,58 @@ def test_schema_collision_does_not_drop_the_record(workspace: Path) -> None:
     assert len(read_lines(path)) == 1
 
 
+@pytest.mark.parametrize(
+    ("value", "strict"),
+    [
+        ("", False),
+        ("0", False),
+        ("false", False),
+        ("off", False),
+        ("no", False),
+        # Not a spelling anybody recognises. It must not turn the guard on by
+        # being merely non-empty, which is how the old rule read it.
+        ("bogus", False),
+        ("1", True),
+        ("true", True),
+        ("yes", True),
+        ("ON", True),
+    ],
+)
+def test_the_strict_env_var_reads_the_way_an_operator_writes_it(
+    monkeypatch: pytest.MonkeyPatch, value: str, strict: bool
+) -> None:
+    """`DATAPORTER_LOG_STRICT=false` used to turn strict mode *on*."""
+    # The process-wide default is what `configure_logging` last left behind, and
+    # it short-circuits the environment; this test is about the environment.
+    monkeypatch.setattr(log, "_strict_default", False)
+    monkeypatch.setenv(log.STRICT_ENV_VAR, value)
+    assert log.strict_by_default() is strict
+
+
+def test_a_falsy_strict_env_var_drops_rather_than_raises(
+    monkeypatch: pytest.MonkeyPatch, workspace: Path
+) -> None:
+    """The value has to reach the handler, not just `strict_by_default`."""
+    monkeypatch.setattr(log, "_strict_default", False)
+    monkeypatch.setenv(log.STRICT_ENV_VAR, "off")
+    log.configure_logging(verbose=False)
+    path = log.enable_run_log(workspace)
+    # Dropped, not raised: that is what non-strict mode means.
+    log.get_logger("test").info("leak", extra={"text": "conversation content"})
+    assert read_lines(path) == []
+
+
+def test_a_truthy_strict_env_var_raises(
+    monkeypatch: pytest.MonkeyPatch, workspace: Path
+) -> None:
+    monkeypatch.setattr(log, "_strict_default", False)
+    monkeypatch.setenv(log.STRICT_ENV_VAR, "yes")
+    log.configure_logging(verbose=False)
+    log.enable_run_log(workspace)
+    with pytest.raises(log.ContentLeak, match="text"):
+        log.get_logger("test").info("leak", extra={"text": "conversation content"})
+
+
 def test_nothing_is_created_until_a_record_is_written(workspace: Path) -> None:
     """`05` requires `import --dry-run` to leave no workspace behind."""
     target = workspace / "ws"
