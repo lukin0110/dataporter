@@ -27,7 +27,7 @@ hermes-claude-migrate = "dataporter.cli:app"
 [dependency-groups]
 dev = [
     "ruff",
-    "mypy",
+    "ty",
     "pytest",
     "pytest-cov",
 ]
@@ -51,12 +51,15 @@ src = ["src", "tests"]
 extend-exclude = ["specs", "docs"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+# ANN replaces the one thing `mypy --strict` enforced that ty does not: every def
+# annotated. ANN401 (no explicit `Any`) is stricter than mypy --strict ever was;
+# the export parser genuinely reads `Any` off untrusted JSON.
+select = ["E", "F", "I", "UP", "ANN"]
+ignore = ["ANN401"]
 
-[tool.mypy]
-mypy_path = "src"
-strict = true
-python_version = "3.12"
+[tool.ty.environment]
+python-version = "3.12"
+root = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
