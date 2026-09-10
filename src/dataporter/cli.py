@@ -11,6 +11,7 @@ the progress block and `08`'s helpers print exactly one JSON object there.
 """
 
 import importlib.metadata
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +20,7 @@ from typing import Annotated, Any, NoReturn
 import typer
 from typer.core import TyperGroup
 
-from dataporter import log, summary
+from dataporter import log, state, summary
 from dataporter import seed as seeding
 from dataporter.config import ConfigError, Settings, load_settings, with_attachments_dir
 from dataporter.errors import ExportError
@@ -118,6 +119,12 @@ class _RootGroup(TyperGroup):
             # click exception hierarchy.
             raise
         except ConfigError as exc:
+            fail(str(exc))
+        except state.StateError as exc:
+            # A locked workspace, a workspace belonging to another export, an
+            # unreadable state file: all operator-fixable, all exit `2`. The
+            # invariant violations in `state` are `ValueError`s and fall through
+            # to `70`, which is where a bug in us belongs.
             fail(str(exc))
         except ExportError as exc:
             # A malformed export is operator-fixable, not an internal error, and
@@ -273,44 +280,59 @@ job is to explain that."""
 
 
 def selected_conversations(
-    export: ParsedExport, only: Sequence[str], limit: int | None = None
+    export: ParsedExport, only: Sequence[str]
 ) -> list[Conversation]:
     """The conversations `--only` names, or all of them, in export order.
 
     Export order rather than the order the flags were typed: two runs of the same
-    command must write the same files and print the same lines, and `06` will
-    make selection its own concern anyway. An unknown uuid is an operator
-    mistake, not an empty selection — silently doing nothing is how a typo turns
-    into "the tool skipped my conversation".
+    command must write the same files and print the same lines. Resolution — full
+    uuid or `06`'s 8-character short id, and an unknown value as an error rather
+    than as an empty selection — is `state.resolve_only`, so `seeds --only` and
+    `import --only` accept exactly the same things.
 
-    `--limit` truncates last, so `--only` picks *which* and `--limit` picks *how
-    many*. Its default is `06`'s `run.max_conversations`, which does not exist
-    yet; until then an unset flag means every selected conversation, and a dry run
-    of an export reports the whole export.
+    This is the selection for the commands that have no state to consult (`04`'s
+    `seeds`). `import` uses `state.select`, which also reads what earlier runs
+    recorded.
     """
-    if limit is not None and limit < 0:
-        fail("--limit must not be negative")
-    if only:
-        wanted = set(only)
-        known = {conversation.uuid for conversation in export.conversations}
-        missing = [uuid for uuid in only if uuid not in known]
-        if missing:
-            fail(f"conversation not in export: {missing[0]}")
-        chosen = [item for item in export.conversations if item.uuid in wanted]
-    else:
-        chosen = list(export.conversations)
-    return chosen if limit is None else chosen[:limit]
+    if not only:
+        return list(export.conversations)
+    wanted = set(state.resolve_only([item.uuid for item in export.conversations], only))
+    return [item for item in export.conversations if item.uuid in wanted]
+
+
+def selection_for(
+    settings: Settings,
+    *,
+    only: Sequence[str],
+    limit: int | None,
+    retry_failed: bool = False,
+    retry_partial: bool = False,
+    force: bool = False,
+) -> state.Selection:
+    """The flags, as the record `06` selects from and `run.json` keeps.
+
+    `--limit` is resolved here rather than in `state`: an unset flag means
+    `run.max_conversations`, and it is the effective number — the one that shaped
+    the run — that belongs in the record. The flag itself stays `None` in the
+    signature so `15` can still tell an explicit `--limit 10` from a default.
+    """
+    return state.Selection(
+        only=list(only),
+        limit=settings.run.max_conversations if limit is None else limit,
+        retry_failed=retry_failed,
+        retry_partial=retry_partial,
+        force=force,
+    )
 
 
 def plan_for(
     ctx: typer.Context,
-    export_path: Path,
+    export: ParsedExport,
     *,
-    only: Sequence[str] = (),
-    limit: int | None = None,
+    uuids: Sequence[str] | None = None,
     attachments_dir: Path | None = None,
 ) -> MigrationPlan:
-    """Load, select, classify. Writes nothing and contacts nothing.
+    """Classify a parsed export, or the part of it a selection kept.
 
     The selection is applied *before* the plan is built, so what the dry run
     counts is what this run would do rather than what the export happens to
@@ -318,8 +340,11 @@ def plan_for(
     subset of it somebody asked about.
     """
     settings = with_attachments_dir(app_context(ctx).settings, attachments_dir)
-    export = load_export(export_path)
-    conversations = selected_conversations(export, only, limit)
+    conversations = (
+        list(export.conversations)
+        if uuids is None
+        else [item for item in export.conversations if item.uuid in set(uuids)]
+    )
     return build_plan(
         export.model_copy(update={"conversations": conversations}), settings
     )
@@ -365,6 +390,13 @@ def import_cmd(
         typer.Option("--skip-attachments", help="Do not upload attachments."),
     ] = False,
     attachments_dir: AttachmentsDir = None,
+    force_unlock: Annotated[
+        bool,
+        typer.Option(
+            "--force-unlock",
+            help="Remove a workspace lock left behind by a process that is gone.",
+        ),
+    ] = False,
     pilot: Annotated[
         bool,
         typer.Option("--pilot", help="Run the controlled pilot selection."),
@@ -373,19 +405,36 @@ def import_cmd(
     """Migrate conversations from an export into the destination account."""
     path = require_export(export)
     if not dry_run:
+        # `--force-unlock` is accepted and does nothing yet: `12` is the first
+        # code that takes the workspace lock, and a dry run never does.
         not_implemented(ctx)
 
     # Nothing below this line writes, and nothing below it is allowed to: no run
     # log, so not even `<workspace>/logs/` comes into existence. §9 says no Claude
     # account is modified by a dry run; a workspace appearing next to the export
-    # is the local half of the same promise.
-    plan = plan_for(
-        ctx, path, only=only or [], limit=limit, attachments_dir=attachments_dir
+    # is the local half of the same promise. Reading `06`'s state is still fair —
+    # what a run *would* do depends on what earlier runs already did.
+    settings = app_context(ctx).settings
+    parsed = load_export(path)
+    store = state.StateStore(settings.workspace)
+    store.check_export(parsed.fingerprint)
+    chosen = state.select(
+        [item.uuid for item in parsed.conversations],
+        store.load(),
+        selection_for(
+            settings,
+            only=only or [],
+            limit=limit,
+            retry_failed=retry_failed,
+            retry_partial=retry_partial,
+            force=force,
+        ),
     )
-    if not plan.conversations:
+    if not chosen:
         # `06`'s rule, and the one `seeds` already follows: an empty selection is
         # exit `4`, not a block of zeros that reads like a finished run.
         raise typer.Exit(ExitCode.NOTHING_TO_DO)
+    plan = plan_for(ctx, parsed, uuids=chosen, attachments_dir=attachments_dir)
     # Printed even under `--quiet`: `-q` suppresses progress, and this block is
     # the command's whole result rather than a report of its progress.
     print(summary.dry_run_report(plan.totals), end="")
@@ -400,7 +449,7 @@ def inspect_cmd(
 ) -> None:
     """Report what an export contains and what can be migrated."""
     path = require_export(export)
-    plan = plan_for(ctx, path, attachments_dir=attachments_dir)
+    plan = plan_for(ctx, load_export(path), attachments_dir=attachments_dir)
     if json_output:
         # The plan itself, and nothing else on stdout: this is what `12` and `19`
         # read, so a header line would be a header line in somebody's `jq`.
@@ -460,7 +509,28 @@ def seeds(
 @app.command()
 def status(ctx: typer.Context, json_output: JsonOutput = False) -> None:
     """Show migration progress recorded in the workspace."""
-    not_implemented(ctx)
+    store = state.StateStore(app_context(ctx).settings.workspace)
+    # Read before anything is printed, and on both paths: this is where a
+    # workspace written by a build with a different state schema stops the
+    # command instead of being reported with half its numbers missing.
+    run = store.run()
+    migration = store.load()
+    if json_output:
+        # `state.json` as it is on disk, plus the counters that live next door in
+        # `run.json`. A workspace nothing has run in yet is an empty object and
+        # four zeros, not an error: `status` answers a question, and "nothing has
+        # happened here" is an answer.
+        payload = {
+            "state": migration.model_dump(mode="json"),
+            "counters": {**state.status_counts(migration), **run.counters()},
+        }
+        print(json.dumps(payload, indent=2))
+        return
+    # Printed even under `--quiet`, for the reason the dry-run block is: `-q`
+    # suppresses progress, and this is the command's whole result. No bar: `18`
+    # draws one while a run moves, and a picture that is redrawn once says
+    # nothing the numbers under it do not.
+    print(summary.status_report(migration), end="")
 
 
 @app.command()

@@ -113,6 +113,44 @@ def test_the_rule_reproduces_the_well_formed_lines_of_the_brief() -> None:
         assert typo in brief
 
 
+BRIEF_COUNTS = {"total": 127, "completed": 89, "partial": 1, "failed": 1, "pending": 36}
+"""The brief's §10 example numbers. `06` prints these four lines; `18` adds the
+bar and the header above them."""
+
+
+def test_the_counters_are_the_brief_s_own_lines() -> None:
+    """§10 is a golden string too, and unlike §9 its block is self-consistent:
+    every counter line is 13 columns, so the rule reproduces all four exactly."""
+    brief = BRIEF.read_text(encoding="utf-8").splitlines()
+    rendered = summary.counters_lines(BRIEF_COUNTS)
+    assert rendered == [
+        "Completed: 89",
+        "Partial:    1",
+        "Failed:     1",
+        "Pending:   36",
+    ]
+    assert [line for line in rendered if line in brief] == rendered
+    assert {len(line) for line in rendered} == {summary.COUNTERS_MIN_WIDTH}
+
+
+def test_a_six_figure_total_widens_every_counter_line() -> None:
+    counters = summary.counters_lines(
+        {
+            "total": 200_000,
+            "completed": 123_456,
+            "partial": 0,
+            "failed": 7,
+            "pending": 1,
+        }
+    )
+    assert counters == [
+        "Completed: 123,456",
+        "Partial:         0",
+        "Failed:          7",
+        "Pending:         1",
+    ]
+
+
 def test_every_line_of_the_golden_block_is_the_same_width() -> None:
     widths = {len(line) for line in BRIEF_BLOCK.splitlines() if line}
     assert widths == {summary.MIN_WIDTH}

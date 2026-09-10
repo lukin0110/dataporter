@@ -15,7 +15,6 @@ from dataporter.exit_codes import ExitCode
 # from the app, so that a command silently disappearing fails this test.
 COMMANDS: list[list[str]] = [
     ["login"],
-    ["status"],
     ["resume"],
     ["verify"],
     ["report"],
@@ -30,12 +29,12 @@ COMMANDS: list[list[str]] = [
     ["browser", "close-extra-tabs"],
 ]
 
-EXCLUDED_FROM_69: list[list[str]] = [["import"], ["seeds"], ["inspect"]]
+EXCLUDED_FROM_69: list[list[str]] = [["import"], ["seeds"], ["inspect"], ["status"]]
 """Commands `--help` must still list that the 69 test cannot cover as written.
 
 `import` still exits 69 without `--dry-run`, but it needs an existing export path,
-so it has `test_import_without_dry_run_still_reaches_69` of its own. `seeds` (`04`)
-and `inspect` (`05`) are implemented and no longer exit 69 at all."""
+so it has `test_import_without_dry_run_still_reaches_69` of its own. `seeds` (`04`),
+`inspect` (`05`) and `status` (`06`) are implemented and no longer exit 69 at all."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -106,6 +105,7 @@ def test_import_help_carries_every_flag(runner: CliRunner) -> None:
         "--force",
         "--skip-attachments",
         "--attachments-dir",
+        "--force-unlock",
         "--pilot",
     ):
         assert flag in result.stdout
@@ -125,7 +125,7 @@ def test_usage_error_exits_2(runner: CliRunner, workspace: Path) -> None:
 def test_verbose_and_quiet_compose(runner: CliRunner, workspace: Path) -> None:
     """They act on different streams, so together they are meaningful, not an error."""
     result = runner.invoke(cli.app, ["-v", "-q", "status"], catch_exceptions=False)
-    assert result.exit_code == ExitCode.NOT_IMPLEMENTED
+    assert result.exit_code == ExitCode.OK
 
 
 def test_unhandled_exception_becomes_exit_70(
@@ -135,7 +135,7 @@ def test_unhandled_exception_becomes_exit_70(
         raise ZeroDivisionError("boom")
 
     monkeypatch.setattr(cli, "not_implemented", explode)
-    result = runner.invoke(cli.app, ["status"], catch_exceptions=False)
+    result = runner.invoke(cli.app, ["resume"], catch_exceptions=False)
     assert result.exit_code == ExitCode.INTERNAL
     assert result.stderr == "internal error: ZeroDivisionError\n"
     # The detail goes to the log, never to the operator's terminal.

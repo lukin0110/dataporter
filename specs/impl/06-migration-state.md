@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §7, §6 Phase 4 (resume)
 **Depends on:** [01](01-foundation.md)
 **Enables:** [12](12-import-loop.md), [14](14-human-intervention.md), [18](18-progress-output.md), [19](19-report.md)
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -86,6 +86,62 @@ restarts.
 - `--force` never deletes anything at the destination (§17); it creates another chat and
   remembers the old id.
 
+Resolved while building:
+
+- **`status` prints the counters with no bar, and `18` has to reconcile.** `18` currently
+  says `status` prints "lines 5–10 (bar and counters)". A bar that is drawn once is a
+  picture of a number the line under it already gives, and `status` is a question about a
+  finished or interrupted run rather than a view of one in flight. The counters live in
+  `summary` beside the §9 block, because they are the same alignment rule with a different
+  floor (`13` instead of `27`); `18` builds the header, the bar and the redraw on top of
+  `counters_lines` rather than restating the rule.
+- **`run.json` gains an `interrupted` counter.** The spec says crash recovery is "counted
+  as `interrupted` in `run.json`" without naming a field. It is one of `COUNTERS`, so
+  `bump_counter` reaches it and `19` can read it the same way as the other three.
+- **An illegal transition is exit `70`, not exit `2`.** The §7 table is now a constant
+  (`TRANSITIONS`) that `update` enforces, but no operator input can violate it — only our
+  own code calls `update` — so it raises `ValueError` and lands in `01`'s internal-error
+  guard rather than telling an operator to fix something they did not do. The same goes
+  for an update naming a field an entry does not have. Every *operator* mistake here (a
+  locked workspace, another export's workspace, an unknown `--only`, an unreadable state
+  file) is a `StateError`, and the CLI has one clause that turns those into exit `2`.
+- **`ensure(uuid, **fields)` joins `load`, `update` and `bump_counter`.** `12` re-creates
+  every planned conversation as `pending` at the start of every run; with only `update`
+  that would reset a finished migration on resume. `ensure` inserts and returns, or
+  returns what is already there and writes nothing.
+- **`--limit` truncates `--only` too**, exactly as written: the default is
+  `run.max_conversations`, so `--only` naming twelve conversations migrates ten of them
+  unless `--limit` says otherwise. `--only` picks *which*, `--limit` picks *how many*, and
+  the alternative — a default that quietly does not apply on some paths — is worse than a
+  number an operator can see in `run.json.runs[].selection`.
+- **`--only` takes the short id everywhere.** `resolve_only` is shared with `04`'s `seeds`,
+  which until now accepted full uuids only. Two commands with one `--only` that mean
+  different things by it is a trap, and the short id is what an operator has in front of
+  them: it is what a failure line prints.
+- **`import --dry-run` reads `state.json` and `run.json`, and still writes nothing.** `05`
+  promised the selection would apply "before counting" once `06` existed, so a dry run
+  against a workspace where four conversations are `completed` now counts what is left.
+  Reading is not writing: no directory is created, and `05`'s "a dry run leaves no
+  workspace behind" test still passes.
+- **`--force-unlock` is accepted by `import` and does nothing yet.** `12` is the first code
+  that takes the lock and a dry run never does, so the flag is inert exactly as `05` left
+  `--retry-failed` and `--retry-partial`. The behaviour behind it — break a lock whose pid
+  is not alive, refuse one whose pid is — is built and tested at the `WorkspaceLock` level.
+- **The lock's `since` is UTC**, like every other timestamp this tool writes. The message
+  is the spec's, so it carries no zone marker; an operator comparing it against a wall
+  clock in another zone will see an offset rather than a wrong number.
+- **`status` on a workspace nothing has run in prints zeros and exits `0`.** `05` settled
+  the same question for `inspect`: a command that answers a question answers it, and
+  "nothing has happened here" is an answer. Exit `4` stays what it is — a *run* with
+  nothing to do.
+- **`PauseRecord` is typed here** rather than left as an untyped object for `14`, so
+  `run.json` has one schema and `status --json` cannot emit something no model describes.
+  `14` still owns what goes in it.
+- **`status --json` is `{"state": …, "counters": …}`** — `state.json` verbatim under one
+  key, the four status tallies and the four `run.json` counters under the other. Merging
+  them into one flat object would put a counter name in the same namespace as a
+  conversation uuid.
+
 ## Acceptance criteria
 
 - A test kills the process (SIGKILL) between `tmp` write and `os.replace`; the previous
@@ -103,3 +159,9 @@ restarts.
 - A schema change to `state.json` after real runs exist would strand operators.
   `run.json.schema_version` is checked at startup and a mismatch exits `2` with the
   migration instruction rather than guessing.
+- `O_EXCL` creates the lock file and the pid is written into it a moment later. A second
+  run that reads it inside that window sees an empty file and is told the lock is
+  unreadable — which is still a refusal, so it cannot proceed; only a *third* run passing
+  `--force-unlock` in the same window could break a live lock. One operator, one machine
+  and one browser make that hypothetical, and closing it properly means `link()` rather
+  than the `O_EXCL` this spec asks for.

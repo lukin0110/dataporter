@@ -12,10 +12,11 @@ workspace — it just does not relocate config discovery, so there is no fixed-p
 to iterate and no possible cycle.
 
 `01` defined the mechanism and the `workspace` field. Later slices add their own
-sections (`browser`, `hermes`, `pacing`, `retries`, `timeouts`, `run`, `fidelity`)
-as nested models; nothing here needs to change for them. `03` is the first to do
-it, adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS`
-and a `[attachments]` table in `config.toml` work with no new machinery.
+sections (`browser`, `hermes`, `pacing`, `retries`, `timeouts`, `fidelity`) as
+nested models; nothing here needs to change for them. `03` is the first to do it,
+adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS` and
+a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
+`run`.
 """
 
 import os
@@ -109,6 +110,19 @@ class AttachmentSettings(BaseModel):
         return tuple(item.strip().lstrip(".").casefold() for item in value)
 
 
+class RunSettings(BaseModel):
+    """How much one invocation is allowed to do."""
+
+    max_conversations: int = 10
+    """Where an unset `--limit` comes from (`06`).
+
+    A default rather than "everything": the experiment is a slow, sequential,
+    account-modifying run, and a mistyped command that migrates ten conversations
+    is recoverable in a way that one migrating twelve hundred is not. `21` raises
+    it or passes `--limit` for the full export.
+    """
+
+
 class Settings(BaseSettings):
     """Effective settings for one invocation."""
 
@@ -125,6 +139,7 @@ class Settings(BaseSettings):
 
     seed: SeedSettings = SeedSettings()
     attachments: AttachmentSettings = AttachmentSettings()
+    run: RunSettings = RunSettings()
 
     @property
     def attachments_dir(self) -> Path:
