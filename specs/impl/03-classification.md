@@ -37,7 +37,8 @@ dry run prints and the import loop executes.
       chunk_count: int              # from 04's chunker, computed here for the plan
 
   class MigrationPlan(BaseModel):
-      export_fingerprint: str       # sha256 of conversations.json bytes
+      export_fingerprint: str       # sha256 of conversations.json bytes; `02` computes
+                                    # it during the parse and carries it on `Export.fingerprint`
       conversations: list[ConversationPlan]
       totals: PlanTotals            # conversations, messages, attachments, migratable, unsupported
   ```

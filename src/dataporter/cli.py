@@ -20,6 +20,7 @@ from typer.core import TyperGroup
 
 from dataporter import log
 from dataporter.config import ConfigError, Settings, load_settings
+from dataporter.errors import ExportError
 from dataporter.exit_codes import ExitCode
 
 PROGRAM_NAME = "hermes-claude-migrate"
@@ -113,6 +114,13 @@ class _RootGroup(TyperGroup):
             raise
         except ConfigError as exc:
             fail(str(exc))
+        except ExportError as exc:
+            # A malformed export is operator-fixable, not an internal error, and
+            # exit `2` is the table's "usage or configuration error" row — the
+            # same code `require_export` already uses for a path that is not
+            # there. Only this category: `auth` and `browser` map to codes of
+            # their own, and the slice that adds that behaviour adds its clause.
+            fail(exc.detail or type(exc).__name__)
         except Exception as exc:
             _logger.exception("unhandled error", extra={"command": invoked_name(ctx)})
             # The type only. The detail belongs in the log, not on an operator's

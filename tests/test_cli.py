@@ -8,6 +8,7 @@ import typer
 from typer.testing import CliRunner
 
 from dataporter import cli
+from dataporter.errors import ExportError
 from dataporter.exit_codes import ExitCode
 
 # Every command in `specs/impl/01-foundation.md`, written out rather than derived
@@ -144,3 +145,21 @@ def test_invoked_name_skips_the_program_name(
 ) -> None:
     result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
     assert result.stderr == "not implemented in this build: session logout\n"
+
+
+def test_a_malformed_export_is_exit_2_not_an_internal_error(
+    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`02` raises `ExportError`; without a clause of its own it would reach the
+    operator as `internal error: ExportError` and exit `70`."""
+
+    def explode(export: str) -> Path:
+        raise ExportError(detail="conversations.json is not a JSON array: ./export.zip")
+
+    monkeypatch.setattr(cli, "require_export", explode)
+    result = runner.invoke(cli.app, ["inspect", "."], catch_exceptions=False)
+    assert result.exit_code == ExitCode.USAGE
+    assert result.stderr == (
+        "error: conversations.json is not a JSON array: ./export.zip\n"
+    )
+    assert "Traceback" not in result.output
