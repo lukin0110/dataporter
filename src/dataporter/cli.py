@@ -27,7 +27,13 @@ from dataporter import seed as seeding
 from dataporter.browser import cdp, launcher, probe
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import session as browser_session
-from dataporter.config import ConfigError, Settings, load_settings, with_attachments_dir
+from dataporter.config import (
+    ConfigError,
+    Settings,
+    load_settings,
+    with_attachments_dir,
+    with_pacing,
+)
 from dataporter.errors import AuthError, BrowserError, ExportError, HermesError
 from dataporter.exit_codes import ExitCode
 from dataporter.export import Conversation, load_export
@@ -295,11 +301,50 @@ Limit = Annotated[
     typer.Option(
         "--limit",
         metavar="N",
-        # Not a literal default: `15` must be able to tell an explicit
-        # --limit 10 from an unset flag falling back to run.max_conversations.
+        # Not a literal default: `15` tells an explicit --limit 10 from an unset
+        # flag falling back to run.max_conversations, and refuses the first one
+        # above the ceiling without --all.
         help="Migrate at most N conversations. Defaults to the configured maximum.",
     ),
 ]
+All = Annotated[
+    bool,
+    typer.Option(
+        "--all",
+        help="Lift the configured maximum on how many conversations one run may do.",
+    ),
+]
+Delay = Annotated[
+    float | None,
+    typer.Option(
+        "--delay",
+        metavar="SECONDS",
+        help="Seconds between conversations. Defaults to the configured pacing.",
+    ),
+]
+MaxRetries = Annotated[
+    int | None,
+    typer.Option(
+        "--max-retries",
+        metavar="N",
+        help="Extra attempts per conversation after the first. Defaults to config.",
+    ),
+]
+Timeout = Annotated[
+    float | None,
+    typer.Option(
+        "--timeout",
+        metavar="SECONDS",
+        help="Seconds one conversation's Hermes run may take. Defaults to config.",
+    ),
+]
+"""§13's three flag-configurable parameters (`15`). `None` rather than a literal
+default for the reason `--limit` is `None`: the effective value belongs to
+`Settings`, and a default typed here would outrank an operator's `config.toml`."""
+
+TOO_MANY = "use --all to migrate more than {limit} conversations in one run"
+"""`15`'s usage error. The ceiling is `run.max_conversations`, and it is named in
+the message because it is configurable and the operator may not know it."""
 AttachmentsDir = Annotated[
     Path | None,
     typer.Option(
@@ -344,6 +389,7 @@ def selection_for(
     *,
     only: Sequence[str],
     limit: int | None,
+    all_conversations: bool = False,
     retry_failed: bool = False,
     retry_partial: bool = False,
     force: bool = False,
@@ -353,11 +399,25 @@ def selection_for(
     `--limit` is resolved here rather than in `state`: an unset flag means
     `run.max_conversations`, and it is the effective number — the one that shaped
     the run — that belongs in the record. The flag itself stays `None` in the
-    signature so `15` can still tell an explicit `--limit 10` from a default.
+    signature so that `15` can tell an explicit `--limit 10` from a default.
+
+    `15`'s ceiling is the point of that distinction. `run.max_conversations` is
+    not only a default but a limit on what one invocation may do to an account,
+    so a `--limit` above it is a usage error naming the flag that lifts it rather
+    than a number quietly honoured. `--all` alone is no limit at all; `--all`
+    with a `--limit` is that limit, because an operator who typed both has asked
+    for a number and knows the ceiling exists.
     """
+    ceiling = settings.run.max_conversations
+    if limit is None:
+        effective = None if all_conversations else ceiling
+    else:
+        if limit > ceiling and not all_conversations:
+            fail(TOO_MANY.format(limit=ceiling))
+        effective = limit
     return state.Selection(
         only=list(only),
-        limit=settings.run.max_conversations if limit is None else limit,
+        limit=effective,
         retry_failed=retry_failed,
         retry_partial=retry_partial,
         force=force,
@@ -437,7 +497,11 @@ def import_cmd(
         typer.Option("--dry-run", help="Parse and report; change no account."),
     ] = False,
     limit: Limit = None,
+    all_conversations: All = False,
     only: Only = None,
+    delay: Delay = None,
+    max_retries: MaxRetries = None,
+    timeout: Timeout = None,
     retry_failed: Annotated[
         bool,
         typer.Option("--retry-failed", help="Include previously failed conversations."),
@@ -480,7 +544,12 @@ def import_cmd(
             not_implemented(ctx, "--pilot")
         # `--skip-attachments` is accepted and inert: nothing uploads anything
         # until `16`, so it already describes what happens.
-        settings = with_attachments_dir(context.settings, attachments_dir)
+        settings = with_pacing(
+            with_attachments_dir(context.settings, attachments_dir),
+            delay=delay,
+            max_retries=max_retries,
+            timeout=timeout,
+        )
         log.enable_run_log(settings.workspace)
         outcome = importing.Importer(
             settings,
@@ -492,6 +561,7 @@ def import_cmd(
                 settings,
                 only=only or [],
                 limit=limit,
+                all_conversations=all_conversations,
                 retry_failed=retry_failed,
                 retry_partial=retry_partial,
                 force=force,
@@ -515,6 +585,7 @@ def import_cmd(
             settings,
             only=only or [],
             limit=limit,
+            all_conversations=all_conversations,
             retry_failed=retry_failed,
             retry_partial=retry_partial,
             force=force,
@@ -680,6 +751,9 @@ def doctor(ctx: typer.Context) -> None:
     """Check that Hermes and Chrome are present and configured."""
     settings = app_context(ctx).settings
     log.enable_run_log(settings.workspace)
+    # First, and unconditionally: §13's numbers are what this invocation would
+    # run with, and an operator whose chain is broken still wants to see them.
+    print(hermes_doctor.pacing_check(settings).render())
     failed = False
     # `closing` rather than a plain `for`: the generator launches a browser and
     # closes it in a `finally`, and leaving that to garbage collection would leave

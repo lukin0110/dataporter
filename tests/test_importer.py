@@ -304,16 +304,16 @@ def test_hermes_usage_is_added_up(world: World) -> None:
 def test_the_run_pauses_between_conversations_but_not_after_the_last(
     world: World,
 ) -> None:
+    delay = world.settings.pacing.delay_between_conversations_s
+
     world.run(limit=3)
 
-    assert world.pauses == [
-        importing.DELAY_BETWEEN_CONVERSATIONS_S,
-        importing.DELAY_BETWEEN_CONVERSATIONS_S,
-    ]
+    assert world.pauses == [delay, delay]
 
 
 def test_pause_sleeps_only_for_a_positive_wait() -> None:
-    """The seam `15` replaces. Zero is not a sleep, and a sleep is short."""
+    """The seam every wait goes through. Zero is not a sleep, and a sleep is
+    short."""
     importing.pause(0)
     importing.pause(-1)
     importing.pause(0.001)
@@ -645,6 +645,12 @@ def hermes_result(**fields: Any) -> hermes_running.HermesResult:
         (
             hermes_result(outcome="rate_limited", retry_after_s=60),
             True,
+            Status.PARTIAL,
+            Category.RATE_LIMIT,
+        ),
+        (
+            hermes_result(outcome="rate_limited", retry_after_s=60),
+            False,
             Status.FAILED,
             Category.RATE_LIMIT,
         ),

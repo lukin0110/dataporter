@@ -591,6 +591,7 @@ def test_doctor_prints_ten_lines_and_exits_zero(
     chrome: FakeChrome,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Ten checks, behind `15`'s pacing line — which is not one of them."""
     workspace = workspace_with_config(tmp_path, fake, chrome)
     profiling.run_setup(make_settings(tmp_path, fake, chrome))
     adopt_instead(monkeypatch, chrome)
@@ -600,9 +601,10 @@ def test_doctor_prints_ten_lines_and_exits_zero(
     )
     lines = result.stdout.splitlines()
     assert result.exit_code == ExitCode.OK
-    assert [line[: hermes_doctor.LABEL_WIDTH].strip() for line in lines] == list(
-        hermes_doctor.LABELS
-    )
+    assert [line[: hermes_doctor.LABEL_WIDTH].strip() for line in lines] == [
+        hermes_doctor.PACING,
+        *hermes_doctor.LABELS,
+    ]
     assert all(" ok" in line for line in lines)
     assert result.stderr == ""
 
@@ -617,9 +619,12 @@ def test_doctor_without_hermes_exits_6_at_the_first_line(
         catch_exceptions=False,
     )
     assert result.exit_code == ExitCode.ENVIRONMENT
-    assert len(result.stdout.splitlines()) == 1
-    assert result.stdout.startswith("hermes on PATH")
-    assert "FAIL" in result.stdout
+    # The pacing line, and then the first check — which is the last one too.
+    lines = result.stdout.splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith(hermes_doctor.PACING)
+    assert lines[1].startswith("hermes on PATH")
+    assert "FAIL" in lines[1]
 
 
 # --------------------------------------------------------------------------- #

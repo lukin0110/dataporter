@@ -116,7 +116,11 @@ def test_import_help_carries_every_flag(runner: CliRunner) -> None:
     for flag in (
         "--dry-run",
         "--limit",
+        "--all",
         "--only",
+        "--delay",
+        "--max-retries",
+        "--timeout",
         "--retry-failed",
         "--retry-partial",
         "--force",
@@ -129,9 +133,11 @@ def test_import_help_carries_every_flag(runner: CliRunner) -> None:
 
 
 def test_limit_has_no_literal_default(runner: CliRunner, workspace: Path) -> None:
-    """`15` must be able to tell an explicit `--limit 10` from an unset flag."""
+    """`15` tells an explicit `--limit 10` from an unset flag, and so do the
+    three pacing flags it added: a literal default here would outrank config."""
     signature = inspect.signature(cli.import_cmd)
-    assert signature.parameters["limit"].default is None
+    for name in ("limit", "delay", "max_retries", "timeout"):
+        assert signature.parameters[name].default is None
 
 
 def test_usage_error_exits_2(runner: CliRunner, workspace: Path) -> None:

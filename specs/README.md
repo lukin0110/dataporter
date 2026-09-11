@@ -97,6 +97,11 @@ so whoever lands second merges into it rather than beside it, and `14`'s design 
 hold the table of how the two divide. The join is drawn above because `19` reports
 both.
 
+`15` is the third of them and shares the same function: a rate limit is waited out and
+the conversation attempted again, which is `13`'s shape without `13`'s budget, and a
+wait too long to make becomes `14`'s ask. It is drawn parallel to both because it
+needs neither, but it landed last and merged into the loop rather than beside it.
+
 `10` is deliberately a spike. The brief names the mechanism (Hermes driving the Claude web
 UI) but leaves open everything that only observation can settle: whether Hermes attaches to
 our Chrome in one-shot mode, how large a seed the composer accepts, how generation
@@ -120,7 +125,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [12](impl/12-import-loop.md) | Import loop | §6, §10 | Done |
 | [13](impl/13-recovery.md) | Recovery | §11 | Done |
 | [14](impl/14-human-intervention.md) | Human intervention | §12 | Done |
-| [15](impl/15-pacing.md) | Pacing and limits | §13 | Not started |
+| [15](impl/15-pacing.md) | Pacing and limits | §13 | Done |
 | [16](impl/16-attachments.md) | Attachments | §14 | Not started |
 | [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Not started |
 | [18](impl/18-progress-output.md) | Progress output | §10 | Not started |

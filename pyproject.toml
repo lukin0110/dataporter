@@ -84,6 +84,6 @@ source = ["src/dataporter"]
 # The suite's coverage at the time this gate was added: 1385/1409 statements,
 # 98.3%. Raise it when the real number rises; never lower it to make a run pass.
 # `09`: 3423/3450, 99.2%. `11`: 3497/3524, 99.2%. `12`: 3768/3795, 99.3%.
-# `13`: 3858/3885, 99.3%. `14`: 4081/4108, 99.3%.
+# `13`: 3858/3885, 99.3%. `14`: 4081/4108, 99.3%. `15`: 4223/4250, 99.4%.
 fail_under = 99
 show_missing = true

@@ -45,13 +45,21 @@ that stopped without saying which of the six it was is an unexplained UI state,
 which is exactly what `ambiguous_ui` means.
 """
 
+CONFIRMATION_REQUIRED = "confirmation_required"
+"""The reason `15` escalates a rate limit under.
+
+Not one of its own: §12's list has six reasons and a wait that is too long to
+make is not a seventh kind of blocked page. It is the one row whose phrase
+carries a detail, which is what lets the ask say *which* wait it is asking about.
+"""
+
 REASON_PHRASES: dict[str, str] = {
     AUTH_REQUIRED: "authentication required",
     "captcha": "CAPTCHA",
     "security_challenge": "security challenge",
     "ambiguous_ui": "ambiguous UI state",
     "browser_error": "unrecoverable browser error",
-    "confirmation_required": "confirmation required",
+    CONFIRMATION_REQUIRED: "confirmation required",
 }
 """`09`'s six `needs_human` reasons as the words `14` prints.
 
@@ -80,6 +88,28 @@ has and taking it is not a weakness of the check but the absence of one.
 
 TOO_MANY_INTERVENTIONS = "too many interventions — see report"
 """The run gave up asking. `run.max_interventions` is the budget."""
+
+RATE_LIMIT_UNTIL = "rate limit until {until}"
+"""The detail of an escalated rate limit, so the block reads
+`confirmation required: rate limit until 15:00 UTC`. The wait is longer than
+`pacing.max_rate_limit_wait_s`, and a person decides whether to sit it out."""
+
+RATE_LIMIT_NO_TIME = "rate limited {waits} times with no time given"
+"""The second escalation: the account keeps refusing and never says until when,
+so there is no wait to make and `15` stops guessing at one."""
+
+RATE_LIMIT_AGAIN = "rate limited {waits} times, now until {until}"
+"""The third: the page keeps saying when and the answer keeps being later. Each
+wait was short enough to make; three in a row is an account that is not going to
+let this run finish, and the operator can see what the tool cannot."""
+
+LOGIN_TIMED_OUT = "still not logged in after {seconds:g}s — stopping"
+"""An `auth_required` ask that outlived `timeouts.login_s` (`15`, exit `3`).
+
+The only intervention with a clock on it, because it is the only one whose
+resolution the tool can check: five of the six are cleared by a person's word,
+and a run cannot tell a human who is taking their time from one who has left.
+"""
 
 
 def offer(short_id: str) -> str:
@@ -115,7 +145,7 @@ class Request:
     def phrase(self) -> str:
         """The reason, in the words §12 uses for it."""
         phrase = REASON_PHRASES.get(self.reason, REASON_PHRASES[DEFAULT_REASON])
-        if self.reason == "confirmation_required" and self.detail:
+        if self.reason == CONFIRMATION_REQUIRED and self.detail:
             return f"{phrase}: {self.detail}"
         return phrase
 
