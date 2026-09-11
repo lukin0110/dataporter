@@ -22,7 +22,10 @@ import typer
 from typer.core import TyperGroup
 
 from dataporter import PROGRAM_NAME, log, progress, state, summary
+from dataporter import followup as following
 from dataporter import importer as importing
+from dataporter import judge as judging
+from dataporter import pilot as piloting
 from dataporter import report as reporting
 from dataporter import seed as seeding
 from dataporter import verify as verifying
@@ -94,9 +97,12 @@ def invoked_name(ctx: typer.Context) -> str:
 def not_implemented(ctx: typer.Context, detail: str = "") -> NoReturn:
     """Exit `69`. A command, or — `detail` — one flag of an implemented one.
 
-    `12` is the first caller of the second kind: `import` works, `--pilot` is
-    `20`'s, and a flag that asks for a different selection cannot be accepted and
-    quietly ignored the way an inert one can.
+    Nothing in the surface answers it any more: `12` was the first caller of the
+    second kind, refusing `--pilot` because a flag that asks for a different
+    selection cannot be accepted and quietly ignored the way an inert one can,
+    and `20` is what implemented the selection it was holding the place for. It
+    stays because the surface is fixed in `01` and the next command to be
+    registered ahead of its slice needs it.
     """
     named = f"{invoked_name(ctx)} {detail}".rstrip()
     print(
@@ -357,6 +363,13 @@ constraints as well, which is what refuses the same value arriving through
 `HCM_…` or `config.toml`, and what catches `--timeout 0` — zero is in range for
 a flag and not for a subprocess deadline. (Raised by Copilot in review on #24.)"""
 
+PILOT_CHOOSES = (
+    "--pilot chooses the conversations itself: drop --only, --limit and --all"
+)
+"""`20`'s usage error. The pilot selection is the experiment's design — ten
+categories, in order — so a flag that would narrow, widen or reorder it is
+refused rather than silently losing to it, whichever way round that went."""
+
 TOO_MANY = "use --all to migrate more than {limit} conversations in one run"
 """`15`'s usage error. The ceiling is `run.max_conversations`, and it is named in
 the message because it is configurable and the operator may not know it."""
@@ -409,6 +422,7 @@ def selection_for(
     retry_partial: bool = False,
     force: bool = False,
     skip_attachments: bool = False,
+    pilot: Sequence[state.PilotChoice] = (),
 ) -> state.Selection:
     """The flags, as the record `06` selects from and `run.json` keeps.
 
@@ -423,6 +437,10 @@ def selection_for(
     than a number quietly honoured. `--all` alone is no limit at all; `--all`
     with a `--limit` is that limit, because an operator who typed both has asked
     for a number and knows the ceiling exists.
+
+    `pilot` is `20`'s record of *why* each conversation is in `only`, carried
+    through unchanged: the selection is made before this is called, and nothing
+    here re-derives it.
     """
     ceiling = settings.run.max_conversations
     if limit is None:
@@ -438,6 +456,7 @@ def selection_for(
         retry_partial=retry_partial,
         force=force,
         skip_attachments=skip_attachments,
+        pilot=list(pilot),
     )
 
 
@@ -574,12 +593,39 @@ def import_cmd(
     """Migrate conversations from an export into the destination account."""
     path = require_export(export)
     context = app_context(ctx)
+    parsed: ParsedExport | None = None
+    """The export, once, when `--pilot` has already had to read it."""
+    choices: list[state.PilotChoice] = []
+    if pilot:
+        if only or limit is not None or all_conversations:
+            # A selection flag beside a flag that *is* the selection: one of the
+            # two would have to be ignored, and `12`'s rule about `--pilot` — a
+            # flag that chooses cannot be inert — cuts both ways.
+            fail(PILOT_CHOOSES)
+        parsed = load_export(path)
+        choices = piloting.choose(
+            parsed,
+            plan_for(
+                ctx,
+                parsed,
+                attachments_dir=attachments_dir,
+                skip_attachments=skip_attachments,
+            ),
+        )
+        only = piloting.uuids(choices)
+        limit = piloting.PILOT_LIMIT
+        # Printed before anything is migrated, and even under `--quiet`: §18's
+        # answers are only worth having if the conversations behind them were
+        # chosen for a reason, and this block is that reason. It is on stdout
+        # rather than in the log because `run.json` is where it is kept and an
+        # operator is who it is for.
+        print(piloting.block(choices), end="")
+        if not only:
+            # Nothing migratable in the whole export: `06`'s rule for an empty
+            # selection, reached here rather than below so that a dry run says
+            # it too.
+            raise typer.Exit(ExitCode.NOTHING_TO_DO)
     if not dry_run:
-        if pilot:
-            # `20` owns the pilot selection. Accepting the flag and running the
-            # ordinary selection instead would migrate a different set of
-            # conversations than the one an operator asked for.
-            not_implemented(ctx, "--pilot")
         settings = with_pacing(
             with_skip_attachments(
                 with_attachments_dir(context.settings, attachments_dir),
@@ -605,6 +651,7 @@ def import_cmd(
                 retry_partial=retry_partial,
                 force=force,
                 skip_attachments=skip_attachments,
+                pilot=choices,
             ),
         )
         print_report(outcome)
@@ -616,7 +663,7 @@ def import_cmd(
     # is the local half of the same promise. Reading `06`'s state is still fair —
     # what a run *would* do depends on what earlier runs already did.
     settings = context.settings
-    parsed = load_export(path)
+    parsed = parsed if parsed is not None else load_export(path)
     store = state.StateStore(settings.workspace)
     store.check_export(parsed.fingerprint)
     chosen = state.select(
@@ -631,6 +678,7 @@ def import_cmd(
             retry_partial=retry_partial,
             force=force,
             skip_attachments=skip_attachments,
+            pilot=choices,
         ),
     )
     if not chosen:
@@ -828,6 +876,120 @@ def verify(ctx: typer.Context, only: Only = None) -> None:
     finally:
         lock.release()
     raise typer.Exit(ExitCode.FAILED if failures else ExitCode.OK)
+
+
+def probed(
+    settings: Settings, wanted: Sequence[tuple[str, state.ConversationState]]
+) -> int:
+    """Ask every chosen chat `20`'s question, print a line each, count the misses.
+
+    The browser is opened here for the reason `verified` opens one: the probe is
+    a question about the account, so the command that asks it is the command that
+    proves the account is signed in. Hermes is what drives the page — `08`'s
+    helpers insert the question and wait for the answer, and an agent is what
+    finds the composer — so this is `verify`'s shape with `12`'s subprocess in
+    the middle.
+
+    Every answer is written as it arrives rather than at the end: a probe run is
+    ten Hermes tasks and a minute each, and a run interrupted at the seventh
+    should leave six replies rather than none.
+    """
+    browser = launcher.launch(settings, probe.NEW_CHAT_URL)
+    asking = following.Prober(settings)
+    file = following.read(settings)
+    missing = 0
+    try:
+        if not browser_session.signed_in(browser):
+            raise AuthError(detail=SIGNED_OUT)
+        for position, (uuid, entry) in enumerate(wanted):
+            answer = asking.ask(uuid, entry)
+            file = file.replace(answer)
+            following.write(settings, file)
+            missing += 0 if answer.answered else 1
+            # Printed even under `--quiet`, like `verify`'s lines: `-q`
+            # suppresses progress, and these lines are the whole result.
+            print(answer.line())
+            if position + 1 < len(wanted):
+                # §13's gap between conversations, for §13's reason: this is one
+                # more message into a real account, sent by the same browser.
+                importing.pause(settings.pacing.delay_between_conversations_s)
+    finally:
+        # A browser this command started is one it closes; one that was already
+        # running belongs to whoever started it (`07`, `17`).
+        if not browser.adopted:
+            browser.close()
+    return missing
+
+
+@app.command()
+def followup(ctx: typer.Context, only: Only = None) -> None:
+    """Ask each migrated chat one follow-up question (the pilot's probe)."""
+    settings = app_context(ctx).settings
+    log.enable_run_log(settings.workspace)
+    store = state.StateStore(settings.workspace)
+    # Read before anything is printed, like `status` and `verify`: a workspace
+    # written by a build with a different state schema stops the command here.
+    store.run()
+    wanted = list(following.probeable(store.load()))
+    if only:
+        chosen = set(state.resolve_only([uuid for uuid, _ in wanted], only))
+        wanted = [item for item in wanted if item[0] in chosen]
+    if not wanted:
+        # Nothing completed, or nothing selected. Exit `4`, `06`'s rule for an
+        # empty selection — a probe of no conversations is not a finished
+        # experiment.
+        raise typer.Exit(ExitCode.NOTHING_TO_DO)
+    # The same local half of `doctor` a run makes before it starts (`12`): every
+    # probe is a Hermes task, so a machine with no Hermes would otherwise report
+    # ten identical failures instead of the one fact behind them.
+    failure = hermes_doctor.local_failure(settings)
+    if failure is not None:
+        fail(f"{failure.label}: {failure.detail}", ExitCode.ENVIRONMENT)
+    # Under the lock: this writes `<workspace>/pilot/`, and a probe racing an
+    # `import` would ask a question in a chat that run is still writing into.
+    lock = state.WorkspaceLock(settings.workspace)
+    lock.acquire()
+    try:
+        missing = probed(settings, wanted)
+    finally:
+        lock.release()
+    raise typer.Exit(ExitCode.FAILED if missing else ExitCode.OK)
+
+
+@app.command()
+def judge(ctx: typer.Context, only: Only = None) -> None:
+    """Grade the follow-up replies with a model (the `judge` extra)."""
+    settings = app_context(ctx).settings
+    log.enable_run_log(settings.workspace)
+    file = following.read(settings)
+    wanted = list(file.probes)
+    if only:
+        chosen = set(
+            state.resolve_only([item.conversation_uuid for item in wanted], only)
+        )
+        wanted = [item for item in wanted if item.conversation_uuid in chosen]
+    if not wanted:
+        # No probe file, or nothing selected in it. Exit `4` rather than `0`:
+        # `followup` is what produces the replies, and grading none of them is
+        # not a graded experiment.
+        raise typer.Exit(ExitCode.NOTHING_TO_DO)
+    try:
+        grade = judging.grader(settings)
+    except judging.JudgeError as exc:
+        # Exit `6`, the environment row: the extra is not installed, or the key
+        # the judge would authenticate with is not in the environment.
+        fail(str(exc), ExitCode.ENVIRONMENT)
+    lock = state.WorkspaceLock(settings.workspace)
+    lock.acquire()
+    try:
+        for item in wanted:
+            verdict = judging.verdict_for(settings, item, grade=grade)
+            file = file.replace(item.model_copy(update={"verdict": verdict}))
+            following.write(settings, file)
+            # The score, never the reason (§10). Even under `--quiet`.
+            print(judging.line(item, verdict))
+    finally:
+        lock.release()
 
 
 @app.command()

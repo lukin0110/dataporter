@@ -4,7 +4,6 @@ import inspect
 from pathlib import Path
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
 from dataporter import cli
@@ -16,6 +15,8 @@ from dataporter.exit_codes import ExitCode
 COMMANDS: list[list[str]] = [
     ["import"],
     ["verify"],
+    ["followup"],
+    ["judge"],
     ["resume"],
     ["seeds"],
     ["inspect"],
@@ -35,8 +36,8 @@ COMMANDS: list[list[str]] = [
 """The whole surface, and where each command's behaviour is exercised.
 
 `import` runs the migration from `12` and needs a browser and a Hermes, so it is
-exercised in `test_importer.py` where the fakes for both live; the one thing it
-still refuses is `--pilot`, which has a test of its own below. `seeds` (`04`),
+exercised in `test_importer.py` where the fakes for both live, and its `--pilot`
+selection in `test_pilot.py`. `seeds` (`04`),
 `inspect` (`05`), `status` (`06`), `login` and `session …` (`07`) are implemented
 and no longer exit 69 at all, and `08` implemented every `browser …` command;
 those two groups are exercised in `test_browser_session.py` and
@@ -50,11 +51,12 @@ implemented `verify`, which exits `4` on a workspace with nothing migrated in it
 it is exercised in `test_verify.py`, where the fake browser it reads through
 lives. `19` implemented `report`, the last command that exited `69`; it exits `2`
 on a workspace no run has written a plan into, and is exercised in
-`test_report.py`.
+`test_report.py`. `20` added the last two, `followup` and `judge`, which exit `4`
+on a workspace nothing has been migrated or probed in; they are exercised in
+`test_followup.py` and `test_judge.py`.
 
-Nothing in the surface answers `69` any more. `import --pilot` is the one thing
-that does, because `20` owns the pilot selection, and it has a test of its own
-below."""
+Nothing in the surface answers `69` any more, and nothing refuses a flag either:
+`--pilot` was the last refusal and `20` implemented it."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -76,19 +78,6 @@ def test_missing_export_exits_usage_with_no_traceback(
     assert result.stderr == "error: export not found: ./nowhere\n"
     assert result.stdout == ""
     assert "Traceback" not in result.output
-
-
-def test_import_pilot_is_not_implemented(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
-    """`20` owns the pilot selection, and a selection flag cannot be inert: it
-    is refused rather than accepted and quietly replaced by the ordinary one."""
-    result = runner.invoke(
-        cli.app, ["import", str(export_dir), "--pilot"], catch_exceptions=False
-    )
-    assert result.exit_code == ExitCode.NOT_IMPLEMENTED
-    assert result.stderr == "not implemented in this build: import --pilot\n"
-    assert result.stdout == ""
 
 
 def test_help_lists_every_command(runner: CliRunner) -> None:
@@ -149,15 +138,17 @@ def test_unhandled_exception_becomes_exit_70(
     export_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Through `--pilot`, which is the one refusal left in the surface: `19`
-    implemented `report`, and a command that raises is what this is about."""
+    """Through `--pilot`, whose selection is the newest thing in the surface:
+    what this is about is any command that raises something nobody caught."""
 
-    def explode(ctx: typer.Context, detail: str = "") -> None:
+    def explode(*args: object, **kwargs: object) -> None:
         raise ZeroDivisionError("boom")
 
-    monkeypatch.setattr(cli, "not_implemented", explode)
+    monkeypatch.setattr(cli.piloting, "choose", explode)
     result = runner.invoke(
-        cli.app, ["import", str(export_dir), "--pilot"], catch_exceptions=False
+        cli.app,
+        ["import", str(export_dir), "--dry-run", "--pilot"],
+        catch_exceptions=False,
     )
     assert result.exit_code == ExitCode.INTERNAL
     assert result.stderr == "internal error: ZeroDivisionError\n"

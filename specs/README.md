@@ -133,7 +133,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Done |
 | [18](impl/18-progress-output.md) | Progress output | §10 | Done |
 | [19](impl/19-report.md) | Report | §16 | Done |
-| [20](impl/20-pilot.md) | Pilot experiment | §18 | Not started |
+| [20](impl/20-pilot.md) | Pilot experiment | §18 | In progress |
 | [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | Not started |
 | [22](impl/22-test-performance.md) | Test performance | — tooling | Not started |
 
@@ -165,7 +165,10 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   no `rich`, no colour, because the output formats are golden strings.
 - **`pydantic-ai`:** not a runtime dependency. Hermes is the agent; a second agent loop is
   not needed. It is used once, optionally, in `20` as a semantic-fidelity judge behind the
-  `judge` extra. If that stays useful it gets its own slice; if not, it is removed.
+  `judge` extra. If that stays useful it gets its own slice; if not, it is removed. `20`
+  imports it dynamically, inside the one function that needs it, so that a build without
+  the extra — which is every build `make check` runs on — neither fails to import nor
+  fails to type-check.
 - **Hermes:** the external Hermes Agent (Nous Research), installed by the operator with the
   official installer, invoked as a subprocess in one-shot mode (`hermes -z`) inside a
   dedicated Hermes profile named `dataporter`. It is never imported as a library. Its
@@ -184,12 +187,15 @@ Assumptions, not brief requirements. Change them here and the slices follow.
 - **Workspace:** `migration/` next to the export by default, `--workspace` to override.
   Holds `state.json` (§7 shape, nothing else in it), `run.json` (run-level counters and
   pause record), `plan.json`, `seeds/`, `attachments/`, `browser-profile/`, `hermes/`,
-  `report.json` and `logs/`. Never inside the export.
+  `report.json`, `pilot/` (`20`'s question and probe replies) and `logs/`. Never inside
+  the export.
 - **Output discipline (§10):** no message content and no titles on stdout or in logs at any
   verbosity. Titles live in `state.json` because §7 puts them there, and in seed files
   because they are content. Hermes's own session transcripts contain page snapshots and
   therefore content; they live under the Hermes profile and `setup` documents how to purge
-  them.
+  them. `20` adds one more content-bearing workspace file, `pilot/probes.json`, which holds
+  the probe replies a person grades; it is written, never printed and never logged, and it
+  is the only place in the tool where a message Claude wrote is recorded.
 - **Secrets:** the tool never sees a Claude password (§8). It also never reads or stores the
   API key Hermes uses; that is Hermes's `.env`.
 - **Fast and slow tests:** the suite is split by a `slow` marker — anything that spawns a

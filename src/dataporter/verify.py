@@ -153,7 +153,13 @@ class Expected:
 
     @property
     def url(self) -> str:
-        return f"https://{probing.CLAUDE_HOST}/chat/{self.conversation_id}"
+        return chat_url(self.conversation_id)
+
+
+def chat_url(conversation_id: str) -> str:
+    """Where a destination chat lives. One spelling, because two places build it:
+    this module navigates to it and `20`'s probe sends an agent to it."""
+    return f"https://{probing.CLAUDE_HOST}/chat/{conversation_id}"
 
 
 def capped_title(title: str, limit: int) -> str:

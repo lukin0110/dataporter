@@ -319,6 +319,28 @@ class MigrationState(RootModel[dict[str, ConversationState]]):
 # --------------------------------------------------------------------------- #
 
 
+class PilotChoice(StateModel):
+    """One category of `20`'s pilot, and the conversation it chose.
+
+    Here rather than in `pilot` for `PauseRecord`'s reason: `run.json`'s shape is
+    this module's, and a record another slice owns still has to be readable by
+    anything that opens the file. `pilot` decides *which* conversation; this says
+    what that decision is written down as.
+
+    `uuid` is `None` for a category the export has nothing for — no class 2
+    attachment anywhere, no conversation left over for the tenth slot — which is
+    a finding about the export rather than a gap in the record, and `20`'s
+    write-up says so.
+    """
+
+    category: int
+    """1 to 10, as `20` numbers them. The number is the identity: the name below
+    can be reworded, and a write-up that cites "category 3" cannot."""
+    name: str
+    """The slug `pilot` prints beside the number, e.g. `longest-multi-part`."""
+    uuid: str | None = None
+
+
 class Selection(StateModel):
     """What one run was asked to migrate, and what that resolved to.
 
@@ -340,6 +362,15 @@ class Selection(StateModel):
     this line."""
     uuids: list[str] = []
     """What `select` returned, in export order."""
+    pilot: list[PilotChoice] = []
+    """`20`'s selection, one entry per category, in category order.
+
+    Empty for every run that is not a pilot. It is kept beside `only` rather than
+    instead of it because the two answer different questions: `only` is the set
+    the run was given, and this is *why* each conversation is in it — which is
+    the half a write-up cites and the half nothing else in the workspace can
+    reconstruct once the export has moved on.
+    """
 
 
 class RunRecord(StateModel):
