@@ -326,6 +326,22 @@ class Importer:
         failure = hermes_doctor.local_failure(self.settings)
         if failure is not None:
             raise HermesError(detail=f"{failure.label}: {failure.detail}")
+        self._open_browser()
+
+    def _open_browser(self) -> None:
+        """Launch or adopt Chrome, prove the session, leave one tab to drive.
+
+        The mid-run relaunch comes through here too, because a browser that came
+        back is as unproven as one that has just started: a Chrome that died may
+        never have written the profile that kept it signed in, and one restarted
+        over the same `--user-data-dir` can restore the tabs it had open — which
+        is the `ambiguous_tab` that `close-extra-tabs` exists to clear.
+
+        A session that is signed out ends the run (exit `3`) wherever it is
+        noticed. Every remaining conversation would fail the same way, and `14`
+        is where this becomes a pause the operator can resolve without losing
+        the run.
+        """
         self.session = launcher.launch(self.settings, probe.NEW_CHAT_URL)
         if not browser_session.signed_in(self.session):
             raise AuthError(detail=browser_session.SIGNED_OUT)
@@ -574,7 +590,9 @@ class Importer:
         Checked before each conversation rather than after each failure: a dead
         Chrome found here costs one HTTP call, and found later costs a Hermes run
         that had nowhere to go. A browser that cannot be started again is the one
-        browser failure that ends the run (exit `6`).
+        browser failure that ends the run (exit `6`); one that comes back is put
+        through the same two checks the preflight makes, since nothing about a
+        replacement browser is known until it has answered them.
         """
         session = self.session
         if session is not None and session.client.responding():
@@ -582,7 +600,7 @@ class Importer:
         _logger.warning("browser not responding; starting it again")
         self.session = None
         try:
-            self.session = launcher.launch(self.settings, probe.NEW_CHAT_URL)
+            self._open_browser()
         except BrowserError as exc:
             raise BrowserError(
                 detail=f"{NOT_RELAUNCHABLE}: {exc.detail or type(exc).__name__}"
