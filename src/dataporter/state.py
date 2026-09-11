@@ -319,6 +319,15 @@ class RunFile(StateModel):
 
     schema_version: int = SCHEMA_VERSION
     export_fingerprint: str = ""
+    export_path: str = ""
+    """Where that export was, absolute, as the last run that read it saw it.
+
+    The fingerprint says *which* export the workspace belongs to; this says where
+    to find it. `14`'s `resume` is what needs the second one: §8's command surface
+    gives it no argument, so a run it continues has to be able to re-read the
+    export the paused run was migrating. Empty in a workspace written before this
+    was recorded, which `resume` reports rather than guesses around.
+    """
     runs: list[RunRecord] = []
     browser_actions: int = 0
     retries: int = 0
@@ -633,18 +642,25 @@ class StateStore:
         self._write_state()
         return entry
 
-    def recover(self) -> list[str]:
+    def recover(self, *, keep: str | None = None) -> list[str]:
         """Convert `running` entries left by a killed run. Called at startup.
 
         A conversation with a destination id has a chat in the account, so the
         honest status is `partial` — something landed. One without never got that
         far, so it is `pending` again. `attempts` is kept either way: a run that
         died twice tried twice.
+
+        `keep` is `14`'s exception, and the only one: the conversation a paused
+        run is about was not interrupted, it is being waited on, and `resume`
+        continues it from where it stopped. Counting it as a crash would both
+        inflate `interrupted` and — for a pause that never reached a chat — turn
+        it back into a `pending` conversation that starts over, which is the one
+        thing §12 says must not happen.
         """
         state = self.load()
         recovered: list[str] = []
         for uuid, entry in list(state.root.items()):
-            if entry.status is not Status.RUNNING:
+            if entry.status is not Status.RUNNING or uuid == keep:
                 continue
             landed = entry.destination.conversation_id is not None
             state.root[uuid] = ConversationState.model_validate(
@@ -713,12 +729,26 @@ class StateStore:
         if recorded and recorded != fingerprint:
             raise FingerprintMismatch("workspace belongs to a different export")
 
-    def bind_export(self, fingerprint: str) -> None:
-        """Check, then record, which export this workspace is for."""
+    def bind_export(self, fingerprint: str, path: Path | None = None) -> None:
+        """Check, then record, which export this workspace is for and where it is.
+
+        The path is refreshed on every run rather than written once: an export
+        that has been moved is still the same export — the fingerprint is what
+        says so — and `14`'s `resume` needs the place it is now, not the place it
+        was the first time.
+        """
         self.check_export(fingerprint)
         run = self.run()
-        if run.export_fingerprint != fingerprint:
-            self._write_run(run.model_copy(update={"export_fingerprint": fingerprint}))
+        recorded = run.export_path if path is None else str(path.resolve())
+        if run.export_fingerprint != fingerprint or run.export_path != recorded:
+            self._write_run(
+                run.model_copy(
+                    update={
+                        "export_fingerprint": fingerprint,
+                        "export_path": recorded,
+                    }
+                )
+            )
 
     def add_usage(
         self,

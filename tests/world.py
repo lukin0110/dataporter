@@ -6,7 +6,8 @@ test told it to, and `fake_composer`'s modelled claude.ai page. Everything
 between them is the real thing: the real planner, the real seed generator, the
 real prompt, the real runner, the real state store.
 
-It lives in its own module because `13` is the second slice to need it. The loop
+It lives in its own module because `13` was the second slice to need it, and
+`14` the third. The loop
 and its recovery policy are two subjects and two test modules, and a second
 spelling of "a workspace, a fake Hermes and a fake browser" would be a second
 thing to keep in step with `09` and `08`.
@@ -72,6 +73,22 @@ def completed(conversation_id: str = CHAT, **fields: Any) -> str:
         "conversation_id": conversation_id,
         "last_step": str(Step.DONE),
         "chunks_acked": 1,
+    }
+    payload.update(fields)
+    return result(**payload)
+
+
+def needs_human(reason: str = "auth_required", **fields: Any) -> str:
+    """What a Hermes run that cannot safely proceed prints last (`14`).
+
+    Not a failure and not a retry: `13` leaves it alone because no second
+    identical attempt clears it, and `14` asks a person instead.
+    """
+    payload: dict[str, Any] = {
+        "outcome": "needs_human",
+        "needs_human_reason": reason,
+        "last_step": str(Step.OPEN),
+        "error": {"category": "auth", "detail": "sign-in form shown at /login"},
     }
     payload.update(fields)
     return result(**payload)
@@ -184,3 +201,17 @@ def build(
         yield created
     finally:
         browser.chrome.stop()
+
+
+def cli_env(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The world's settings, as the environment the CLI loads them from.
+
+    Here rather than in one test module for the reason `World` is: `12` runs
+    `import` through the CLI and `14` runs `import` and then `resume`.
+    """
+    monkeypatch.setenv("HCM_WORKSPACE", str(world.settings.workspace))
+    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(world.browser.chrome.port))
+    monkeypatch.setenv("HCM_HERMES__EXECUTABLE", str(world.settings.hermes.executable))
+    monkeypatch.setenv("HCM_HERMES__HOME", str(world.settings.hermes_home))
+    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "2")
+    monkeypatch.setenv("HCM_TIMEOUTS__HERMES_TASK_S", "60")

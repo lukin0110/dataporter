@@ -3,7 +3,9 @@
 **Kind:** Implementation spec — how this gets built. Living document.
 **Implements:** [Brief](../01-initial-brief.md) §11 (detect and recover from the listed failures)
 **Depends on:** [12](12-import-loop.md)
-**Enables:** [14](14-human-intervention.md), [19](19-report.md)
+**Enables:** [19](19-report.md)
+**Composes with:** [14](14-human-intervention.md) — this slice hands `needs_human` to it
+(see the table below); neither gates the other, and both share `Importer._migrate`
 **Status:** Done
 
 ## Goal

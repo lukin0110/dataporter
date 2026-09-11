@@ -626,7 +626,20 @@ def status(ctx: typer.Context, json_output: JsonOutput = False) -> None:
 @app.command()
 def resume(ctx: typer.Context) -> None:
     """Continue a migration that paused for human intervention."""
-    not_implemented(ctx)
+    context = app_context(ctx)
+    settings = context.settings
+    log.enable_run_log(settings.workspace)
+    try:
+        outcome = importing.Importer(
+            settings, progress=importing.LineProgress(quiet=context.quiet)
+        ).resume()
+    except importing.NothingToResume:
+        # Not an error, so no `error:` and no stderr: `resume` was asked whether
+        # there was anything to continue and the answer was no. Exit `4` is the
+        # same "nothing to do" the other commands use for an empty selection.
+        print(importing.NOTHING_TO_RESUME)
+        raise typer.Exit(ExitCode.NOTHING_TO_DO) from None
+    raise typer.Exit(outcome.exit_code)
 
 
 @app.command()
