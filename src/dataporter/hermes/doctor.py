@@ -27,6 +27,7 @@ import json
 import secrets
 import time
 from collections.abc import Generator
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,6 +75,15 @@ LABELS: tuple[str, ...] = (
 )
 """In order. A test reads this rather than the ten strings, so a label that is
 renamed cannot be renamed in only one of the two places."""
+
+LOCAL_LABELS: tuple[str, ...] = LABELS[:5]
+"""The checks that need neither a browser nor a Hermes task.
+
+`12`'s preflight is exactly these five: they are local, they take milliseconds,
+and between them they answer "is the chain installed and configured". The two
+that run a real `hermes -z` are left to `doctor` — they cost a minute each, and a
+migration is about to prove the same thing with work that counts.
+"""
 
 BLANK_URL = "about:blank"
 SETUP_HINT = f"run: {PROGRAM_NAME} setup"
@@ -237,6 +247,22 @@ def checks(settings: Settings) -> Generator[Check, None, None]:
         # adopted belongs to whoever started it, as `session status` has it.
         if not browser.adopted:
             browser.close()
+
+
+def local_failure(settings: Settings) -> Check | None:
+    """The first of `LOCAL_LABELS` that fails, or `None` when all five pass.
+
+    `checks` is a generator, so stopping at the fifth is what keeps this from
+    launching a browser: nothing past `skill installed` is ever evaluated, and
+    closing the generator runs its `finally` clauses either way.
+    """
+    with closing(checks(settings)) as stream:
+        for check in stream:
+            if not check.ok:
+                return check
+            if check.label == SKILL_INSTALLED:
+                break
+    return None
 
 
 def _hermes_reaches_chrome(settings: Settings, client: CdpClient) -> Check:

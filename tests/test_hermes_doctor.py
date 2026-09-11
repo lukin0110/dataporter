@@ -523,6 +523,48 @@ def test_an_ok_line_with_nothing_to_add_is_just_ok() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# The local half, which `12` runs before every migration
+# --------------------------------------------------------------------------- #
+
+
+def test_local_labels_are_the_five_that_need_nothing_running() -> None:
+    assert hermes_doctor.LOCAL_LABELS == (
+        hermes_doctor.HERMES_ON_PATH,
+        hermes_doctor.HERMES_PROFILE,
+        hermes_doctor.HERMES_MODEL,
+        hermes_doctor.HERMES_CONFIG,
+        hermes_doctor.SKILL_INSTALLED,
+    )
+
+
+def test_a_configured_workspace_has_no_local_failure(
+    tmp_path: Path,
+    fake: FakeHermes,
+    chrome: FakeChrome,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """And no browser is launched to find that out: `launch` would raise."""
+    settings = make_settings(tmp_path, fake, chrome)
+    profiling.run_setup(settings)
+
+    def never(settings: Settings, url: str) -> launcher.BrowserSession:
+        raise AssertionError("the local checks must not launch a browser")
+
+    monkeypatch.setattr(launcher, "launch", never)
+    assert hermes_doctor.local_failure(settings) is None
+    assert fake.one_shots == []
+
+
+def test_a_missing_profile_is_the_local_failure(
+    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
+) -> None:
+    settings = make_settings(tmp_path, fake, chrome)
+    failure = hermes_doctor.local_failure(settings)
+    assert failure is not None
+    assert failure.label == hermes_doctor.HERMES_PROFILE
+
+
+# --------------------------------------------------------------------------- #
 # Through the command
 # --------------------------------------------------------------------------- #
 

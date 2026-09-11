@@ -37,8 +37,9 @@ EXCLUDED_FROM_69: list[list[str]] = [
 ]
 """Commands `--help` must still list that the 69 test cannot cover as written.
 
-`import` still exits 69 without `--dry-run`, but it needs an existing export path,
-so it has `test_import_without_dry_run_still_reaches_69` of its own. `seeds` (`04`),
+`import` runs the migration from `12` and needs a browser and a Hermes, so it is
+exercised in `test_importer.py` where the fakes for both live; the one thing it
+still refuses is `--pilot`, which has a test of its own below. `seeds` (`04`),
 `inspect` (`05`), `status` (`06`), `login` and `session …` (`07`) are implemented
 and no longer exit 69 at all, and `08` implemented every `browser …` command;
 those two groups are exercised in `test_browser_session.py` and
@@ -83,13 +84,16 @@ def test_unimplemented_commands_exit_69(
     assert result.stdout == ""
 
 
-def test_import_without_dry_run_still_reaches_69(
+def test_import_pilot_is_not_implemented(
     runner: CliRunner, workspace: Path, export_dir: Path
 ) -> None:
-    """`05` implements the dry run only; the migration itself is `12`."""
-    result = runner.invoke(cli.app, ["import", str(export_dir)], catch_exceptions=False)
+    """`20` owns the pilot selection, and a selection flag cannot be inert: it
+    is refused rather than accepted and quietly replaced by the ordinary one."""
+    result = runner.invoke(
+        cli.app, ["import", str(export_dir), "--pilot"], catch_exceptions=False
+    )
     assert result.exit_code == ExitCode.NOT_IMPLEMENTED
-    assert result.stderr == "not implemented in this build: import\n"
+    assert result.stderr == "not implemented in this build: import --pilot\n"
     assert result.stdout == ""
 
 
