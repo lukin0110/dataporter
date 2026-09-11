@@ -310,6 +310,15 @@ def test_only_a_partial_or_a_failure_carries_a_detail() -> None:
     assert line == "3f9c2a1e  completed  (1/2)"
 
 
+def test_a_partial_with_no_record_behind_it_says_only_that() -> None:
+    """`17`'s edge: a chat the page says is missing a part is `partial` whether
+    or not an attempt recorded an error, and a column with nothing in it is not
+    a column."""
+    line = progress.event_line("3f9c2a1e", Status.PARTIAL, counts(2, partial=1))
+
+    assert line == "3f9c2a1e  partial    (1/2)"
+
+
 def test_a_detail_that_says_nothing_leaves_the_category() -> None:
     line = progress.event_line(
         "3f9c2a1e",
