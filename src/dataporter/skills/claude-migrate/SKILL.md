@@ -71,7 +71,7 @@ nothing passed at all, because the field is never empty.
 | --- | --- | --- |
 | `open` | `browser_navigate` to `https://claude.ai/new`, or to `https://claude.ai/chat/<existing conversation_id>` when the prompt gives one | `browser probe`: `logged_in` is true and `composer_present` is true. On the login page, or with `logged_in` false → stop, `needs_human`, reason `auth_required` |
 | `new_chat` | only when the prompt gives no existing conversation id: if the URL is already `/chat/…`, `browser_navigate` to `https://claude.ai/new` again | `browser probe`: `kind` is `new_chat` and `composer_chars` is `0` |
-| `attach` | once per attachment, before the first paste: `<helper> attach --file <path>` | the helper answers `"ok": true` |
+| `attach` | once per attachment, in the order the prompt lists them, before the first paste: `<helper> attach --file <path>` | the helper answers `"ok": true` for each, and then `<helper> attachments --file <path> …`, naming every file that attached, answers `"ok": true` with `count` equal to the number of files you attached. A file whose `attach` answered an error is not passed to that check — see *Attachments* |
 | `paste` | `<helper> paste --seed <path of this part>` | the helper answers `"ok": true` — it has already compared a hash of what the composer holds against the seed |
 | `submit` | send the message: `browser_press` `Enter` on the composer's ref, or `browser_click` the send control's ref | `browser probe`: `composer_chars` is `0` **and** `last_message.role` is `human` |
 | `await` | `<helper> await-response --expect "<this part's acknowledgement line>"` | the helper answers `"ok": true` |
@@ -94,6 +94,34 @@ faster is not an improvement.
 `rename` and `verify` are named here because they are steps of the migration and
 a later version performs them. Until then, a run that has passed `identify` is
 finished: report `last_step` `done`. Do not attempt to rename a chat.
+
+### Attachments
+
+The `attachments` field lists files that belonged to the conversation and are
+being reproduced by uploading them into the new chat. They go into the message
+part 1 is pasted into, which is why they are attached **before** that paste and
+never after a submit: an attachment chip belongs to the message being composed,
+so a file attached after submission would land on a new, empty message.
+
+Three rules, and they are the whole of it:
+
+- **A failed attachment does not stop the migration.** The conversation is worth
+  more than the file. Record the file in `attachments_failed` as
+  `{"file_name": "<name>", "error": "<what the helper answered>"}`, carry on with
+  the remaining files and then with `paste`, and report `partial` at the end with
+  `error.category` `unsupported` and detail `attachment upload failed: <name>`.
+  Nothing about it is retried inside this run.
+- **Report what actually attached.** Every file whose chip you saw — its `attach`
+  answered `ok` and it was in the `attachments` check's `file_names` — goes in
+  `attachments_uploaded`, by name. A file in neither list is a file nobody can
+  account for, so leave nothing out.
+- **Nothing left to paste means nothing to attach to.** On a resume where `parts
+  already acknowledged` equals `parts`, every message this conversation has is
+  already sent and there is no composer left for a chip to belong to. Do not
+  attach anything; record each file in `attachments_failed` with the error
+  `nothing_to_attach_to`, and report as above.
+
+Files are named, not read: the helper uploads the bytes, and you never open one.
 
 ### Resuming
 
@@ -125,6 +153,7 @@ not as required, and `2` when the call itself was wrong.
 <helper prefix> probe --expect "MIGRATION-ACK ab12cd34 1/2"
 <helper prefix> paste --seed /path/to/part-01.txt
 <helper prefix> attach --file /path/to/file.pdf
+<helper prefix> attachments --file /path/to/file.pdf
 <helper prefix> await-response --expect "MIGRATION-ACK ab12cd34 1/2"
 <helper prefix> close-extra-tabs
 ```
@@ -206,6 +235,7 @@ Four rules bound the whole table:
 
 | Failure | How you notice it | Recovery, at most once per step | If it still fails |
 | --- | --- | --- | --- |
+| attachment refused | `attach` answers `upload_rejected`, `file_not_found`, `input_not_found` or `chip_not_found`, or the `attachments` check does not list a file you attached | `chip_not_found` alone may be one re-run of `attach` for that file; nothing else is retried | not a stop: record the file in `attachments_failed`, keep migrating, and report `partial` at the end with category `unsupported` — see *Attachments* |
 | failed click | after the click the step's own verification is unchanged — the composer still holds the part it held before | `browser_snapshot` again, find the element again by role and label, click once more | `failed` (`partial` if a chat exists), `error.category` `ui` |
 | missing composer | `browser probe` answers `composer_present: false` while `kind` is `new_chat` or `chat` | `browser_navigate` to the run's URL again, wait five seconds, probe again | `failed` (`partial` if a chat exists), `ui` |
 | unexpected dialog | `browser probe` answers a non-empty `dialogs`, or a snapshot shows `[role=dialog]` | an entry beginning `javascript:` is a JS dialog — dismiss it with `browser_dialog`. A page modal with a visible close or dismiss control — click that control once. Never click anything labelled delete, confirm, upgrade or allow | `needs_human`, reason `ambiguous_ui` |
@@ -240,6 +270,12 @@ which no repetition changes. Stop and report, by the same rule as the table:
 `partial` when a chat already holds part of this conversation, `failed` when
 none does.
 
+The `attach` step is the one exception, and the reason it is one is that a file
+is not the conversation: `file_not_found`, `input_not_found`, `upload_rejected`
+and a `chip_not_found` that a single re-run does not clear are recorded in
+`attachments_failed` and the migration goes on. Everywhere else those same words
+stop the run.
+
 ## Result
 
 The last thing you output is exactly one JSON object, and nothing after it. It is
@@ -255,7 +291,13 @@ to be exact.
 | `error` | `{"category": …, "detail": …}` when something went wrong |
 | `needs_human_reason` | `auth_required`, `captcha`, `security_challenge`, `ambiguous_ui`, `browser_error` or `confirmation_required` |
 | `retry_after_s` | seconds to wait, when a rate limit named one |
+| `attachments_uploaded` | the file names whose chip you saw, `[]` when there were none |
+| `attachments_failed` | `[{"file_name": …, "error": …}]` for each file that did not attach, `[]` when none |
 | `actions` | how many browser actions you made |
+
+The two attachment lists are omitted only when the prompt's `attachments` was
+`none`. Otherwise every file it listed appears in exactly one of them: a file in
+neither is one nobody can account for.
 
 `error.category` is one of `auth`, `captcha`, `security_challenge`, `rate_limit`,
 `generation`, `network`, `navigation`, `dialog`, `ui`, `browser`, `hermes`,
@@ -264,7 +306,7 @@ that is true: `auth` for a sign-in page, `dialog` for something modal in the way
 `safety` for a page outside the two URLs this run may touch, `browser` only when
 nothing narrower fits.
 
-Every part acknowledged, in a chat with a uuid:
+Every part acknowledged, in a chat with a uuid, and its one attachment uploaded:
 
 ```json
 {
@@ -272,7 +314,24 @@ Every part acknowledged, in a chat with a uuid:
   "conversation_id": "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91",
   "last_step": "done",
   "chunks_acked": 2,
+  "attachments_uploaded": ["q3-chart.png"],
+  "attachments_failed": [],
   "actions": 14
+}
+```
+
+Every part acknowledged and a file the composer would not take:
+
+```json
+{
+  "outcome": "partial",
+  "conversation_id": "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91",
+  "last_step": "done",
+  "chunks_acked": 2,
+  "attachments_uploaded": [],
+  "attachments_failed": [{"file_name": "q3-chart.png", "error": "upload_rejected"}],
+  "error": {"category": "unsupported", "detail": "attachment upload failed: q3-chart.png"},
+  "actions": 15
 }
 ```
 

@@ -47,9 +47,15 @@ NEW_URL = "https://claude.ai/new"
 FIRST = "aa000001-1111-4111-8111-111111111111"
 LONG = "bb000002-2222-4222-8222-222222222222"
 THIRD = "cc000003-3333-4333-8333-333333333333"
+ATTACHED = "dd000004-4444-4444-8444-444444444444"
 EMPTY = "ff000006-6666-4666-8666-666666666666"
-"""The fixture's first conversation, its longest, its third and its
-unmigratable one."""
+"""The fixture's first conversation, its longest, its third, the one with
+attachments (`16`) and its unmigratable one."""
+
+CHART = "q3-chart.png"
+INLINED = "q3-summary.txt"
+"""`ATTACHED`'s two files: one named with no bytes anywhere — class 2 as soon as
+an operator supplies them — and one the export inlined."""
 
 CHAT = "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91"
 OTHER_CHAT = "c7e1b3f5-2d99-4f4b-8b2a-3a1f6e8d9c02"

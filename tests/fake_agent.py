@@ -38,6 +38,7 @@ import re
 import shlex
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Any, NoReturn, Protocol
 
 from dataporter.browser import helpers
@@ -61,6 +62,11 @@ NONE = "none"
 KEY_LINE = re.compile(r"^[a-z][a-z_ ]*:( |$)")
 """What ends a block: the next field. A seed path starts with a separator and an
 acknowledgement line starts with `MIGRATION-ACK`, so neither can look like one."""
+
+ATTACHMENT_FAILED = "attachment upload failed: {file_name}"
+NOTHING_TO_ATTACH_TO = "nothing_to_attach_to"
+"""`16`: what a resume with every part already acknowledged answers with. There
+is no message being composed, so there is nothing for a chip to belong to."""
 
 UNREADABLE = (helpers.NO_CLAUDE_TAB, helpers.UNKNOWN_TARGET)
 """`13`'s network row, as the helpers spell it: the tab this run was driving is
@@ -167,6 +173,10 @@ class ScriptedAgent:
     recoveries: list[str] = field(default_factory=list)
     """Which rows of `13`'s table fired, in order. A test asserts on the outcome;
     this is what says the outcome came from the row it was meant to come from."""
+    uploaded_attachments: list[str] = field(default_factory=list)
+    failed_attachments: list[dict[str, str]] = field(default_factory=list)
+    """`16`'s two lists, by file name. The prompt gives paths; what the result
+    reports is names, because a name is what the page shows on the chip."""
 
     # -- the two ways to look at the page ----------------------------------- #
 
@@ -253,17 +263,67 @@ class ScriptedAgent:
         if task.conversation_id is None:
             self.new_chat(task, state)
         self.check_resumable(task)
-        for path in task.attachments:
-            if self.call(task, "attach", "--file", path).get("ok") is not True:
-                self.give_up("browser", "attach refused")
-            self.last = Step.ATTACH
+        self.attach(task)
 
         self.acked = task.acknowledged
         for index in range(task.acknowledged, task.parts):
             self.part(task, index)
         self.identify(task)
         self.last = Step.DONE
+        if self.failed_attachments:
+            # `16`: the chat is there and holds every message, and one of its
+            # files is not in it. That is what `partial` is for.
+            return self.result(
+                "partial",
+                error={
+                    "category": "unsupported",
+                    "detail": ATTACHMENT_FAILED.format(
+                        file_name=self.failed_attachments[0]["file_name"]
+                    ),
+                },
+            )
         return self.result("completed")
+
+    def attach(self, task: Task) -> None:
+        """`attach`: every file into the composer, before the first paste (`16`).
+
+        Not a step that can stop the run. A file that will not attach is recorded
+        and the migration goes on without it, because the conversation is worth
+        more than the attachment — and a run that stopped here would leave a chat
+        with no messages at all.
+        """
+        if not task.attachments:
+            return
+        if task.acknowledged >= task.parts:
+            # A resume with every part already sent: there is no message left for
+            # a chip to belong to, and attaching to one that is never submitted
+            # would look like an upload and be nothing.
+            for path in task.attachments:
+                self.refuse(path, NOTHING_TO_ATTACH_TO)
+            return
+        attached: list[str] = []
+        for path in task.attachments:
+            answer = self.call(task, "attach", "--file", path)
+            if answer.get("ok") is not True:
+                self.refuse(path, str(answer.get("error", "unknown")))
+                continue
+            attached.append(path)
+            self.uploaded_attachments.append(name_of(path))
+        if not attached:
+            return
+        found = self.call(task, "attachments", *_file_arguments(attached))
+        if found.get("ok") is not True:
+            # The chips are not all there at the moment that matters, and no
+            # per-file answer says which: everything this step thought it had
+            # uploaded is unaccounted for.
+            self.uploaded_attachments.clear()
+            for path in attached:
+                self.refuse(path, str(found.get("error", "unknown")))
+            return
+        self.last = Step.ATTACH
+
+    def refuse(self, path: str, error: str) -> None:
+        self.failed_attachments.append({"file_name": name_of(path), "error": error})
 
     def open(self, task: Task) -> dict[str, Any]:
         """`open`: navigate, then prove there is a composer to type into."""
@@ -412,7 +472,7 @@ class ScriptedAgent:
         raise Stopped(self.result(outcome, **extra))
 
     def result(self, outcome: str, **extra: Any) -> dict[str, Any]:
-        return {
+        printed: dict[str, Any] = {
             "outcome": outcome,
             "conversation_id": self.conversation_id,
             # `open` when nothing passed at all: the field is required, and the
@@ -422,3 +482,17 @@ class ScriptedAgent:
             "actions": self.actions,
             **extra,
         }
+        if self.uploaded_attachments or self.failed_attachments:
+            printed["attachments_uploaded"] = list(self.uploaded_attachments)
+            printed["attachments_failed"] = list(self.failed_attachments)
+        return printed
+
+
+def name_of(path: str) -> str:
+    """The file name in a path the prompt gave. The chip carries this, not the
+    directory it came out of."""
+    return PurePosixPath(path).name
+
+
+def _file_arguments(paths: Sequence[str]) -> list[str]:
+    return [item for path in paths for item in ("--file", path)]

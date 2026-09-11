@@ -65,6 +65,12 @@ dry run prints and the import loop executes.
   `--attachments-dir` defaults to `<workspace>/attachments/`. `files[]` and `files_v2[]`
   entries are class 2 candidates; `attachments[]` entries are class 1 candidates first,
   class 2 second.
+
+  `16` added two fields to `AttachmentPlan` and one class 3 reason. `sha256` is the digest
+  of the bytes at `source_path`, and `duplicate_of` names the file whose bytes an earlier
+  entry of the same conversation is already uploading — one chat uploads one file once.
+  `skipped_by_flag` is what a class 2 entry becomes under `--skip-attachments`
+  (`attachments.skip`), which this slice's rules see as a setting like any other.
 - `Planner.plan(export, settings) -> MigrationPlan`, pure: same export and settings give
   byte-identical `plan.json`.
 
@@ -110,7 +116,10 @@ Resolved while building:
 - **`max_per_chat` is a conversation-wide cap on uploads only.** Applied last, over the
   entries that survived every other rule, in document order: the first N stay `upload`, the
   rest become `too_many_for_chat`. An `inline` attachment is text inside the seed and never
-  touches the file picker, so it does not consume the cap.
+  touches the file picker, so it does not consume the cap. `16` added the other entry that
+  does not: a duplicate — an entry whose bytes an earlier entry of the same conversation is
+  already uploading — is one chip in the chat, so it consumes no slot either, and the cap
+  still counts exactly the files the file picker will see.
 - **One `AttachmentPlan` per distinct file per message.** A real export carries the same file
   in `files[]` and `files_v2[]` — the fixture does — and counting it twice would show the
   operator two attachments where the UI showed one, then upload it twice. An entry whose

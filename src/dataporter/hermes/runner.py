@@ -86,6 +86,20 @@ class HermesErrorInfo(BaseModel):
     detail: str = ""
 
 
+class AttachmentFailure(BaseModel):
+    """One file the `attach` step could not put in the chat (`16`).
+
+    `error` is the helper's own word for it — `upload_rejected`, `chip_not_found`,
+    `file_not_found` — or whatever the agent saw. Never content: a file name and
+    an error string.
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    file_name: str
+    error: str = ""
+
+
 class HermesResult(BaseModel):
     """The last JSON object Hermes printed, validated.
 
@@ -114,6 +128,14 @@ class HermesResult(BaseModel):
         | None
     ) = None
     retry_after_s: int | None = None
+    attachments_uploaded: list[str] = []
+    """File names whose chip the run saw in the composer before the first paste
+    (`16`). Evidence, not intention: what is not named here is not counted as
+    uploaded, because nothing else in the workspace can say that it was."""
+    attachments_failed: list[AttachmentFailure] = []
+    """Files the run was asked to attach and could not. An `attach` failure is
+    not fatal — the conversation is worth more than the file — so the run carries
+    on without it and says so here."""
     actions: int = 0
     """`browser_*` tool calls Hermes reports making. `19` prefers the count in
     `logs/actions.jsonl`, which is ours; this is what the agent believes."""

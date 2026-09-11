@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -206,12 +206,43 @@ class ErrorRecord(StateModel):
     """`None` is `13`'s "unknown", which `19` renders as `retry=unknown`."""
 
 
+class AttachmentDetail(StateModel):
+    """One file that is not in the new chat as an upload, and why (`16`).
+
+    `file_name` is the one piece of an attachment that is not content: §10 keeps
+    titles and messages out of the workspace's records, and a file name is what
+    an operator needs in order to go and find the file. The extracted text of an
+    inline attachment is in the seed and nowhere near here.
+    """
+
+    file_name: str
+    klass: Literal["inline", "unsupported", "failed"]
+    """What became of it. Not `plan.AttachmentClass`: `upload` is the one class
+    that cannot appear — an entry that uploaded is counted and not detailed —
+    and `failed` is the one thing a plan cannot know."""
+    reason: str | None = None
+    """`03`'s class 3 reason, `16`'s `skipped_by_flag`, or what the upload
+    answered. `None` for an inline attachment, which needs none: it is in the
+    seed."""
+
+
 class AttachmentCounts(StateModel):
-    """What became of this conversation's files. §14's three classes."""
+    """What became of this conversation's files. §14's three classes, and `16`'s
+    fourth outcome: a class 2 file the upload itself refused.
+
+    The four counts sum to the number of attachments `plan.json` planned for this
+    conversation, which is what lets `19` reconcile the report's totals against
+    the export's.
+    """
 
     uploaded: int = 0
     inline: int = 0
     unsupported: int = 0
+    failed: int = 0
+    """Planned as an upload and not in the chat: the `attach` step answered an
+    error, or no run has confirmed it."""
+    detail: list[AttachmentDetail] = []
+    """Everything not uploaded, in plan order. Nothing is silently ignored."""
 
 
 class ConversationState(StateModel):
@@ -290,6 +321,11 @@ class Selection(StateModel):
     retry_failed: bool = False
     retry_partial: bool = False
     force: bool = False
+    skip_attachments: bool = False
+    """`16`'s flag, recorded because it changes what a conversation is, not which
+    conversations run: a file this run refused to upload is `skipped_by_flag` in
+    the plan, and `19` says "skipped" rather than "unavailable" on the strength of
+    this line."""
     uuids: list[str] = []
     """What `select` returned, in export order."""
 

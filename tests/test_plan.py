@@ -299,7 +299,9 @@ def test_uploads_past_the_per_chat_cap_are_unsupported_in_document_order(
     attachments_dir: Path,
 ) -> None:
     for index in range(4):
-        (attachments_dir / f"f{index}.png").write_bytes(b"x")
+        # Distinct bytes: identical ones are one upload and three duplicates
+        # (`16`), which is a different rule and has its own tests.
+        (attachments_dir / f"f{index}.png").write_bytes(b"x" * (index + 1))
     export = one_conversation(
         message(text="hi", files=[{"file_name": f"f{index}.png"} for index in range(4)])
     )

@@ -63,6 +63,11 @@ Every entry carries a mark:
 - **Attachments whose bytes the export does not carry.** `03` classifies these; `16`
   uploads the ones we have and records the rest. Whether the real export archive contains
   bytes at all is an open question in [`specs/README.md`](../specs/README.md). *unknown*
+- **Which message an uploaded attachment hangs off.** An attachment chip belongs to the
+  message being composed, so every file `16` uploads is attached to the first message of
+  the migrated chat rather than to the message that carried it in the source. The seed's
+  `[File: … — attached to this chat]` line, written where the original message was, is
+  what ties the two back together. *by construction*
 - **Rendered artifacts, tool calls and code execution results.** What the export holds for
   these, and what survives being pasted as text, is not yet known. *unknown*
 

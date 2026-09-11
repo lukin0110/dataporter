@@ -129,7 +129,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [13](impl/13-recovery.md) | Recovery | §11 | Done |
 | [14](impl/14-human-intervention.md) | Human intervention | §12 | Done |
 | [15](impl/15-pacing.md) | Pacing and limits | §13 | Done |
-| [16](impl/16-attachments.md) | Attachments | §14 | Not started |
+| [16](impl/16-attachments.md) | Attachments | §14 | Done |
 | [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Not started |
 | [18](impl/18-progress-output.md) | Progress output | §10 | Not started |
 | [19](impl/19-report.md) | Report | §16 | Not started |

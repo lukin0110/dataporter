@@ -144,6 +144,13 @@ the step name that `state.json` and the report use.
   and losing all three to a validation error would be the strictness `extra="ignore"`
   exists to avoid. `state.last_step` is where the vocabulary is enforced, because that is
   the file `19` reports from.
+- **`16` filled the `attach` step in.** The row above was written and not performed: this
+  version's prompt said `attachments: none`, so nothing exercised it. `16` is what gives
+  the step files to attach, a chip-count check to verify them with
+  (`browser attachments`), and the two result fields — `attachments_uploaded` and
+  `attachments_failed` — that let a run report a file it could not put in the chat without
+  losing the conversation it did migrate. The step is still `attach`, and `last_step` is
+  unchanged; `16`'s design notes hold the rest.
 - **The dry run is a scripted agent, not a stub.** `tests/fake_agent.py` reads the
   rendered prompt and performs the procedure through the real CLI against `08`'s page
   model. It proves the prompt is sufficient and the helpers compose; it proves nothing

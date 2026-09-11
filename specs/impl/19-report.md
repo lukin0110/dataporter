@@ -91,6 +91,13 @@ reproducible from the workspace alone.
   Rendered text is derived from this model; `report --json` prints it.
 - `hermes-claude-migrate report` reads only `state.json`, `run.json`, `plan.json` and
   `logs/actions.jsonl`. No browser, no Hermes.
+- Where the attachment numbers come from, now that `16` has landed: `found` is
+  `plan.json`'s `totals.attachments`, the other five are sums of `state.json`'s
+  `attachments` counts, and `skipped` is the subset of `unsupported` whose `detail` entry
+  reads `skipped_by_flag` — `run.json`'s `selection.skip_attachments` is what says an
+  operator asked for that rather than the bytes being missing. The four per-conversation
+  counts already sum to that conversation's planned attachments, which is `16`'s
+  reconciliation and the identity this slice's criteria name.
 
 ## Out of scope
 
