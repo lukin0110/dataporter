@@ -549,8 +549,14 @@ lock.release()
 """
 
 
+@pytest.mark.slow
 def test_a_second_run_on_one_workspace_is_refused(tmp_path: Path) -> None:
-    """The acceptance criterion, with a real second process holding the lock."""
+    """The acceptance criterion, with a real second process holding the lock.
+
+    `slow` by hand: it spawns a Python interpreter, and neither the fixture rule
+    nor the fake-construction guard can see that — the only two tests in the fast
+    modules that reach for a subprocess are this one and the one below.
+    """
     child = subprocess.Popen(
         [sys.executable, "-c", HOLD_THE_LOCK, str(tmp_path)],
         stdin=subprocess.PIPE,
@@ -594,7 +600,9 @@ def test_the_lock_is_released_on_the_way_out_of_the_context(tmp_path: Path) -> N
     assert not lock.path.exists()
 
 
+@pytest.mark.slow
 def test_force_unlock_removes_a_lock_whose_process_is_gone(tmp_path: Path) -> None:
+    """`slow` by hand, for the reason the test above is."""
     dead = subprocess.Popen([sys.executable, "-c", "pass"])
     dead.wait()
     (tmp_path / state.LOCK_FILENAME).write_text(

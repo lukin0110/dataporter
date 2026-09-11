@@ -267,6 +267,7 @@ Migrate = Callable[..., tuple[HermesResult, ScriptedAgent]]
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.slow
 def test_a_failed_click_is_tried_once_more_and_then_reported(
     migrate: Migrate, page: FakePage
 ) -> None:
@@ -281,6 +282,7 @@ def test_a_failed_click_is_tried_once_more_and_then_reported(
     assert agent.recoveries == ["failed_click"]
 
 
+@pytest.mark.slow
 def test_a_missing_composer_is_reloaded_once_and_then_reported(
     migrate: Migrate,
 ) -> None:
@@ -293,6 +295,7 @@ def test_a_missing_composer_is_reloaded_once_and_then_reported(
     assert agent.recoveries == ["missing_composer"]
 
 
+@pytest.mark.slow
 def test_a_dialog_in_the_way_needs_a_human(migrate: Migrate, page: FakePage) -> None:
     """Row 3. Nothing is clicked: the table forbids guessing at a modal."""
     outcome, _ = migrate(Modal)
@@ -303,6 +306,7 @@ def test_a_dialog_in_the_way_needs_a_human(migrate: Migrate, page: FakePage) -> 
     assert page.text_reads == 0
 
 
+@pytest.mark.slow
 def test_an_expired_session_needs_a_human(migrate: Migrate, page: FakePage) -> None:
     """Row 4. The login page is outside the surface, so the wall is the signal."""
     outcome, agent = migrate(Expired)
@@ -315,6 +319,7 @@ def test_an_expired_session_needs_a_human(migrate: Migrate, page: FakePage) -> N
     assert page.text_reads == 0
 
 
+@pytest.mark.slow
 def test_a_generation_that_never_arrives_is_awaited_twice(migrate: Migrate) -> None:
     """Row 6. Part one is sent and never answered: no ack, so nothing landed."""
     outcome, agent = migrate(NeverAnswers)
@@ -330,6 +335,7 @@ def test_a_generation_that_never_arrives_is_awaited_twice(migrate: Migrate) -> N
     assert agent.errors.count(helpers.RESPONSE_TIMEOUT) == 2
 
 
+@pytest.mark.slow
 def test_a_tab_that_cannot_be_read_is_reloaded_once_and_then_reported(
     migrate: Migrate,
 ) -> None:
@@ -343,6 +349,7 @@ def test_a_tab_that_cannot_be_read_is_reloaded_once_and_then_reported(
     assert agent.errors == [helpers.NO_CLAUDE_TAB, helpers.NO_CLAUDE_TAB]
 
 
+@pytest.mark.slow
 def test_a_tab_that_wandered_into_another_chat_is_brought_back_once(
     migrate: Migrate,
 ) -> None:
@@ -362,6 +369,7 @@ def test_a_tab_that_wandered_into_another_chat_is_brought_back_once(
     assert agent.recoveries == ["navigation"]
 
 
+@pytest.mark.slow
 def test_a_send_that_leaves_no_turn_behind_needs_a_human(migrate: Migrate) -> None:
     """Row 9. The composer cleared, so it went somewhere; there is no row for
     where. That is a UI this procedure no longer describes."""
@@ -374,6 +382,7 @@ def test_a_send_that_leaves_no_turn_behind_needs_a_human(migrate: Migrate) -> No
     assert agent.recoveries == []
 
 
+@pytest.mark.slow
 def test_a_second_claude_tab_is_closed_rather_than_guessed_between(
     migrate: Migrate, browser: Browser
 ) -> None:

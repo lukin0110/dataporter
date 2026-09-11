@@ -20,8 +20,13 @@ error taxonomy and an exit-code convention. No migration behaviour.
   - dev deps: `ruff`, `ty`, `pytest`, `pytest-cov`;
   - `[project.scripts] hermes-claude-migrate = "dataporter.cli:app"`;
   - optional extra `judge = ["pydantic-ai"]` declared now, empty of use until `20`.
-- `make check` (or `uv run poe check`) = `ruff check`, `ruff format --check`,
-  `ty check --error-on-warning src`, `pytest`. CI runs the same command.
+- `make check` = `ruff check`, `ruff format --check`, `ty check --error-on-warning`,
+  `pytest`, over `src`, `tests` and (from `10`) `spikes`. CI runs the same command.
+
+  *Amended by [`22`](22-test-performance.md):* there are now two. `make check` runs the
+  fast half of the suite and is what CI runs on a pull request; `make check-all` runs
+  everything with coverage and is what CI runs on `main`, so the `fail_under` gate lives
+  there. `poe` was never added — the Makefile is the only entry point.
 - Command surface, all registered now, unimplemented ones exit `69` with
   `not implemented in this build: <command>`:
 
@@ -170,7 +175,7 @@ Resolved while building:
 - A test logs a record with a `text` field at `--verbose` and asserts it never reaches the
   log file or stderr.
 - Every category in the table has a class and a test asserts the `transient` column.
-- `make check` passes on a clean checkout in CI.
+- `make check` passes on a clean checkout in CI, and `make check-all` passes on `main`.
 
 ## Risks
 

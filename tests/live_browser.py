@@ -14,9 +14,10 @@ import os
 import shutil
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -50,10 +51,38 @@ def real_browser() -> Path | None:
         return None
 
 
-requires_a_browser = pytest.mark.skipif(
-    real_browser() is None,
-    reason=f"no browser installed (set {BROWSER_ENV_VAR} to point at one)",
+_MARKS = (
+    pytest.mark.skipif(
+        real_browser() is None,
+        reason=f"no browser installed (set {BROWSER_ENV_VAR} to point at one)",
+    ),
+    pytest.mark.live,
+    pytest.mark.slow,
 )
+"""The three marks a live test carries, because they answer three questions.
+
+`skipif` is the old one: there may be no browser to drive. `slow` is what keeps
+these off a pull request — they launch a real Chrome, they are the most expensive
+tests that exist, and on `ubuntu-latest`, which ships Google Chrome, they had
+been running on every PR without anybody having decided that. `live` is narrower
+than `slow` and exists so a later change can put *these* on a nightly schedule
+without re-marking anything: every `live` test is `slow`, and most `slow` tests
+are not `live`.
+"""
+
+
+def requires_a_browser[F: Callable[..., Any]](test: F) -> F:
+    """Apply all three, one at a time.
+
+    A function rather than `pytest.mark.slow(pytest.mark.live(...))`, which looks
+    like it composes and does not: a `MarkDecorator` is itself callable, so the
+    outer mark takes the inner one as an *argument* and only `slow` ends up on
+    the test. `pytest --collect-only -m live` collecting nothing is what that
+    mistake looks like, and `tests/test_suite_shape.py` is what keeps it caught.
+    """
+    for mark in _MARKS:
+        test = mark(test)
+    return test
 
 
 @contextmanager

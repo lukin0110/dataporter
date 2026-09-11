@@ -73,14 +73,32 @@ unused-ignore-comment = "warn"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Coverage runs on every `pytest` invocation, so `make check` (and therefore CI)
-# enforces the threshold below without a second command.
-addopts = "--cov --cov-report=term-missing"
+# The fast half, by default. Anything that spawns a subprocess, binds a socket or
+# launches a browser is marked `slow` and deselected here, which is what makes a
+# bare `pytest` the inner-loop command: ~590 tests in about 2 seconds against
+# ~995 in about 240. `make check-all` runs everything and is the only command
+# that measures coverage — a percentage over half the suite is a number no gate
+# could use. `22` is the slice that makes the other half quick.
+#
+# The list form rather than a string: pytest `shlex.split`s a string, so the
+# quoting in `-m 'not slow'` is a question the list form does not raise.
+#
+# One consequence to know: `-m` applies to node ids too, so
+# `pytest tests/test_browser_cdp.py::test_version_and_browser_id` reports
+# `1 deselected` and exits 0. Run a slow test by name with `make test-all` or
+# `pytest -m "slow or not slow" <node id>`.
+addopts = ["-m", "not slow", "--strict-markers", "--strict-config"]
+markers = [
+    "slow: spawns a subprocess, binds a socket, or launches a browser.",
+    "live: drives a real Chrome; also `slow`. Skipped where none is installed.",
+]
 
 [tool.coverage.run]
 source = ["src/dataporter"]
 
 [tool.coverage.report]
+# Measured by `make check-all`, which is the only command that passes `--cov` —
+# so these numbers are reproducible by that command and not by `make check`.
 # The suite's coverage at the time this gate was added: 1385/1409 statements,
 # 98.3%. Raise it when the real number rises; never lower it to make a run pass.
 # `09`: 3423/3450, 99.2%. `11`: 3497/3524, 99.2%. `12`: 3768/3795, 99.3%.

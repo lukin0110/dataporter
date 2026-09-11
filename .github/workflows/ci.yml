@@ -4,10 +4,18 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  # The escape hatch: run the full suite against a branch before merging it.
+  workflow_dispatch:
+
+concurrency:
+  # Never cancel a run on `main`: it is the only run that measures coverage.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -22,3 +30,11 @@ jobs:
 
       - name: Check
         run: make check
+
+      # The slow half and the coverage gate, where nothing is waiting on them:
+      # on `main` after a merge, or on demand from the Actions tab. One job
+      # rather than two, so the checkout, the uv install and the lint do not
+      # happen twice — and so branch protection has one name to require.
+      - name: Full suite and coverage gate
+        if: github.event_name != 'pull_request'
+        run: make test-all

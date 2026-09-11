@@ -35,6 +35,11 @@ from fake_pages import (
 )
 from live_browser import live_browser, requires_a_browser, visit
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: every helper is driven against a fake Chrome on a real
+debug port.
+"""
+
 CHAT_URL = f"https://claude.ai/chat/{CHAT_ID}"
 NEW_URL = "https://claude.ai/new"
 

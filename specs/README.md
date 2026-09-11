@@ -70,6 +70,9 @@ M4 — Fidelity and operability
 M5 — Experiment
   20  Pilot: 5–10 conversations, the six §18 questions answered with numbers
   21  Scale-up and sign-off: full export, §19 metrics, LIMITATIONS, README, runbook
+
+Tooling — no milestone, may land at any time
+  22  Test performance: the fast/slow split, and the cost underneath it
 ```
 
 ## Dependencies
@@ -132,9 +135,12 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [19](impl/19-report.md) | Report | §16 | Not started |
 | [20](impl/20-pilot.md) | Pilot experiment | §18 | Not started |
 | [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | Not started |
+| [22](impl/22-test-performance.md) | Test performance | — tooling | Not started |
 
 Every brief section §2–§19 is claimed by at least one slice. §1 is the goal and is claimed
-by all of them.
+by all of them. `22` claims none: it is the one slice that exists because of how the repo
+is worked on rather than because of what the brief asks for, and it is outside the
+milestone gates for the same reason.
 
 ## Working rules
 
@@ -186,6 +192,13 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   them.
 - **Secrets:** the tool never sees a Claude password (§8). It also never reads or stores the
   API key Hermes uses; that is Hermes's `.env`.
+- **Fast and slow tests:** the suite is split by a `slow` marker — anything that spawns a
+  subprocess, binds a socket or launches a browser. `make check` runs lint, types and the
+  fast half (~585 tests, about two seconds) and is what CI runs on a pull request;
+  `make check-all` runs everything with coverage and is what CI runs on `main` after a
+  merge, so the `fail_under` gate lives there. `tests/conftest.py` holds the two
+  mechanisms that keep the marking honest, and `22` is the slice that removes the cost
+  rather than containing it.
 - **Repo tooling:** [Graft](https://github.com/trailhq/Graft) indexes the repo into a code
   graph that coding agents query instead of re-reading the source. Development tooling only —
   no slice depends on it, `make check` never runs it, and the graph itself is git-ignored.

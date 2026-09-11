@@ -36,6 +36,9 @@ from fake_chrome import (
 from fake_pages import CHAT_ID, GENERATING_CHAT_ID, PageServer
 from live_browser import live_browser, requires_a_browser
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: the page under test is served by a fake Chrome."""
+
 CHAT_URL = f"https://claude.ai/chat/{CHAT_ID}"
 
 

@@ -40,6 +40,9 @@ from dataporter.steps import Step
 from fake_agent import ScriptedAgent
 from fake_composer import Browser, FakePage
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: the whole procedure, performed against a fake Chrome."""
+
 CHAT_ID = "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91"
 NEW_URL = "https://claude.ai/new"
 CHAT_URL = f"https://claude.ai/chat/{CHAT_ID}"

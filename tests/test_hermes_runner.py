@@ -13,6 +13,11 @@ from dataporter.hermes.runner import HermesResult, HermesRunner
 from dataporter.steps import Step
 from fake_hermes import FakeHermes
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: the subject is a subprocess — its deadline, its
+output, its process group.
+"""
+
 RESULT = {
     "outcome": "completed",
     "conversation_id": "2f1c5a6e-0b0c-4f26-9a1e-8a7d3f0c1b22",
