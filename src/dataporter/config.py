@@ -16,7 +16,8 @@ sections (`browser`, `hermes`, `pacing`, `retries`, `timeouts`, `fidelity`) as
 nested models; nothing here needs to change for them. `03` is the first to do it,
 adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS` and
 a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
-`run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`.
+`run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`;
+`09` adds `hermes` and three more `timeouts` fields.
 """
 
 import os
@@ -40,6 +41,8 @@ WORKSPACE_ENV_VAR = "HCM_WORKSPACE"
 ATTACHMENTS_DIRNAME = "attachments"
 SEEDS_DIRNAME = "seeds"
 BROWSER_PROFILE_DIRNAME = "browser-profile"
+HERMES_DIRNAME = "hermes"
+DEFAULT_HERMES_HOME = Path("~/.hermes")
 
 _config_file: ContextVar[Path | None] = ContextVar("_config_file", default=None)
 """Set by `load_settings` so the TOML source knows which file to read."""
@@ -135,6 +138,35 @@ class BrowserSettings(BaseModel):
     """
 
 
+class HermesSettings(BaseModel):
+    """The external Hermes Agent, as `09` invokes it."""
+
+    executable: Path | None = None
+    """The `hermes` binary. `None` means "look for `hermes` on `PATH`"; see
+    `hermes.client.HermesCli.path`."""
+
+    profile: str = "dataporter"
+    """The dedicated profile `setup` creates. Its config, memory, skills and
+    session transcripts are separate from anything else the operator uses Hermes
+    for, which is what lets `setup` be strict without breaking their defaults."""
+
+    home: Path | None = None
+    """Where Hermes keeps its profiles. `None` means `~/.hermes`; read
+    `Settings.hermes_home`, never this. Configurable because the test suite needs
+    a profile tree it can throw away, and an operator with `HERMES_HOME` set
+    elsewhere should not have to move it."""
+
+    toolsets: tuple[str, ...] = ("browser", "terminal")
+    """`--toolsets` for every run. `browser` for the ref-based `browser_*` tools
+    the skill drives the page with, `terminal` for our own helper commands.
+    Nothing else: a run that can read the operator's files or reach the network
+    directly is a wider surface than the migration needs (§17)."""
+
+    max_turns: int = 80
+    """`agent.max_turns` in the profile. One conversation is a dozen steps plus
+    whatever recovery costs; `15` owns the number once there is evidence."""
+
+
 class TimeoutSettings(BaseModel):
     """How long each wait is allowed to take, in seconds."""
 
@@ -161,6 +193,30 @@ class TimeoutSettings(BaseModel):
     Five minutes: a seed is tens of kilobytes and the reply to it is a short
     acknowledgement, but the destination account may be busy. `15` owns what
     happens after the wait runs out.
+    """
+
+    hermes_cli_s: float = 60.0
+    """One short `hermes` call — `--version`, `profile list`, `config set` (`09`).
+
+    These are local and read or write a file; a minute is already generous, and it
+    is short enough that `doctor` fails rather than hangs when the executable on
+    `PATH` is something that never exits.
+    """
+
+    hermes_check_s: float = 300.0
+    """One of `doctor`'s two `hermes -z` tasks (`09`).
+
+    The task itself is trivial — snapshot a blank tab, run one helper — but Hermes
+    has a model round trip and an environment to start, and the check exists to
+    distinguish "does not work" from "is slow".
+    """
+
+    hermes_task_s: float = 1800.0
+    """One conversation's `hermes -z` run (`09`, spent by `12`).
+
+    Half an hour covers a multi-part seed whose every part waits on generation,
+    with room for one recovery attempt inside the run. `15` owns it once a pilot
+    has produced real durations.
     """
 
 
@@ -194,6 +250,7 @@ class Settings(BaseSettings):
     seed: SeedSettings = SeedSettings()
     attachments: AttachmentSettings = AttachmentSettings()
     browser: BrowserSettings = BrowserSettings()
+    hermes: HermesSettings = HermesSettings()
     timeouts: TimeoutSettings = TimeoutSettings()
     run: RunSettings = RunSettings()
 
@@ -228,6 +285,31 @@ class Settings(BaseSettings):
         `session logout`, and never the operator's everyday one (§17).
         """
         return self.workspace / BROWSER_PROFILE_DIRNAME
+
+    @property
+    def hermes_dir(self) -> Path:
+        """`<workspace>/hermes/`: one run's stdout, stderr and usage file (`09`).
+
+        Inside the workspace and not configurable, for the same reason the seeds
+        directory is not: these are intermediate artefacts of one migration, and
+        the stdout of a Hermes run contains page snapshots — so it belongs in the
+        directory `.gitignore` already excludes and `session logout` leaves alone.
+        """
+        return self.workspace / HERMES_DIRNAME
+
+    @property
+    def hermes_home(self) -> Path:
+        """Where Hermes keeps its profiles — `~/.hermes` unless configured.
+
+        A property rather than a validator default for the reason
+        `attachments_dir` is one: `~` has to be expanded somewhere, and doing it
+        at validation time would bake one operator's home into a `config.toml`
+        another operator reads.
+        """
+        configured = self.hermes.home
+        if configured is not None:
+            return Path(os.path.abspath(configured.expanduser()))
+        return Path(os.path.abspath(DEFAULT_HERMES_HOME.expanduser()))
 
     @field_validator("workspace")
     @classmethod

@@ -171,6 +171,21 @@ class HermesError(MigrationError):
     default_transient = True
 
 
+class HermesUsageError(HermesError):
+    """Hermes cannot be invoked as asked: not installed, too old, or it rejected
+    the arguments (its own exit code `2`).
+
+    Category `hermes` like its parent, but never worth retrying — the next attempt
+    would make the same mistake at a later time. A subclass rather than a
+    `transient=False` at the raise site, because `01`'s rule is that `transient`
+    is a property of the class and not a judgement made where the error is raised;
+    `09` needs one fixed `False` inside the `hermes` row, and this is the class
+    that carries it.
+    """
+
+    default_transient = False
+
+
 class ExportError(MigrationError):
     """The export archive is malformed."""
 

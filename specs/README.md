@@ -105,7 +105,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [06](impl/06-migration-state.md) | Migration state | §6, §7 | Done |
 | [07](impl/07-browser-session.md) | Browser session and login | §8 | Done |
 | [08](impl/08-browser-helpers.md) | Browser helpers | §4, §5, §17 | Done |
-| [09](impl/09-hermes-runner.md) | Hermes profile and runner | §2, §4, §17 | Not started |
+| [09](impl/09-hermes-runner.md) | Hermes profile and runner | §2, §4, §17 | Done |
 | [10](impl/10-attach-spike.md) | Attach spike and Claude UI map | §4, §5, §11 | Not started |
 | [11](impl/11-skill.md) | Skill and step protocol | §4, §5, §11, §17 | Not started |
 | [12](impl/12-import-loop.md) | Import loop | §6, §10 | Not started |
