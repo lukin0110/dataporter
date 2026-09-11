@@ -63,6 +63,7 @@ guessing at the older or newer shape.
 COUNTERS: tuple[str, ...] = (
     "browser_actions",
     "retries",
+    "rate_limit_waits",
     "human_interventions",
     "interrupted",
 )
@@ -331,6 +332,14 @@ class RunFile(StateModel):
     runs: list[RunRecord] = []
     browser_actions: int = 0
     retries: int = 0
+    rate_limit_waits: int = 0
+    """Waits `15` made because the account asked for one.
+
+    Counted apart from `retries` and from `human_interventions` because it is
+    neither: nothing failed that another attempt would fix, and nobody was asked
+    to do anything. A wait that would grow past `pacing.max_rate_limit_wait_s` is
+    not counted here at all — it becomes an intervention, and is counted as one.
+    """
     human_interventions: int = 0
     interrupted: int = 0
     """Entries crash recovery converted out of `running`."""

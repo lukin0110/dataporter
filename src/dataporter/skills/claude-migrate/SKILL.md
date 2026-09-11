@@ -53,6 +53,7 @@ value is a path you may guess at.
 | `resume_from` | The step to resume at. `open` on a first attempt. |
 | `existing conversation_id` | The chat a retry must continue in, or `none`. |
 | `parts already acknowledged` | How many parts are already in that chat, acknowledged. `0` on a first attempt. |
+| `delay between parts` | Seconds to wait between one part's acknowledgement and the next part's paste. |
 | `helper` | The command prefix for every helper call: `hermes-claude-migrate --workspace <workspace> browser …`. Use it verbatim, with the subcommand appended. |
 
 A prompt that is missing a field, or whose `parts` and list lengths disagree, is
@@ -83,6 +84,12 @@ nothing passed at all, because the field is never empty.
 `paste`, `submit`, `await` and `ack` repeat, in that order, once per part, in the
 same chat: part 1, then part 2, and so on to part `N`. Do not start a part before
 the previous part's `ack` has passed, and never paste two parts into one message.
+
+Between one part's `ack` and the next part's `paste`, wait `delay between parts`
+seconds. The migration is deliberately slow: the account you are writing into is
+a real one, and a run that sends as fast as it can is a run that gets rate
+limited. This is the one place you are asked to do nothing at all, and doing it
+faster is not an improvement.
 
 `rename` and `verify` are named here because they are steps of the migration and
 a later version performs them. Until then, a run that has passed `identify` is

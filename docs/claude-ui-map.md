@@ -74,7 +74,7 @@ when someone watched that exact signal appear.
 | `JS dialog in the way` | a `Page.javascriptDialogOpening` with no matching close | not yet looked at | *unknown* |
 | `upload target` | `input[type="file"]`, visible or not | not yet looked at | *unknown* |
 | `upload accepted` | a visible leaf element outside the composer containing the file name | not yet looked at | *unknown* |
-| `rate limited` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
+| `rate limited` | `probe.rate_limited`: a disabled Send beside a composer that is not empty. An enabled Send is "not limited"; an empty composer is neither answer, because an idle new chat looks the same. The banner itself is not read — it is text | not yet looked at | *unknown* |
 | `captcha or security challenge` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
 | `browser error page` | the tab's URL is no longer on `claude.ai`, so `chosen_tab` answers `no_claude_tab` | not yet looked at | *unknown* |
 | `generation failed` | nothing — the code cannot see this yet | not yet looked at | *unknown* |

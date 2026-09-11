@@ -1,10 +1,17 @@
-"""`doctor`: ten checks, in dependency order, stopping at the first failure.
+"""`doctor`: the pacing in force, then ten checks in dependency order.
 
 The order is the chain itself — Hermes, its profile, its configuration, the skill,
 Chrome, the debug port, Hermes reaching that port, Hermes running one of our
 helpers, and finally the session. Each check assumes everything above it passed,
 which is why the run stops rather than printing nine more failures caused by the
 first one.
+
+The `pacing` line in front of them is `15`'s, and is why `checks` is not the whole
+command: it cannot fail, because there is nothing about it to be wrong — it is the
+§13 numbers this invocation would run with. `pacing_check` renders it and the CLI
+prints it before the generator starts, so an operator sees the numbers even when
+the chain below is broken. A migration is slow on purpose, and "why has it done
+nothing for a minute" should be answerable without reading a config file.
 
 Two of the checks run a real `hermes -z` task, because nothing short of that
 answers the question `09` actually has: whether `browser.cdp_url` is honoured in
@@ -50,6 +57,7 @@ _logger = log.get_logger(__name__)
 LABEL_WIDTH = 25
 """Wide enough for the longest label, so the `ok` column lines up (`09`)."""
 
+PACING = "pacing"
 HERMES_ON_PATH = "hermes on PATH"
 HERMES_PROFILE = "hermes profile"
 HERMES_MODEL = "hermes model"
@@ -132,6 +140,41 @@ class Check:
 def nonce() -> str:
     """A token Hermes cannot have seen before and cannot guess."""
     return f"HCM-{secrets.token_hex(5).upper()}"
+
+
+def pacing_check(settings: Settings) -> Check:
+    """The §13 parameters this invocation would run with (`15`).
+
+    A `Check` because it is a line of `doctor` output and that is what one is —
+    but not one of `checks`, because it cannot fail and the generator's contract
+    is that it stops at the first failure.
+
+    Six numbers and not the whole of `Settings`: §13 names four configurable
+    parameters — the delay between conversations, the maximum retries, the
+    timeout and the maximum conversations per run — and the two `15` adds are the
+    ones an operator watching a run that is doing nothing needs in order to
+    explain what they are looking at.
+
+    `attempts` rather than `retries` because that is what `retries.max_attempts`
+    counts and the line reports what is in force, not what `--max-retries` was
+    typed as. Everything is rendered with `:g` so that a whole number of seconds
+    reads as one.
+    """
+    pacing, retries = settings.pacing, settings.retries
+    return Check(
+        PACING,
+        True,
+        ", ".join(
+            (
+                f"delay {pacing.delay_between_conversations_s:g}s",
+                f"parts {pacing.delay_between_parts_s:g}s",
+                f"attempts {retries.max_attempts}",
+                f"timeout {settings.timeouts.hermes_task_s:g}s",
+                f"limit {settings.run.max_conversations}",
+                f"rate-limit cap {pacing.max_rate_limit_wait_s:g}s",
+            )
+        ),
+    )
 
 
 def checks(settings: Settings) -> Generator[Check, None, None]:

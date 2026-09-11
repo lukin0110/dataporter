@@ -404,17 +404,32 @@ def reported(**fields: Any) -> HermesResult:
 
 
 def test_a_rate_limit_is_recorded_with_the_wait_the_page_named() -> None:
-    """Row 5. `15` does the waiting; `13` only refuses to spend a retry on it."""
+    """Row 5. `15` does the waiting; `13` only refuses to spend a retry on it.
+
+    `partial` rather than the `failed` this recorded while nothing waited: `15`
+    attempts the conversation again after the wait, and a `failed` entry has no
+    chat to continue — so the retry would open a second one (§17). `landed` is
+    what the two statuses have always meant, and this row now reads it like
+    every other.
+    """
     mapped = importing.interpret(
         reported(outcome="rate_limited", retry_after_s=3600, conversation_id=CHAT_ID),
         landed=True,
     )
 
-    assert mapped.status is Status.FAILED
+    assert mapped.status is Status.PARTIAL
     assert mapped.error is not None
     assert mapped.error.category is Category.RATE_LIMIT
     assert mapped.error.detail.endswith("retry after 3600s")
     assert mapped.deferred is True
+
+
+def test_a_rate_limit_before_any_chat_exists_is_failed() -> None:
+    """The other half of the same rule: nothing landed, so there is no chat."""
+    mapped = importing.interpret(reported(outcome="rate_limited"), landed=False)
+
+    assert mapped.status is Status.FAILED
+    assert mapped.rate_limited is True
 
 
 @pytest.mark.parametrize(
@@ -538,16 +553,22 @@ def test_a_needs_human_result_is_not_a_retry(world: World) -> None:
 
 
 def test_a_rate_limited_result_is_not_a_retry(world: World) -> None:
-    """`15` owns the wait, and `13` must not spend three attempts inside it."""
+    """`15` owns the wait, and `13` must not spend an attempt inside it.
+
+    `15` does re-run the conversation once the wait is over — and, on an account
+    that keeps refusing, hands it to a person rather than waiting forever. What
+    `13` must not do is count any of that as a retry: nothing failed that another
+    attempt would fix, so the budget is untouched and the counter reads zero.
+    """
     world.answers(result(outcome="rate_limited", retry_after_s=3600))
 
     world.run(limit=1)
 
     entry = world.entry(FIRST)
-    assert entry.attempts == 1
     assert entry.error is not None
     assert entry.error.category is Category.RATE_LIMIT
-    assert len(world.hermes.one_shots) == 1
+    assert entry.error.retry_recommended is True
+    assert world.store().run().retries == 0
 
 
 def test_a_partial_retry_resumes_the_chat_rather_than_opening_a_second(

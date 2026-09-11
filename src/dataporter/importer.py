@@ -32,15 +32,23 @@ itself rather than spending an account's quota proving it.
 record, asks whoever is at the keyboard to finish the step in the browser window
 that is already open, and then attempts *the same conversation from its last
 successful step*. It is the same loop `13` retries in, entered through a
-different door, and `resume` is that door from a second process. What is still
-not handled is a wait the account asks for (`15`); the mapping table below has a
-row marked for it.
+different door, and `resume` is that door from a second process.
+
+`15` filled in the third door, and slowed everything down. A `rate_limited`
+result is waited out rather than retried: the account named a time, so the run
+sleeps until then and attempts the same conversation again, and only a wait
+longer than `pacing.max_rate_limit_wait_s` — or a third refusal of the same
+conversation — is put to a person as `14`'s ask. The gaps are `15`'s too: the
+delay between conversations, the delay between parts the agent spends inside one
+run, and the deadline on the one intervention whose resolution this process can
+check for itself.
 """
 
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -74,13 +82,34 @@ _logger = log.get_logger(__name__)
 
 PLAN_FILENAME = "plan.json"
 
-DELAY_BETWEEN_CONVERSATIONS_S = 20.0
-"""The gap between one conversation and the next.
+RATE_LIMIT_PROBE_S = 60.0
+"""How long a rate-limit wait sleeps before looking at the page again.
 
-`15` owns this as `pacing.delay_between_conversations_s`; twenty seconds is the
-placeholder until it does. A number rather than a setting on purpose — a pacing
-parameter an operator can tune before there is any evidence about what the
-destination account tolerates is a parameter they will tune wrongly.
+A wait an hour long that cannot be cut short is an hour of a migration spent on a
+limit that may have lifted in ten minutes, so the sleep is sliced and the page is
+read between slices (`probe.rate_limited`). A minute rather than something
+shorter because the check costs a CDP round trip and the thing it is watching for
+changes on the account's clock, not ours.
+"""
+
+RATE_LIMIT_WAITS = 3
+"""How many times in a row one conversation may be waited out.
+
+`15`'s rule for the refusal that names no time — each of those is waited on
+`13`'s backoff, which is a guess, and three guesses in a row is a page that is
+not going to tell us — extended to the refusals that *do* name a time, because a
+conversation refused three times running is an account that will not let this run
+finish however long the tool sits still. The third hands the conversation to `14`
+instead, which is the difference between a run that is waiting and one that is
+stuck.
+"""
+
+UNTIL_FORMAT = "%H:%M UTC"
+"""How a wait's end is written, as `15` prints it: `rate limit until 15:00 UTC`.
+
+UTC, and said so: every other instant this tool writes is UTC, and a bare `15:00`
+on a terminal in another timezone is a number an operator will read wrongly.
+Minutes, because the waits are quarters of an hour and longer.
 """
 
 NO_CONVERSATION_ID = "no conversation id"
@@ -134,9 +163,21 @@ def run_id_for(short_id: str, attempt: int) -> str:
 
 
 def pause(seconds: float) -> None:
-    """Wait between conversations. `15` replaces this with real pacing."""
+    """Sleep. The one seam every wait in this module goes through (`15`).
+
+    A function rather than `time.sleep` at each call site so that a test can
+    record what a run *would* have waited without waiting it — which is the only
+    way an acceptance criterion about a twenty-second gap is checkable at all.
+    """
     if seconds > 0:
         time.sleep(seconds)
+
+
+def until(seconds: float, *, now: datetime | None = None) -> str:
+    """When a wait of `seconds` ends, as `15`'s line and ask write it."""
+    return (
+        (now if now is not None else state.now()) + timedelta(seconds=seconds)
+    ).strftime(UNTIL_FORMAT)
 
 
 # --------------------------------------------------------------------------- #
@@ -165,6 +206,23 @@ class Mapped:
     attempted again from where it stopped. `deferred` alone would make the loop
     ask what the outcome was again, which is the re-reading the field exists to
     avoid."""
+
+    rate_limited: bool = False
+    """`15`'s deferral: the account asked to be left alone for a while.
+
+    The other half of the pair `needs_human` splits `deferred` into. What answers
+    it is a clock, so the loop waits rather than asks — and `retry_after_s` below
+    is how long, when the page said.
+    """
+
+    retry_after_s: float | None = None
+    """Seconds the page named, or `None` when it named none.
+
+    `None` is not zero: it is the difference between a wait `15` can make and a
+    guess it has to make on `13`'s backoff, and three guesses in a row become an
+    ask. Carried as a field as well as in the error's detail because the detail is
+    prose for an operator and this is the number the run acts on.
+    """
 
 
 def retry_recommended(category: Category) -> bool | None:
@@ -206,18 +264,28 @@ def interpret(result: hermes_running.HermesResult, *, landed: bool) -> Mapped:
         )
     stopped = Status.PARTIAL if landed else Status.FAILED
     if outcome == "rate_limited":
-        # `15` waits and retries. Retrying it here on `13`'s budget would spend
-        # three attempts inside the window the account asked us to wait out, so
-        # the row is deferred; `retry_after_s` is kept in the detail rather than
-        # thrown away, because it is the number `15` will wait.
+        # `15` waits and then attempts the same conversation again. Retrying it
+        # on `13`'s budget would spend three attempts inside the window the
+        # account asked us to wait out, so the row is deferred; `retry_after_s`
+        # is kept — in the detail an operator reads and in the field the loop
+        # acts on — because it is the number `15` waits.
+        #
+        # `stopped`, and not the `failed` `13` wrote here while nothing waited:
+        # once the wait is followed by another attempt, a rate limit that
+        # interrupted a chat has to read as `partial`, or `resuming` sees a
+        # `failed` entry, opens a second chat for the same conversation, and
+        # §17's one unfixable mistake is made by the slice that was being
+        # careful. `15`'s design notes hold the correction.
         detail = _detail(result) or RATE_LIMITED
         if result.retry_after_s is not None:
             detail = f"{detail}; retry after {result.retry_after_s}s"
         return Mapped(
-            Status.FAILED,
+            stopped,
             result.step,
             _error(Category.RATE_LIMIT, detail),
             deferred=True,
+            rate_limited=True,
+            retry_after_s=result.retry_after_s,
         )
     if outcome == "needs_human":
         # `14` pauses on these. The reason is the category, so that a run an
@@ -273,7 +341,14 @@ class Attempt:
 
     The attempt is over either way; this is what the loop puts to whoever is at
     the keyboard before attempting the same conversation again. `None` for every
-    other outcome, including `15`'s deferral, which nobody is asked about."""
+    other outcome, including `15`'s deferral, which is answered by waiting — and
+    which only becomes an ask at the two edges `_rate_limited` names."""
+
+    rate_limited: bool = False
+    retry_after_s: float | None = None
+    """`15`'s deferral, and the wait the page named for it. Read off `Mapped`
+    rather than off the outcome again, so that the loop's policy and `12`'s
+    mapping table stay one table."""
 
     @property
     def retryable(self) -> bool:
@@ -354,6 +429,59 @@ class FailureStreak:
 
 
 # --------------------------------------------------------------------------- #
+# `15`: when the account asks to be left alone
+# --------------------------------------------------------------------------- #
+
+
+RATE_LIMIT_UNNAMED = "rate limit, no time given"
+"""The waiting line's reason when the page refused and named no time.
+
+`13`'s backoff is what gets waited instead, so the line has to say that the
+number in front of it is ours and not the account's — `waiting 30s (rate limit,
+no time given)` beside `waiting 1740s (rate limit until 15:00 UTC)`.
+"""
+
+
+@dataclass
+class RateLimitWaits:
+    """How many times running this conversation has been refused.
+
+    Per conversation, because the loop that waits is per conversation and the
+    escalation hands *that* conversation to a person: a run in which two
+    conversations were each refused twice is not a run being stonewalled. Reset
+    on an escalation, so that a conversation a person has unblocked gets the same
+    patience again rather than an ask after every further refusal.
+    """
+
+    waits: int = 0
+
+    def refused(self) -> int:
+        """Record a refusal, and say how many that is in a row."""
+        self.waits += 1
+        return self.waits
+
+    def reset(self) -> None:
+        """The count has been spent on an ask, and starts again from there."""
+        self.waits = 0
+
+
+def _why_asking(seconds: float | None, count: int, *, too_long: bool) -> str:
+    """The ask's detail: which edge was reached, and what is known about it.
+
+    One wait that is too long to make says only that; a third refusal says how
+    many, and then says what it knows about this one — a time, or that there was
+    none. An operator deciding whether to sit a wait out is deciding about the
+    wait in front of them, so the time goes in the sentence wherever there is one
+    to put there.
+    """
+    if too_long and seconds is not None:
+        return intervening.RATE_LIMIT_UNTIL.format(until=until(seconds))
+    if seconds is None:
+        return intervening.RATE_LIMIT_NO_TIME.format(waits=count)
+    return intervening.RATE_LIMIT_AGAIN.format(waits=count, until=until(seconds))
+
+
+# --------------------------------------------------------------------------- #
 # `14`: when only a person can clear it
 # --------------------------------------------------------------------------- #
 
@@ -378,6 +506,16 @@ class InterventionsExhausted(Exception):
 
 class NothingToResume(Exception):
     """`resume` was run over a workspace with no pause to continue (exit `4`)."""
+
+
+class LoginTimedOut(Exception):
+    """An `auth_required` ask outlived `timeouts.login_s` (`15`, exit `3`).
+
+    The third way a run ends early, and the only one that names a cause outside
+    the migration: the destination account is not signed in and the person who
+    was asked to sign in has not. Like the other two it stops cleanly — the pause
+    record stays, so `resume` picks the same conversation up once they have.
+    """
 
 
 # --------------------------------------------------------------------------- #
@@ -576,7 +714,10 @@ class Importer:
         try:
             self._preflight(cleared_by=self._request(paused, offset + 1, total))
         except RunPaused:
-            result = self._stopped_before_starting(plan)
+            result = self._stopped_before_starting(plan, ExitCode.PAUSED)
+        except LoginTimedOut:
+            self._note_login_timeout()
+            result = self._stopped_before_starting(plan, ExitCode.NOT_AUTHENTICATED)
         else:
             result = self._migrate_all(
                 chosen, conversations, plan, offset=offset, total=total
@@ -740,6 +881,14 @@ class Importer:
                     self.intervention.note(intervening.TOO_MANY_INTERVENTIONS)
                     exit_code, stopped = ExitCode.FAILED, True
                     break
+                except LoginTimedOut:
+                    # `15`: the ask was `auth_required` and `timeouts.login_s`
+                    # ran out. The pause record stays, so this is still a run
+                    # `resume` continues — but the code says what is wrong with
+                    # the account rather than that a person is being waited on.
+                    self._note_login_timeout()
+                    exit_code, stopped = ExitCode.NOT_AUTHENTICATED, True
+                    break
                 status = attempt.status
                 streak.record(attempt)
             else:
@@ -759,7 +908,10 @@ class Importer:
                 stopped = True
                 break
             if position + 1 < len(chosen):
-                pause(DELAY_BETWEEN_CONVERSATIONS_S)
+                # §13's gap, between conversations and not after the last one:
+                # the delay exists to space out what the account sees, and there
+                # is nothing after the last conversation to space it from.
+                pause(self.settings.pacing.delay_between_conversations_s)
 
         counts = state.status_counts(self.store.load())
         self.progress.finish(counts)
@@ -781,14 +933,20 @@ class Importer:
             stopped=stopped,
         )
 
-    def _stopped_before_starting(self, plan: MigrationPlan) -> RunSummary:
-        """A `resume` that never got past the ask, as a summary (`14`)."""
+    def _stopped_before_starting(
+        self, plan: MigrationPlan, exit_code: ExitCode
+    ) -> RunSummary:
+        """A `resume` that never got past the ask, as a summary (`14`).
+
+        Two codes reach it: `5` when there was nobody to answer, and `3` when
+        somebody answered and the account is still signed out (`15`).
+        """
         return RunSummary(
             total=len(plan.conversations),
             selected=(),
             outcomes={},
             counts=state.status_counts(self.store.load()),
-            exit_code=ExitCode.PAUSED,
+            exit_code=exit_code,
             stopped=True,
         )
 
@@ -820,33 +978,62 @@ class Importer:
         budget is consulted — a conversation can still be unblocked by hand after
         its retries are gone.
 
-        `helped` is what keeps the two budgets apart. Every attempt increments
-        §7's `attempts`, which is what `13` measures `max_attempts` against, so
-        without it a conversation a person unblocked twice would have spent its
-        retries on being helped — and `_exhausted` would then write
-        `retry_recommended: false` about a failure that is nothing of the kind.
-        `13` counts attempts a failure caused; the ones a person did are
-        discounted here. Only this run's: §7's count is cumulative and records no
-        reason, so an intervention in an earlier run is still counted against the
-        budget in this one, which errs towards trying less rather than more.
+        `15` added the third door: a `rate_limited` result is waited out and the
+        same conversation attempted again, and only at the two edges
+        `_rate_limited` names does it become `14`'s ask. It shares the door with
+        `14` because both are the same shape — an attempt nobody failed, followed
+        by another attempt at the same conversation.
+
+        `spared` is what keeps the budgets apart. Every attempt increments §7's
+        `attempts`, which is what `13` measures `max_attempts` against, so
+        without it a conversation a person unblocked twice — or one the account
+        made wait twice — would have spent its retries on being helped, and
+        `_exhausted` would then write `retry_recommended: false` about a failure
+        that is nothing of the kind. `13` counts attempts a failure caused; the
+        ones a person did and the ones a clock did are discounted here. Only this
+        run's: §7's count is cumulative and records no reason, so a deferral in
+        an earlier run is still counted against the budget in this one, which
+        errs towards trying less rather than more.
         """
         budget = self.settings.retries
-        helped = 0
+        spared = 0
+        waits = RateLimitWaits()
+        # Whether the attempt about to be made would count as a retry in
+        # `run.json`. True to begin with, because an entry that already has an
+        # attempt behind it is being tried again — `--retry-partial` over an
+        # earlier run's chat is a retry and always was. It goes false only for
+        # the attempt that follows a wait or an ask, which are `15`'s and `14`'s
+        # counters rather than `13`'s, and `19` reports the three apart.
+        counted = True
         while True:
-            attempt = self._attempt(conversation, position=position, total=total)
+            attempt = self._attempt(
+                conversation, position=position, total=total, counted=counted
+            )
+            counted = True
+            if attempt.rate_limited:
+                # A wait, or — too long, or too often — an ask.
+                request = self._rate_limited(
+                    conversation.uuid, attempt, waits, position=position, total=total
+                )
+                if request is not None:
+                    self._intervene(request)
+                spared += 1
+                counted = False
+                continue
             if attempt.request is not None:
                 # Raises to end the run if there is nobody to ask, or if this run
                 # has asked too often; otherwise a person has acted and the same
                 # conversation is tried again from its last successful step.
                 self._intervene(attempt.request)
-                helped += 1
+                spared += 1
+                counted = False
                 continue
             if not attempt.retryable:
                 return attempt
             # What `13` counts: attempts this conversation spent on a failure.
             # It is the budget, the backoff's index and the number the waiting
             # line prints, all three, because all three mean "which retry".
-            tried = attempt.attempts - helped
+            tried = attempt.attempts - spared
             if tried >= budget.max_attempts:
                 return self._exhausted(conversation.uuid, attempt)
             wait = backoff_for(budget, tried)
@@ -856,13 +1043,23 @@ class Importer:
             pause(wait)
 
     def _attempt(
-        self, conversation: Conversation, *, position: int, total: int
+        self,
+        conversation: Conversation,
+        *,
+        position: int,
+        total: int,
+        counted: bool = True,
     ) -> Attempt:
         """One try: seed, prompt, Hermes, state. Never raises upward for anything
-        that is about this conversation rather than about the run."""
+        that is about this conversation rather than about the run.
+
+        `counted` is false for the try that follows a wait `15` made or an ask
+        `14` put: neither is a failure tried again, and `run.json`'s `retries`
+        counts only failures tried again.
+        """
         uuid = conversation.uuid
         self._ensure_browser()
-        entry = self._begin(uuid)
+        entry = self._begin(uuid, counted=counted)
         attempts = entry.attempts + 1
         actions = self._action_count()
         try:
@@ -937,12 +1134,19 @@ class Importer:
         )
         return replace(attempt, error=spent)
 
-    def _begin(self, uuid: str) -> ConversationState:
+    def _begin(self, uuid: str, *, counted: bool = True) -> ConversationState:
         """Mark the entry `running` and hand back what it looked like before.
 
         The `before` picture is what the rest of the conversation reads: which
         chat to resume, how many parts are already acknowledged, which attempt
         this is. Reading it after the update would read our own write.
+
+        `counted` is what `run.json`'s `retries` counts, and it defaults to the
+        rule that held before `15`: a second attempt on an entry that already has
+        one is a retry. `_migrate` passes `False` for the attempt that follows a
+        rate-limit wait or a human's Enter, because neither is a failure tried
+        again — `19` reports the three counters apart and would otherwise report
+        the same event twice.
         """
         # A pause is an open question about one conversation, and starting that
         # conversation again is the answer — whether a `resume` did it or a later
@@ -965,7 +1169,7 @@ class Importer:
             destination=state.Destination(conversation_id=resume),
             chunks_acked=before.chunks_acked if resume is not None else 0,
         )
-        if attempts > 1:
+        if attempts > 1 and counted:
             self.store.bump_counter("retries")
         return before
 
@@ -1008,6 +1212,9 @@ class Importer:
             resume_from=resume_from,
             conversation_id=resume,
             acknowledged=acknowledged,
+            # §13's other gap. Ours to send and the agent's to spend: the
+            # per-part loop is inside the run this line is about to start.
+            delay_between_parts_s=self.settings.pacing.delay_between_parts_s,
         )
         run_id = run_id_for(seed.short_id, before.attempts + 1)
         try:
@@ -1063,7 +1270,19 @@ class Importer:
             error=mapped.error,
             attempts=attempts,
             deferred=mapped.deferred,
-            request=self._pause(uuid, result, mapped, conversation_id, position, total)
+            rate_limited=mapped.rate_limited,
+            retry_after_s=mapped.retry_after_s,
+            request=self._pause(
+                uuid,
+                reason=result.needs_human_reason or intervening.DEFAULT_REASON,
+                detail=mapped.error.detail if mapped.error else "",
+                # The step a resume starts from, which is what `_run_hermes` will
+                # use: `open` when Hermes named a step no procedure of ours has.
+                last_step=mapped.last_step or Step.OPEN,
+                conversation_id=conversation_id,
+                position=position,
+                total=total,
+            )
             if mapped.needs_human
             else None,
         )
@@ -1097,8 +1316,10 @@ class Importer:
     def _pause(
         self,
         uuid: str,
-        result: hermes_running.HermesResult,
-        mapped: Mapped,
+        *,
+        reason: str,
+        detail: str,
+        last_step: Step,
         conversation_id: str | None,
         position: int,
         total: int,
@@ -1110,12 +1331,12 @@ class Importer:
         §7's five statuses have no word for "waiting for a person". The pause
         record in `run.json` is that word, which is why it lives there: the §7
         file keeps its shape.
+
+        Takes the four fields rather than a `HermesResult`, because `15` raises
+        an ask about a result that asked for nothing: a rate limit too long to
+        wait out is `confirmation_required` with a detail this class writes. One
+        pause record, one counter and one `resume` either way.
         """
-        reason = result.needs_human_reason or intervening.DEFAULT_REASON
-        detail = mapped.error.detail if mapped.error else ""
-        # The step a resume starts from, which is what `_run_hermes` will use:
-        # `open` when Hermes named a step no procedure of ours has.
-        last_step = mapped.last_step or Step.OPEN
         self.store.set_paused(
             state.PauseRecord(
                 conversation_uuid=uuid,
@@ -1145,6 +1366,121 @@ class Importer:
             total=total,
         )
 
+    # -- 5. when the account asks to be left alone (§13) --------------------- #
+
+    def _rate_limited(
+        self,
+        uuid: str,
+        attempt: Attempt,
+        waits: RateLimitWaits,
+        *,
+        position: int,
+        total: int,
+    ) -> intervening.Request | None:
+        """Wait the limit out, or hand it to a person. `None` when it waited.
+
+        §13's "wait as instructed": when the page named a time, that time is what
+        is waited — not a backoff of ours, and not a retry, because the account
+        has told us what it wants and doing something else is how a migration
+        earns a longer limit. When it named none, `13`'s backoff is waited
+        instead, and the line says whose number it is.
+
+        Two things end the waiting rather than extend it, and both are the point
+        at which sitting still stops being a considered act. A wait longer than
+        `pacing.max_rate_limit_wait_s` is the operator's call and not ours. A
+        third refusal in a row is an account that is not going to let this run
+        finish, whether or not it says when — so it is put to a person, who can
+        see what the tool cannot.
+        """
+        seconds = attempt.retry_after_s
+        count = waits.refused()
+        cap = self.settings.pacing.max_rate_limit_wait_s
+        too_long = seconds is not None and seconds > cap
+        if too_long or count >= RATE_LIMIT_WAITS:
+            waits.reset()
+            return self._ask_to_wait(
+                uuid,
+                _why_asking(seconds, count, too_long=too_long),
+                position=position,
+                total=total,
+            )
+        if seconds is None:
+            # `13`'s schedule, indexed by how many times this has happened: the
+            # waits grow, so a page that keeps refusing is not asked again
+            # immediately.
+            self._wait_out(
+                uuid, backoff_for(self.settings.retries, count), RATE_LIMIT_UNNAMED
+            )
+            return None
+        self._wait_out(
+            uuid, seconds, intervening.RATE_LIMIT_UNTIL.format(until=until(seconds))
+        )
+        return None
+
+    def _wait_out(self, uuid: str, seconds: float, reason: str) -> None:
+        """Sleep, in slices, watching for a limit that lifted early.
+
+        The whole wait is announced once, before the first slice, because it is
+        what the run is doing and an operator watching a terminal should not have
+        to add sixty-second lines up. `18` may draw it as a countdown; the line
+        it replaces is this one.
+        """
+        self.store.bump_counter("rate_limit_waits")
+        _logger.info(
+            "waiting out a rate limit",
+            extra={"conversation_id": render.short_id(uuid), "wait_s": seconds},
+        )
+        self.progress.waiting(seconds, reason)
+        remaining = seconds
+        while remaining > 0:
+            slice_s = min(remaining, RATE_LIMIT_PROBE_S)
+            pause(slice_s)
+            remaining -= slice_s
+            if remaining > 0 and self._can_send_again():
+                _logger.info("rate limit lifted early", extra={"left_s": remaining})
+                return
+
+    def _can_send_again(self) -> bool:
+        """Whether the page would take a submit now. `False` when it cannot tell.
+
+        Conservative in both directions: a browser that cannot be read is not
+        evidence of anything, and neither is an idle empty composer
+        (`probe.rate_limited` answers `None` for that one). The cost of being
+        wrong here is a wait that runs its full course, which is what the account
+        asked for anyway; the cost of the opposite would be submitting into a
+        limit that is still in force.
+        """
+        try:
+            return (
+                probe.rate_limited(browser_session.current_state(self._session()))
+                is False
+            )
+        except BrowserError:
+            # `_ensure_browser` is what deals with a browser that has gone; this
+            # is only deciding whether to stop waiting early.
+            _logger.debug("could not read the page while waiting out a rate limit")
+            return False
+
+    def _ask_to_wait(
+        self, uuid: str, detail: str, *, position: int, total: int
+    ) -> intervening.Request:
+        """Turn a rate limit into `14`'s ask, from what the entry already says.
+
+        The entry is read rather than passed because `_record` has just written
+        where this conversation got to, and a pause record that disagreed with it
+        would send the resume to a different chat or a different step.
+        """
+        entry = self.store.load()[uuid]
+        return self._pause(
+            uuid,
+            reason=intervening.CONFIRMATION_REQUIRED,
+            detail=detail,
+            last_step=entry.last_step or Step.OPEN,
+            conversation_id=entry.destination.conversation_id,
+            position=position,
+            total=total,
+        )
+
     def _intervene(self, request: intervening.Request) -> None:
         """Ask, and come back only when a human says they have acted.
 
@@ -1164,15 +1500,37 @@ class Importer:
         the block would be printed at somebody who has already read it, and a
         `retry` is itself a wait — asking twice for one Enter would swallow it.
         Both still go through the same check, and are told again if it fails.
+
+        `15` put a clock on the one reason that has a check behind it: an
+        `auth_required` ask that is still not signed in `timeouts.login_s` after
+        it was first put raises `LoginTimedOut`, and the run ends with exit `3`
+        rather than trading Enters forever. The deadline is read where the
+        human's answer comes back and not while the prompt is waiting for it,
+        because the ask is a blocking read on a terminal and nothing here can
+        interrupt one — a person who never answers is `Console`'s case, not this
+        one, and a pipe that cannot answer has already said so.
         """
+        deadline = (
+            time.monotonic() + self.settings.timeouts.login_s
+            if request.reason == intervening.AUTH_REQUIRED
+            else None
+        )
         while True:
             if not acted and not self.intervention.ask(request):
                 return False
             if request.reason != intervening.AUTH_REQUIRED or self._signed_in():
                 return True
+            if deadline is not None and time.monotonic() >= deadline:
+                raise LoginTimedOut
             if not self.intervention.retry(intervening.STILL_NOT_LOGGED_IN):
                 return False
             acted = True
+
+    def _note_login_timeout(self) -> None:
+        """Say why the run stopped on an ask it had been answering (`15`)."""
+        self.intervention.note(
+            intervening.LOGIN_TIMED_OUT.format(seconds=self.settings.timeouts.login_s)
+        )
 
     def _offer_resume(self) -> None:
         """Point an `import` at the pause an earlier run left behind."""

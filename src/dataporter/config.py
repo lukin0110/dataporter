@@ -18,7 +18,8 @@ adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS`
 a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
 `run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`;
 `09` adds `hermes` and three more `timeouts` fields; `13` adds `retries` and one
-more `run` field; `14` adds another `run` field.
+more `run` field; `14` adds another `run` field; `15` adds `pacing` and the three
+`with_pacing` flags.
 """
 
 import os
@@ -180,6 +181,41 @@ class HermesSettings(BaseModel):
     whatever recovery costs; `15` owns the number once there is evidence."""
 
 
+class PacingSettings(BaseModel):
+    """How slowly the run goes, and how long it will wait when told to (`15`).
+
+    §13 asks for a run that is deliberately conservative, and these are the
+    numbers that make it one. They are separate from `retries` because the two
+    answer different questions: that one is *how many times*, this one is *how
+    far apart*, and a run with no failures in it still spends every value here.
+    """
+
+    delay_between_conversations_s: float = 20.0
+    """The gap after one conversation's terminal status and before the next one
+    starts. `--delay`.
+
+    Twenty seconds because the experiment is about reliability rather than
+    throughput (§13): with a 300 s response budget it bounds a ten-conversation
+    run to under an hour, and it keeps the request rate below what a person
+    working through the same list by hand would produce.
+    """
+
+    delay_between_parts_s: float = 5.0
+    """The gap between one part's acknowledgement and the next part's paste.
+
+    Spent by the agent rather than by us — the whole per-part loop happens inside
+    one Hermes run — so it reaches the page through the task prompt (`11`) and is
+    the one pacing value this process does not itself sleep for.
+    """
+
+    max_rate_limit_wait_s: float = 3600.0
+    """The longest wait the run will make on its own when the account asks for
+    one. Beyond it the wait becomes `14`'s ask, because an hour is already longer
+    than an operator who started a migration expects to watch nothing happen, and
+    a tool that quietly sleeps until tomorrow has stopped being one.
+    """
+
+
 class RetrySettings(BaseModel):
     """How often one conversation is tried again, and how long between tries (`13`).
 
@@ -316,6 +352,7 @@ class Settings(BaseSettings):
     attachments: AttachmentSettings = AttachmentSettings()
     browser: BrowserSettings = BrowserSettings()
     hermes: HermesSettings = HermesSettings()
+    pacing: PacingSettings = PacingSettings()
     retries: RetrySettings = RetrySettings()
     timeouts: TimeoutSettings = TimeoutSettings()
     run: RunSettings = RunSettings()
@@ -444,6 +481,47 @@ def with_attachments_dir(settings: Settings, directory: Path | None) -> Settings
             "attachments": settings.attachments.model_copy(update={"dir": directory})
         }
     )
+
+
+def with_pacing(
+    settings: Settings,
+    *,
+    delay: float | None = None,
+    max_retries: int | None = None,
+    timeout: float | None = None,
+) -> Settings:
+    """Apply `15`'s three `import` flags, which outrank every other source.
+
+    §13 names four configurable parameters and gives three of them a flag;
+    `--limit` is the fourth and is not here, because it is a property of the
+    selection rather than of the settings and `06` already records it as one.
+
+    Copies of the nested models rather than a reload with an init override, for
+    the reason `with_attachments_dir` is a copy: `Settings(pacing={...})` would
+    replace the whole `[pacing]` table and silently drop whatever else an
+    operator put in `config.toml`. `None` means the flag was not given.
+
+    `max_retries` is *retries*, as §13 words it, and `retries.max_attempts` is
+    attempts — so `--max-retries 0` is one attempt and no second one. The two
+    names differ by one on purpose: an operator thinks in "how many more goes",
+    and `13`'s budget counts the goes themselves.
+    """
+    changes: dict[str, Any] = {}
+    if delay is not None:
+        changes["pacing"] = settings.pacing.model_copy(
+            update={"delay_between_conversations_s": delay}
+        )
+    if max_retries is not None:
+        changes["retries"] = settings.retries.model_copy(
+            update={"max_attempts": max_retries + 1}
+        )
+    if timeout is not None:
+        changes["timeouts"] = settings.timeouts.model_copy(
+            update={"hermes_task_s": timeout}
+        )
+    if not changes:
+        return settings
+    return settings.model_copy(update=changes)
 
 
 def load_settings(*, workspace: Path | None = None) -> Settings:

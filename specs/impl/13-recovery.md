@@ -120,6 +120,12 @@ Resolved while building:
 - **`needs_human` and `rate_limited` are marked in the mapping table itself.**
   `Mapped.deferred` is set by `interpret`, so `12`'s table and `13`'s policy are one
   table read twice rather than two branches on `result.outcome` that can drift.
+
+  *Corrected by [`15`](15-pacing.md):* the `rate_limited` row recorded `failed`
+  whatever had landed. That was harmless while nothing tried the conversation again,
+  and stopped being harmless the moment `15` waited and re-attempted — a `failed`
+  entry has no chat to continue, so the next attempt would open a second one. The row
+  now reads `landed` like every other.
 - **The breaker counts conversations the loop attempted, `failed` only, same category.**
   A `partial` left a chat at the destination, and an unsupported entry selected by
   `--retry-failed` was never handed to Hermes; neither is evidence that the next

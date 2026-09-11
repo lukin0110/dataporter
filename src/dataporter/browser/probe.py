@@ -351,6 +351,31 @@ def pending_dialogs(page: Page) -> list[str]:
     ]
 
 
+def rate_limited(state: PageState) -> bool | None:
+    """Whether the page still refuses to send, as far as a probe can tell (`15`).
+
+    Three answers, because the page really does give three. The skill's own
+    signal for a rate limit (`11`, *Recovery*) is a send control that is disabled
+    beside a composer that is *not* empty — a seed that was pasted and would not
+    go — and that is `True` here. A send control that is enabled is `False`: the
+    page will take a submit, whatever banner it is still showing. An empty
+    composer with nothing to send is `None`, because that is what an idle new
+    chat looks like and reading it as "the limit lifted" would end a wait the
+    account asked for on no evidence at all.
+
+    `15` waits out the whole `retry_after_s` on `None`, so the only thing this
+    buys today is noticing a limit that lifted early — and only when the composer
+    still holds the part that could not be sent. `docs/claude-ui-map.md` records
+    the row as `*unknown*`: nobody has watched claude.ai do this, and when `20`
+    does, this function is where the observation lands.
+    """
+    if state.send_enabled:
+        return False
+    if state.composer_chars > 0:
+        return True
+    return None
+
+
 def _state_from(page: Page, raw: Any, tab_count: int) -> PageState:
     """Turn one evaluate's answer into a `PageState`."""
     if not isinstance(raw, dict):  # pragma: no cover - defensive

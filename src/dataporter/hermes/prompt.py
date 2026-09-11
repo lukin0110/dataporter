@@ -14,6 +14,12 @@ its output tokens (`specs/README.md`, division of labour). What is here is a
 short id, a count, some paths and an ack line — and an ack line is ours, not the
 conversation's.
 
+`delay between parts` is `15`'s, and is the one field here that asks for an
+absence rather than an action: the per-part loop happens inside one Hermes run,
+so the only process that can put a gap between one part's acknowledgement and the
+next part's paste is the agent making them. §13's pacing would otherwise stop at
+the door of the one loop that sends messages.
+
 `parts already acknowledged` is the one field `11` added to the template the spec
 first sketched. Without it a resumed run has to work out which parts are already
 in the chat by reading the transcript — which means snapshots, which means
@@ -112,12 +118,18 @@ def render(
     resume_from: Step = Step.OPEN,
     conversation_id: str | None = None,
     acknowledged: int = 0,
+    delay_between_parts_s: float = 0.0,
 ) -> str:
     """One conversation's task prompt.
 
     `parts` is passed rather than derived from `seed_files` so that the two can
     disagree and be caught: a prompt that says three parts and lists two seed
     files would have Hermes wait for an acknowledgement that is never coming.
+
+    `delay_between_parts_s` defaults to no wait, because this function renders
+    what it is given and a default of five seconds here would be a second place
+    that decides the pacing. `12` passes `pacing.delay_between_parts_s`, which is
+    the one.
     """
     if parts < 1:
         raise PromptError(f"a conversation has at least one part, not {parts}")
@@ -127,6 +139,8 @@ def render(
         raise PromptError(f"{parts} parts but {len(acknowledgements)} ack lines")
     if not 0 <= acknowledged <= parts:
         raise PromptError(f"{acknowledged} acknowledged parts out of {parts}")
+    if delay_between_parts_s < 0:
+        raise PromptError(f"a delay is not negative: {delay_between_parts_s}")
     if acknowledged and conversation_id is None:
         raise PromptError("acknowledged parts with no chat to find them in")
     lines = [
@@ -139,6 +153,7 @@ def render(
         f"resume_from: {resume_from}",
         f"existing conversation_id: {_one_line(conversation_id or NONE)}",
         f"parts already acknowledged: {acknowledged}",
+        f"delay between parts: {delay_between_parts_s:g}",
         f"helper: {helper_command(workspace)}",
         "",
         TAIL,
@@ -155,6 +170,7 @@ def for_seed(
     resume_from: Step = Step.OPEN,
     conversation_id: str | None = None,
     acknowledged: int = 0,
+    delay_between_parts_s: float = 0.0,
 ) -> str:
     """The prompt for a seed `04` generated and `12` has just written out.
 
@@ -174,4 +190,5 @@ def for_seed(
         resume_from=resume_from,
         conversation_id=conversation_id,
         acknowledged=acknowledged,
+        delay_between_parts_s=delay_between_parts_s,
     )

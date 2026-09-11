@@ -824,6 +824,7 @@ def test_status_json_is_the_state_file_plus_the_run_counters(
         "pending": 0,
         "browser_actions": 0,
         "retries": 17,
+        "rate_limit_waits": 0,
         "human_interventions": 0,
         "interrupted": 0,
     }
