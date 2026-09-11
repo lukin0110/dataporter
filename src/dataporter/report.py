@@ -224,14 +224,22 @@ def read_plan(workspace: Path) -> MigrationPlan:
     A workspace without one has never had a run in it, and a report is about a
     run: exit `2` and the command that makes one, rather than a block of zeros
     that reads like a migration of nothing.
+
+    That is `FileNotFoundError` and nothing else. Any other `OSError` — a
+    permission, a directory where the file should be — is a filesystem problem
+    an operator can see and fix, and "no plan.json" would send them to `import`,
+    which would fail on the same file for the same reason. Reported the way
+    `state` reports an unreadable `state.json`, because it is the same sentence.
     """
     path = workspace / PLAN_FILENAME
     try:
         raw = path.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         raise state.StateError(
             f"no {PLAN_FILENAME} in {workspace} — run `import` first"
         ) from None
+    except OSError as exc:
+        raise state.StateError(f"cannot read {path}: {exc.strerror or exc}") from exc
     try:
         return MigrationPlan.model_validate_json(raw)
     except ValidationError as exc:
@@ -506,7 +514,14 @@ def failure_lines(failures: Sequence[FailureRecord]) -> list[str]:
     The error column is as wide as the widest in *this* list, so the `retry=`
     column lines up down the block and a report of one failure does not carry
     the padding of a report of a hundred.
+
+    Nothing at all for an empty list, header included: `05`'s rule for
+    `inspect`'s reasons, which is that an empty section is a question an
+    operator has to answer ("did it not count, or is it none?") where no section
+    is an answer. It is also what makes this safe to call on any report.
     """
+    if not failures:
+        return []
     width = max(len(record.describe()) for record in failures) + DETAIL_GUTTER
     return [
         FAILURES_HEADER,
@@ -526,18 +541,28 @@ def limitation_lines(limitations: Mapping[str, int]) -> list[str]:
 
     `06`'s breakdown rule, the same one `inspect` prints its reasons with: the
     name column is the longest name plus a gutter and the count is right-aligned
-    beside it.
+    beside it. Nothing at all when nothing was recorded, for the reason
+    `failure_lines` gives.
     """
+    if not limitations:
+        return []
     return summary.breakdown_lines(LIMITATIONS_HEADER, list(limitations.items()))
 
 
 def lines(report: Report) -> list[str]:
-    """Every line of the report, the blank lines between its blocks included."""
+    """Every line of the report, the blank lines between its blocks included.
+
+    A section that rendered nothing takes its blank line with it, which is the
+    whole of what a report with no failures and no limitations looks like: §16's
+    block, and an end.
+    """
     rendered = totals_lines(report.totals)
-    if report.failures:
-        rendered += ["", *failure_lines(report.failures)]
-    if report.limitations:
-        rendered += ["", *limitation_lines(report.limitations)]
+    for section in (
+        failure_lines(report.failures),
+        limitation_lines(report.limitations),
+    ):
+        if section:
+            rendered += ["", *section]
     return rendered
 
 
