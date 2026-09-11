@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- A stand-in for a chat that finishes answering: the Stop button goes away
+     after four seconds and an assistant turn appears, which is the pair
+     `08`'s `await-response` waits for. The reply is written in two steps, a
+     beat apart, so a helper that stopped at "not generating any more" would
+     read a message that is still growing. -->
+<meta charset="utf-8">
+<title>Migrated conversation</title>
+<main>
+  <div data-testid="conversation">
+    <div data-testid="user-message">Part 1 of 1</div>
+  </div>
+  <div contenteditable="true" role="textbox" aria-label="Write your prompt"></div>
+  <button id="stop" aria-label="Stop response">Stop</button>
+</main>
+<script>
+  const transcript = document.querySelector('[data-testid="conversation"]');
+  const reply = document.createElement('div');
+  reply.setAttribute('data-testid', 'assistant-message');
+  setTimeout(() => {
+    reply.textContent = 'ACK part 1';
+    transcript.appendChild(reply);
+  }, 2000);
+  setTimeout(() => {
+    reply.textContent = 'ACK part 1 of 1';
+    const stop = document.getElementById('stop');
+    stop.parentNode.removeChild(stop);
+    const send = document.createElement('button');
+    send.setAttribute('aria-label', 'Send message');
+    send.textContent = 'Send';
+    document.querySelector('main').appendChild(send);
+  }, 4000);
+</script>

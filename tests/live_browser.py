@@ -1,0 +1,81 @@
+"""Driving a real browser from the test suite.
+
+`07` and `08` are both tested twice: once against `FakeChrome`, which answers
+whatever a test says and covers every line on a machine with no browser, and
+once against a real Chrome rendering the checked-in page fixtures, which is the
+only way to know the selectors match and that a 45 kB seed survives a composer.
+
+The second half is what lives here — finding a browser, launching it headless
+over a fixture server, and the marker that skips when there is none — so that
+both test modules ask for it the same way.
+"""
+
+import os
+import shutil
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+
+import pytest
+
+from dataporter.browser import launcher
+from dataporter.config import BrowserSettings, Settings, TimeoutSettings
+from dataporter.errors import BrowserError
+from fake_chrome import free_port
+from fake_pages import PageServer
+
+BROWSER_ENV_VAR = "DATAPORTER_TEST_BROWSER"
+
+HEADLESS_ARGS = (
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+)
+"""A CI runner has no display and may have no user namespaces. The migration
+itself is headed (§12); this is the test suite's own escape hatch."""
+
+
+def real_browser() -> Path | None:
+    """A browser to drive, or `None`. Never raises: absence is a skip."""
+    override = os.environ.get(BROWSER_ENV_VAR, "").strip()
+    if override:
+        found = shutil.which(override)
+        return Path(found) if found else None
+    try:
+        return launcher.find_executable()
+    except BrowserError:
+        return None
+
+
+requires_a_browser = pytest.mark.skipif(
+    real_browser() is None,
+    reason=f"no browser installed (set {BROWSER_ENV_VAR} to point at one)",
+)
+
+
+@contextmanager
+def live_browser() -> Iterator[tuple[launcher.BrowserSession, PageServer]]:
+    """A real browser and the fixture server it is pointed at.
+
+    Expensive — a process and a profile directory — so the fixtures that use it
+    are module-scoped.
+    """
+    executable = real_browser()
+    if executable is None:  # pragma: no cover - the marker skips first
+        pytest.skip("no browser installed")
+    with tempfile.TemporaryDirectory() as directory:
+        settings = Settings(
+            workspace=Path(directory) / "migration",
+            browser=BrowserSettings(
+                executable=executable, cdp_port=free_port(), extra_args=HEADLESS_ARGS
+            ),
+            timeouts=TimeoutSettings(browser_start_s=60.0, cdp_call_s=30.0),
+        )
+        with PageServer() as server:
+            session = launcher.launch(settings, server.url("/new"))
+            try:
+                yield session, server
+            finally:
+                session.close()

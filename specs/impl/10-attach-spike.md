@@ -41,7 +41,10 @@ answers. The code changes allowed are limited to defaults in `config.py`, select
    one? (Decides whether `close-extra-tabs` runs before every conversation.)
 3. `paste --method insert_text` on the real composer: does the text land verbatim, does
    the UI convert it to a "pasted text" attachment, and at what size does anything break
-   (try 5 k, 20 k, 50 k, 100 k, 200 k characters)? Same for `exec_command`.
+   (try 5 k, 20 k, 50 k, 100 k, 200 k characters)? Same for `exec_command`. And does `08`'s
+   block-per-line reading of the composer (`probe.PRELUDE_JS`, `blockText`) round-trip
+   what the real editor holds — an empty composer reading as empty, a blank line as one
+   blank line?
 4. What does the DOM show while Claude generates and when it stops (button labels,
    attributes, the last message container), and how long does a 50 k seed take?
 5. What is the URL immediately after the first submit, and when does `/chat/<uuid>`

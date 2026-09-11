@@ -17,12 +17,14 @@ FIXTURES = Path(__file__).parent / "fixtures" / "pages"
 
 CHAT_ID = "11111111-2222-4333-8444-555555555555"
 GENERATING_CHAT_ID = "66666666-7777-4888-8999-aaaaaaaaaaaa"
+RESPONDING_CHAT_ID = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
 
 ROUTES: dict[str, str] = {
     "/login": "login.html",
     "/new": "new.html",
     f"/chat/{CHAT_ID}": "chat.html",
     f"/chat/{GENERATING_CHAT_ID}": "generating.html",
+    f"/chat/{RESPONDING_CHAT_ID}": "responding.html",
     "/settings/profile": "dialog.html",
 }
 """Path to fixture. `/settings/profile` is deliberately a real page: `08` needs

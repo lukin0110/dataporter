@@ -6,12 +6,8 @@ that answers whatever the test says, and once — the half that actually proves 
 selectors — against a real Chrome rendering the checked-in page fixtures.
 """
 
-import os
-import shutil
-import tempfile
 import time
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 
@@ -19,24 +15,26 @@ from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient, Page
 from dataporter.browser.probe import (
+    COMPOSER_SELECTOR,
+    PAGE_STATE_JS,
+    LastMessage,
     PageKind,
     PageState,
     conversation_id_of,
     kind_of,
+    page_view,
     path_of,
     probe,
 )
-from dataporter.config import BrowserSettings, Settings, TimeoutSettings
-from dataporter.errors import BrowserError
 from fake_chrome import (
     FakeChrome,
     FakeTarget,
     dialog_closed_event,
     dialog_event,
-    free_port,
     page_state,
 )
 from fake_pages import CHAT_ID, GENERATING_CHAT_ID, PageServer
+from live_browser import live_browser, requires_a_browser
 
 CHAT_URL = f"https://claude.ai/chat/{CHAT_ID}"
 
@@ -172,6 +170,50 @@ def test_a_page_that_answers_with_nothing_is_read_as_empty(fake: FakeChrome) -> 
     assert state.composer_chars == 0
 
 
+# --------------------------------------------------------------------------- #
+# The last message
+# --------------------------------------------------------------------------- #
+
+
+def test_page_view_is_one_evaluate_for_both_answers(fake: FakeChrome) -> None:
+    fake.targets[0].evaluate = page_state(
+        url=CHAT_URL,
+        last_message={"role": "assistant", "chars": 12, "contains": ["ACK part 1"]},
+    )
+    client = CdpClient(port=fake.port, timeout=5.0)
+    with client.attach("page-1") as page:
+        view = page_view(page, expect=["ACK part 1"])
+    assert view.state.conversation_id == CHAT_ID
+    assert view.last_message == LastMessage(
+        role="assistant", chars=12, contains=("ACK part 1",)
+    )
+    assert fake.methods().count("Runtime.evaluate") == 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        None,
+        "not an object",
+        {},
+        {"role": "system", "chars": None, "contains": "ACK"},
+    ],
+)
+def test_a_page_that_answers_with_nonsense_reads_as_no_message(raw: object) -> None:
+    """Same tolerance `probe` has: an error page, or a document that has not
+    rendered, is "no message" and not an exception."""
+    assert LastMessage.from_raw(raw) == LastMessage(role=None, chars=0, contains=())
+
+
+def test_the_selectors_are_named_once() -> None:
+    """Every expression is built from the same constants, which is what makes
+    `08`'s paste and `07`'s count refer to the same element."""
+    assert f'const COMPOSER_SELECTOR = "{COMPOSER_SELECTOR}"' in PAGE_STATE_JS.replace(
+        '\\"', '"'
+    )
+    assert "/* hcm:page_state */" in PAGE_STATE_JS
+
+
 def test_page_state_carries_no_content_fields() -> None:
     """The model is the contract `08` prints to stdout. Nothing that could hold a
     message, a title or a snapshot has a place in it."""
@@ -193,54 +235,12 @@ def test_page_state_carries_no_content_fields() -> None:
 # The same signals, against a real browser
 # --------------------------------------------------------------------------- #
 
-BROWSER_ENV_VAR = "DATAPORTER_TEST_BROWSER"
-HEADLESS_ARGS = (
-    "--headless=new",
-    "--no-sandbox",
-    "--disable-gpu",
-    "--disable-dev-shm-usage",
-)
-"""A CI runner has no display and may have no user namespaces. The migration
-itself is headed (§12); this is the test suite's own escape hatch."""
-
-
-def real_browser() -> Path | None:
-    override = os.environ.get(BROWSER_ENV_VAR, "").strip()
-    if override:
-        found = shutil.which(override)
-        return Path(found) if found else None
-    try:
-        return launcher.find_executable()
-    except BrowserError:
-        return None
-
-
-requires_a_browser = pytest.mark.skipif(
-    real_browser() is None,
-    reason=f"no browser installed (set {BROWSER_ENV_VAR} to point at one)",
-)
-
 
 @pytest.fixture(scope="module")
 def live() -> Iterator[tuple[launcher.BrowserSession, PageServer]]:
     """One real browser and one fixture server for the whole module."""
-    executable = real_browser()
-    if executable is None:  # pragma: no cover - the marker skips first
-        pytest.skip("no browser installed")
-    with tempfile.TemporaryDirectory() as directory:
-        settings = Settings(
-            workspace=Path(directory) / "migration",
-            browser=BrowserSettings(
-                executable=executable, cdp_port=free_port(), extra_args=HEADLESS_ARGS
-            ),
-            timeouts=TimeoutSettings(browser_start_s=60.0, cdp_call_s=30.0),
-        )
-        with PageServer() as server:
-            session = launcher.launch(settings, server.url("/new"))
-            try:
-                yield session, server
-            finally:
-                session.close()
+    with live_browser() as pair:
+        yield pair
 
 
 def visit(session: launcher.BrowserSession, url: str) -> PageState:

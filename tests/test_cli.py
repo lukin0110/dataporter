@@ -19,11 +19,6 @@ COMMANDS: list[list[str]] = [
     ["report"],
     ["setup"],
     ["doctor"],
-    ["browser", "probe"],
-    ["browser", "paste"],
-    ["browser", "attach"],
-    ["browser", "await-response"],
-    ["browser", "close-extra-tabs"],
 ]
 
 EXCLUDED_FROM_69: list[list[str]] = [
@@ -34,14 +29,20 @@ EXCLUDED_FROM_69: list[list[str]] = [
     ["login"],
     ["session", "status"],
     ["session", "logout"],
+    ["browser", "probe"],
+    ["browser", "paste"],
+    ["browser", "attach"],
+    ["browser", "await-response"],
+    ["browser", "close-extra-tabs"],
 ]
 """Commands `--help` must still list that the 69 test cannot cover as written.
 
 `import` still exits 69 without `--dry-run`, but it needs an existing export path,
 so it has `test_import_without_dry_run_still_reaches_69` of its own. `seeds` (`04`),
 `inspect` (`05`), `status` (`06`), `login` and `session …` (`07`) are implemented
-and no longer exit 69 at all; the last three are exercised in
-`test_browser_session.py`, where the fake browser they need lives."""
+and no longer exit 69 at all, and `08` implemented every `browser …` command;
+those two groups are exercised in `test_browser_session.py` and
+`test_browser_helpers.py`, where the fake browser they need lives."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -151,8 +152,13 @@ def test_unhandled_exception_becomes_exit_70(
 
 
 def test_invoked_name_skips_the_program_name(
-    runner: CliRunner, workspace: Path
+    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """`08` implemented every nested command, so the case is exercised by
+    pointing one of them back at `not_implemented`."""
+    monkeypatch.setattr(
+        cli, "emit_helper", lambda ctx, name, work: cli.not_implemented(ctx)
+    )
     result = runner.invoke(cli.app, ["browser", "probe"], catch_exceptions=False)
     assert result.stderr == "not implemented in this build: browser probe\n"
 
