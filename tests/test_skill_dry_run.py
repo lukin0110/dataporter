@@ -12,8 +12,8 @@ What each test is for:
 - the happy path, which is the criterion, and which also proves the two seeds
   reached the composer whole (the `paste` records in `logs/actions.jsonl` are
   written by the helper, not by the agent);
-- a page with no composer, which must become `needs_human` rather than a run that
-  pastes a conversation into whatever is on screen;
+- a session that expired into a sign-in page, which must become `needs_human`
+  rather than a run that pastes a conversation into whatever is on screen;
 - a composer somebody else was using, which must stop before any seed is
   inserted;
 - a seed part whose file is gone, which must leave a `partial` that names the
@@ -43,6 +43,7 @@ from fake_composer import Browser, FakePage
 CHAT_ID = "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91"
 NEW_URL = "https://claude.ai/new"
 CHAT_URL = f"https://claude.ai/chat/{CHAT_ID}"
+LOGIN_URL = "https://claude.ai/login"
 
 ANSWER_AFTER = 2
 """How many reads of the page happen before the stub finishes answering. More
@@ -210,18 +211,37 @@ def test_both_seeds_reached_the_composer_whole(
 # --------------------------------------------------------------------------- #
 
 
-def test_a_page_with_no_composer_needs_a_human(
+def test_a_sign_in_page_needs_a_human(
     monkeypatch: pytest.MonkeyPatch,
     runner: CliRunner,
     two_part_seed: seeding.Seed,
     seed_files: list[Path],
     tmp_path: Path,
 ) -> None:
-    """Signed out looks like this to `probe`: a page with nothing to type into."""
+    """A session that expired sends `/new` to `/login`, and the run stops there.
+
+    What the agent sees is not `kind: login` — the login page is outside the
+    migration surface, so the helper refuses to drive it and answers with the
+    URL it refused. `13`'s table names that refusal as the signal; nothing is
+    uploaded and nothing is pasted.
+    """
     page = FakePage(url=NEW_URL, composer=None)
     browser = browser_with(page, monkeypatch)
+
+    class Expired(Ui):
+        def navigate(self, url: str) -> None:
+            super().navigate(url)
+            self.browser.visit(LOGIN_URL)
+
     try:
-        printed, ui = migrate(browser, runner, two_part_seed, seed_files, tmp_path)
+        agent = ScriptedAgent(helper=helper_runner(runner), browser=Expired(browser))
+        printed = agent.run(
+            prompting.for_seed(
+                two_part_seed,
+                seed_files=seed_files,
+                workspace=tmp_path / "migration",
+            )
+        )
     finally:
         browser.chrome.stop()
 
@@ -229,7 +249,7 @@ def test_a_page_with_no_composer_needs_a_human(
     assert result.outcome == "needs_human"
     assert result.needs_human_reason == "auth_required"
     assert result.chunks_acked == 0
-    assert ui.page.uploaded == []
+    assert page.uploaded == []
 
 
 def test_a_composer_someone_else_was_using_stops_before_the_paste(

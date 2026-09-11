@@ -12,13 +12,16 @@ that one conversation's failure is one conversation's failure, that a run which
 finds nothing to do says so, and that nothing a conversation contains reaches
 stdout. It proves nothing about whether Hermes can actually drive the page; `11`
 covers the procedure with a scripted agent and only `20` can measure the rest.
+
+The world these run in is `world.py`, shared with `13`'s `test_recovery.py`;
+what a failure makes the loop *do* is that module's subject, and this one keeps
+to what the loop writes down.
 """
 
 import json
 import subprocess
 import sys
-from collections.abc import Iterator, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -29,163 +32,26 @@ from dataporter import cli, state
 from dataporter import importer as importing
 from dataporter.browser import launcher
 from dataporter.browser.cdp import CdpClient
-from dataporter.config import (
-    BrowserSettings,
-    HermesSettings,
-    RunSettings,
-    Settings,
-    TimeoutSettings,
-)
+from dataporter.config import Settings
 from dataporter.errors import AuthError, BrowserError, Category, HermesError
 from dataporter.exit_codes import ExitCode
-from dataporter.hermes import profile as profiling
 from dataporter.hermes import runner as hermes_running
 from dataporter.state import Status
 from dataporter.steps import Step
 from fake_composer import Browser, FakePage
-from fake_hermes import FakeHermes
-
-MODEL = "anthropic/claude-sonnet-5"
-NEW_URL = "https://claude.ai/new"
-
-FIRST = "aa000001-1111-4111-8111-111111111111"
-LONG = "bb000002-2222-4222-8222-222222222222"
-EMPTY = "ff000006-6666-4666-8666-666666666666"
-"""The fixture's first conversation, its longest, and its unmigratable one."""
-
-CHAT = "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91"
-OTHER_CHAT = "c7e1b3f5-2d99-4f4b-8b2a-3a1f6e8d9c02"
-
-CONTENT: tuple[str, ...] = (
-    "Listing files",
-    "Postgres questions",
-    "Shorter loop",
-    "Q3 report",
-    "Naming the tool",
-    "pathlib",
+from world import (
+    CHAT,
+    CONTENT,
+    EMPTY,
+    FIRST,
+    LONG,
+    MODEL,
+    NEW_URL,
+    OTHER_CHAT,
+    World,
+    completed,
+    result,
 )
-"""Titles and a phrase from the fixture's messages. §10: none of these may appear
-on stdout, at any verbosity, at any point in a run."""
-
-
-def completed(conversation_id: str = CHAT, **fields: Any) -> str:
-    """What a Hermes run that migrated one conversation prints last."""
-    return result(
-        outcome="completed",
-        conversation_id=conversation_id,
-        last_step=str(Step.DONE),
-        chunks_acked=1,
-        **fields,
-    )
-
-
-def result(**fields: Any) -> str:
-    payload: dict[str, Any] = {
-        "outcome": "failed",
-        "last_step": str(Step.OPEN),
-        "chunks_acked": 0,
-        "actions": 4,
-    }
-    payload.update(fields)
-    # Prefixed, because a real transcript is pages of prose and helper objects
-    # with the result at the end of it.
-    return f"done.\n{json.dumps(payload)}\n"
-
-
-# --------------------------------------------------------------------------- #
-# The world one run happens in
-# --------------------------------------------------------------------------- #
-
-
-@dataclass
-class World:
-    """A workspace, a fake Hermes, a fake browser and the export to migrate."""
-
-    settings: Settings
-    hermes: FakeHermes
-    browser: Browser
-    page: FakePage
-    export: Path
-    launches: list[str] = field(default_factory=list)
-    pauses: list[float] = field(default_factory=list)
-
-    def answers(self, *answers: str) -> None:
-        """What the fake Hermes prints, one per `-z` run, last one repeating."""
-        self.hermes.write(
-            version="hermes 1.0.0",
-            config_extra={"agent.model": MODEL},
-            answers=list(answers),
-            append_probe=True,
-        )
-
-    def exits(self, *codes: int) -> None:
-        self.hermes.write(
-            version="hermes 1.0.0",
-            config_extra={"agent.model": MODEL},
-            answers=list(self.hermes.spec.get("answers", [])),
-            exits=list(codes),
-            append_probe=True,
-        )
-
-    def store(self) -> state.StateStore:
-        return state.StateStore(self.settings.workspace)
-
-    def entry(self, uuid: str) -> state.ConversationState:
-        return self.store().load()[uuid]
-
-    def run(self, **selection: Any) -> importing.RunSummary:
-        return self.importer().run(self.export, state.Selection(**selection))
-
-    def importer(self, **kwargs: Any) -> importing.Importer:
-        return importing.Importer(self.settings, **kwargs)
-
-
-@pytest.fixture
-def world(
-    tmp_path: Path, export_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[World]:
-    page = FakePage(url=NEW_URL, composer="", send_enabled=True)
-    browser = Browser(page)
-    browser.__enter__()
-    hermes = FakeHermes(root=tmp_path / "bin")
-    settings = Settings(
-        workspace=tmp_path / "migration",
-        browser=BrowserSettings(cdp_port=browser.chrome.port),
-        hermes=HermesSettings(
-            executable=hermes.executable, home=tmp_path / "hermes-home"
-        ),
-        timeouts=TimeoutSettings(cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0),
-        run=RunSettings(max_conversations=10),
-    )
-    created = World(
-        settings=settings,
-        hermes=hermes,
-        browser=browser,
-        page=page,
-        export=export_dir,
-    )
-    created.answers(completed())
-    profiling.run_setup(settings)
-
-    def fake_launch(settings: Settings, url: str) -> launcher.BrowserSession:
-        """`07`'s adoption, without a Chrome. `adopted` so nothing tries to
-        close a browser the test owns."""
-        created.launches.append(url)
-        return launcher.BrowserSession(
-            client=CdpClient(port=browser.chrome.port, timeout=2.0),
-            profile=settings.browser_profile_dir,
-            adopted=True,
-        )
-
-    monkeypatch.setattr(launcher, "launch", fake_launch)
-    # The gap between conversations, recorded rather than slept through. The
-    # `pause` function itself is tested below.
-    monkeypatch.setattr(importing, "pause", created.pauses.append)
-    try:
-        yield created
-    finally:
-        browser.chrome.stop()
-
 
 # --------------------------------------------------------------------------- #
 # Acceptance: one conversation, end to end
@@ -285,9 +151,15 @@ def test_titles_are_in_state_and_nowhere_else(
 
 
 def test_a_failing_conversation_does_not_end_the_run(world: World) -> None:
-    """`12`'s second criterion: the second conversation's Hermes falls over."""
-    world.answers(completed(), "nothing that is a result", completed(OTHER_CHAT))
-    world.exits(0, 1, 0)
+    """`12`'s second criterion: the second conversation's Hermes falls over.
+
+    `13` gives that conversation three attempts before the loop gives up on it,
+    which is why the fake answers five times for three conversations. What `12`
+    asks is only the last line: giving up on one is not giving up on the run.
+    """
+    nonsense = "nothing that is a result"
+    world.answers(completed(), nonsense, nonsense, nonsense, completed(OTHER_CHAT))
+    world.exits(0, 1, 1, 1, 0)
 
     summary = world.run(limit=3)
 
@@ -301,9 +173,9 @@ def test_a_failing_conversation_does_not_end_the_run(world: World) -> None:
     assert failed.status is Status.FAILED
     assert failed.error is not None
     assert failed.error.category is Category.HERMES
-    assert failed.error.retry_recommended is True
-    # The third conversation still ran, and ran after the second.
-    assert len(world.hermes.one_shots) == 3
+    assert failed.attempts == 3
+    # The third conversation still ran, and ran after the second's last attempt.
+    assert len(world.hermes.one_shots) == 5
 
 
 def test_a_second_run_over_a_finished_migration_exits_4(world: World) -> None:
@@ -495,6 +367,12 @@ def test_a_browser_that_cannot_come_back_ends_the_run(
             self.seen.append(short_id)
             world.browser.chrome.stop()
 
+        def waiting(self, seconds: float, reason: str) -> None:  # pragma: no cover
+            raise AssertionError("the run should not have waited")
+
+        def stopping(self, failures: int, category: Category) -> None:
+            raise AssertionError("the run should not have tripped the breaker")
+
         def finish(self, counts: Mapping[str, int]) -> None:  # pragma: no cover
             raise AssertionError("the run should not have finished")
 
@@ -541,6 +419,12 @@ class AfterOne:
         self.seen.append(short_id)
         if len(self.seen) == 1:
             self.world.browser.chrome.stop()
+
+    def waiting(self, seconds: float, reason: str) -> None:
+        pass
+
+    def stopping(self, failures: int, category: Category) -> None:
+        pass
 
     def finish(self, counts: Mapping[str, int]) -> None:
         pass

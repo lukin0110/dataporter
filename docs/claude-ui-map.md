@@ -60,7 +60,7 @@ when someone watched that exact signal appear.
 
 | State | Signal the code looks for today | Observed signal | Mark |
 | ----- | ------------------------------- | --------------- | ---- |
-| `signed out` | path starts `/login` | not yet looked at | *unknown* |
+| `signed out` | path starts `/login`; a helper will not drive it at all — the login page is outside `helpers.MIGRATION_SURFACE`, so every helper answers `outside_migration_surface` and reports the URL | not yet looked at | *unknown* |
 | `new chat` | path is `/` or `/new` | not yet looked at | *unknown* |
 | `conversation` | path matches `/chat/<uuid>` | not yet looked at | *unknown* |
 | `composer present` | a visible `div[contenteditable="true"]` | not yet looked at | *unknown* |
@@ -75,6 +75,8 @@ when someone watched that exact signal appear.
 | `upload target` | `input[type="file"]`, visible or not | not yet looked at | *unknown* |
 | `upload accepted` | a visible leaf element outside the composer containing the file name | not yet looked at | *unknown* |
 | `rate limited` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
+| `captcha or security challenge` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
+| `browser error page` | the tab's URL is no longer on `claude.ai`, so `chosen_tab` answers `no_claude_tab` | not yet looked at | *unknown* |
 | `generation failed` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
 | `rename affordance` | nothing — `17` has not been built | not yet looked at | *unknown* |
 

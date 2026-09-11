@@ -13,10 +13,12 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import world as world_module
 from dataporter import log
 from dataporter import seed as seeding
 from dataporter.config import AttachmentSettings, SeedSettings, Settings
 from dataporter.export import load_export
+from world import World
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -62,6 +64,18 @@ def attachments_dir(tmp_path: Path) -> Path:
     target = tmp_path / "attachments"
     target.mkdir()
     return target
+
+
+@pytest.fixture
+def world(
+    tmp_path: Path, export_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[World]:
+    """A workspace, a fake Hermes and a fake browser, ready to run `import`.
+
+    Here rather than in one test module because `12` and `13` both drive it;
+    `world.py` holds the whole body, and this is the name a test asks for.
+    """
+    yield from world_module.build(tmp_path, export_dir, monkeypatch)
 
 
 @pytest.fixture

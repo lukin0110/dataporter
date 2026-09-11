@@ -172,26 +172,58 @@ does not, so in this version rule 2 permits nothing at all.
 
 ## Recovery
 
-`13` writes this section: the full mapping from every failure the migration can
-meet to its detection, its in-run recovery and its retry policy. Until it lands,
-the rule is that a step which cannot be verified ends the run rather than being
-worked around.
+Every failure this migration can meet has a row below: how you notice it, the one
+recovery you may attempt inside the run, and what to report when that recovery
+does not work. Nothing is handled by waiting and hoping.
 
-- A helper that answers `"ok": false` may be re-run once, and only when its
-  `error` says the page was not ready yet (`composer_not_empty` after a submit
-  that may still be settling, `chip_not_found`, `response_timeout` while
-  `generating` is true). Anything else stops the run.
-- `outside_migration_surface` is never retried: it means the tab left the two
-  URLs this run is allowed to touch. Return `failed` with `error.category`
-  `safety`.
-- A `dialogs` entry in a probe, or a page you cannot classify, is `needs_human`
-  with reason `ambiguous_ui`. A page that asks you to sign in is `auth_required`;
-  a CAPTCHA or a challenge is `captcha` or `security_challenge`.
-- A message saying the account has hit a limit is `rate_limited`; put the number
-  of seconds in `retry_after_s` when the page names one, and stop.
-- Never restart a conversation from `open` to escape a failure. A chat that
+Three rules bound the whole table:
+
+- **One recovery per step.** If the recovery does not make that step's
+  verification pass, stop and report. A conversation that spends a run retrying
+  itself is worse than one that fails quickly: the tool that started you has its
+  own retry budget and its own backoff, and it can afford to wait in a way that
+  you cannot.
+- **Report what you reached, not what you attempted.** `last_step` stays the last
+  step whose verification passed, and `chunks_acked` stays the number of
+  acknowledgement lines you actually saw. A recovery that failed changes neither.
+- **Never restart a conversation from `open` to escape a failure.** A chat that
   exists is recorded, retried and continued; a second chat for the same source
   conversation is a duplicate nobody can clean up.
+
+| Failure | How you notice it | Recovery, at most once per step | If it still fails |
+| --- | --- | --- | --- |
+| failed click | after the click the step's own verification is unchanged — the composer still holds the part it held before | `browser_snapshot` again, find the element again by role and label, click once more | `failed`, `error.category` `ui` |
+| missing composer | `browser probe` answers `composer_present: false` while `kind` is `new_chat` or `chat` | `browser_navigate` to the run's URL again, wait five seconds, probe again | `failed`, `ui` |
+| unexpected dialog | `browser probe` answers a non-empty `dialogs`, or a snapshot shows `[role=dialog]` | an entry beginning `javascript:` is a JS dialog — dismiss it with `browser_dialog`. A page modal with a visible close or dismiss control — click that control once. Never click anything labelled delete, confirm, upgrade or allow | `needs_human`, reason `ambiguous_ui` |
+| login expiry | a helper answers `outside_migration_surface` with a `url` under `https://claude.ai/login`, or a snapshot shows a sign-in form | none — you hold no credentials and must not ask for any | `needs_human`, reason `auth_required` |
+| rate limiting | a message or banner saying the account has hit a limit; `send_enabled: false` beside a composer that is not empty | none | `rate_limited`, with `retry_after_s` set to the seconds the page names, when it names any |
+| generation failure | an error banner or a retry control after submit; `await-response` answers `response_timeout` with `generating: false`; the answer arrives without the acknowledgement line | click the retry control once if the page offers one, then `await-response` again | `partial` when at least one part was acknowledged, `failed` otherwise; category `generation` |
+| network error | a helper answers `no_claude_tab` or `unknown_target`, `browser probe` cannot read the page, `browser_navigate` fails, or the tab shows a browser error page | wait five seconds, navigate to the run's URL again, once | `failed`, `network` |
+| page navigation | `browser probe` answers a `url` that is neither `https://claude.ai/new` nor this run's `/chat/<id>`, or a `conversation_id` that is not the one this run is working in | navigate back to the run's chat, or to `/new` when there is no id yet, once | `failed`, `navigation` |
+| Claude UI change | an element the procedure expects is absent and no row above fits — the composer cleared, so the message was sent, and yet `last_message.role` is not `human` | one attempt to reach the same goal by reading the snapshot, verified exactly as the step says | `needs_human`, reason `ambiguous_ui` |
+| CAPTCHA or security challenge | a challenge, a puzzle, a "verify you are human" page, or a request for a code | none — never attempt one | `needs_human`, reason `captcha` or `security_challenge` |
+| off the migration surface | a helper answers `outside_migration_surface` on any other URL | none, and never a retry: the tab is somewhere this run may not touch | `failed`, category `safety` |
+
+Every signal above is a row of `docs/claude-ui-map.md`. Where that document still
+says `*unknown*` the signal is what the code looks for today, not something
+anybody has watched the page do — so where a helper's answer and your reading of
+a snapshot disagree, the helper is right.
+
+### Re-running a helper
+
+A helper that answers `"ok": false` may be re-run once, and only when its `error`
+says the page was not ready yet: `composer_not_empty` after a submit that may
+still be settling, `chip_not_found`, or `response_timeout` while `generating` is
+true.
+
+`ambiguous_tab` has a recovery of its own: run `<helper prefix> close-extra-tabs`
+once and repeat the call. Every other error belongs to a row above, or stops the
+run: `no_claude_tab` and `unknown_target` are the network row, `composer_missing`
+is the missing-composer row, and `text_mismatch`, `seed_not_found`,
+`seed_unreadable`, `file_not_found`, `input_not_found` and `upload_rejected` are
+none of them — they say the page or the file is not what the prompt described,
+which no repetition changes. Stop and report `failed`, or `partial` when a chat
+already holds part of this conversation.
 
 ## Result
 
