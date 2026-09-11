@@ -4,10 +4,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { execFileSync } = require('child_process');
 const dir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-// Blanked deliberately: `graft init` bakes in the absolute path of the npx cache it
-// ran from, which exists only on the machine that ran it. Resolution below finds a
-// project-local, node-local or globally installed @nanonets/graft on any machine.
-const BAKED = "";
+const BAKED = "/root/.npm/_npx/b7f45974acf31384/node_modules/@nanonets/graft/dist/claude";
 
 // The dist/claude dir of @nanonets/graft resolved from a base whose node_modules is searched.
 function fromPkg(base) {
