@@ -35,6 +35,14 @@ _logger = log.get_logger(__name__)
 
 AttachmentClass = render.AttachmentClass
 
+PLAN_FILENAME = "plan.json"
+"""Where `12` writes the plan, and where `19` reads it back.
+
+Here rather than beside the loop that writes it: the file is a contract between
+three slices, and the module that defines its shape is where its name belongs —
+`19` reads it without importing the importer.
+"""
+
 EMPTY_CONVERSATION = "empty_conversation"
 NO_REPRESENTABLE_TEXT = "no_representable_text"
 SEED_OVER_HARD_CAP = "seed_over_hard_cap"

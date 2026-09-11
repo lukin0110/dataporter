@@ -895,6 +895,21 @@ def actions_path(workspace: Path) -> Path:
     return workspace / log.LOGS_DIRNAME / ACTIONS_FILENAME
 
 
+def count_actions(workspace: Path) -> int:
+    """How many records `logs/actions.jsonl` holds.
+
+    The number `19` reports as `Browser actions`, and the one `12` bumps
+    `run.json`'s counter by after every conversation. Blank lines are not
+    records; a file that is not there is no actions at all, which is what a
+    workspace nothing has run in should say rather than an error.
+    """
+    try:
+        with open(actions_path(workspace), encoding="utf-8") as handle:
+            return sum(1 for line in handle if line.strip())
+    except OSError:
+        return 0
+
+
 def record_action(
     workspace: Path,
     helper: str,

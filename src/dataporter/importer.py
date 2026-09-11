@@ -92,19 +92,21 @@ from dataporter.hermes import doctor as hermes_doctor
 from dataporter.hermes import prompt as prompting
 from dataporter.hermes import runner as hermes_running
 from dataporter.plan import (
+    PLAN_FILENAME,
     AttachmentPlan,
     ConversationPlan,
     MigrationPlan,
     build_plan,
     upload_paths,
 )
+from dataporter.report import Report
+from dataporter.report import build as build_report
+from dataporter.report import write as write_report
 from dataporter.seed import Seed
 from dataporter.state import ConversationState, ErrorRecord, Status
 from dataporter.steps import Step
 
 _logger = log.get_logger(__name__)
-
-PLAN_FILENAME = "plan.json"
 
 RATE_LIMIT_PROBE_S = 60.0
 """How long a rate-limit wait sleeps before looking at the page again.
@@ -718,6 +720,14 @@ class RunSummary:
     counts: Mapping[str, int]
     """`state.status_counts` over the whole workspace, after the run."""
     exit_code: ExitCode
+    report: Report | None = None
+    """§16's account of the workspace, as it stood when the run released the lock.
+
+    `_under_lock` puts it there on the way out, so every summary `import` and
+    `resume` hand back carries one — a run that ended badly included, since that
+    is the one an operator reads the failure list of. The default is for the
+    summaries this class builds on its way to that point.
+    """
     stopped: bool = False
     """The run ended before its selection did — `13`'s circuit breaker, or one of
     `14`'s two: a pause nobody was there to answer, and an intervention budget
@@ -798,7 +808,7 @@ class Importer:
         lock = state.WorkspaceLock(self.settings.workspace)
         lock.acquire(force_unlock=self.force_unlock)
         try:
-            return work()
+            return replace(work(), report=self._write_report())
         finally:
             # Both, on every path: a browser left running holds the next run's
             # debug port, and a lock left behind makes the next run exit `2`.
@@ -972,6 +982,18 @@ class Importer:
             self.settings.workspace / PLAN_FILENAME, plan.model_dump_json(indent=2)
         )
         return plan
+
+    def _write_report(self) -> Report:
+        """`19`'s report, built and written before the lock is released.
+
+        Under the lock because `report.json` is a workspace file like the other
+        three, and after `finish_run` because the run that has just ended is one
+        of the runs it accounts for. The CLI is what prints it: `18` took the
+        formatting out of this module and this slice does not put any back.
+        """
+        report = build_report(self.settings.workspace)
+        write_report(self.settings.workspace, report)
+        return report
 
     def _create_entries(
         self, plan: MigrationPlan, conversations: Mapping[str, Conversation]
@@ -1894,14 +1916,10 @@ class Importer:
 
         Ours, not the agent's: `HermesResult.actions` is what Hermes believes it
         did, and `09` says why the file is the better number — our helpers write
-        it, and a run that never called one cannot inflate it.
+        it, and a run that never called one cannot inflate it. `19` counts the
+        same file the same way, through the same function.
         """
-        path = browser_helpers.actions_path(self.settings.workspace)
-        try:
-            with open(path, encoding="utf-8") as handle:
-                return sum(1 for line in handle if line.strip())
-        except OSError:
-            return 0
+        return browser_helpers.count_actions(self.settings.workspace)
 
     def _count_actions(self, before: int) -> None:
         added = self._action_count() - before

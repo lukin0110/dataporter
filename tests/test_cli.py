@@ -14,10 +14,6 @@ from dataporter.exit_codes import ExitCode
 # Every command in `specs/impl/01-foundation.md`, written out rather than derived
 # from the app, so that a command silently disappearing fails this test.
 COMMANDS: list[list[str]] = [
-    ["report"],
-]
-
-EXCLUDED_FROM_69: list[list[str]] = [
     ["import"],
     ["verify"],
     ["resume"],
@@ -34,8 +30,9 @@ EXCLUDED_FROM_69: list[list[str]] = [
     ["browser", "close-extra-tabs"],
     ["setup"],
     ["doctor"],
+    ["report"],
 ]
-"""Commands `--help` must still list that the 69 test cannot cover as written.
+"""The whole surface, and where each command's behaviour is exercised.
 
 `import` runs the migration from `12` and needs a browser and a Hermes, so it is
 exercised in `test_importer.py` where the fakes for both live; the one thing it
@@ -51,7 +48,13 @@ fake `hermes` they need lives. `14` implemented `resume`, which exits `4` with
 `test_intervention.py`, where the fakes for a whole paused run live. `17`
 implemented `verify`, which exits `4` on a workspace with nothing migrated in it;
 it is exercised in `test_verify.py`, where the fake browser it reads through
-lives."""
+lives. `19` implemented `report`, the last command that exited `69`; it exits `2`
+on a workspace no run has written a plan into, and is exercised in
+`test_report.py`.
+
+Nothing in the surface answers `69` any more. `import --pilot` is the one thing
+that does, because `20` owns the pilot selection, and it has a test of its own
+below."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -75,20 +78,6 @@ def test_missing_export_exits_usage_with_no_traceback(
     assert "Traceback" not in result.output
 
 
-@pytest.mark.parametrize("command", COMMANDS, ids=lambda c: " ".join(c))
-def test_unimplemented_commands_exit_69(
-    runner: CliRunner, workspace: Path, command: list[str]
-) -> None:
-    result = runner.invoke(cli.app, command, catch_exceptions=False)
-    # The message names the command as typed, not the Python function.
-    name = " ".join(
-        part for part in command if not part.startswith("-") and part != "."
-    )
-    assert result.exit_code == ExitCode.NOT_IMPLEMENTED
-    assert result.stderr == f"not implemented in this build: {name}\n"
-    assert result.stdout == ""
-
-
 def test_import_pilot_is_not_implemented(
     runner: CliRunner, workspace: Path, export_dir: Path
 ) -> None:
@@ -105,7 +94,7 @@ def test_import_pilot_is_not_implemented(
 def test_help_lists_every_command(runner: CliRunner) -> None:
     result = runner.invoke(cli.app, ["--help"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
-    for command in COMMANDS + EXCLUDED_FROM_69:
+    for command in COMMANDS:
         assert command[0] in result.stdout
     for option in GLOBAL_OPTIONS:
         assert option in result.stdout
@@ -155,13 +144,21 @@ def test_verbose_and_quiet_compose(runner: CliRunner, workspace: Path) -> None:
 
 
 def test_unhandled_exception_becomes_exit_70(
-    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    runner: CliRunner,
+    workspace: Path,
+    export_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def explode(ctx: typer.Context) -> None:
+    """Through `--pilot`, which is the one refusal left in the surface: `19`
+    implemented `report`, and a command that raises is what this is about."""
+
+    def explode(ctx: typer.Context, detail: str = "") -> None:
         raise ZeroDivisionError("boom")
 
     monkeypatch.setattr(cli, "not_implemented", explode)
-    result = runner.invoke(cli.app, ["report"], catch_exceptions=False)
+    result = runner.invoke(
+        cli.app, ["import", str(export_dir), "--pilot"], catch_exceptions=False
+    )
     assert result.exit_code == ExitCode.INTERNAL
     assert result.stderr == "internal error: ZeroDivisionError\n"
     # The detail goes to the log, never to the operator's terminal.

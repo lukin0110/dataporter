@@ -79,6 +79,30 @@ Every entry carries a mark:
 - **Rendered artifacts, tool calls and code execution results.** What the export holds for
   these, and what survives being pasted as text, is not yet known. *unknown*
 
+## The names `19` prints
+
+Every limitation the report counts is one of these six slugs, recorded against a
+conversation in `state.json` and printed by name in the `Limitations:` block. The first
+four are `04`'s, written when the seed is rendered and carrying the number of blocks they
+stand for (`thinking_omitted:3`); the last two are `17`'s, written against a chat that was
+read back. `19` counts conversations rather than occurrences, so the per-conversation
+number stays in `state.json` where the conversation it belongs to is.
+
+- **`branches_dropped`** — the export's off-path messages, left out of the seed. A
+  conversation that was edited and re-answered is migrated as the path the export marks
+  current; the other branches are counted and not rendered. *by construction*
+- **`thinking_omitted`** — extended-thinking blocks. They are not part of what the person
+  saw, and nothing in the composer can produce one. *by construction*
+- **`tool_calls_summarised`** — a tool call the seed renders as `[Tool call: name]`. The
+  call itself cannot be replayed into a new chat. *by construction*
+- **`unknown_blocks`** — a content block this build has no rendering for, kept as
+  `[Unsupported content: type]` so that a reader of the migrated chat knows something was
+  there. *by construction*
+- **`timestamps_not_preserved`** — *Original message timestamps*, above, recorded against
+  every chat that lands. *by construction*
+- **`title_not_set`** — *Titles*, above: the chat kept the destination's own title because
+  the rename did not take, or because `fidelity.rename_title` is off. *unknown*
+
 ## Semantic fidelity (§15)
 
 Not a limitation list — the target. `20` measures it with the six §18 questions and,

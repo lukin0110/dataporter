@@ -752,7 +752,8 @@ def test_import_exits_5_and_resume_finishes_the_run(
 
     assert resumed.exit_code == ExitCode.OK
     assert world.entry(FIRST).status is Status.COMPLETED
-    assert resumed.stdout.endswith("Pending:    4\n")
+    # `18`'s final block, and `19`'s account of the workspace under it.
+    assert "\nPending:    4\n\nClaude migration complete\n" in resumed.stdout
 
 
 def test_the_paused_block_carries_no_content(
