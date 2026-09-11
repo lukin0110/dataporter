@@ -209,3 +209,15 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
   above `0.1.0`.
 - `MODEL_KEYS` and the skills directory are both guesses at Hermes's own spelling. Each is
   one tuple and one function, named in `profile.py` and `skill.py`, for `10` to correct.
+- **Nothing tells Hermes where its home is.** `hermes.home` is only *our* view of the
+  profile tree: the subprocess environment is built from scratch and carries no
+  Hermes-home variable, so `setup` installing a skill and `doctor` finding it again prove
+  only that the file is where we put it. For the `~/.hermes` default the two agree, because
+  `HOME` is forwarded — but an operator who overrides `hermes.home` to something the
+  `hermes` on `PATH` does not use would get `skill installed ok` confirming our own write.
+  Propagating the override was not guessed at here for the same reason `MINIMUM_VERSION`
+  is `0.1.0`: Hermes's environment interface is not something `09` can know. `10` settles
+  how Hermes finds its profiles, and then either propagates the value or narrows the
+  setting; the stronger check — asking Hermes which skills it can see — needs the same
+  answer. Raised by a review bot on the PR, and a fair hit: the setting's docstring
+  promised more than the code did.

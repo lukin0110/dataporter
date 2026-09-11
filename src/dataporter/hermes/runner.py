@@ -409,7 +409,12 @@ def _kill_group(process: subprocess.Popen[bytes]) -> None:
             os.killpg(os.getpgid(process.pid), signal.SIGKILL)
         else:  # pragma: no cover - posix only
             process.kill()
-    except (OSError, ProcessLookupError):  # pragma: no cover - it already exited
+    except OSError:  # pragma: no cover - it exited between the wait and here
+        # `ProcessLookupError` is an `OSError`, so one clause covers both the
+        # group having gone and the pid having gone. The fallback cannot raise
+        # it back: `Popen.send_signal` polls first, returns early once the
+        # process is reaped, and suppresses the lookup error from `os.kill`
+        # itself (bpo-40550).
         process.kill()
     try:
         process.wait(timeout=10)

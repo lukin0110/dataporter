@@ -151,10 +151,21 @@ class HermesSettings(BaseModel):
     for, which is what lets `setup` be strict without breaking their defaults."""
 
     home: Path | None = None
-    """Where Hermes keeps its profiles. `None` means `~/.hermes`; read
-    `Settings.hermes_home`, never this. Configurable because the test suite needs
-    a profile tree it can throw away, and an operator with `HERMES_HOME` set
-    elsewhere should not have to move it."""
+    """*Our* view of where Hermes keeps its profiles. `None` means `~/.hermes`;
+    read `Settings.hermes_home`, never this.
+
+    This is the tree `setup` installs the skill into and `doctor` looks for it in.
+    It does **not** tell Hermes anything: the subprocess environment is built from
+    scratch (`hermes.client.hermes_env`) and carries no Hermes-home variable, so a
+    value that disagrees with where the `hermes` on `PATH` really keeps its
+    profiles would have `setup` write a skill Hermes never reads — and `doctor`
+    confirm our own write. Override it only to match a Hermes whose home is not
+    `$HOME/.hermes`, and see `09`'s Risks. `10` is where how Hermes finds its
+    profiles stops being an assumption, and decides whether an override has to be
+    propagated to the subprocess.
+
+    Exists because the test suite needs a profile tree it can throw away.
+    """
 
     toolsets: tuple[str, ...] = ("browser", "terminal")
     """`--toolsets` for every run. `browser` for the ref-based `browser_*` tools

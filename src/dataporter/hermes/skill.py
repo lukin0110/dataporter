@@ -19,6 +19,14 @@ Two things this module is deliberately not:
 The install path — `<hermes home>/profiles/<profile>/skills/dataporter/claude-migrate/`
 — is `09`'s expectation, not an observed fact. `10` confirms it against a real
 Hermes and this is the one place it changes.
+
+That bounds what `doctor`'s `skill installed` line is worth: it proves a skill is
+where *we* put it and that it identifies itself, not that Hermes reads from
+there. Nothing here tells Hermes where its home is (`config.HermesSettings.home`
+says why), so the two agree only while `hermes_home` matches the real one — which
+it does for the `~/.hermes` default, since `HOME` is forwarded to the subprocess.
+Asking Hermes itself what skills it can see would be the stronger check; `10` is
+what makes that possible, because it is where the command to ask becomes known.
 """
 
 import shutil
