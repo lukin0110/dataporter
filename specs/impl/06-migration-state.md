@@ -49,9 +49,10 @@ restarts.
   ```
 
 - `<workspace>/run.json` — run-level record, kept out of `state.json` so that file stays
-  §7-shaped: `schema_version`, `export_fingerprint`, `runs[]` (started, ended, exit code,
-  selection), counters `browser_actions`, `retries`, `human_interventions`, a `paused`
-  record (`14`) or `null`, and `previous_destinations` for `--force` re-runs.
+  §7-shaped: `schema_version`, `export_fingerprint`, `export_path` (`14`), `runs[]`
+  (started, ended, exit code, selection), counters `browser_actions`, `retries`,
+  `human_interventions`, a `paused` record (`14`) or `null`, and `previous_destinations`
+  for `--force` re-runs.
 - `StateStore`: `load()`, `update(uuid, **fields)`, `bump_counter(name)`; every mutation
   writes the whole file to `state.json.tmp` then `os.replace`. JSON is indented, keys in
   insertion order, so the file is diffable by hand.
@@ -101,6 +102,19 @@ Resolved while building:
   is best effort (a directory cannot be opened for reading on Windows), which costs
   nothing this spec promises: `os.replace` is atomic either way, so the SIGKILL criterion
   above holds regardless. Raised in review on `11`.
+- **`run.json` records the export's path as well as its fingerprint.** §8 gives `resume`
+  no arguments, so the run it continues has to be able to re-read the export the paused
+  run was migrating. The fingerprint says *which* export the workspace belongs to and the
+  path says where it was last seen; the path is refreshed on every run, because an export
+  that has moved is still the same export and the fingerprint is what proves it. A
+  workspace with no path recorded is reported by `resume` rather than guessed around.
+  Raised while building `14`.
+- **Crash recovery takes a `keep`.** `recover()` converts every `running` entry, which is
+  right for a killed run and wrong for a paused one: `14`'s pause leaves a conversation
+  `running` on purpose, and converting it would both inflate `interrupted` and — for a
+  pause that never reached a chat — turn it back into a `pending` conversation that starts
+  over, which is the one thing §12 forbids. `resume` passes the paused uuid; `import` does
+  not, so a pause a human walked away from is still recovered per this spec.
 - **`run.json` gains an `interrupted` counter.** The spec says crash recovery is "counted
   as `interrupted` in `run.json`" without naming a field. It is one of `COUNTERS`, so
   `bump_counter` reaches it and `19` can read it the same way as the other three.

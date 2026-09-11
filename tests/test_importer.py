@@ -49,6 +49,7 @@ from world import (
     NEW_URL,
     OTHER_CHAT,
     World,
+    cli_env,
     completed,
     result,
 )
@@ -724,16 +725,6 @@ def test_run_id_for(short_id: str, attempt: int, expected: str) -> None:
 # --------------------------------------------------------------------------- #
 # Through the command
 # --------------------------------------------------------------------------- #
-
-
-def cli_env(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The world's settings, as the environment the CLI loads them from."""
-    monkeypatch.setenv("HCM_WORKSPACE", str(world.settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(world.browser.chrome.port))
-    monkeypatch.setenv("HCM_HERMES__EXECUTABLE", str(world.settings.hermes.executable))
-    monkeypatch.setenv("HCM_HERMES__HOME", str(world.settings.hermes_home))
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "2")
-    monkeypatch.setenv("HCM_TIMEOUTS__HERMES_TASK_S", "60")
 
 
 def test_import_exits_0_and_prints_the_counters(

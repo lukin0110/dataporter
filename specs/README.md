@@ -78,7 +78,8 @@ M5 — Experiment
 01 ─┬─> 02 ─> 03 ─> 04 ─> 05
     ├─> 06
     ├─> 07 ─> 08 ─┐
-    └─> 09 ───────┴─> 10 ─> 11 ─> 12 ─┬─> 13 ─> 14
+    └─> 09 ───────┴─> 10 ─> 11 ─> 12 ─┬─> 13 ─┐
+                                      ├─> 14 ─┘
                                       ├─> 15
                                       ├─> 16
                                       ├─> 17
@@ -87,6 +88,14 @@ M5 — Experiment
 ```
 
 Parallelisable once `01` lands: `02→05`, `06`, `07→08` and `09` share nothing.
+
+`13` and `14` were drawn in series and are not: `13` is what the tool retries on its
+own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
+straight to `14`. Both need `12` and nothing else, and both were built against it
+independently. What they do share is one function — the loop in `Importer._migrate` —
+so whoever lands second merges into it rather than beside it, and `14`'s design notes
+hold the table of how the two divide. The join is drawn above because `19` reports
+both.
 
 `10` is deliberately a spike. The brief names the mechanism (Hermes driving the Claude web
 UI) but leaves open everything that only observation can settle: whether Hermes attaches to
@@ -110,7 +119,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [11](impl/11-skill.md) | Skill and step protocol | §4, §5, §11, §17 | Done |
 | [12](impl/12-import-loop.md) | Import loop | §6, §10 | Done |
 | [13](impl/13-recovery.md) | Recovery | §11 | Done |
-| [14](impl/14-human-intervention.md) | Human intervention | §12 | Not started |
+| [14](impl/14-human-intervention.md) | Human intervention | §12 | Done |
 | [15](impl/15-pacing.md) | Pacing and limits | §13 | Not started |
 | [16](impl/16-attachments.md) | Attachments | §14 | Not started |
 | [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Not started |

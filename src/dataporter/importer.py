@@ -25,20 +25,27 @@ Three properties are the point:
 another attempt could fix is tried again, after a growing wait, until the
 per-conversation budget is spent; a category that no attempt would fix is
 recorded once; and a run whose conversations keep failing the same way stops
-itself rather than spending an account's quota proving it. What is still not
-handled here is a failure a *person* has to clear (`14`) and a wait the account
-asks for (`15`) — both are recognised, both end this run's interest in that
-conversation, and the mapping table below has a row marked for each.
+itself rather than spending an account's quota proving it.
+
+`14` taught it the other kind of second try: the one a *person* makes. A
+`needs_human` result is not a failure and not a retry — the run writes a pause
+record, asks whoever is at the keyboard to finish the step in the browser window
+that is already open, and then attempts *the same conversation from its last
+successful step*. It is the same loop `13` retries in, entered through a
+different door, and `resume` is that door from a second process. What is still
+not handled is a wait the account asks for (`15`); the mapping table below has a
+row marked for it.
 """
 
 import re
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
-from dataporter import log, render, state, summary
+from dataporter import PROGRAM_NAME, log, render, state, summary
+from dataporter import intervention as intervening
 from dataporter import seed as seeding
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher, probe
@@ -87,6 +94,9 @@ and is recorded as one rather than as a blank."""
 RATE_LIMITED = "rate limited"
 NOT_RELAUNCHABLE = "the browser is gone and could not be started again"
 
+NOTHING_TO_RESUME = "nothing to resume"
+"""What `resume` says when `run.json` holds no pause record."""
+
 NEEDS_HUMAN_CATEGORIES: dict[str, Category] = {
     "auth_required": Category.AUTH,
     "captcha": Category.CAPTCHA,
@@ -97,11 +107,13 @@ NEEDS_HUMAN_CATEGORIES: dict[str, Category] = {
 }
 """`09`'s six `needs_human` reasons, as the error categories `01` fixed.
 
-`14` turns these into a pause; until it does they are recorded as a failure and
-left alone — `13` spends no retry on one, because none of the six is something a
-second identical attempt clears. The category is what tells an operator — and
-`19` — which of the six it was. A test reads `runner.NEEDS_HUMAN_REASONS` against
-this, so a seventh reason cannot arrive without a category to put it in.
+`14` turns these into a pause rather than a finished conversation, and this is
+what it records against the entry while the human is being asked. `13` spends no
+retry on one, because none of the six is something a second identical attempt
+clears — only a person's action in the window changes the page. The category is
+what tells an operator — and `19` — which of the six it was. A test reads
+`runner.NEEDS_HUMAN_REASONS` against this, so a seventh reason cannot arrive
+without a category to put it in.
 """
 
 _NOT_IN_A_RUN_ID = re.compile(r"[^A-Za-z0-9]")
@@ -144,6 +156,15 @@ class Mapped:
     again, because somebody else owns what happens next — a person (`14`) or a
     clock (`15`). Recorded here rather than re-read from the outcome so that
     `13`'s retry policy and `12`'s mapping table are the same table."""
+
+    needs_human: bool = False
+    """The deferral `14` owns, told apart from `15`'s.
+
+    Both are `deferred` and neither is retried, but only this one is answered by
+    asking: the run pauses, a person acts in the window, and the conversation is
+    attempted again from where it stopped. `deferred` alone would make the loop
+    ask what the outcome was again, which is the re-reading the field exists to
+    avoid."""
 
 
 def retry_recommended(category: Category) -> bool | None:
@@ -208,6 +229,7 @@ def interpret(result: hermes_running.HermesResult, *, landed: bool) -> Mapped:
             result.step,
             _error(category, _detail(result) or reason or ""),
             deferred=True,
+            needs_human=True,
         )
     return Mapped(
         stopped,
@@ -245,6 +267,13 @@ class Attempt:
     deferred: bool = False
     """`needs_human` or `rate_limited`. Not a failure to try again: `14` waits
     for a person and `15` waits for a clock, and neither wait is a retry."""
+
+    request: "intervening.Request | None" = None
+    """`14`'s ask, when this try ended by needing a person.
+
+    The attempt is over either way; this is what the loop puts to whoever is at
+    the keyboard before attempting the same conversation again. `None` for every
+    other outcome, including `15`'s deferral, which nobody is asked about."""
 
     @property
     def retryable(self) -> bool:
@@ -322,6 +351,33 @@ class FailureStreak:
         if limit > 0 and self.count >= limit and self.category is not None:
             return self.category
         return None
+
+
+# --------------------------------------------------------------------------- #
+# `14`: when only a person can clear it
+# --------------------------------------------------------------------------- #
+
+
+class RunPaused(Exception):
+    """A conversation is waiting for a human and there is nobody to ask.
+
+    Not a `MigrationError`: nothing failed. The pause record and the `running`
+    entry are the state, `resume` is the continuation, and exit `5` is what the
+    run reports. Never leaves `Importer.run` or `Importer.resume`.
+    """
+
+
+class InterventionsExhausted(Exception):
+    """`run.max_interventions` asks have been made in one run. Same rules.
+
+    `13`'s breaker ends a run that keeps failing; this ends one that keeps
+    asking. Both stop cleanly, and both leave what is left of the selection
+    untouched.
+    """
+
+
+class NothingToResume(Exception):
+    """`resume` was run over a workspace with no pause to continue (exit `4`)."""
 
 
 # --------------------------------------------------------------------------- #
@@ -403,8 +459,10 @@ class RunSummary:
     """`state.status_counts` over the whole workspace, after the run."""
     exit_code: ExitCode
     stopped: bool = False
-    """`13`'s circuit breaker ended the run. Everything the selection had left is
-    still `pending`, so the next invocation picks it up with no flags at all."""
+    """The run ended before its selection did — `13`'s circuit breaker, or one of
+    `14`'s two: a pause nobody was there to answer, and an intervention budget
+    spent. Everything the selection had left is still `pending`, so the next
+    invocation picks it up with no flags at all."""
 
 
 # --------------------------------------------------------------------------- #
@@ -424,39 +482,71 @@ class Importer:
         settings: Settings,
         *,
         progress: Progress | None = None,
+        intervention: intervening.Intervention | None = None,
         force_unlock: bool = False,
     ) -> None:
         self.settings = settings
         self.progress: Progress = progress if progress is not None else LineProgress()
+        self.intervention: intervening.Intervention = (
+            intervention if intervention is not None else intervening.Console()
+        )
         self.force_unlock = force_unlock
         self.store = state.StateStore(settings.workspace)
         self.runner = hermes_running.HermesRunner(settings)
         self.seeds = seeding.SeedGenerator(settings)
         self.session: launcher.BrowserSession | None = None
+        self.interventions = 0
+        """How many times *this* run has stopped to ask (`14`).
+
+        Per run rather than per workspace, like `13`'s streak and unlike its
+        per-conversation budget: the cumulative number in `run.json` is what `19`
+        reports, and a migration that took ten runs and asked once in each is not
+        a migration that asked ten times."""
 
     # -- the run ------------------------------------------------------------ #
 
     def run(self, export_path: Path, selection: state.Selection) -> RunSummary:
         """Migrate what `selection` chooses out of the export at `export_path`."""
         parsed = load_export(export_path)
+        return self._under_lock(lambda: self._locked(parsed, export_path, selection))
+
+    def resume(self) -> RunSummary:
+        """Continue the run a `needs_human` pause stopped (`14`, §6 Phase 4).
+
+        No export argument, because §8's command surface gives `resume` none: the
+        export the paused run was reading is recorded in `run.json`, and the
+        fingerprint check that every run makes is what proves it is still the
+        same one.
+        """
+        paused = self._pause_to_resume()
+        export_path = self._recorded_export()
+        parsed = load_export(export_path)
+        return self._under_lock(
+            lambda: self._locked_resume(parsed, export_path, paused)
+        )
+
+    def _under_lock(self, work: Callable[[], RunSummary]) -> RunSummary:
         lock = state.WorkspaceLock(self.settings.workspace)
         lock.acquire(force_unlock=self.force_unlock)
         try:
-            return self._locked(parsed, selection)
+            return work()
         finally:
             # Both, on every path: a browser left running holds the next run's
             # debug port, and a lock left behind makes the next run exit `2`.
+            # A paused run releases both as well — §12 asks the human to act in
+            # the browser window, and `resume` opens a new one.
             self._close_browser()
             lock.release()
 
-    def _locked(self, parsed: Export, selection: state.Selection) -> RunSummary:
-        self.store.bind_export(parsed.fingerprint)
+    def _locked(
+        self, parsed: Export, export_path: Path, selection: state.Selection
+    ) -> RunSummary:
+        self.store.bind_export(parsed.fingerprint, export_path)
         self.store.recover()
+        self._offer_resume()
         self._preflight()
 
-        plan = self._write_plan(parsed)
-        conversations = {item.uuid: item for item in parsed.conversations}
-        self._create_entries(plan, conversations)
+        plan, conversations = self._prepare(parsed)
 
         order = [item.uuid for item in parsed.conversations]
         chosen = state.select(order, self.store.load(), selection)
@@ -465,19 +555,70 @@ class Importer:
         self.store.finish_run(index, int(result.exit_code))
         return result
 
+    def _locked_resume(
+        self, parsed: Export, export_path: Path, paused: state.PauseRecord
+    ) -> RunSummary:
+        """`import`'s loop, entered in the middle of somebody else's selection.
+
+        The plan is written before the preflight here, where `_locked` does it the
+        other way around. Both are cheap and local, and this order is what lets a
+        `resume` that finds the page still blocked report a run — `14` says it
+        keeps the pause and exits `5`, and a `RunSummary` is how this class says
+        anything at all.
+        """
+        self.store.bind_export(parsed.fingerprint, export_path)
+        # Every other interrupted entry is converted; the paused one is not one.
+        self.store.recover(keep=paused.conversation_uuid)
+        plan, conversations = self._prepare(parsed)
+
+        chosen, offset, total = self._rest_of(paused)
+        index = self.store.start_run(self._resumed_selection(chosen))
+        try:
+            self._preflight(cleared_by=self._request(paused, offset + 1, total))
+        except RunPaused:
+            result = self._stopped_before_starting(plan)
+        else:
+            result = self._migrate_all(
+                chosen, conversations, plan, offset=offset, total=total
+            )
+        self.store.finish_run(index, int(result.exit_code))
+        return result
+
+    def _prepare(
+        self, parsed: Export
+    ) -> tuple[MigrationPlan, Mapping[str, Conversation]]:
+        """The plan on disk and an entry per planned conversation, before any run."""
+        plan = self._write_plan(parsed)
+        conversations = {item.uuid: item for item in parsed.conversations}
+        self._create_entries(plan, conversations)
+        return plan, conversations
+
     # -- 1. preflight ------------------------------------------------------- #
 
-    def _preflight(self) -> None:
+    def _preflight(self, *, cleared_by: intervening.Request | None = None) -> None:
         """Refuse to start unless the whole chain is there (`09`, `07`, §8).
 
         The local half of `doctor` rather than all of it: the two checks that run
         a real Hermes task cost a minute each and a migration is about to prove
         the same thing with work that counts.
+
+        `cleared_by` is `14`'s resume: the human was asked to fix something in
+        this browser and has said they did, so the window comes up first and the
+        ask is re-checked before the ordinary sign-in guard runs. Without that
+        order a `resume` after a login expiry would exit `3` — "run `login`" —
+        at the very moment the operator is being told to log in right there.
         """
         failure = hermes_doctor.local_failure(self.settings)
         if failure is not None:
             raise HermesError(detail=f"{failure.label}: {failure.detail}")
-        self._open_browser()
+        if cleared_by is None:
+            self._open_browser()
+            return
+        self._launch()
+        if not self._cleared(cleared_by, acted=True):
+            raise RunPaused
+        self._require_signed_in()
+        browser_helpers.close_extra_tabs(self._session().client, self.settings)
 
     def _open_browser(self) -> None:
         """Launch or adopt Chrome, prove the session, leave one tab to drive.
@@ -489,17 +630,35 @@ class Importer:
         is the `ambiguous_tab` that `close-extra-tabs` exists to clear.
 
         A session that is signed out ends the run (exit `3`) wherever it is
-        noticed. Every remaining conversation would fail the same way, and `14`
-        is where this becomes a pause the operator can resolve without losing
-        the run.
+        noticed: every remaining conversation would fail the same way, and
+        nothing has been asked of anyone yet — `login` is the fix, and it is what
+        the message says. `14`'s pause is the other case, where a run that was
+        *already under way* met a sign-in form: there a chat may exist, a step is
+        half done, and the operator is asked to log in in the window in front of
+        them rather than made to start again.
         """
-        self.session = launcher.launch(self.settings, probe.NEW_CHAT_URL)
-        if not browser_session.signed_in(self.session):
-            raise AuthError(detail=browser_session.SIGNED_OUT)
+        self._launch()
+        self._require_signed_in()
         # Blank and duplicate new-chat tabs only, never a conversation (`08`).
         # Hermes picks its tab by looking, and one candidate is what makes that
         # unambiguous.
-        browser_helpers.close_extra_tabs(self.session.client, self.settings)
+        browser_helpers.close_extra_tabs(self._session().client, self.settings)
+
+    def _launch(self) -> None:
+        self.session = launcher.launch(self.settings, probe.NEW_CHAT_URL)
+
+    def _require_signed_in(self) -> None:
+        if not self._signed_in():
+            raise AuthError(detail=browser_session.SIGNED_OUT)
+
+    def _signed_in(self) -> bool:
+        return browser_session.signed_in(self._session())
+
+    def _session(self) -> launcher.BrowserSession:
+        session = self.session
+        if session is None:  # pragma: no cover - nothing asks before the launch
+            raise BrowserError(detail="no browser session")
+        return session
 
     # -- 2. plan ------------------------------------------------------------ #
 
@@ -549,14 +708,38 @@ class Importer:
         chosen: Sequence[str],
         conversations: Mapping[str, Conversation],
         plan: MigrationPlan,
+        *,
+        offset: int = 0,
+        total: int | None = None,
     ) -> RunSummary:
+        """The selection, one conversation at a time, until it ends or stops.
+
+        `offset` and `total` are `14`'s: a `resume` runs the tail of somebody
+        else's selection, and "conversation 12 of 127" has to keep meaning the
+        same thing across the pause. They change nothing about what runs.
+        """
         migratable = {item.uuid for item in plan.conversations if item.migratable}
+        of = len(chosen) + offset if total is None else total
         outcomes: dict[str, Status] = {}
         streak = FailureStreak()
         stopped = False
+        exit_code: ExitCode | None = None
         for position, uuid in enumerate(chosen):
             if uuid in migratable:
-                attempt = self._migrate(conversations[uuid])
+                try:
+                    attempt = self._migrate(
+                        conversations[uuid], position=offset + position + 1, total=of
+                    )
+                except RunPaused:
+                    # The pause is on disk and the conversation is still
+                    # `running`: `resume` is what finishes it, and nothing else
+                    # was started.
+                    exit_code, stopped = ExitCode.PAUSED, True
+                    break
+                except InterventionsExhausted:
+                    self.intervention.note(intervening.TOO_MANY_INTERVENTIONS)
+                    exit_code, stopped = ExitCode.FAILED, True
+                    break
                 status = attempt.status
                 streak.record(attempt)
             else:
@@ -588,10 +771,25 @@ class Importer:
             counts=counts,
             # An empty selection is `4` — `06`'s rule — and not the `0` that
             # "every selected conversation completed" would otherwise give it.
-            exit_code=ExitCode.NOTHING_TO_DO
-            if not chosen
-            else (ExitCode.OK if finished else ExitCode.FAILED),
+            exit_code=exit_code
+            if exit_code is not None
+            else (
+                ExitCode.NOTHING_TO_DO
+                if not chosen
+                else (ExitCode.OK if finished else ExitCode.FAILED)
+            ),
             stopped=stopped,
+        )
+
+    def _stopped_before_starting(self, plan: MigrationPlan) -> RunSummary:
+        """A `resume` that never got past the ask, as a summary (`14`)."""
+        return RunSummary(
+            total=len(plan.conversations),
+            selected=(),
+            outcomes={},
+            counts=state.status_counts(self.store.load()),
+            exit_code=ExitCode.PAUSED,
+            stopped=True,
         )
 
     def _stop(self, failures: int, category: Category) -> None:
@@ -603,8 +801,10 @@ class Importer:
         )
         self.progress.stopping(failures, category)
 
-    def _migrate(self, conversation: Conversation) -> Attempt:
-        """One conversation, with `13`'s retry budget around it.
+    def _migrate(
+        self, conversation: Conversation, *, position: int, total: int
+    ) -> Attempt:
+        """One conversation, with `13`'s retry budget and `14`'s pause around it.
 
         The loop is here and not inside `_attempt` because every attempt is a
         whole attempt: it re-reads the entry, writes this attempt's seed, renders
@@ -612,19 +812,52 @@ class Importer:
         again. A retry of a `partial` therefore continues the chat that exists
         rather than opening a second one (§17) — `_begin` and `resuming` are what
         make that true, and they are read afresh each time round.
+
+        Two doors into the same loop. `13`'s is a failure another try could fix,
+        waited out on a backoff; `14`'s is a page only a person can clear, waited
+        out on that person. They never compete: a `needs_human` result is
+        `deferred`, so `retryable` is false for it, and the ask is put before the
+        budget is consulted — a conversation can still be unblocked by hand after
+        its retries are gone.
+
+        `helped` is what keeps the two budgets apart. Every attempt increments
+        §7's `attempts`, which is what `13` measures `max_attempts` against, so
+        without it a conversation a person unblocked twice would have spent its
+        retries on being helped — and `_exhausted` would then write
+        `retry_recommended: false` about a failure that is nothing of the kind.
+        `13` counts attempts a failure caused; the ones a person did are
+        discounted here. Only this run's: §7's count is cumulative and records no
+        reason, so an intervention in an earlier run is still counted against the
+        budget in this one, which errs towards trying less rather than more.
         """
         budget = self.settings.retries
+        helped = 0
         while True:
-            attempt = self._attempt(conversation)
+            attempt = self._attempt(conversation, position=position, total=total)
+            if attempt.request is not None:
+                # Raises to end the run if there is nobody to ask, or if this run
+                # has asked too often; otherwise a person has acted and the same
+                # conversation is tried again from its last successful step.
+                self._intervene(attempt.request)
+                helped += 1
+                continue
             if not attempt.retryable:
                 return attempt
-            if attempt.attempts >= budget.max_attempts:
+            # What `13` counts: attempts this conversation spent on a failure.
+            # It is the budget, the backoff's index and the number the waiting
+            # line prints, all three, because all three mean "which retry".
+            tried = attempt.attempts - helped
+            if tried >= budget.max_attempts:
                 return self._exhausted(conversation.uuid, attempt)
-            wait = backoff_for(budget, attempt.attempts)
-            self._announce_retry(conversation.uuid, attempt, wait, budget.max_attempts)
+            wait = backoff_for(budget, tried)
+            self._announce_retry(
+                conversation.uuid, attempt, wait, budget.max_attempts, tried
+            )
             pause(wait)
 
-    def _attempt(self, conversation: Conversation) -> Attempt:
+    def _attempt(
+        self, conversation: Conversation, *, position: int, total: int
+    ) -> Attempt:
         """One try: seed, prompt, Hermes, state. Never raises upward for anything
         that is about this conversation rather than about the run."""
         uuid = conversation.uuid
@@ -645,10 +878,17 @@ class Importer:
             return self._record_failure(uuid, entry, exc, attempts)
         finally:
             self._count_actions(actions)
-        return self._record(uuid, entry, seed, result, attempts)
+        return self._record(
+            uuid, entry, seed, result, attempts, position=position, total=total
+        )
 
     def _announce_retry(
-        self, uuid: str, attempt: Attempt, wait: float, max_attempts: int
+        self,
+        uuid: str,
+        attempt: Attempt,
+        wait: float,
+        max_attempts: int,
+        tried: int,
     ) -> None:
         """Say what is about to be waited for, in the log and on stdout.
 
@@ -656,6 +896,12 @@ class Importer:
         category and the wait. The short id and not the uuid, because that is the
         identifier every other record in this module carries and §10 keeps the
         two files reading alike.
+
+        `attempt.attempts` is §7's cumulative count and names the run's files;
+        `tried` is how many of those this conversation spent failing, which is
+        what `retry n/max` is counting. They differ only once `14` has been asked
+        about this conversation — and a line reading `retry 4/3` would be the
+        giveaway that the two had been confused.
         """
         category = attempt.error.category if attempt.error is not None else None
         _logger.info(
@@ -667,9 +913,7 @@ class Importer:
                 "backoff_s": wait,
             },
         )
-        self.progress.waiting(
-            wait, f"retry {attempt.attempts + 1}/{max_attempts}, {category}"
-        )
+        self.progress.waiting(wait, f"retry {tried + 1}/{max_attempts}, {category}")
 
     def _exhausted(self, uuid: str, attempt: Attempt) -> Attempt:
         """Write down that the budget is spent, so nothing recommends a retry.
@@ -700,6 +944,12 @@ class Importer:
         chat to resume, how many parts are already acknowledged, which attempt
         this is. Reading it after the update would read our own write.
         """
+        # A pause is an open question about one conversation, and starting that
+        # conversation again is the answer — whether a `resume` did it or a later
+        # `import` picked the conversation up on its own.
+        paused = self.store.run().paused
+        if paused is not None and paused.conversation_uuid == uuid:
+            self.store.set_paused(None)
         before = self.store.load()[uuid]
         resume = resuming(before)
         if before.destination.conversation_id is not None and resume is None:
@@ -778,23 +1028,31 @@ class Importer:
         seed: Seed,
         result: hermes_running.HermesResult,
         attempts: int,
+        *,
+        position: int,
+        total: int,
     ) -> Attempt:
         acked = max(0, min(result.chunks_acked, len(seed.chunks)))
         conversation_id = result.conversation_id or resuming(before)
         mapped = interpret(result, landed=conversation_id is not None)
-        self.store.update(
-            uuid,
-            status=mapped.status,
-            destination=state.Destination(conversation_id=conversation_id),
-            last_step=mapped.last_step,
-            chunks_acked=acked,
+        # `14`: a conversation waiting for a person is not finished, so its entry
+        # keeps the status it has. Everything else about where it got to is
+        # written either way — the resume reads it back.
+        reached = {
+            "destination": state.Destination(conversation_id=conversation_id),
+            "last_step": mapped.last_step,
+            "chunks_acked": acked,
             # The messages in the parts that were acknowledged, and no others: a
             # message split across two parts belongs to neither until both land.
-            messages_represented=sum(
+            "messages_represented": sum(
                 len(chunk.message_uuids) for chunk in seed.chunks[:acked]
             ),
-            error=mapped.error,
-        )
+            "error": mapped.error,
+        }
+        if mapped.needs_human:
+            self.store.update(uuid, **reached)
+        else:
+            self.store.update(uuid, status=mapped.status, **reached)
         if result.actions:
             _logger.debug(
                 "hermes reported actions",
@@ -805,6 +1063,9 @@ class Importer:
             error=mapped.error,
             attempts=attempts,
             deferred=mapped.deferred,
+            request=self._pause(uuid, result, mapped, conversation_id, position, total)
+            if mapped.needs_human
+            else None,
         )
 
     def _record_failure(
@@ -830,6 +1091,159 @@ class Importer:
         )
         self.store.update(uuid, status=status, error=error)
         return Attempt(status=status, error=error, attempts=attempts)
+
+    # -- 4. when only a person can clear it (§12) ---------------------------- #
+
+    def _pause(
+        self,
+        uuid: str,
+        result: hermes_running.HermesResult,
+        mapped: Mapped,
+        conversation_id: str | None,
+        position: int,
+        total: int,
+    ) -> intervening.Request:
+        """Write down what is being asked for, and count the ask.
+
+        The entry stays `running` — `_record` is what does not change it — because
+        nothing about this conversation is settled, a chat may already exist, and
+        §7's five statuses have no word for "waiting for a person". The pause
+        record in `run.json` is that word, which is why it lives there: the §7
+        file keeps its shape.
+        """
+        reason = result.needs_human_reason or intervening.DEFAULT_REASON
+        detail = mapped.error.detail if mapped.error else ""
+        # The step a resume starts from, which is what `_run_hermes` will use:
+        # `open` when Hermes named a step no procedure of ours has.
+        last_step = mapped.last_step or Step.OPEN
+        self.store.set_paused(
+            state.PauseRecord(
+                conversation_uuid=uuid,
+                reason=reason,
+                detail=detail,
+                last_step=last_step,
+                conversation_id=conversation_id,
+                since=state.now(),
+            )
+        )
+        self.interventions += 1
+        self.store.bump_counter("human_interventions")
+        _logger.warning(
+            "human intervention required",
+            extra={
+                "conversation_id": render.short_id(uuid),
+                "reason": reason,
+                "step": str(last_step),
+            },
+        )
+        return intervening.Request(
+            short_id=render.short_id(uuid),
+            reason=reason,
+            detail=detail,
+            last_step=last_step,
+            position=position,
+            total=total,
+        )
+
+    def _intervene(self, request: intervening.Request) -> None:
+        """Ask, and come back only when a human says they have acted.
+
+        Raises rather than returns a verdict because both ways out end the run
+        and neither is this conversation's own outcome: the conversation is
+        exactly as unfinished as it was, and something above has to stop.
+        """
+        if self.interventions > self.settings.run.max_interventions:
+            raise InterventionsExhausted
+        if not self._cleared(request):
+            raise RunPaused
+
+    def _cleared(self, request: intervening.Request, *, acted: bool = False) -> bool:
+        """Wait until the reason for the pause no longer holds. `False` to stop.
+
+        `acted` skips the ask: `resume` *is* the human saying they have acted, so
+        the block would be printed at somebody who has already read it, and a
+        `retry` is itself a wait — asking twice for one Enter would swallow it.
+        Both still go through the same check, and are told again if it fails.
+        """
+        while True:
+            if not acted and not self.intervention.ask(request):
+                return False
+            if request.reason != intervening.AUTH_REQUIRED or self._signed_in():
+                return True
+            if not self.intervention.retry(intervening.STILL_NOT_LOGGED_IN):
+                return False
+            acted = True
+
+    def _offer_resume(self) -> None:
+        """Point an `import` at the pause an earlier run left behind."""
+        paused = self.store.run().paused
+        if paused is not None:
+            self.intervention.note(
+                intervening.offer(render.short_id(paused.conversation_uuid))
+            )
+
+    def _pause_to_resume(self) -> state.PauseRecord:
+        """The pause `resume` continues, or nothing to continue."""
+        paused = self.store.run().paused
+        if paused is None:
+            raise NothingToResume
+        entry = self.store.load().get(paused.conversation_uuid)
+        if entry is not None and entry.status is Status.COMPLETED:
+            # Somebody finished it another way — an `import` that selected it, a
+            # second operator. Resuming would open a second chat for a
+            # conversation that already has one, which §17 has no way to undo.
+            self.store.set_paused(None)
+            raise NothingToResume
+        return paused
+
+    def _recorded_export(self) -> Path:
+        recorded = self.store.run().export_path
+        if not recorded:
+            raise state.StateError(
+                f"{state.RUN_FILENAME} does not say which export this workspace "
+                f"came from — run {PROGRAM_NAME} import <export> instead"
+            )
+        path = Path(recorded)
+        if not path.exists():
+            raise state.StateError(f"export not found: {recorded}")
+        return path
+
+    def _rest_of(self, paused: state.PauseRecord) -> tuple[list[str], int, int]:
+        """What is left of the paused run: its uuids, where they resume, how many.
+
+        The tail of the last run's selection rather than a fresh one, because
+        §12 is about continuing *that* run: a selection recomputed now would drop
+        the paused conversation (it is `running`, which nothing selects) and pick
+        up whatever has become pending since.
+        """
+        runs = self.store.run().runs
+        uuids = list(runs[-1].selection.uuids) if runs else []
+        if paused.conversation_uuid in uuids:
+            offset = uuids.index(paused.conversation_uuid)
+            return uuids[offset:], offset, len(uuids)
+        # A pause with no selection behind it — a `run.json` written by hand, or
+        # a record that outlived its run. The conversation it names is still the
+        # thing to continue, and it is all there is.
+        return [paused.conversation_uuid], 0, 1
+
+    def _resumed_selection(self, chosen: Sequence[str]) -> state.Selection:
+        """The paused run's flags, over what is left of its selection."""
+        runs = self.store.run().runs
+        previous = runs[-1].selection if runs else state.Selection()
+        return previous.model_copy(update={"uuids": list(chosen)})
+
+    def _request(
+        self, paused: state.PauseRecord, position: int, total: int
+    ) -> intervening.Request:
+        """The pause record, as the ask a `resume` re-checks."""
+        return intervening.Request(
+            short_id=render.short_id(paused.conversation_uuid),
+            reason=paused.reason,
+            detail=paused.detail,
+            last_step=paused.last_step or Step.OPEN,
+            position=position,
+            total=total,
+        )
 
     # -- the run's own housekeeping ----------------------------------------- #
 
@@ -891,14 +1305,26 @@ class Importer:
             self.store.bump_counter("browser_actions", added)
 
 
+RESUMABLE: frozenset[Status] = frozenset({Status.PARTIAL, Status.RUNNING})
+"""The two statuses whose chat a new attempt continues instead of replacing.
+
+`partial` is a chat that does not hold everything. `running` is `14`'s: a
+conversation this run paused on, or one a `resume` kept out of crash recovery —
+either way a human has just been asked to unblock the chat that is on the screen,
+and opening a second one is the restart §12 says not to do. No other status can
+be `running` by the time an attempt begins: `recover` converts the ones a crash
+left, and it runs before the first conversation does.
+"""
+
+
 def resuming(entry: ConversationState) -> str | None:
     """The chat to continue, or `None` when this attempt starts a new one.
 
-    Only a `partial` entry is resumed. A `completed` one re-run under `--force`
-    gets a new chat (§17 keeps the old one), and a `failed` one has no chat by
-    definition — `06`'s crash recovery is what turns an interrupted run with a
-    destination id into the `partial` this reads.
+    A `completed` entry re-run under `--force` gets a new chat (§17 keeps the old
+    one), and a `failed` one has no chat by definition — `06`'s crash recovery is
+    what turns an interrupted run with a destination id into the `partial` this
+    reads.
     """
-    if entry.status is not Status.PARTIAL:
+    if entry.status not in RESUMABLE:
         return None
     return entry.destination.conversation_id

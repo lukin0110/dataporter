@@ -18,7 +18,7 @@ adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS`
 a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
 `run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`;
 `09` adds `hermes` and three more `timeouts` fields; `13` adds `retries` and one
-more `run` field.
+more `run` field; `14` adds another `run` field.
 """
 
 import os
@@ -280,6 +280,21 @@ class RunSettings(BaseModel):
     further attempt is an account-modifying action taken on a broken premise.
     Declared here and spent by `12`'s loop; `15` owns the number once a pilot has
     shown what a real run's failure runs look like.
+    """
+
+    max_interventions: int = 5
+    """How many times one run will stop and ask a human for help (`14`).
+
+    A budget rather than a limitless loop because §12's pause is for the
+    exceptional case. A run that has asked six times is not being helped through
+    a CAPTCHA; something about the account or the page is wrong in a way that
+    more Enters will not fix, and the honest end is to stop and let the report
+    say what kept happening.
+
+    Separate from `13`'s `retries.max_attempts` because the two count different
+    things: that one bounds what the tool will try again on its own, this one
+    bounds what it will ask a person to do. Both end the run when they run out,
+    and `19` reports them apart.
     """
 
 
