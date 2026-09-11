@@ -29,6 +29,8 @@ place that names an element of claude.ai.
 `10` is the slice that checks these signals against the real application and
 owns the selectors from then on. Until it does, they are informed guesses and
 are written here in one place so that correcting them is a small edit.
+`docs/claude-ui-map.md` is where each of them is recorded as observed or still
+guessed; when that file and this one disagree, that file is the one that looked.
 """
 
 import json

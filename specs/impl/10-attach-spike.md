@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §4, §5, §11 (what "verify" concretely observes)
 **Depends on:** [07](07-browser-session.md), [08](08-browser-helpers.md), [09](09-hermes-runner.md)
 **Enables:** [11](11-skill.md) — and can change [11](11-skill.md)–[17](17-verification-and-title.md)
-**Status:** Not started
+**Status:** In progress
 
 ## Goal
 
@@ -14,6 +14,17 @@ through our helpers first and by a throwaway Hermes prompt second. Nothing built
 production code.
 
 **No slice from `11` onward starts until the questions below have recorded answers.**
+
+## State
+
+The harness, the four documents and the test that keeps them honest are built. **No
+question has been answered:** the spike needs an installed Hermes, a headed Chrome and a
+throwaway destination account, and every answer line currently reads `unknown` with what
+was tried. `11` is therefore still gated. [`spikes/README.md`](../../spikes/README.md) is
+the protocol; running it and replacing the `unknown`s is what finishes this slice.
+
+Nothing in `config.py`, `probe` or `08` changed. There is no observation to change them
+for, and a default edited on a hunch is exactly what this slice exists to prevent.
 
 ## In scope
 
@@ -67,6 +78,12 @@ answers. The code changes allowed are limited to defaults in `config.py`, select
   Screenshots go in `docs/spike/` with any personal data cropped.
 - Time box: two working days. Unanswered questions are recorded as `unknown` with what
   was tried.
+- Every answer carries a mark — `*unknown*` or `*observed on <date>*` — and
+  `tests/test_spike_docs.py` reads `10`'s own numbered list to check that each question
+  has exactly one marked answer line, in the document the *Deliverables* section assigns
+  it to. A document claiming an observation may no longer carry the `**Spike run:** none.`
+  line. So "we ran out of time" and "we forgot" cannot look the same, and an eleventh
+  question added to this spec fails the build until something answers it.
 
 ## Design notes
 
@@ -75,6 +92,22 @@ answers. The code changes allowed are limited to defaults in `config.py`, select
 - The fallback ladder is ordered by how much of `07` survives: rung a keeps everything,
   rung b keeps the profile but adds a long-lived process, rung c gives up our profile.
   The spike stops at the first rung that works.
+- **Rung a needs no new prompt.** `09`'s `doctor` already runs a `-z` task that has to come
+  back having listed *our* claude.ai tab, and fails when Hermes answered from a browser of
+  its own — which is question 1's rung a, written as a check that ships. The throwaway
+  prompt under `spikes/prompts/` is for the two rungs below it, and for question 2, which
+  `doctor` cannot answer because it never navigates.
+- Question 3 is a script rather than ten hand-runs. Five sizes against two methods is
+  twenty measurements whose value is in being exactly comparable, and `paste` already
+  answers with a digest comparison rather than an impression. The two things only a human
+  can see — did a "pasted text" chip appear, and clearing the composer between rounds — are
+  the two things the script asks a human for.
+- The ladder never submits, so question 3 costs the throwaway account no quota and can run
+  before the questions that do. Provoking the rate limit is last for the same reason.
+- `spikes/` is excluded from the sdist and outside the wheel's package, but `make check`
+  lints and type-checks it. A throwaway script that stopped importing `dataporter` two
+  refactors ago cannot repeat the spike, and repeating it after a claude.ai change is the
+  only reason to keep this tree at all.
 
 ## Deliverables
 

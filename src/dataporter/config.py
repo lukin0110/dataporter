@@ -60,7 +60,8 @@ class SeedSettings(BaseModel):
 
     Declared here rather than in `04` because `ConversationPlan.chunk_count` is a
     `03` field and a chunk count without a chunk budget is not a number. `10`
-    measures what the composer really accepts and owns the value from then on.
+    measures what the composer really accepts and owns the value from then on;
+    `docs/seed-limits.md` holds the measurement and the reason for the number.
     """
 
     hard_max_chars: int = 400_000
