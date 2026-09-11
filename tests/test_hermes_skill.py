@@ -1,15 +1,81 @@
-"""The packaged skill, and installing it into the profile."""
+"""The packaged skill: what it says, and installing it into the profile.
 
+`09` built the installing half against a placeholder body. `11` wrote the body,
+so the first section now also checks the document itself — that it has the
+sections the spec names, the five §17 rules, the error words `08` actually
+prints, and result examples our own runner would accept.
+
+The procedure's *steps* are checked in `test_steps.py`, against the spec's table,
+and the procedure's *behaviour* in `test_skill_dry_run.py`, by performing it.
+"""
+
+import json
+import re
 from pathlib import Path
 
 import pytest
 
+from dataporter.browser import helpers
 from dataporter.config import HermesSettings, Settings
-from dataporter.errors import HermesUsageError
+from dataporter.errors import Category, HermesUsageError
+from dataporter.hermes import runner
 from dataporter.hermes import skill as skilling
+from dataporter.hermes.runner import HermesResult
 
 FRONTMATTER_KEYS = ("name", "description", "version", "platforms", "metadata")
 """Every top-level key `11` fixes in the skill's frontmatter."""
+
+SKILL_TEXT = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(
+    encoding="utf-8"
+)
+
+SECTIONS = (
+    "When to use",
+    "Inputs",
+    "Procedure",
+    "Verification",
+    "Rules",
+    "Recovery",
+    "Result",
+)
+"""The body sections `11` specifies, in the order it lists them."""
+
+SAFETY_CLAUSES = (
+    "No other page, no settings, no billing, no other chats.",
+    "Never delete, archive, star, share or rename anything except",
+    "Never enter text into the composer except through the helper.",
+    "`needs_human` with reason `confirmation_required`",
+    "password, a code, a CAPTCHA or a security challenge",
+)
+"""One clause per §17 rule. Clauses rather than whole rules: the skill wraps its
+prose and the spec wraps it differently, and a line break is not a rule."""
+
+HELPER_ERRORS = (
+    helpers.NO_CLAUDE_TAB,
+    helpers.AMBIGUOUS_TAB,
+    helpers.UNKNOWN_TARGET,
+    helpers.OUTSIDE_MIGRATION_SURFACE,
+    helpers.COMPOSER_MISSING,
+    helpers.COMPOSER_NOT_EMPTY,
+    helpers.TEXT_MISMATCH,
+    helpers.SEED_NOT_FOUND,
+    helpers.SEED_UNREADABLE,
+    helpers.FILE_NOT_FOUND,
+    helpers.INPUT_NOT_FOUND,
+    helpers.UPLOAD_REJECTED,
+    helpers.CHIP_NOT_FOUND,
+    helpers.RESPONSE_TIMEOUT,
+)
+"""Every `error` string `08` can print. Read from the module, so renaming one
+there fails here until the skill is corrected."""
+
+OUTCOMES = ("completed", "partial", "failed", "needs_human", "rate_limited")
+
+JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
+
+CATEGORY_LINE = re.compile(r"`error\.category` is one of (.*?)\. Pick", re.DOTALL)
+"""The sentence that lists the taxonomy, so the test reads what the skill offers
+rather than searching the whole document for words like `ui`."""
 
 
 def make_settings(tmp_path: Path) -> Settings:
@@ -42,13 +108,62 @@ def test_the_packaged_skill_identifies_itself_as_11_specifies() -> None:
         assert key in fields, f"{key} is missing from the skill frontmatter"
 
 
-def test_the_placeholder_body_says_it_is_one() -> None:
-    """`11` writes the procedure. Until then the file must not look finished."""
-    text = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(
-        encoding="utf-8"
-    )
-    assert "not finished" in text
-    assert "11" in text
+def test_the_body_is_a_procedure_and_no_longer_a_placeholder() -> None:
+    """`09` shipped a file that refused to act. `11` is what replaced it."""
+    assert "not finished" not in SKILL_TEXT
+    assert "placeholder" not in SKILL_TEXT
+    assert "Filled in by" not in SKILL_TEXT
+
+
+def test_it_has_every_section_11_names() -> None:
+    for heading in SECTIONS:
+        assert f"\n## {heading}\n" in SKILL_TEXT, f"no {heading} section"
+
+
+def test_the_safety_rules_are_all_there() -> None:
+    """§17, as five rules an agent can check itself against."""
+    for clause in SAFETY_CLAUSES:
+        assert clause in SKILL_TEXT, f"missing safety rule: {clause}"
+
+
+def test_it_names_every_error_a_helper_can_answer_with() -> None:
+    """`08` decides this vocabulary; the skill branches on it. One list, or the
+    skill teaches Hermes to recognise a word no helper prints."""
+    for error in HELPER_ERRORS:
+        assert error in SKILL_TEXT, f"the skill does not mention {error}"
+
+
+def test_it_never_tells_an_agent_to_read_a_seed() -> None:
+    """The one instruction that would put conversation text in a transcript."""
+    assert "A seed must never pass through your output tokens." in SKILL_TEXT
+    assert "Read only by the helper, never by you." in SKILL_TEXT
+
+
+def test_every_result_example_validates_against_09s_contract() -> None:
+    """The examples are what an agent copies. One that our own runner would
+    reject is worse than no example at all."""
+    examples = [
+        HermesResult.model_validate(json.loads(block))
+        for block in JSON_BLOCK.findall(SKILL_TEXT)
+    ]
+    assert {item.outcome for item in examples} == set(OUTCOMES)
+    for item in examples:
+        assert item.step is not None, f"{item.last_step} is not a step name"
+
+
+def test_the_needs_human_reasons_are_the_ones_14_will_branch_on() -> None:
+    for reason in runner.NEEDS_HUMAN_REASONS:
+        assert reason in SKILL_TEXT, f"the skill does not mention {reason}"
+
+
+def test_it_offers_every_error_category_and_invents_none() -> None:
+    """`01` fixed the taxonomy. A category the skill made up would reach
+    `state.json` through `09`'s contract and fail validation there."""
+    offered = CATEGORY_LINE.search(SKILL_TEXT)
+    assert offered is not None
+    assert {item for item in re.findall(r"`([a-z_]+)`", offered.group(1))} == {
+        str(item) for item in Category
+    }
 
 
 # --------------------------------------------------------------------------- #

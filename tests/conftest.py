@@ -14,6 +14,9 @@ import pytest
 from typer.testing import CliRunner
 
 from dataporter import log
+from dataporter import seed as seeding
+from dataporter.config import AttachmentSettings, SeedSettings, Settings
+from dataporter.export import load_export
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -81,3 +84,31 @@ def truncated_zip(export_zip: Path, tmp_path: Path) -> Path:
     target = tmp_path / "truncated.zip"
     target.write_bytes(export_zip.read_bytes()[: export_zip.stat().st_size // 2])
     return target
+
+
+LONG_CONVERSATION = "bb000002-2222-4222-8222-222222222222"
+"""The one fixture conversation long enough to need two parts at 4 000 chars."""
+
+
+@pytest.fixture
+def two_part_seed(export_dir: Path, attachments_dir: Path) -> seeding.Seed:
+    """A real two-part seed, for the slices that need one to point at.
+
+    Here rather than in one test module because `11` needs it twice — once to
+    render a prompt and once to migrate through it — and a second way of
+    building "the two-part fixture" is a second thing to keep in step with `04`.
+    """
+    settings = Settings(
+        workspace=attachments_dir.parent,
+        seed=SeedSettings(max_chars=4_000),
+        attachments=AttachmentSettings(dir=attachments_dir),
+    )
+    outcome = next(
+        item
+        for item in seeding.SeedGenerator(settings).seeds(
+            load_export(export_dir).conversations
+        )
+        if item.conversation_uuid == LONG_CONVERSATION
+    )
+    assert outcome.seed is not None
+    return outcome.seed
