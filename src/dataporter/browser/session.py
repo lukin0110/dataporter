@@ -9,7 +9,7 @@ import shutil
 import time
 from pathlib import Path
 
-from dataporter import log
+from dataporter import PROGRAM_NAME, log
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.launcher import BrowserSession, PortInUse
 from dataporter.browser.probe import CLAUDE_HOST, NEW_CHAT_URL, PageState, probe
@@ -24,6 +24,14 @@ LOGIN_POLL_S = 2.0
 form and costs 300 probes across the ten-minute default."""
 
 BLANK_URLS = frozenset({"", "about:blank", "chrome://newtab/", "about:newtab"})
+
+SIGNED_IN = "logged in"
+SIGNED_OUT = f"not logged in — run: {PROGRAM_NAME} login"
+"""What `session status` prints and what `12` refuses to start with.
+
+Here rather than in `cli` because two commands and the import loop say it, and
+an instruction an operator is given in two slightly different spellings is two
+instructions as far as they can tell."""
 
 
 def claude_tabs(client: CdpClient) -> list[Target]:

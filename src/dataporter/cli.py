@@ -22,12 +22,13 @@ import typer
 from typer.core import TyperGroup
 
 from dataporter import PROGRAM_NAME, log, state, summary
+from dataporter import importer as importing
 from dataporter import seed as seeding
 from dataporter.browser import cdp, launcher, probe
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import session as browser_session
 from dataporter.config import ConfigError, Settings, load_settings, with_attachments_dir
-from dataporter.errors import BrowserError, ExportError, HermesError
+from dataporter.errors import AuthError, BrowserError, ExportError, HermesError
 from dataporter.exit_codes import ExitCode
 from dataporter.export import Conversation, load_export
 from dataporter.export import Export as ParsedExport
@@ -81,10 +82,16 @@ def invoked_name(ctx: typer.Context) -> str:
     return " ".join(reversed(parts))
 
 
-def not_implemented(ctx: typer.Context) -> NoReturn:
-    """Exit `69`. Every command body in this slice ends here."""
+def not_implemented(ctx: typer.Context, detail: str = "") -> NoReturn:
+    """Exit `69`. A command, or — `detail` — one flag of an implemented one.
+
+    `12` is the first caller of the second kind: `import` works, `--pilot` is
+    `20`'s, and a flag that asks for a different selection cannot be accepted and
+    quietly ignored the way an inert one can.
+    """
+    named = f"{invoked_name(ctx)} {detail}".rstrip()
     print(
-        f"not implemented in this build: {invoked_name(ctx)}",
+        f"not implemented in this build: {named}",
         file=typer.get_text_stream("stderr"),
     )
     raise typer.Exit(ExitCode.NOT_IMPLEMENTED)
@@ -135,6 +142,12 @@ class _RootGroup(TyperGroup):
             # invariant violations in `state` are `ValueError`s and fall through
             # to `70`, which is where a bug in us belongs.
             fail(str(exc))
+        except AuthError as exc:
+            # Exit `3`, the "destination session not authenticated" row. `07`
+            # gave `session status` that code directly; `12` is what needs the
+            # clause, because a run that finds itself signed out has to say so
+            # from wherever it noticed.
+            fail(exc.detail or type(exc).__name__, ExitCode.NOT_AUTHENTICATED)
         except launcher.PortInUse as exc:
             # A browser failure that is nonetheless the operator's to fix by
             # closing something, so exit `2` and not `6`. Before the broader
@@ -382,8 +395,10 @@ def plan_for(
 
 
 LOGIN_PROMPT = "Log in to Claude in the browser window that just opened."
-SIGNED_IN = "logged in"
-SIGNED_OUT = f"not logged in — run: {PROGRAM_NAME} login"
+SIGNED_IN = browser_session.SIGNED_IN
+SIGNED_OUT = browser_session.SIGNED_OUT
+"""`07`'s two answers, re-exported: `12` refuses to start on the second one, so
+the string lives beside the probe that produces it."""
 
 
 @app.command()
@@ -456,17 +471,40 @@ def import_cmd(
 ) -> None:
     """Migrate conversations from an export into the destination account."""
     path = require_export(export)
+    context = app_context(ctx)
     if not dry_run:
-        # `--force-unlock` is accepted and does nothing yet: `12` is the first
-        # code that takes the workspace lock, and a dry run never does.
-        not_implemented(ctx)
+        if pilot:
+            # `20` owns the pilot selection. Accepting the flag and running the
+            # ordinary selection instead would migrate a different set of
+            # conversations than the one an operator asked for.
+            not_implemented(ctx, "--pilot")
+        # `--skip-attachments` is accepted and inert: nothing uploads anything
+        # until `16`, so it already describes what happens.
+        settings = with_attachments_dir(context.settings, attachments_dir)
+        log.enable_run_log(settings.workspace)
+        outcome = importing.Importer(
+            settings,
+            progress=importing.LineProgress(quiet=context.quiet),
+            force_unlock=force_unlock,
+        ).run(
+            path,
+            selection_for(
+                settings,
+                only=only or [],
+                limit=limit,
+                retry_failed=retry_failed,
+                retry_partial=retry_partial,
+                force=force,
+            ),
+        )
+        raise typer.Exit(outcome.exit_code)
 
     # Nothing below this line writes, and nothing below it is allowed to: no run
     # log, so not even `<workspace>/logs/` comes into existence. §9 says no Claude
     # account is modified by a dry run; a workspace appearing next to the export
     # is the local half of the same promise. Reading `06`'s state is still fair —
     # what a run *would* do depends on what earlier runs already did.
-    settings = app_context(ctx).settings
+    settings = context.settings
     parsed = load_export(path)
     store = state.StateStore(settings.workspace)
     store.check_export(parsed.fingerprint)
