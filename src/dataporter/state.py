@@ -326,6 +326,17 @@ class RunFile(StateModel):
     """uuid → the destination ids earlier runs created. `--force` never deletes
     anything at the destination (§17), so the old chat is remembered, not lost."""
 
+    hermes_input_tokens: int = 0
+    hermes_output_tokens: int = 0
+    hermes_cost_usd: float = 0.0
+    """What Hermes's `--usage-file` reported, summed over every run (`09`).
+
+    Here and not in `COUNTERS` because a cost is not a count — `status --json`
+    reports the counters and a float among them would not be one — and because
+    these are read opportunistically: a Hermes build that writes no usage file
+    leaves them at zero, which `19` reports as "not recorded" rather than as free.
+    """
+
     def counters(self) -> dict[str, int]:
         return {name: getattr(self, name) for name in COUNTERS}
 
@@ -704,6 +715,30 @@ class StateStore:
         run = self.run()
         if run.export_fingerprint != fingerprint:
             self._write_run(run.model_copy(update={"export_fingerprint": fingerprint}))
+
+    def add_usage(
+        self,
+        *,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cost_usd: float = 0.0,
+    ) -> RunFile:
+        """Add one Hermes run's usage to the totals in `run.json`.
+
+        Primitives rather than `hermes.runner.HermesUsage`: `09` reads the usage
+        file and this records what it found, and keeping the dependency pointing
+        one way means `state` stays the module every other one can import.
+        """
+        run = self.run()
+        return self._write_run(
+            run.model_copy(
+                update={
+                    "hermes_input_tokens": run.hermes_input_tokens + input_tokens,
+                    "hermes_output_tokens": run.hermes_output_tokens + output_tokens,
+                    "hermes_cost_usd": round(run.hermes_cost_usd + cost_usd, 6),
+                }
+            )
+        )
 
     def bump_counter(self, name: str, by: int = 1) -> int:
         """Add to one of `COUNTERS` and write `run.json`."""

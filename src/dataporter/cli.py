@@ -13,6 +13,7 @@ the progress block and `08`'s helpers print exactly one JSON object there.
 import importlib.metadata
 import json
 from collections.abc import Callable, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
@@ -20,19 +21,24 @@ from typing import Annotated, Any, NoReturn
 import typer
 from typer.core import TyperGroup
 
-from dataporter import log, state, summary
+from dataporter import PROGRAM_NAME, log, state, summary
 from dataporter import seed as seeding
 from dataporter.browser import cdp, launcher, probe
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import session as browser_session
 from dataporter.config import ConfigError, Settings, load_settings, with_attachments_dir
-from dataporter.errors import BrowserError, ExportError
+from dataporter.errors import BrowserError, ExportError, HermesError
 from dataporter.exit_codes import ExitCode
 from dataporter.export import Conversation, load_export
 from dataporter.export import Export as ParsedExport
+from dataporter.hermes import doctor as hermes_doctor
+from dataporter.hermes import profile as hermes_profile
 from dataporter.plan import MigrationPlan, build_plan
 
-PROGRAM_NAME = "hermes-claude-migrate"
+__all__ = ["PROGRAM_NAME", "app"]
+"""`PROGRAM_NAME` lives in `dataporter/__init__.py` — `09` builds the command line
+Hermes runs through its terminal tool and cannot import `cli` to get it — and is
+re-exported here because this is where every message that uses it is written."""
 
 _logger = log.get_logger(__name__)
 
@@ -138,6 +144,13 @@ class _RootGroup(TyperGroup):
             # Exit `6`, the "environment not ready" row: no browser installed,
             # a debug port that never opened, a CDP call that went unanswered.
             # `doctor` (`09`) is what an operator runs next.
+            fail(exc.detail or type(exc).__name__, ExitCode.ENVIRONMENT)
+        except HermesError as exc:
+            # The same row, for the other half of the environment: Hermes missing,
+            # too old, misconfigured, or killed at a deadline. Only `setup` and
+            # `doctor` let one reach here — `12` reads a conversation's Hermes
+            # failure from the result contract and records it per conversation
+            # rather than ending the run on it.
             fail(exc.detail or type(exc).__name__, ExitCode.ENVIRONMENT)
         except ExportError as exc:
             # A malformed export is operator-fixable, not an internal error, and
@@ -593,13 +606,43 @@ def report(ctx: typer.Context, json_output: JsonOutput = False) -> None:
 @app.command()
 def setup(ctx: typer.Context) -> None:
     """Create the Hermes profile and install the migration skill."""
-    not_implemented(ctx)
+    settings = app_context(ctx).settings
+    report = hermes_profile.run_setup(settings)
+    for line in report.lines():
+        print(line)
+    # Said on every run, not only the first: the transcripts accumulate, and an
+    # operator who read this once during setup has forgotten it by `21`.
+    print(hermes_profile.purge_hint(settings))
+    if not report.model:
+        # `09`'s exact words. A profile with no model cannot run a task, so there
+        # is nothing for `doctor` to check yet and this is exit `6` like the rest
+        # of "the environment is not ready".
+        fail(
+            hermes_profile.NO_MODEL.format(profile=settings.hermes.profile),
+            ExitCode.ENVIRONMENT,
+        )
+    print(f"Next: {PROGRAM_NAME} doctor")
 
 
 @app.command()
 def doctor(ctx: typer.Context) -> None:
     """Check that Hermes and Chrome are present and configured."""
-    not_implemented(ctx)
+    settings = app_context(ctx).settings
+    log.enable_run_log(settings.workspace)
+    failed = False
+    # `closing` rather than a plain `for`: the generator launches a browser and
+    # closes it in a `finally`, and leaving that to garbage collection would leave
+    # a Chrome holding the debug port for as long as the interpreter felt like it.
+    with closing(hermes_doctor.checks(settings)) as stream:
+        for check in stream:
+            # One line at a time, printed as it is produced: the two Hermes checks
+            # take a minute each, and ten lines at the end reads like a hang.
+            print(check.render())
+            if not check.ok:
+                failed = True
+                break
+    if failed:
+        raise typer.Exit(ExitCode.ENVIRONMENT)
 
 
 @session_app.command("status")

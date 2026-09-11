@@ -17,8 +17,6 @@ COMMANDS: list[list[str]] = [
     ["resume"],
     ["verify"],
     ["report"],
-    ["setup"],
-    ["doctor"],
 ]
 
 EXCLUDED_FROM_69: list[list[str]] = [
@@ -34,6 +32,8 @@ EXCLUDED_FROM_69: list[list[str]] = [
     ["browser", "attach"],
     ["browser", "await-response"],
     ["browser", "close-extra-tabs"],
+    ["setup"],
+    ["doctor"],
 ]
 """Commands `--help` must still list that the 69 test cannot cover as written.
 
@@ -42,7 +42,10 @@ so it has `test_import_without_dry_run_still_reaches_69` of its own. `seeds` (`0
 `inspect` (`05`), `status` (`06`), `login` and `session …` (`07`) are implemented
 and no longer exit 69 at all, and `08` implemented every `browser …` command;
 those two groups are exercised in `test_browser_session.py` and
-`test_browser_helpers.py`, where the fake browser they need lives."""
+`test_browser_helpers.py`, where the fake browser they need lives. `09` implemented
+`setup` and `doctor`, which exit `6` rather than `69` on a machine with no Hermes;
+they are exercised in `test_hermes_setup.py` and `test_hermes_doctor.py`, where the
+fake `hermes` they need lives."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 

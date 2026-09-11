@@ -14,7 +14,10 @@ the step name that `state.json` and the report use.
 
 ## In scope
 
-- Repository file `skills/claude-migrate/SKILL.md`, installed by `setup` (`09`).
+- Packaged file `src/dataporter/skills/claude-migrate/SKILL.md`, installed by `setup`
+  (`09`). Inside the package, not at the repository root, because `setup` copies it out
+  of the installed tool and only files under the package directory reach the wheel —
+  `09` shipped it with the frontmatter below and a placeholder body that refuses to act.
   Frontmatter, exact:
 
   ```yaml

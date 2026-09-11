@@ -916,3 +916,25 @@ def test_seeds_accepts_a_short_id_too(
     code, out, _ = run(runner, "seeds", str(export_dir), "--only", "aa000001")
     assert code == ExitCode.OK
     assert out.startswith("aa000001  parts=")
+
+
+# --------------------------------------------------------------------------- #
+# Hermes usage (`09`)
+# --------------------------------------------------------------------------- #
+
+
+def test_usage_accumulates_across_runs(workspace: Path) -> None:
+    store = state.StateStore(workspace)
+    store.add_usage(input_tokens=1200, output_tokens=300, cost_usd=0.04)
+    run = store.add_usage(input_tokens=800, output_tokens=120, cost_usd=0.015)
+    assert run.hermes_input_tokens == 2000
+    assert run.hermes_output_tokens == 420
+    assert run.hermes_cost_usd == pytest.approx(0.055)
+    # And it is on disk, not only in memory: `19` reads the file.
+    assert state.StateStore(workspace).run().hermes_input_tokens == 2000
+
+
+def test_usage_is_not_one_of_the_counters(workspace: Path) -> None:
+    """A cost is not a count, and `status --json` reports counts."""
+    assert "hermes_cost_usd" not in state.COUNTERS
+    assert set(state.StateStore(workspace).run().counters()) == set(state.COUNTERS)
