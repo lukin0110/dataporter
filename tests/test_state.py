@@ -32,6 +32,7 @@ from dataporter.state import (
     Status,
     WorkspaceLock,
 )
+from dataporter.steps import Step
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -343,6 +344,19 @@ def test_a_status_may_stay_where_it_is(tmp_path: Path) -> None:
     store = StateStore(tmp_path)
     store.update(ORDER[0], status=Status.RUNNING)
     assert store.update(ORDER[0], last_step="submit").status is Status.RUNNING
+
+
+def test_a_step_that_is_not_one_cannot_be_recorded(tmp_path: Path) -> None:
+    """`11` fixed the vocabulary, and an agent reports its own `last_step`.
+
+    `12` maps a result to a `Step` before it writes; a name it could not map —
+    `10`'s throwaway prompt invented `await_response_part_2` — must not become
+    the "last successful step" `19` prints.
+    """
+    store = StateStore(tmp_path)
+    with pytest.raises(state.IllegalUpdate):
+        store.update(ORDER[0], last_step="await_response_part_2")
+    assert store.update(ORDER[0], last_step=Step.AWAIT).last_step is Step.AWAIT
 
 
 @pytest.mark.parametrize(

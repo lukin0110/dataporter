@@ -43,6 +43,7 @@ from pydantic import (
 
 from dataporter import log, render
 from dataporter.errors import Category
+from dataporter.steps import Step
 
 _logger = log.get_logger(__name__)
 
@@ -223,7 +224,10 @@ class ConversationState(StateModel):
     status: Status = Status.PENDING
     destination: Destination = Destination()
     attempts: int = 0
-    last_step: str | None = None
+    last_step: Step | None = None
+    """The last step whose verification passed (`11`). One of `steps.Step`, so
+    a name no procedure has cannot be written into the file that `19` reports
+    from."""
     chunks_acked: int = 0
     chunks_total: int = 0
     messages_represented: int = 0
@@ -305,7 +309,7 @@ class PauseRecord(StateModel):
     conversation_uuid: str
     reason: str
     detail: str = ""
-    last_step: str | None = None
+    last_step: Step | None = None
     conversation_id: str | None = None
     since: Instant
 

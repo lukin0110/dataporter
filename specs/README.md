@@ -107,7 +107,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [08](impl/08-browser-helpers.md) | Browser helpers | §4, §5, §17 | Done |
 | [09](impl/09-hermes-runner.md) | Hermes profile and runner | §2, §4, §17 | Done |
 | [10](impl/10-attach-spike.md) | Attach spike and Claude UI map | §4, §5, §11 | In progress |
-| [11](impl/11-skill.md) | Skill and step protocol | §4, §5, §11, §17 | Not started |
+| [11](impl/11-skill.md) | Skill and step protocol | §4, §5, §11, §17 | Done |
 | [12](impl/12-import-loop.md) | Import loop | §6, §10 | Not started |
 | [13](impl/13-recovery.md) | Recovery | §11 | Not started |
 | [14](impl/14-human-intervention.md) | Human intervention | §12 | Not started |

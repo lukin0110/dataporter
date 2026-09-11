@@ -25,8 +25,8 @@ from dataporter.browser.cdp import CdpClient
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import SafetyError, UIError
 from dataporter.exit_codes import ExitCode
-from fake_chrome import Call, FakeChrome, FakeTarget, free_port
-from fake_composer import FakePage, responder
+from fake_chrome import Call, free_port
+from fake_composer import Browser, FakePage
 from fake_pages import (
     CHAT_ID,
     GENERATING_CHAT_ID,
@@ -104,45 +104,6 @@ def test_normalise(raw: str, expected: str) -> None:
 # --------------------------------------------------------------------------- #
 # A browser that answers to order
 # --------------------------------------------------------------------------- #
-
-
-def settings_for(chrome: FakeChrome, tmp_path: Path) -> Settings:
-    return Settings(
-        workspace=tmp_path / "migration",
-        browser=BrowserSettings(cdp_port=chrome.port),
-        timeouts=TimeoutSettings(cdp_call_s=2.0, attach_s=0.3, response_s=0.3),
-    )
-
-
-class Browser:
-    """A `FakeChrome` and the pages it answers for, kept together."""
-
-    def __init__(self, *pages: FakePage) -> None:
-        self.pages = {f"page-{index}": page for index, page in enumerate(pages, 1)}
-        self.chrome = FakeChrome(
-            targets=[
-                FakeTarget(id=identifier, url=page.url)
-                for identifier, page in self.pages.items()
-            ],
-            responder=responder(self.pages),
-        )
-
-    def __enter__(self) -> "Browser":
-        self.chrome.__enter__()
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.chrome.stop()
-
-    @property
-    def client(self) -> CdpClient:
-        return CdpClient(port=self.chrome.port, timeout=2.0)
-
-    def settings(self, tmp_path: Path) -> Settings:
-        return settings_for(self.chrome, tmp_path)
-
-    def page(self, identifier: str = "page-1") -> FakePage:
-        return self.pages[identifier]
 
 
 @pytest.fixture

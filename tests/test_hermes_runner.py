@@ -10,6 +10,7 @@ from dataporter.config import HermesSettings, Settings
 from dataporter.errors import Category, HermesError, HermesUsageError
 from dataporter.hermes import runner as hermes_runner
 from dataporter.hermes.runner import HermesResult, HermesRunner
+from dataporter.steps import Step
 from fake_hermes import FakeHermes
 
 RESULT = {
@@ -196,6 +197,28 @@ def test_unknown_fields_do_not_fail_a_good_run(
     assert runner_for(tmp_path, fake).run("go", run_id="r", timeout_s=30).outcome == (
         "completed"
     )
+
+
+def test_a_step_name_is_read_as_one_of_11s_steps(
+    tmp_path: Path, fake: FakeHermes
+) -> None:
+    fake.write(answer=json.dumps(RESULT))
+    assert runner_for(tmp_path, fake).run("go", run_id="r", timeout_s=30).step is (
+        Step.DONE
+    )
+
+
+def test_a_step_name_that_is_not_one_costs_nothing_else(
+    tmp_path: Path, fake: FakeHermes
+) -> None:
+    """An agent that reported where it got to in its own words still reported
+    the outcome, the id and the count. `12` records `step`, which is `None`."""
+    invented = {**RESULT, "outcome": "partial", "last_step": "await_response_part_2"}
+    fake.write(answer=json.dumps(invented))
+    result = runner_for(tmp_path, fake).run("go", run_id="r", timeout_s=30)
+    assert result.outcome == "partial"
+    assert result.last_step == "await_response_part_2"
+    assert result.step is None
 
 
 def test_a_needs_human_result_carries_its_reason(

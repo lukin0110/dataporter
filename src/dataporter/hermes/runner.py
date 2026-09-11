@@ -43,6 +43,7 @@ from dataporter import log
 from dataporter.config import Settings
 from dataporter.errors import Category, HermesError, HermesUsageError
 from dataporter.hermes.client import HermesCli, hermes_env
+from dataporter.steps import Step
 
 _logger = log.get_logger(__name__)
 
@@ -116,6 +117,25 @@ class HermesResult(BaseModel):
     actions: int = 0
     """`browser_*` tool calls Hermes reports making. `19` prefers the count in
     `logs/actions.jsonl`, which is ours; this is what the agent believes."""
+
+    @property
+    def step(self) -> Step | None:
+        """`last_step` as one of `11`'s steps, or `None` if it is not one.
+
+        The wire field stays a plain string, and this is why: the producer is an
+        agent, and a run that did the work and then reported where it got to in
+        its own words has still told us the outcome, the id and the count. Losing
+        all of that to a validation error over a step name would be the strictness
+        `extra="ignore"` exists to avoid.
+
+        What may not be loose is `state.json`: `12` records this, never the raw
+        string, so a name no procedure has cannot become the "last successful
+        step" `19` prints.
+        """
+        try:
+            return Step(self.last_step)
+        except ValueError:
+            return None
 
 
 RESULT_KEY = "outcome"

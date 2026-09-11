@@ -15,10 +15,13 @@ what was asked and what to answer, which is the whole reason the tags are there.
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from dataporter.browser import helpers, probe
-from fake_chrome import Call
+from dataporter.browser.cdp import CdpClient
+from dataporter.config import BrowserSettings, Settings, TimeoutSettings
+from fake_chrome import Call, FakeChrome, FakeTarget
 
 
 def js_const(expression: str, name: str) -> Any:
@@ -151,3 +154,59 @@ def responder(pages: dict[str, FakePage]) -> Callable[[Any, Call], Any]:
         return None if page is None else page.respond(call)
 
     return answer
+
+
+def settings_for(chrome: FakeChrome, tmp_path: Path) -> Settings:
+    return Settings(
+        workspace=tmp_path / "migration",
+        browser=BrowserSettings(cdp_port=chrome.port),
+        timeouts=TimeoutSettings(cdp_call_s=2.0, attach_s=0.3, response_s=0.3),
+    )
+
+
+class Browser:
+    """A `FakeChrome` and the pages it answers for, kept together.
+
+    Here rather than in `08`'s test module because `11` drives the same pair —
+    a modelled page and the helpers pointed at it — through a whole migration,
+    and two spellings of "the fake browser" would drift.
+    """
+
+    def __init__(self, *pages: FakePage) -> None:
+        self.pages = {f"page-{index}": page for index, page in enumerate(pages, 1)}
+        self.chrome = FakeChrome(
+            targets=[
+                FakeTarget(id=identifier, url=page.url)
+                for identifier, page in self.pages.items()
+            ],
+            responder=responder(self.pages),
+        )
+
+    def __enter__(self) -> "Browser":
+        self.chrome.__enter__()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.chrome.stop()
+
+    @property
+    def client(self) -> CdpClient:
+        return CdpClient(port=self.chrome.port, timeout=2.0)
+
+    def settings(self, tmp_path: Path) -> Settings:
+        return settings_for(self.chrome, tmp_path)
+
+    def page(self, identifier: str = "page-1") -> FakePage:
+        return self.pages[identifier]
+
+    def visit(self, url: str, identifier: str = "page-1") -> None:
+        """Move one tab, in both places a tab's URL is known.
+
+        `FakeChrome` answers `/json/list` from its own targets and the page
+        answers `location.href` from itself; a navigation the helpers can see
+        has to change both, exactly as a real one does.
+        """
+        self.pages[identifier].url = url
+        target = self.chrome.target(identifier)
+        assert target is not None
+        target.url = url
