@@ -60,7 +60,10 @@ ignore = ["ANN401"]
 
 [tool.ty.environment]  # https://docs.astral.sh/ty/configuration/
 python-version = "3.12"
-root = ["./src"]
+# `./spikes` is not shipped (see the sdist exclude above) but is checked: `10`'s
+# scripts import `dataporter`, and a throwaway script that no longer imports is a
+# throwaway script nobody can re-run after the next UI change.
+root = ["./src", "./spikes"]
 
 [tool.ty.terminal]
 output-format = "github"
