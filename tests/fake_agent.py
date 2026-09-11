@@ -193,7 +193,10 @@ class ScriptedAgent:
         """
         state = self.probe(task, *expect)
         if state.get("error") in UNREADABLE:
-            # network: wait, navigate back to the run's URL, and look once more.
+            # network: navigate back to the run's URL and look once more. The
+            # skill's five-second wait is the agent's, and is not scripted here —
+            # a real sleep per row would add half a minute to the suite to prove
+            # nothing, and none of these pages changes with time.
             self.recoveries.append("network")
             self.browser.navigate(self.url(task))
             state = self.probe(task, *expect)

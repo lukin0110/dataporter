@@ -19,21 +19,21 @@ failure is handled by "sleep and hope".
 
   | Failure (§11) | Detection | In-run recovery (Hermes, at most once per step) | If still failing → result |
   | --- | --- | --- | --- |
-  | failed click | after the click the verify condition is unchanged | re-snapshot, find the element again by role/label, click once more | `failed`, category `ui`, `last_step` = the step |
-  | missing composer | `probe.composer_present == false` on `/new` or on the run's chat | reload that URL; wait 5 s; re-probe | `failed`, `ui` |
+  | failed click | after the click the verify condition is unchanged | re-snapshot, find the element again by role/label, click once more | `failed` (`partial` if a chat exists), category `ui`, `last_step` = the step |
+  | missing composer | `probe.composer_present == false` on `/new` or on the run's chat | reload that URL; wait 5 s; re-probe | `failed` (`partial` if a chat exists), `ui` |
   | unexpected dialog | `probe.dialogs` non-empty, or snapshot shows `[role=dialog]` | if it is a JS dialog: `browser_dialog(dismiss)`; if a page modal with a close/dismiss control: click it once; never click anything labelled delete, confirm, upgrade, allow | `needs_human`, reason `ambiguous_ui` |
   | login expiry | a helper answers `outside_migration_surface` with a `url` under `/login`, or a snapshot shows a sign-in form | none | `needs_human`, reason `auth_required` |
   | rate limiting | a message matching the UI map's rate-limit text; Send disabled beside a composer that is not empty | none | `rate_limited`, `retry_after_s` parsed from the text when present |
   | generation failure | error banner or a retry affordance after submit; `await-response` returns no assistant message | click the retry affordance once; `await` again | `partial` if some parts acked, else `failed`; category `generation` |
-  | network error | `probe` errors (`no_claude_tab`, `unknown_target`), Chrome error page, `browser_navigate` fails | reload once after 5 s | `failed`, `network` |
-  | page navigation | URL leaves `/new` or the run's `/chat/<id>` unexpectedly | navigate back to the run's chat (or `/new` if no id yet) | `failed`, `navigation` |
+  | network error | `probe` errors (`no_claude_tab`, `unknown_target`), Chrome error page, `browser_navigate` fails | reload once after 5 s | `failed` (`partial` if a chat exists), `network` |
+  | page navigation | URL leaves `/new` or the run's `/chat/<id>` unexpectedly | navigate back to the run's chat (or `/new` if no id yet) | `failed` (`partial` if a chat exists), `navigation` |
   | Claude UI change | expected element absent, no rule above applies | one attempt to reach the goal by reasoning over the snapshot, verified the same way | `needs_human`, reason `ambiguous_ui` |
   | CAPTCHA / security challenge | UI map signals | none | `needs_human`, `captcha` / `security_challenge` |
 
   Plus the row that is not a §11 failure but is the answer to a helper error with a
   recovery of its own: `ambiguous_tab` → `close-extra-tabs` once, then repeat the call;
-  and `outside_migration_surface` anywhere but `/login` → `failed`, `safety`, never
-  retried.
+  and `outside_migration_surface` anywhere but `/login` → `failed` (`partial` if a
+  chat exists), `safety`, never retried.
 - Tool-side policy in `Importer` (`12`), driven by `01`'s `transient` flag and the
   result:
 
@@ -106,6 +106,15 @@ Resolved while building:
   So a conversation that has already had three goes gets one more per invocation rather
   than three more — an operator asking for it again is never silently refused, and a
   conversation nobody asked about is never tried a fourth time on its own.
+- **Every `failed` row is really `failed` *or* `partial`, and the skill now says so.**
+  The table this slice inherited wrote `failed` flat for the click, composer,
+  network, navigation and surface rows, but `12` already resolved the question
+  once for the whole tool: `partial` versus `failed` is "is there a chat", because
+  §7's `failed` means there is nothing at the destination to go and look at. An
+  agent told to report `failed` after part one had landed would erase from the
+  record a chat that `14` resumes and `19` counts. The skill states the rule once
+  and each affected row carries the condition; only the generation-failure row had
+  it before. (Raised by Copilot in review on #22.)
 - **`needs_human` and `rate_limited` are marked in the mapping table itself.**
   `Mapped.deferred` is set by `interpret`, so `12`'s table and `13`'s policy are one
   table read twice rather than two branches on `result.outcome` that can drift.
