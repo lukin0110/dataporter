@@ -319,6 +319,7 @@ Delay = Annotated[
     typer.Option(
         "--delay",
         metavar="SECONDS",
+        min=0,
         help="Seconds between conversations. Defaults to the configured pacing.",
     ),
 ]
@@ -327,6 +328,7 @@ MaxRetries = Annotated[
     typer.Option(
         "--max-retries",
         metavar="N",
+        min=0,
         help="Extra attempts per conversation after the first. Defaults to config.",
     ),
 ]
@@ -335,12 +337,22 @@ Timeout = Annotated[
     typer.Option(
         "--timeout",
         metavar="SECONDS",
+        min=0,
         help="Seconds one conversation's Hermes run may take. Defaults to config.",
     ),
 ]
 """§13's three flag-configurable parameters (`15`). `None` rather than a literal
 default for the reason `--limit` is `None`: the effective value belongs to
-`Settings`, and a default typed here would outrank an operator's `config.toml`."""
+`Settings`, and a default typed here would outrank an operator's `config.toml`.
+
+`min=0` is about the *flag's* own domain — "how many more goes" and "how many
+seconds" have no negative values — and it is here rather than only on the setting
+so that the error names what the operator typed: `--max-retries` counts retries
+and `retries.max_attempts` counts attempts, and a message about the second is a
+message about a number they did not type. The settings fields carry their own
+constraints as well, which is what refuses the same value arriving through
+`HCM_…` or `config.toml`, and what catches `--timeout 0` — zero is in range for
+a flag and not for a subprocess deadline. (Raised by Copilot in review on #24.)"""
 
 TOO_MANY = "use --all to migrate more than {limit} conversations in one run"
 """`15`'s usage error. The ceiling is `run.max_conversations`, and it is named in

@@ -28,7 +28,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -190,7 +190,7 @@ class PacingSettings(BaseModel):
     far apart*, and a run with no failures in it still spends every value here.
     """
 
-    delay_between_conversations_s: float = 20.0
+    delay_between_conversations_s: float = Field(default=20.0, ge=0)
     """The gap after one conversation's terminal status and before the next one
     starts. `--delay`.
 
@@ -200,7 +200,7 @@ class PacingSettings(BaseModel):
     working through the same list by hand would produce.
     """
 
-    delay_between_parts_s: float = 5.0
+    delay_between_parts_s: float = Field(default=5.0, ge=0)
     """The gap between one part's acknowledgement and the next part's paste.
 
     Spent by the agent rather than by us — the whole per-part loop happens inside
@@ -208,7 +208,7 @@ class PacingSettings(BaseModel):
     the one pacing value this process does not itself sleep for.
     """
 
-    max_rate_limit_wait_s: float = 3600.0
+    max_rate_limit_wait_s: float = Field(default=3600.0, ge=0)
     """The longest wait the run will make on its own when the account asks for
     one. Beyond it the wait becomes `14`'s ask, because an hour is already longer
     than an operator who started a migration expects to watch nothing happen, and
@@ -224,8 +224,12 @@ class RetrySettings(BaseModel):
     where the fourth needs two retries is not a run in trouble.
     """
 
-    max_attempts: int = 3
+    max_attempts: int = Field(default=3, ge=1)
     """Attempts per conversation, the first one included.
+
+    At least one: a budget of zero would run a conversation once and then record
+    `retry_recommended: false` about a failure nothing had retried, which is the
+    statement `13` wrote the field to avoid.
 
     Counted against `state.json`'s `attempts`, which is cumulative over every run
     the workspace has seen — so a conversation that has already had three goes
@@ -287,8 +291,11 @@ class TimeoutSettings(BaseModel):
     distinguish "does not work" from "is slow".
     """
 
-    hermes_task_s: float = 1800.0
+    hermes_task_s: float = Field(default=1800.0, gt=0)
     """One conversation's `hermes -z` run (`09`, spent by `12`).
+
+    Greater than zero, not merely non-negative: it becomes a subprocess deadline,
+    and a run that is out of time before it starts is not a shorter run.
 
     Half an hour covers a multi-part seed whose every part waits on generation,
     with room for one recovery attempt inside the run. `15` owns it once a pilot
@@ -505,23 +512,42 @@ def with_pacing(
     attempts — so `--max-retries 0` is one attempt and no second one. The two
     names differ by one on purpose: an operator thinks in "how many more goes",
     and `13`'s budget counts the goes themselves.
+
+    Rebuilt rather than `model_copy(update=...)`, which does **not** validate:
+    that is what let `--max-retries -1` through as a budget of zero attempts,
+    and a conversation with no attempts has its first failure recorded
+    `retry_recommended: false` — a statement about a retry nothing made. The
+    constraint lives on the field rather than on the flag so that
+    `HCM_RETRIES__MAX_ATTEMPTS=-1` and a hand-edited `config.toml` are refused
+    by the same rule, in one place. (Raised by Copilot in review on #24.)
     """
     changes: dict[str, Any] = {}
     if delay is not None:
-        changes["pacing"] = settings.pacing.model_copy(
-            update={"delay_between_conversations_s": delay}
+        changes["pacing"] = _revalidated(
+            settings.pacing, delay_between_conversations_s=delay
         )
     if max_retries is not None:
-        changes["retries"] = settings.retries.model_copy(
-            update={"max_attempts": max_retries + 1}
+        changes["retries"] = _revalidated(
+            settings.retries, max_attempts=max_retries + 1
         )
     if timeout is not None:
-        changes["timeouts"] = settings.timeouts.model_copy(
-            update={"hermes_task_s": timeout}
-        )
+        changes["timeouts"] = _revalidated(settings.timeouts, hermes_task_s=timeout)
     if not changes:
         return settings
     return settings.model_copy(update=changes)
+
+
+def _revalidated[T: BaseModel](model: T, **changes: Any) -> T:
+    """One nested settings table, rebuilt with `changes` and validated.
+
+    Raises `ConfigError` for a value an operator can fix by typing a different
+    one, which the CLI already reports as exit `2` — the same code and the same
+    shape of message `--limit` gets for being negative.
+    """
+    try:
+        return type(model)(**{**model.model_dump(), **changes})
+    except ValidationError as exc:
+        raise ConfigError(f"invalid configuration: {_describe(exc)}") from exc
 
 
 def load_settings(*, workspace: Path | None = None) -> Settings:
