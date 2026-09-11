@@ -38,7 +38,7 @@ import re
 import shlex
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import PurePath
 from typing import Any, NoReturn, Protocol
 
 from dataporter.browser import helpers
@@ -490,8 +490,14 @@ class ScriptedAgent:
 
 def name_of(path: str) -> str:
     """The file name in a path the prompt gave. The chip carries this, not the
-    directory it came out of."""
-    return PurePosixPath(path).name
+    directory it came out of.
+
+    `PurePath`, whose separators follow the host, rather than `PurePosixPath`:
+    the prompt is rendered by `12` on the same machine that runs this, so a
+    Windows path arrives with backslashes and posix semantics would read the
+    whole of `C:\\…\\notes.txt` as the name. (Raised by Copilot in review on #25.)
+    """
+    return PurePath(path).name
 
 
 def _file_arguments(paths: Sequence[str]) -> list[str]:
