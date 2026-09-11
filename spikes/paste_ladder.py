@@ -35,6 +35,17 @@ DEFAULT_METHODS = ("insert_text", "exec_command")
 CLI = "hermes-claude-migrate"
 HELPER_TIMEOUT_S = 300.0
 
+TEXT_MISMATCH = "text_mismatch"
+"""The one `08` failure code that still means the insert happened.
+
+`paste` answers `ok` when the composer came back holding the seed, and
+`text_mismatch` when it came back holding something else — both are Q3
+measurements, and the second is the more interesting one. Every other code it
+can answer with (`composer_not_empty`, `composer_missing`, `no_claude_tab`,
+`seed_unreadable`, ...) means the seed never reached the composer, so the round
+watched nothing and has nothing to say about a "pasted text" chip.
+"""
+
 _UNKNOWN = spike.UNKNOWN
 
 
@@ -154,17 +165,25 @@ def round_trip(
         command, workspace, "paste", "--seed", str(seed), "--method", method
     )
     after = helper(command, workspace, "probe")
+    # A refusal is not a measurement. Asking a human whether a chip appeared for
+    # a round that never inserted anything files their guess as an observation,
+    # and `table` would then mark it `observed on <date>`.
+    inserted = bool(pasted.get("ok")) or pasted.get("error") == TEXT_MISMATCH
     row.update(
         {
+            "inserted": inserted,
             "verbatim": bool(pasted.get("ok")),
             "error": pasted.get("error"),
             "paste_chars": pasted.get("chars"),
             "observed_chars": pasted.get("observed_chars"),
             "elapsed_ms": pasted.get("elapsed_ms"),
             "composer_chars_after": after.get("composer_chars"),
-            "chip": ask("Did a 'pasted text' attachment appear?", prompt=prompt),
         }
     )
+    if inserted:
+        row["chip"] = ask("Did a 'pasted text' attachment appear?", prompt=prompt)
+    # Unconditional: a round refused with `composer_not_empty` is precisely one
+    # whose composer still needs clearing before the next.
     pause("Clear the composer (select all, delete)", prompt=prompt)
     return row
 
@@ -190,6 +209,19 @@ _HEADER = (
 so that the rule row cannot drift out of alignment with them."""
 
 
+def verdict(row: dict[str, Any]) -> str:
+    """The `Verbatim` cell: what this round actually established.
+
+    A bare `no` would read as "the composer mangled the seed" for a round that
+    was refused before the seed ever got there, which is the opposite finding.
+    """
+    if "skipped" in row:
+        return "skipped"
+    if not row.get("inserted"):
+        return f"refused ({row.get('error') or 'unknown'})"
+    return "yes" if row["verbatim"] else "no"
+
+
 def table(rows: list[dict[str, Any]], today: str) -> str:
     """The rows as the markdown `docs/seed-limits.md` holds, ready to paste."""
 
@@ -198,21 +230,21 @@ def table(rows: list[dict[str, Any]], today: str) -> str:
 
     lines: list[str] = list(_HEADER)
     for row in rows:
-        skipped = "skipped" in row
-        # A round that never reached the composer watched nothing happen, so it
-        # is `unknown` and not an observation. `tests/test_spike_docs.py` reads
-        # these marks, and a skipped row marked `observed` would tell it the
-        # spike had run.
+        # One rule for the mark: a row is an observation exactly when the seed
+        # reached the composer. `tests/test_spike_docs.py` reads these marks, and
+        # a row marked `observed` for a round that inserted nothing would tell it
+        # the spike had run.
+        observed = bool(row.get("inserted"))
         lines.append(
             "| {chars} | `{method}` | {verbatim} | {read_back} | {elapsed} "
             "| {chip} | {mark} |".format(
                 chars=f"{row['chars']:,}".replace(",", " "),
                 method=row["method"],
-                verbatim="skipped" if skipped else ("yes" if row["verbatim"] else "no"),
+                verbatim=verdict(row),
                 read_back=cell(row.get("composer_chars_after")),
                 elapsed=cell(row.get("elapsed_ms")),
                 chip=cell(row.get("chip")),
-                mark="*unknown*" if skipped else f"*observed on {today}*",
+                mark=f"*observed on {today}*" if observed else "*unknown*",
             )
         )
     return "\n".join(lines)
