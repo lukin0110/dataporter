@@ -42,6 +42,7 @@ CONFIG_FILENAME = "config.toml"
 WORKSPACE_ENV_VAR = "HCM_WORKSPACE"
 ATTACHMENTS_DIRNAME = "attachments"
 SEEDS_DIRNAME = "seeds"
+PILOT_DIRNAME = "pilot"
 BROWSER_PROFILE_DIRNAME = "browser-profile"
 HERMES_DIRNAME = "hermes"
 DEFAULT_HERMES_HOME = Path("~/.hermes")
@@ -354,6 +355,35 @@ class FidelitySettings(BaseModel):
     """
 
 
+class JudgeSettings(BaseModel):
+    """`20`'s optional second opinion on question 3.
+
+    The one place in this tool where a model judges anything, and it is optional:
+    every §19 metric is counted, the semantic probe is graded by hand, and this
+    grades the same replies again so that a disagreement between the two is
+    itself a finding. Nothing here is used unless `judge` is run, and `judge`
+    itself is behind the `judge` extra.
+    """
+
+    model: str = "anthropic:claude-sonnet-5"
+    """What grades a reply, in `pydantic-ai`'s `provider:model` spelling.
+
+    Configurable because the judge is an experiment's instrument and `21` may
+    want the same replies graded by something else; the key it authenticates
+    with is `ANTHROPIC_API_KEY`, which this tool reads no more than it reads the
+    one Hermes uses — it is passed through the environment and never recorded.
+    """
+
+    max_seed_chars: int = Field(default=20_000, ge=1)
+    """How much of the source conversation the judge is shown.
+
+    A judge that is handed a 40 kB seed is being asked to read the conversation
+    rather than to recognise it, and the question is whether a one-sentence
+    summary is *about* this conversation. The first part, capped, is what a
+    person grading by hand reads too.
+    """
+
+
 class RunSettings(BaseModel):
     """How much one invocation is allowed to do."""
 
@@ -415,6 +445,7 @@ class Settings(BaseSettings):
     retries: RetrySettings = RetrySettings()
     timeouts: TimeoutSettings = TimeoutSettings()
     run: RunSettings = RunSettings()
+    judge: JudgeSettings = JudgeSettings()
 
     @property
     def attachments_dir(self) -> Path:
@@ -437,6 +468,17 @@ class Settings(BaseSettings):
         and `seeds --out` already covers wanting them somewhere else for a look.
         """
         return self.workspace / SEEDS_DIRNAME
+
+    @property
+    def pilot_dir(self) -> Path:
+        """`<workspace>/pilot/`: the follow-up question, and the replies to it.
+
+        Inside the workspace and not configurable, for the reason `seeds_dir` is
+        not — and content-bearing for the same reason a seed is: a reply is a
+        message out of the destination account, so it lives where §10 already
+        keeps conversation text, is never printed and is never logged.
+        """
+        return self.workspace / PILOT_DIRNAME
 
     @property
     def browser_profile_dir(self) -> Path:

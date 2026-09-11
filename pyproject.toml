@@ -19,7 +19,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Declared now, empty of use until 20 (semantic-fidelity judge).
+# 20's semantic-fidelity judge, and nothing else. Not installed by `uv sync`, not
+# installed in CI, and imported dynamically by `dataporter/judge.py` so that a
+# build without it type-checks: the judge is an experiment's instrument, and a
+# migration never asks a model anything.
 judge = ["pydantic-ai"]
 
 [project.scripts]
@@ -104,5 +107,6 @@ source = ["src/dataporter"]
 # `09`: 3423/3450, 99.2%. `11`: 3497/3524, 99.2%. `12`: 3768/3795, 99.3%.
 # `13`: 3858/3885, 99.3%. `14`: 4081/4108, 99.3%. `15`: 4223/4250, 99.4%.
 # `17`: 4642/4669, 99.4%. `18`: 4782/4810, 99.4%. `19`: 4959/4986, 99.5%.
+# `20`: 5348/5382, 99.4%.
 fail_under = 99
 show_missing = true

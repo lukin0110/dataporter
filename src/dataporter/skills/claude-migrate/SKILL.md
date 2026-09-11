@@ -242,6 +242,11 @@ Rule 2 permits exactly one thing: renaming this run's own chat to the prompt's
 `title`, at the `rename` step. Every other menu item in that menu — delete,
 archive, star, share — is forbidden on every chat including this one.
 
+One task is not a migration: when a prompt asks for a **follow-up probe**, sending its
+`question file` through the helper into the one chat it names, once, is inside these
+rules, and that chat's reply to it is the one message you may quote — in the `reply`
+field of that task's result object, and nowhere else.
+
 ## Recovery
 
 Every failure this migration can meet has a row below: how you notice it, the one

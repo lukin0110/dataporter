@@ -39,6 +39,8 @@ error taxonomy and an exit-code convention. No migration behaviour.
   hermes-claude-migrate resume
   hermes-claude-migrate verify [--only UUID]...
   hermes-claude-migrate report [--json]
+  hermes-claude-migrate followup [--only UUID]...
+  hermes-claude-migrate judge [--only UUID]...
   hermes-claude-migrate setup
   hermes-claude-migrate doctor
   hermes-claude-migrate session status | logout
@@ -47,6 +49,13 @@ error taxonomy and an exit-code convention. No migration behaviour.
 
   Global options, before the subcommand: `--workspace PATH`, `--verbose` / `-v`,
   `--quiet` / `-q`, `--version`.
+
+  *Amended by [`20`](20-pilot.md):* `followup` and `judge` are that slice's, and are the
+  only two commands this list did not fix in advance. They are here because the surface
+  is a fixed list and a command that exists but is not written down is a command
+  `test_cli.py` cannot check for. Both are the experiment's instruments rather than the
+  migration's: `followup` asks one question in each migrated chat, `judge` grades the
+  replies behind the `judge` extra, and neither is needed to migrate anything.
 - `dataporter/config.py`: `Settings(BaseSettings)` with `env_prefix="HCM_"`,
   `env_nested_delimiter="__"`, loaded from `<workspace>/config.toml` when present.
   Precedence: CLI flag > environment > `config.toml` > defaults. This slice defines the

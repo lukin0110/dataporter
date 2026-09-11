@@ -159,6 +159,14 @@ the step name that `state.json` and the report use.
   rendered prompt and performs the procedure through the real CLI against `08`'s page
   model. It proves the prompt is sufficient and the helpers compose; it proves nothing
   about Hermes's judgement, which only `10`'s throwaway prompts and `20` can measure.
+- **One sentence was added to *Rules* by [`20`](20-pilot.md).** The pilot's semantic
+  probe sends one follow-up question into a chat this tool created and reports the reply,
+  which is a message quoted in a result object — the one thing the *Verification* section
+  otherwise forbids outright. The permission is written as a single sentence, scoped to a
+  task prompt that asks for a probe and to the one chat that prompt names, and the
+  question itself still reaches the composer through `paste` rather than through the
+  agent's own typing, so rule 3 is untouched. `followup.py` holds the rest of the
+  reasoning; nothing about a migration changed.
 
 ## Acceptance criteria
 
