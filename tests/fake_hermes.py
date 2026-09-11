@@ -103,16 +103,21 @@ if "-z" in rest:
     index = rest.index("-z")
     prompt = rest[index + 1] if len(rest) > index + 1 else ""
     if spec.get("child"):
-        # A grandchild that outlives a polite signal: `09` kills the process
-        # group, and this is what proves it reached further than the leader.
-        marker = Path(spec["child"])
+        # A grandchild in this process group, which writes a file a few seconds
+        # from now. `09` kills the group rather than the leader, so the file is
+        # what proves the kill reached further than the process we started: if it
+        # appears, something survived. Deliberately a *negative* signal — no pid
+        # to inspect, so nothing here depends on who reaps a zombie.
         code = (
-            "import os, sys, time; "
-            "open(sys.argv[1], 'w').write(str(os.getpid())); "
-            "time.sleep(120)"
+            "import sys, time; "
+            "time.sleep(float(sys.argv[2])); "
+            "open(sys.argv[1], 'w').write('survived')"
         )
+        delay = str(spec.get("child_delay", 3))
         os.spawnv(
-            os.P_NOWAIT, sys.executable, [sys.executable, "-c", code, str(marker)]
+            os.P_NOWAIT,
+            sys.executable,
+            [sys.executable, "-c", code, spec["child"], delay],
         )
     usage = spec.get("usage")
     if usage is not None and "--usage-file" in rest:
