@@ -186,23 +186,30 @@ Three rules bound the whole table:
 - **Report what you reached, not what you attempted.** `last_step` stays the last
   step whose verification passed, and `chunks_acked` stays the number of
   acknowledgement lines you actually saw. A recovery that failed changes neither.
+- **`failed` means nothing landed.** Where a row below reads
+  `failed` (`partial` if a chat exists), the outcome depends on one fact and only
+  one: whether this run has a chat at the destination — an id from your own
+  `identify`, or the `existing conversation_id` the prompt gave you. If it does,
+  the outcome is `partial`, because there is something in the account for a
+  person to go and look at and for the next attempt to continue. `failed` is for
+  when there is not.
 - **Never restart a conversation from `open` to escape a failure.** A chat that
   exists is recorded, retried and continued; a second chat for the same source
   conversation is a duplicate nobody can clean up.
 
 | Failure | How you notice it | Recovery, at most once per step | If it still fails |
 | --- | --- | --- | --- |
-| failed click | after the click the step's own verification is unchanged — the composer still holds the part it held before | `browser_snapshot` again, find the element again by role and label, click once more | `failed`, `error.category` `ui` |
-| missing composer | `browser probe` answers `composer_present: false` while `kind` is `new_chat` or `chat` | `browser_navigate` to the run's URL again, wait five seconds, probe again | `failed`, `ui` |
+| failed click | after the click the step's own verification is unchanged — the composer still holds the part it held before | `browser_snapshot` again, find the element again by role and label, click once more | `failed` (`partial` if a chat exists), `error.category` `ui` |
+| missing composer | `browser probe` answers `composer_present: false` while `kind` is `new_chat` or `chat` | `browser_navigate` to the run's URL again, wait five seconds, probe again | `failed` (`partial` if a chat exists), `ui` |
 | unexpected dialog | `browser probe` answers a non-empty `dialogs`, or a snapshot shows `[role=dialog]` | an entry beginning `javascript:` is a JS dialog — dismiss it with `browser_dialog`. A page modal with a visible close or dismiss control — click that control once. Never click anything labelled delete, confirm, upgrade or allow | `needs_human`, reason `ambiguous_ui` |
 | login expiry | a helper answers `outside_migration_surface` with a `url` under `https://claude.ai/login`, or a snapshot shows a sign-in form | none — you hold no credentials and must not ask for any | `needs_human`, reason `auth_required` |
 | rate limiting | a message or banner saying the account has hit a limit; `send_enabled: false` beside a composer that is not empty | none | `rate_limited`, with `retry_after_s` set to the seconds the page names, when it names any |
 | generation failure | an error banner or a retry control after submit; `await-response` answers `response_timeout` with `generating: false`; the answer arrives without the acknowledgement line | click the retry control once if the page offers one, then `await-response` again | `partial` when at least one part was acknowledged, `failed` otherwise; category `generation` |
-| network error | a helper answers `no_claude_tab` or `unknown_target`, `browser probe` cannot read the page, `browser_navigate` fails, or the tab shows a browser error page | wait five seconds, navigate to the run's URL again, once | `failed`, `network` |
-| page navigation | `browser probe` answers a `url` that is neither `https://claude.ai/new` nor this run's `/chat/<id>`, or a `conversation_id` that is not the one this run is working in | navigate back to the run's chat, or to `/new` when there is no id yet, once | `failed`, `navigation` |
+| network error | a helper answers `no_claude_tab` or `unknown_target`, `browser probe` cannot read the page, `browser_navigate` fails, or the tab shows a browser error page | wait five seconds, navigate to the run's URL again, once | `failed` (`partial` if a chat exists), `network` |
+| page navigation | `browser probe` answers a `url` that is neither `https://claude.ai/new` nor this run's `/chat/<id>`, or a `conversation_id` that is not the one this run is working in | navigate back to the run's chat, or to `/new` when there is no id yet, once | `failed` (`partial` if a chat exists), `navigation` |
 | Claude UI change | an element the procedure expects is absent and no row above fits — the composer cleared, so the message was sent, and yet `last_message.role` is not `human` | one attempt to reach the same goal by reading the snapshot, verified exactly as the step says | `needs_human`, reason `ambiguous_ui` |
 | CAPTCHA or security challenge | a challenge, a puzzle, a "verify you are human" page, or a request for a code | none — never attempt one | `needs_human`, reason `captcha` or `security_challenge` |
-| off the migration surface | a helper answers `outside_migration_surface` on any other URL | none, and never a retry: the tab is somewhere this run may not touch | `failed`, category `safety` |
+| off the migration surface | a helper answers `outside_migration_surface` on any other URL | none, and never a retry: the tab is somewhere this run may not touch | `failed` (`partial` if a chat exists), category `safety` |
 
 Every signal above is a row of `docs/claude-ui-map.md`. Where that document still
 says `*unknown*` the signal is what the code looks for today, not something
@@ -222,8 +229,9 @@ run: `no_claude_tab` and `unknown_target` are the network row, `composer_missing
 is the missing-composer row, and `text_mismatch`, `seed_not_found`,
 `seed_unreadable`, `file_not_found`, `input_not_found` and `upload_rejected` are
 none of them — they say the page or the file is not what the prompt described,
-which no repetition changes. Stop and report `failed`, or `partial` when a chat
-already holds part of this conversation.
+which no repetition changes. Stop and report, by the same rule as the table:
+`partial` when a chat already holds part of this conversation, `failed` when
+none does.
 
 ## Result
 
