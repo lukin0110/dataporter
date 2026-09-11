@@ -1,7 +1,6 @@
 """One Hermes run: its command line, its files, its deadline and its answer."""
 
 import json
-import os
 import time
 from pathlib import Path
 
@@ -289,30 +288,27 @@ def test_a_run_past_its_deadline_is_killed(tmp_path: Path, fake: FakeHermes) -> 
     assert str(runner.stdout_path("r")) in caught.value.detail
 
 
+CHILD_DELAY_S = 3.0
+"""How long the fake's grandchild waits before writing its marker."""
+
+
 def test_the_whole_process_group_goes_not_just_the_leader(
     tmp_path: Path, fake: FakeHermes
 ) -> None:
-    """Hermes starts children — its own environment, our helpers, a browser."""
-    marker = tmp_path / "child.pid"
-    fake.write(answer="", sleep=60, child=str(marker))
+    """Hermes starts children — its own environment, our helpers, a browser.
+
+    Judged by a file that must *not* appear: the grandchild writes it three
+    seconds in, and the run is timed out after one. Absence rather than a pid
+    probe, because a killed process whose parent is already gone is a zombie
+    until somebody reaps it, and who that is depends on the container.
+    """
+    marker = tmp_path / "survivor"
+    fake.write(answer="", sleep=60, child=str(marker), child_delay=CHILD_DELAY_S)
     with pytest.raises(HermesError, match="timeout"):
-        runner_for(tmp_path, fake).run("go", run_id="r", timeout_s=2)
+        runner_for(tmp_path, fake).run("go", run_id="r", timeout_s=1)
 
-    pid = int(marker.read_text(encoding="utf-8"))
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        if not _alive(pid):
-            return
-        time.sleep(0.1)
-    raise AssertionError(f"the grandchild {pid} survived the kill")
-
-
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except (ProcessLookupError, PermissionError):
-        return False
-    return True
+    time.sleep(CHILD_DELAY_S * 2)
+    assert not marker.exists(), "a process the run started outlived the kill"
 
 
 # --------------------------------------------------------------------------- #
