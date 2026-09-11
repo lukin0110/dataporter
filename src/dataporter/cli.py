@@ -776,7 +776,7 @@ def browser_await_response(
 
 @browser_app.command("close-extra-tabs")
 def browser_close_extra_tabs(ctx: typer.Context) -> None:
-    """Close every tab but the one being driven."""
+    """Close blank and duplicate new-chat tabs. Never a conversation."""
     emit_helper(
         ctx,
         "close-extra-tabs",
