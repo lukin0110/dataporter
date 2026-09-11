@@ -37,8 +37,15 @@ changes.
   *unknown*
 - **Q7 — Is there a rename affordance for a chat, what is its label, and does the new
   title persist after reload?**
-  unknown. Not attempted. If the answer is no, `17` cannot make the title a verified step
-  and equivalent titles move to [`LIMITATIONS.md`](LIMITATIONS.md).
+  unknown. Not attempted. `17` was built without the answer, and its risk section says how:
+  the rename is delegated to Hermes and described by *affordance* rather than by selector
+  ("the chat's own menu, its rename affordance"), which is something an agent finds by
+  looking rather than a string this document would have to supply. `fidelity.rename_title`
+  defaults to `true` on that basis; an operator whose account has no such affordance sets it
+  to `false` and gets `title_not_set` for every conversation. What the *verification* looks
+  at is in the two rows below, and the answer here is what decides whether they are ever
+  read: a rename nobody can perform makes both of them moot and moves "equivalent titles"
+  to [`LIMITATIONS.md`](LIMITATIONS.md) for good.
   *unknown*
 - **Q8 — Does the file input exist on `/new` before any text is typed, and does
   `DOM.setFileInputFiles` produce the attachment chip?**
@@ -79,7 +86,9 @@ when someone watched that exact signal appear.
 | `captcha or security challenge` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
 | `browser error page` | the tab's URL is no longer on `claude.ai`, so `chosen_tab` answers `no_claude_tab` | not yet looked at | *unknown* |
 | `generation failed` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
-| `rename affordance` | nothing — `17` has not been built | not yet looked at | *unknown* |
+| `every message` | `[data-testid="user-message"], [data-testid="assistant-message"]`, visible, in document order — `17`'s `probe --messages` reads the whole transcript this way and reports a role, a length and which of the caller's own strings each turn contains | not yet looked at | *unknown* |
+| `chat title` | the first visible match of `[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], header h1, header h2`, else `document.title`; whitespace squashed, compared in the page against the caller's `--expect-title` | not yet looked at | *unknown* |
+| `rename affordance` | nothing in the code: `17` asks Hermes to find "the chat's own menu" and its rename control by looking, because this document has no label to quote. What the tool checks is the row above — whether the title changed — never how it was changed | not yet looked at | *unknown* |
 
 Every selector in the middle column has exactly one spelling in the source, in
 `probe.py`'s `_SELECTORS` and the two expression bodies beside it, so correcting a row here

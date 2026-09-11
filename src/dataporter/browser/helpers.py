@@ -181,10 +181,17 @@ class ProbeResult(probing.PageState):
     A subclass rather than a restatement, so a field added to `PageState` by
     `10` appears here without an edit. The inherited fields come first and `ok`
     follows them, which is the one thing subclassing costs.
+
+    `messages` and `title` are `17`'s, and are `None` — dropped from the printed
+    object, which is `exclude_none` — unless `--messages` asked for them. A probe
+    that walks the whole transcript is the verification's probe; the poll loop's
+    probe stays the three lines it was.
     """
 
     ok: Literal[True] = True
     last_message: probing.LastMessage
+    messages: tuple[probing.LastMessage, ...] | None = None
+    title: probing.TitleMatch | None = None
 
 
 class PasteResult(HelperModel):
@@ -404,6 +411,16 @@ def normalise(text: str) -> str:
     return "\n".join(line.rstrip() for line in unified.split("\n")).strip()
 
 
+def normalised_title(value: str | None) -> str | None:
+    """The `--expect-title` string as the page will spell it, or `None`.
+
+    `probe.normalise_title` and nothing else, wrapped only to keep `None`
+    meaning "nobody asked": an empty `--expect-title` is a question about an
+    empty title, which is a different thing from not asking.
+    """
+    return None if value is None else probing.normalise_title(value)
+
+
 class PasteMethod(StrEnum):
     """How the seed gets into the composer.
 
@@ -484,17 +501,36 @@ def probe_page(
     *,
     target: str | None = None,
     expect: Sequence[str] = (),
+    messages: bool = False,
+    expect_title: str | None = None,
     surface: Surface = CLAUDE,
 ) -> Outcome:
-    """`browser probe`: the page state, and what the last message says."""
+    """`browser probe`: the page state, and what the last message says.
+
+    `--messages` (`17`) widens it to every turn on the page and the title, which
+    is what one verification needs and what a poll loop has no use for.
+    `--expect-title` is the only question that may be asked about the title, for
+    the reason `--expect` is the only question that may be asked about a message.
+    """
     tab = chosen_tab(client, target_id=target, surface=surface)
     if isinstance(tab, Failure):
         return Outcome(tab)
     count = len(surface_tabs(client, surface))
+    extra: dict[str, object] = {}
     with driving(client, tab, surface) as page:
-        view = probing.page_view(page, tab_count=max(count, 1), expect=expect)
+        if messages or expect_title is not None:
+            report = probing.page_report(
+                page,
+                tab_count=max(count, 1),
+                expect=expect,
+                expect_title=normalised_title(expect_title),
+            )
+            view: probing.PageView = report
+            extra = {"messages": report.messages, "title": report.title}
+        else:
+            view = probing.page_view(page, tab_count=max(count, 1), expect=expect)
     return Outcome(
-        ProbeResult(**view.state.model_dump(), last_message=view.last_message),
+        ProbeResult(**view.state.model_dump(), last_message=view.last_message, **extra),
         conversation_id=view.state.conversation_id,
     )
 

@@ -38,12 +38,16 @@ from dataporter.hermes import prompt as prompting
 from dataporter.hermes.runner import HermesResult
 from dataporter.steps import Step
 from fake_agent import ScriptedAgent
-from fake_composer import Browser, FakePage
+from fake_composer import Browser, FakePage, Turn
 
 pytestmark = pytest.mark.slow
 """Slow all the way through: the whole procedure, performed against a fake Chrome."""
 
 CHAT_ID = "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91"
+TITLE = "Notes on pooling"
+"""`17`'s rename, as the prompt carries it. Not one of the fixture export's
+titles: a title on stdout is a §10 leak wherever it came from, and one that is
+also a fixture's would make `world.CONTENT` the thing that caught it."""
 NEW_URL = "https://claude.ai/new"
 CHAT_URL = f"https://claude.ai/chat/{CHAT_ID}"
 LOGIN_URL = "https://claude.ai/login"
@@ -80,6 +84,10 @@ class Ui:
             self.page.composer = ""
         self.page.on_view = None
 
+    def rename(self, title: str) -> None:
+        """`17`'s one typed action, as a stub: the chat is now called this."""
+        self.page.title = title
+
     def submit(self, expected_ack: str) -> None:
         page = self.page
         page.composer = ""
@@ -88,6 +96,7 @@ class Ui:
         page.generating = True
         if page.url == NEW_URL:
             self.browser.visit(CHAT_URL)
+        self.record(page, "human", "(what the helper inserted)")
         answers_at = page.views + ANSWER_AFTER
 
         def answer(current: FakePage, views: int) -> None:
@@ -95,8 +104,22 @@ class Ui:
                 current.generating = False
                 current.last_role = "assistant"
                 current.last_text = expected_ack
+                self.record(current, "assistant", expected_ack)
 
         page.on_view = answer
+
+    @staticmethod
+    def record(page: FakePage, role: str, text: str) -> None:
+        """Keep the transcript as well as the last turn (`17`).
+
+        Only for a page that has one: `transcript=None` is `fake_composer`'s
+        accommodating stub, and a test that chose it is a test that is not about
+        what the chat holds.
+        """
+        if page.transcript is not None:
+            turn = Turn(role, text)
+            if not page.transcript or page.transcript[-1] != turn:
+                page.transcript.append(turn)
 
 
 def helper_runner(runner: CliRunner) -> Callable[[Sequence[str]], Any]:
@@ -207,6 +230,107 @@ def test_both_seeds_reached_the_composer_whole(
     pastes = [item for item in records if item["helper"] == "paste"]
     assert len(pastes) == 2
     assert all(item["ok"] for item in records)
+
+
+@pytest.mark.usefixtures("quick_polls")
+def test_the_chat_is_renamed_and_then_read_back(
+    new_chat: tuple[Browser, FakePage],
+    runner: CliRunner,
+    two_part_seed: seeding.Seed,
+    seed_files: list[Path],
+    tmp_path: Path,
+) -> None:
+    """`17`: the title in the prompt is typed into the chat and then checked.
+
+    The check is the probe's, so the title is compared in the page — what the
+    procedure sees is `matches: true`, and the name itself never reaches stdout.
+    """
+    browser, page = new_chat
+    printed, _ = migrate(
+        browser, runner, two_part_seed, seed_files, tmp_path, title=TITLE
+    )
+
+    result = HermesResult.model_validate(printed)
+    assert result.outcome == "completed"
+    assert result.step is Step.DONE
+    assert page.title == TITLE
+    assert TITLE not in json.dumps(printed)
+
+
+@pytest.mark.usefixtures("quick_polls")
+def test_a_rename_that_does_not_take_costs_the_conversation_nothing(
+    new_chat: tuple[Browser, FakePage],
+    runner: CliRunner,
+    two_part_seed: seeding.Seed,
+    seed_files: list[Path],
+    tmp_path: Path,
+) -> None:
+    """The conversation is worth more than its name, so the run still completes —
+    at `verify`, which is the step after the one that did not pass."""
+    browser, _ = new_chat
+
+    class Stubborn(Ui):
+        def rename(self, title: str) -> None:
+            self.page.title = "whatever it was called before"
+
+    ui = Stubborn(browser)
+    agent = ScriptedAgent(helper=helper_runner(runner), browser=ui)
+    printed = agent.run(
+        prompting.for_seed(
+            two_part_seed,
+            seed_files=seed_files,
+            workspace=tmp_path / "migration",
+            title=TITLE,
+        )
+    )
+
+    result = HermesResult.model_validate(printed)
+    assert result.outcome == "completed"
+    assert result.chunks_acked == 2
+
+
+@pytest.mark.usefixtures("quick_polls")
+def test_a_part_that_is_not_in_the_chat_fails_the_last_step(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    two_part_seed: seeding.Seed,
+    seed_files: list[Path],
+    tmp_path: Path,
+) -> None:
+    """`17`'s agent-side verification, against a transcript that lost a part.
+
+    The page acknowledges each part as it arrives and then, at the end, holds
+    only one of them — a chat somebody edited, or a page that never rendered the
+    first exchange. `verify` is the step that notices.
+    """
+    page = FakePage(url=NEW_URL, composer="", send_enabled=True, transcript=[])
+    browser = browser_with(page, monkeypatch)
+
+    class Forgetful(Ui):
+        def rename(self, title: str) -> None:
+            """Also the moment the chat loses its first exchange."""
+            del self.page.transcript[:2]
+
+    try:
+        agent = ScriptedAgent(helper=helper_runner(runner), browser=Forgetful(browser))
+        printed = agent.run(
+            prompting.for_seed(
+                two_part_seed,
+                seed_files=seed_files,
+                workspace=tmp_path / "migration",
+                title=TITLE,
+            )
+        )
+    finally:
+        browser.chrome.stop()
+
+    result = HermesResult.model_validate(printed)
+    assert result.outcome == "partial"
+    # `rename` passed and `verify` did not, which is what `last_step` says.
+    assert result.step is Step.RENAME
+    assert result.error is not None
+    assert result.error.category == "generation"
+    assert result.error.detail == "part 1 is not in the chat"
 
 
 # --------------------------------------------------------------------------- #

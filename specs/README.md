@@ -130,7 +130,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [14](impl/14-human-intervention.md) | Human intervention | §12 | Done |
 | [15](impl/15-pacing.md) | Pacing and limits | §13 | Done |
 | [16](impl/16-attachments.md) | Attachments | §14 | Done |
-| [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Not started |
+| [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Done |
 | [18](impl/18-progress-output.md) | Progress output | §10 | Not started |
 | [19](impl/19-report.md) | Report | §16 | Not started |
 | [20](impl/20-pilot.md) | Pilot experiment | §18 | Not started |
@@ -194,7 +194,7 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   API key Hermes uses; that is Hermes's `.env`.
 - **Fast and slow tests:** the suite is split by a `slow` marker — anything that spawns a
   subprocess, binds a socket or launches a browser. `make check` runs lint, types and the
-  fast half (~585 tests, about two seconds) and is what CI runs on a pull request;
+  fast half (~640 tests, about three seconds) and is what CI runs on a pull request;
   `make check-all` runs everything with coverage and is what CI runs on `main` after a
   merge, so the `fail_under` gate lives there. `tests/conftest.py` holds the two
   mechanisms that keep the marking honest, and `22` is the slice that removes the cost
@@ -218,3 +218,6 @@ those files say so and `tests/test_spike_docs.py` keeps them saying it.
   file names? Decides whether attachment class 2 exists without an operator-supplied
   directory (`02`, `16`).
 - Can a chat be renamed through the UI reliably enough to be a verified step? (`17`)
+  `17` shipped on the assumption that it can — `fidelity.rename_title` defaults to `true`
+  — and made the step best effort so that being wrong costs a line of metadata rather than
+  a conversation. `20` is what looks.

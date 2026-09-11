@@ -26,7 +26,7 @@ from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import SafetyError, UIError
 from dataporter.exit_codes import ExitCode
 from fake_chrome import Call, free_port
-from fake_composer import Browser, FakePage
+from fake_composer import Browser, FakePage, Turn
 from fake_pages import (
     CHAT_ID,
     GENERATING_CHAT_ID,
@@ -279,13 +279,78 @@ def test_probe_reports_a_page_with_no_messages(
     )
 
 
-def test_probe_result_is_the_page_state_plus_two_fields() -> None:
-    """A field `10` adds to `PageState` must appear here without an edit."""
+def test_an_ordinary_probe_says_nothing_about_messages_or_the_title(
+    new_chat: Browser, tmp_path: Path
+) -> None:
+    """`17` widened the object; `08`'s poll loop still gets the narrow one."""
+    outcome = helpers.probe_page(new_chat.client, new_chat.settings(tmp_path))
+    printed = json.loads(outcome.result.model_dump_json(exclude_none=True))
+    assert "messages" not in printed
+    assert "title" not in printed
+
+
+def test_probe_messages_reports_every_turn_and_never_a_message(
+    tmp_path: Path,
+) -> None:
+    """`17`'s probe: one object per turn, each one a role, a length and which of
+    the caller's own strings were in it."""
+    with Browser(
+        FakePage(
+            url=CHAT_URL,
+            transcript=[
+                Turn("human", "Original conversation ID: aa000001 — and the rest"),
+                Turn("assistant", "MIGRATION-ACK aa000001 1/1 — done"),
+            ],
+        )
+    ) as browser:
+        outcome = helpers.probe_page(
+            browser.client,
+            browser.settings(tmp_path),
+            expect=["MIGRATION-ACK aa000001 1/1"],
+            messages=True,
+        )
+    printed = json.loads(outcome.result.model_dump_json(exclude_none=True))
+    assert [item["role"] for item in printed["messages"]] == ["human", "assistant"]
+    assert printed["messages"][1]["contains"] == ["MIGRATION-ACK aa000001 1/1"]
+    assert printed["messages"][0]["contains"] == []
+    assert "and the rest" not in json.dumps(printed)
+
+
+def test_probe_answers_about_a_title_and_never_with_one(tmp_path: Path) -> None:
+    """§10 again: the question is the caller's string, and the answer is a
+    boolean and a length."""
+    with Browser(FakePage(url=CHAT_URL, title="Notes on pooling")) as browser:
+        settings = browser.settings(tmp_path)
+        asked = helpers.probe_page(
+            browser.client, settings, expect_title="  Notes   on pooling "
+        )
+        wrong = helpers.probe_page(
+            browser.client, settings, expect_title="Something else"
+        )
+    printed = json.loads(asked.result.model_dump_json(exclude_none=True))
+    # Whitespace is squashed on both sides before the comparison.
+    assert printed["title"] == {
+        "chars": len("Notes on pooling"),
+        "source": "chat",
+        "matches": True,
+    }
+    assert "Notes on pooling" not in json.dumps(printed)
+    assert json.loads(wrong.result.model_dump_json())["title"]["matches"] is False
+
+
+def test_probe_result_is_the_page_state_plus_four_fields() -> None:
+    """A field `10` adds to `PageState` must appear here without an edit.
+
+    `messages` and `title` are `17`'s, and are the two that are `None` unless
+    `--messages` asked for them — `exclude_none` is what keeps the ordinary
+    probe's object the shape `08` printed."""
     assert set(helpers.ProbeResult.model_fields) == set(
         probe.PageState.model_fields
     ) | {
         "ok",
         "last_message",
+        "messages",
+        "title",
     }
 
 

@@ -55,6 +55,7 @@ SPEC_KEYS = [
     "attachments",
     "error",
     "limitations",
+    "verified_at",
     "updated_at",
 ]
 """Every key `06` allows in an entry, in the order the spec writes them. Written

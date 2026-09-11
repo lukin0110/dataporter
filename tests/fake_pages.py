@@ -18,6 +18,15 @@ FIXTURES = Path(__file__).parent / "fixtures" / "pages"
 CHAT_ID = "11111111-2222-4333-8444-555555555555"
 GENERATING_CHAT_ID = "66666666-7777-4888-8999-aaaaaaaaaaaa"
 RESPONDING_CHAT_ID = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+MIGRATED_CHAT_ID = "dddddddd-eeee-4fff-8aaa-bbbbbbbbbbbb"
+
+MIGRATED_SOURCE = "aa000001-1111-4111-8111-111111111111"
+MIGRATED_PARTS = 2
+MIGRATED_TITLE = "Notes on pooling"
+"""What `migrated.html` is a chat of: the source conversation it was migrated
+from, how many parts it became, and what the rename step called it. `17`'s
+expectations are built from these rather than from the HTML, so a fixture edited
+without its expectations fails rather than passes differently."""
 
 ROUTES: dict[str, str] = {
     "/login": "login.html",
@@ -25,6 +34,7 @@ ROUTES: dict[str, str] = {
     f"/chat/{CHAT_ID}": "chat.html",
     f"/chat/{GENERATING_CHAT_ID}": "generating.html",
     f"/chat/{RESPONDING_CHAT_ID}": "responding.html",
+    f"/chat/{MIGRATED_CHAT_ID}": "migrated.html",
     "/settings/profile": "dialog.html",
 }
 """Path to fixture. `/settings/profile` is deliberately a real page: `08` needs

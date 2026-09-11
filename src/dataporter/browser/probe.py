@@ -13,7 +13,9 @@ Two rules shape it:
   caller's own `--expect` strings were found — the matching happens in the page,
   so the message text never crosses the wire. Nothing returns a title or a
   message body. §10 forbids content on stdout and in logs, and `08` prints these
-  objects to stdout verbatim.
+  objects to stdout verbatim. `17` needed the chat's *title* and is held to the
+  same rule: `TitleMatch` is a length and an answer to "is it this string", with
+  the string supplied by the caller and the comparison made in the page.
 - **One round trip.** The whole DOM question is a single `Runtime.evaluate`, so a
   probe cannot observe a half-changed page across several calls, and polling
   every two seconds for ten minutes costs 300 CDP calls rather than 1,800.
@@ -73,6 +75,18 @@ MESSAGE_SELECTOR = f"{HUMAN_MESSAGE_SELECTOR}, {ASSISTANT_MESSAGE_SELECTOR}"
 """A turn in the transcript. Role is read by which of the two an element
 matches, so the union must stay the union of exactly those two."""
 
+TITLE_SELECTOR = (
+    '[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], '
+    "header h1, header h2"
+)
+"""Where the chat's displayed title is shown (`17`).
+
+A union, widest guess last, because the title is the one element of the page we
+read without knowing what it is called: `docs/claude-ui-map.md` marks the row
+`*unknown*`, and the fallback when none of these matches is `document.title`,
+which a browser always has. Nothing reads what it *says* — see `TitleMatch`.
+"""
+
 FILE_INPUT_SELECTOR = 'input[type="file"]'
 """`08`'s `attach` puts files here. Hidden is normal and is fine: the element is
 found by selector and filled by CDP, never clicked."""
@@ -81,6 +95,7 @@ _SELECTORS: tuple[tuple[str, str], ...] = (
     ("COMPOSER_SELECTOR", COMPOSER_SELECTOR),
     ("HUMAN_MESSAGE_SELECTOR", HUMAN_MESSAGE_SELECTOR),
     ("MESSAGE_SELECTOR", MESSAGE_SELECTOR),
+    ("TITLE_SELECTOR", TITLE_SELECTOR),
     ("FILE_INPUT_SELECTOR", FILE_INPUT_SELECTOR),
 )
 """The selectors, as JavaScript consts. Injected rather than interpolated into
@@ -138,6 +153,7 @@ like. `10` checks it against the real composer.
 
 PAGE_STATE_TAG = "hcm:page_state"
 PAGE_VIEW_TAG = "hcm:page_view"
+PAGE_REPORT_TAG = "hcm:page_report"
 
 
 def expression(tag: str, body: str) -> str:
@@ -192,6 +208,51 @@ in Python, because a returned message is content on the wire and in whatever
 holds it next. What comes back is the caller's own strings, filtered.
 """
 
+_MESSAGES_ARRAY = """(() => {
+    const turns = all(MESSAGE_SELECTOR).filter(visible);
+    return turns.map((el) => {
+      const text = el.innerText || '';
+      return {
+        role: el.matches(HUMAN_MESSAGE_SELECTOR) ? 'human' : 'assistant',
+        chars: text.length,
+        contains: expect.filter((needle) => text.indexOf(needle) !== -1),
+      };
+    });
+  })()"""
+"""Every turn on the page, in order, each one shaped like `_LAST_MESSAGE_OBJECT`.
+
+`17` asks the page three questions at once — are there as many human messages as
+there were parts, does the first one carry the source id, has every part been
+acknowledged — and all three are "which of my strings are in which turn". So the
+answer is the caller's own strings, filtered, once per turn: the same reduction
+the last message already got, applied to the whole transcript.
+"""
+
+_TITLE_OBJECT = """(() => {
+    const el = all(TITLE_SELECTOR).filter(visible)[0] || null;
+    const raw = el === null
+      ? (document.title || '')
+      : (el.innerText || el.textContent || '');
+    const squashed = raw.replace(/\\s+/g, ' ').trim();
+    return {
+      chars: squashed.length,
+      source: el === null ? 'document' : 'chat',
+      matches: expectTitle === null ? null : squashed === expectTitle,
+    };
+  })()"""
+"""The chat's title, as a length and a yes/no. Never as a title.
+
+Whitespace is squashed on this side of the wire and on ours (`normalise_title`),
+because the rename field takes what it is given and the header renders it with
+whatever spacing the layout wants — a title that came back with two spaces in it
+is the title, not a failed rename.
+
+`source` says which of the two places it was read from, so that a run whose
+`TITLE_SELECTOR` matches nothing on a changed claude.ai is visible as a page
+answering `document` rather than as a title that will not match. It is a
+provenance, not a value: `docs/claude-ui-map.md` is where the row gets corrected.
+"""
+
 PAGE_STATE_JS = expression(PAGE_STATE_TAG, f"  return {_STATE_OBJECT};")
 
 
@@ -209,6 +270,35 @@ def page_view_js(expect: Sequence[str] = ()) -> str:
         + f"  return Object.assign({{}}, {_STATE_OBJECT}, "
         + f"{{last_message: {_LAST_MESSAGE_OBJECT}}});",
     )
+
+
+def page_report_js(expect: Sequence[str] = (), expect_title: str | None = None) -> str:
+    """`page_view`, plus every message and the title (`17`).
+
+    Still one evaluate, for the reason `page_view` is one: a verification that
+    read the transcript and then the title would be describing two moments, and
+    the one thing it exists to prove is that a single page holds all of it.
+    """
+    return expression(
+        PAGE_REPORT_TAG,
+        _expect_const(expect)
+        + f"  const expectTitle = {json.dumps(expect_title)};\n"
+        + f"  return Object.assign({{}}, {_STATE_OBJECT}, {{\n"
+        + f"    last_message: {_LAST_MESSAGE_OBJECT},\n"
+        + f"    messages: {_MESSAGES_ARRAY},\n"
+        + f"    title: {_TITLE_OBJECT},\n"
+        + "  });",
+    )
+
+
+def normalise_title(value: str) -> str:
+    """A title, as both sides of the comparison spell it.
+
+    The rule is one line and it lives here rather than in `17` because the other
+    half of it is `_TITLE_OBJECT`, three lines up: whatever changes here changes
+    there.
+    """
+    return " ".join(value.split())
 
 
 # --------------------------------------------------------------------------- #
@@ -243,12 +333,16 @@ class PageState(BaseModel):
 
 
 class LastMessage(BaseModel):
-    """The last turn in the transcript, with no turn in it.
+    """One turn in the transcript, with no turn in it.
 
     `role` is `null` on a page with no messages — a new chat, or one whose
     transcript has not rendered yet. `contains` is the caller's `--expect`
     strings that were found, which is how `11` reads an acknowledgement line
     without anyone reading the message.
+
+    Named for the one turn `08` needed and used for all of them since: `17`'s
+    `messages` is a list of exactly this shape, because "which of my strings are
+    in this turn" is the same question asked further up the page.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -278,6 +372,41 @@ class LastMessage(BaseModel):
         )
 
 
+class TitleMatch(BaseModel):
+    """What the chat is called, without saying what the chat is called (`17`).
+
+    `matches` is `None` when the caller asked no question — `probe --messages`
+    with no `--expect-title` — and a `bool` when it did. A length and a
+    provenance beside it, so an operator reading a failed rename can tell "the
+    title is something else" from "there is no title element on this page at
+    all", neither of which requires the title itself.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chars: int
+    source: Literal["chat", "document"]
+    matches: bool | None = None
+
+    @classmethod
+    def from_raw(cls, raw: Any) -> Self:
+        """Build one from whatever the page answered with, tolerantly.
+
+        A page with no title element and no `document.title` is an empty title
+        read from the document, which is what an unrendered chat looks like —
+        and reading it as a match would be `17` verifying a rename against
+        nothing.
+        """
+        if not isinstance(raw, dict):
+            raw = {}
+        matches = raw.get("matches")
+        return cls(
+            chars=int(raw.get("chars") or 0),
+            source="chat" if raw.get("source") == "chat" else "document",
+            matches=matches if isinstance(matches, bool) else None,
+        )
+
+
 class PageView(BaseModel):
     """One evaluate's worth: the state, and the last message beside it."""
 
@@ -285,6 +414,22 @@ class PageView(BaseModel):
 
     state: PageState
     last_message: LastMessage
+
+
+class PageReport(PageView):
+    """The same, plus every turn and the title: what `17` verifies from.
+
+    A subclass of `PageView` rather than a second model, so that the one thing
+    `08`'s poll loop and `17`'s verification disagree about is how much of the
+    page they asked for.
+    """
+
+    messages: tuple[LastMessage, ...]
+    title: TitleMatch
+
+    def with_role(self, role: str) -> tuple[LastMessage, ...]:
+        """The turns one side of the conversation took, in page order."""
+        return tuple(item for item in self.messages if item.role == role)
 
 
 # --------------------------------------------------------------------------- #
@@ -419,6 +564,38 @@ def probe(page: Page, *, tab_count: int = 1) -> PageState:
     that matters — claude.ai tabs — is a question for the target list.
     """
     return _state_from(page, page.evaluate(PAGE_STATE_JS), tab_count)
+
+
+def _messages_from(raw: Any) -> tuple[LastMessage, ...]:
+    """The `messages` array as models, or nothing at all.
+
+    Tolerant for the reason `LastMessage.from_raw` is: a page that answered with
+    something other than a list has no readable transcript, and `17` reports
+    that as a failed check rather than as an exception out of a probe.
+    """
+    if not isinstance(raw, list):
+        return ()
+    return tuple(LastMessage.from_raw(item) for item in raw)
+
+
+def page_report(
+    page: Page,
+    *,
+    tab_count: int = 1,
+    expect: Sequence[str] = (),
+    expect_title: str | None = None,
+) -> PageReport:
+    """State, last message, every message and the title. Still one evaluate."""
+    raw = page.evaluate(page_report_js(expect, expect_title))
+    if not isinstance(raw, dict):  # pragma: no cover - defensive
+        raw = {}
+    state = _state_from(page, raw, tab_count)
+    return PageReport(
+        state=state,
+        last_message=LastMessage.from_raw(raw.get("last_message")),
+        messages=_messages_from(raw.get("messages")),
+        title=TitleMatch.from_raw(raw.get("title")),
+    )
 
 
 def page_view(

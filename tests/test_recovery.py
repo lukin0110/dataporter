@@ -88,6 +88,10 @@ class Ui:
             self.page.composer = ""
         self.page.on_view = None
 
+    def rename(self, title: str) -> None:
+        """`17`'s one typed action, as a stub: the chat is now called this."""
+        self.page.title = title
+
     def submit(self, expected_ack: str) -> None:
         page = self.page
         page.composer = ""

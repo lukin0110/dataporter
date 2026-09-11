@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- A stand-in for a chat a migration has finished with: two parts, each in its
+     own human message, each acknowledged by an assistant turn, under a heading
+     that carries the source conversation's title. `17` verifies against exactly
+     this shape — the header line `04` writes into part one, one MIGRATION-ACK
+     per part, and a title the rename step is supposed to have set. -->
+<meta charset="utf-8">
+<title>Notes on pooling - Claude</title>
+<header>
+  <h1>Notes on pooling</h1>
+</header>
+<main>
+  <div data-testid="conversation">
+    <div data-testid="user-message">
+      This is a migrated conversation.
+
+      Original conversation ID: aa000001-1111-4111-8111-111111111111
+      Part 1 of 2
+    </div>
+    <div data-testid="assistant-message">MIGRATION-ACK aa000001 1/2</div>
+    <div data-testid="user-message">
+      Migrated conversation aa000001, part 2 of 2, continued.
+    </div>
+    <div data-testid="assistant-message">MIGRATION-ACK aa000001 2/2</div>
+  </div>
+  <div contenteditable="true" role="textbox" aria-label="Write your prompt"></div>
+  <button aria-label="Send message">Send</button>
+</main>

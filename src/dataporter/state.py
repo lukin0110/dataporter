@@ -162,7 +162,10 @@ TRANSITIONS: dict[Status, frozenset[Status]] = {
     ),
     # `completed` moves only under `--force`; selection is what enforces that,
     # because by the time a status changes the decision has already been made.
-    Status.COMPLETED: frozenset({Status.RUNNING}),
+    # `partial` is `17`'s edge and nothing else's: a chat the page itself says is
+    # missing a part was never completed, and a verification that could only
+    # agree with the agent it exists to check would not be a verification.
+    Status.COMPLETED: frozenset({Status.RUNNING, Status.PARTIAL}),
     Status.PARTIAL: frozenset({Status.RUNNING}),
     Status.FAILED: frozenset({Status.RUNNING}),
 }
@@ -266,6 +269,15 @@ class ConversationState(StateModel):
     attachments: AttachmentCounts = AttachmentCounts()
     error: ErrorRecord | None = None
     limitations: list[str] = []
+    verified_at: Instant | None = None
+    """When the destination chat was last read back and found whole (`17`).
+
+    `None` until a verification passes, and `None` again after one fails: the
+    field says "this chat was checked against the page and held everything",
+    which is a statement a failed check withdraws. What Hermes reported is
+    `status` and `last_step`; this is the second opinion, and §7's file keeps
+    them apart on purpose.
+    """
     updated_at: Instant = Field(default_factory=now)
     """Stamped by the store on every write; the factory is only so that a
     hand-written or test-built entry does not have to carry one."""

@@ -14,6 +14,16 @@ its output tokens (`specs/README.md`, division of labour). What is here is a
 short id, a count, some paths and an ack line — and an ack line is ours, not the
 conversation's.
 
+`title` is `17`'s one exception to that rule, made deliberately and written down
+here because it is the only one. §15 asks for equivalent titles, the rename field
+is the only way to set one, and the rename UI is a small adaptive flow — a menu
+that is in a different place in the sidebar than in the header — which is exactly
+the kind of thing Hermes is here to do and our helpers are not. So the title is
+sent, capped at `fidelity.title_max_chars`, to be typed through `browser_type`;
+one line of a conversation's metadata, in a prompt that still carries none of its
+messages. `fidelity.rename_title = false` sends `none` and asks for no rename at
+all.
+
 `delay between parts` is `15`'s, and is the one field here that asks for an
 absence rather than an action: the per-part loop happens inside one Hermes run,
 so the only process that can put a gap between one part's acknowledgement and the
@@ -119,6 +129,7 @@ def render(
     conversation_id: str | None = None,
     acknowledged: int = 0,
     delay_between_parts_s: float = 0.0,
+    title: str = "",
 ) -> str:
     """One conversation's task prompt.
 
@@ -153,6 +164,7 @@ def render(
         f"resume_from: {resume_from}",
         f"existing conversation_id: {_one_line(conversation_id or NONE)}",
         f"parts already acknowledged: {acknowledged}",
+        f"title: {_one_line(title) or NONE}",
         f"delay between parts: {delay_between_parts_s:g}",
         f"helper: {helper_command(workspace)}",
         "",
@@ -171,6 +183,7 @@ def for_seed(
     conversation_id: str | None = None,
     acknowledged: int = 0,
     delay_between_parts_s: float = 0.0,
+    title: str = "",
 ) -> str:
     """The prompt for a seed `04` generated and `12` has just written out.
 
@@ -191,4 +204,5 @@ def for_seed(
         conversation_id=conversation_id,
         acknowledged=acknowledged,
         delay_between_parts_s=delay_between_parts_s,
+        title=title,
     )

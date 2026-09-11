@@ -75,8 +75,8 @@ unused-ignore-comment = "warn"
 testpaths = ["tests"]
 # The fast half, by default. Anything that spawns a subprocess, binds a socket or
 # launches a browser is marked `slow` and deselected here, which is what makes a
-# bare `pytest` the inner-loop command: ~590 tests in about 2 seconds against
-# ~995 in about 240. `make check-all` runs everything and is the only command
+# bare `pytest` the inner-loop command: ~640 tests in about 3 seconds against
+# ~1100 in about 310. `make check-all` runs everything and is the only command
 # that measures coverage — a percentage over half the suite is a number no gate
 # could use. `22` is the slice that makes the other half quick.
 #
@@ -103,5 +103,6 @@ source = ["src/dataporter"]
 # 98.3%. Raise it when the real number rises; never lower it to make a run pass.
 # `09`: 3423/3450, 99.2%. `11`: 3497/3524, 99.2%. `12`: 3768/3795, 99.3%.
 # `13`: 3858/3885, 99.3%. `14`: 4081/4108, 99.3%. `15`: 4223/4250, 99.4%.
+# `17`: 4642/4669, 99.4%.
 fail_under = 99
 show_missing = true

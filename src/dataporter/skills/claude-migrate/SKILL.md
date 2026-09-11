@@ -26,7 +26,8 @@ The division of labour is fixed and is not yours to change:
 
 A seed must never pass through your output tokens. You never type, retype,
 summarise or reconstruct conversation text — not into the composer, not into your
-reasoning, not into your answer.
+reasoning, not into your answer. The one string you ever type is the `title` at
+the `rename` step, and you type it exactly as the prompt gives it.
 
 ## When to use
 
@@ -53,6 +54,7 @@ value is a path you may guess at.
 | `resume_from` | The step to resume at. `open` on a first attempt. |
 | `existing conversation_id` | The chat a retry must continue in, or `none`. |
 | `parts already acknowledged` | How many parts are already in that chat, acknowledged. `0` on a first attempt. |
+| `title` | What to rename the chat to, or `none`. Type it exactly; never a word of your own. |
 | `delay between parts` | Seconds to wait between one part's acknowledgement and the next part's paste. |
 | `helper` | The command prefix for every helper call: `hermes-claude-migrate --workspace <workspace> browser …`. Use it verbatim, with the subcommand appended. |
 
@@ -77,8 +79,8 @@ nothing passed at all, because the field is never empty.
 | `await` | `<helper> await-response --expect "<this part's acknowledgement line>"` | the helper answers `"ok": true` |
 | `ack` | read `last_message.contains` in that same answer | it contains this part's acknowledgement line. If it does not, take one `browser_snapshot` and classify (see *Recovery*) |
 | `identify` | `browser probe` | `conversation_id` is a uuid and the URL is `/chat/<that uuid>`. When the prompt gave an existing id, it must be that same id |
-| `rename` | not in this version — `17` writes it | — |
-| `verify` | not in this version — `17` writes it | — |
+| `rename` | only when the prompt gives a `title`: open the chat's own menu (the sidebar entry for this chat, or the title in the header), choose the rename affordance, replace what is in the field with the prompt's `title` exactly, and confirm | `<helper> probe --expect-title "<title>"`: `title.matches` is `true`. If it is not, the chat keeps the name it has — see *Renaming* |
+| `verify` | `<helper> probe --messages --expect "<part 1's line>" --expect "<part 2's line>" …`, naming every part's acknowledgement line | the helper answers `"ok": true`, and for every part some message in `messages` lists that part's line in its `contains`. If one is missing, classify it as a generation failure for that part (see *Recovery*) |
 | `done` | nothing | the result is emitted |
 
 `paste`, `submit`, `await` and `ack` repeat, in that order, once per part, in the
@@ -91,9 +93,37 @@ a real one, and a run that sends as fast as it can is a run that gets rate
 limited. This is the one place you are asked to do nothing at all, and doing it
 faster is not an improvement.
 
-`rename` and `verify` are named here because they are steps of the migration and
-a later version performs them. Until then, a run that has passed `identify` is
-finished: report `last_step` `done`. Do not attempt to rename a chat.
+### Renaming
+
+The chat is renamed because a migrated conversation the operator cannot find by
+name is a migrated conversation nobody reads. It is the one thing in this
+procedure you type yourself, and the rules for it are narrow:
+
+- **Only this run's chat, and only to the prompt's `title`.** Not a title you
+  composed, not a tidied version of the one you were given, not the first line of
+  a message. If the prompt says `none`, there is no `rename` step at all: go
+  straight from `identify` to `verify`.
+- **This run's chat is the one whose URL you are on.** The sidebar lists other
+  conversations belonging to the account, and clicking one opens it — which is
+  both a rename of somebody else's chat waiting to happen and a breach of rule 1.
+  If you cannot tell which entry is this chat's, use the title in the header
+  instead; if you still cannot, that is a rename that will not take, below. After
+  confirming, `browser probe` must still report this run's `conversation_id`.
+- **A rename that will not take is not a failure.** The conversation is worth
+  more than its name. Try the affordance once; if the menu is not there, the
+  field will not accept the text, or `title.matches` comes back `false`, leave
+  `last_step` at `identify`, carry on to `verify`, and report the outcome
+  `verify` earns. The tool checks the title itself when the run is over and
+  records `title_not_set` against the conversation, so nothing is lost by saying
+  nothing about it.
+- **Never rename anything else**, and never delete, archive, star or share while
+  you are in that menu (rule 2).
+
+The `verify` step is the last one, and it is deliberately the cheapest kind of
+evidence: one probe, the ack lines you were given, no snapshot. It is also not
+the only verification — the tool reloads the chat itself afterwards and checks
+the same thing independently — so reporting `completed` for a chat whose parts
+are not all there does not get past anybody. It only wastes a retry.
 
 ### Attachments
 
@@ -151,6 +181,8 @@ not as required, and `2` when the call itself was wrong.
 ```text
 <helper prefix> probe
 <helper prefix> probe --expect "MIGRATION-ACK ab12cd34 1/2"
+<helper prefix> probe --messages --expect "MIGRATION-ACK ab12cd34 1/2"
+<helper prefix> probe --expect-title "Postgres connection pooling"
 <helper prefix> paste --seed /path/to/part-01.txt
 <helper prefix> attach --file /path/to/file.pdf
 <helper prefix> attachments --file /path/to/file.pdf
@@ -178,7 +210,10 @@ What a step is allowed to count as proof:
 - **A `browser probe` object.** Facts about the page with no content in them:
   `url`, `kind`, `logged_in`, `composer_present`, `composer_chars`, `generating`,
   `send_enabled`, `dialogs`, `conversation_id`, and `last_message` as a role, a
-  character count and which of your `--expect` strings were found.
+  character count and which of your `--expect` strings were found. `--messages`
+  adds `messages`, the same three fields for every turn on the page in order, and
+  `title`, which is a character count and — with `--expect-title` — whether the
+  title is the string you asked about. Neither ever returns a message or a title.
 - **A `browser_snapshot`.** Only when you need an element's ref in order to act
   on it, or to classify something you could not otherwise explain. A snapshot of
   claude.ai contains conversation text, so take as few as the work needs.
@@ -203,8 +238,9 @@ uuid, a step name and a count are the only identifiers this run produces.
 5. If a page asks for a password, a code, a CAPTCHA or a security challenge, do
    not attempt it; return `needs_human` with the matching reason.
 
-Rule 2 names the `rename` step because a later version performs it. This version
-does not, so in this version rule 2 permits nothing at all.
+Rule 2 permits exactly one thing: renaming this run's own chat to the prompt's
+`title`, at the `rename` step. Every other menu item in that menu — delete,
+archive, star, share — is forbidden on every chat including this one.
 
 ## Recovery
 
@@ -244,6 +280,7 @@ Four rules bound the whole table:
 | generation failure | an error banner or a retry control after submit; `await-response` answers `response_timeout` with `generating: false`; the answer arrives without the acknowledgement line | click the retry control once if the page offers one, then `await-response` again | `partial` when at least one part was acknowledged, `failed` otherwise; category `generation` |
 | network error | a helper answers `no_claude_tab` or `unknown_target`, `browser probe` cannot read the page, `browser_navigate` fails, or the tab shows a browser error page | wait five seconds, navigate to the run's URL again, once | `failed` (`partial` if a chat exists), `network` |
 | page navigation | `browser probe` answers a `url` that is neither `https://claude.ai/new` nor this run's `/chat/<id>`, or a `conversation_id` that is not the one this run is working in | navigate back to the run's chat, or to `/new` when there is no id yet, once | `failed` (`partial` if a chat exists), `navigation` |
+| rename refused | the menu has no rename affordance, the field will not take the text, or `title.matches` is `false` after confirming | none — one attempt at the affordance is the whole of it | not a stop and not an error: leave `last_step` at `identify`, go on to `verify`, and say nothing about the title in the result |
 | Claude UI change | an element the procedure expects is absent and no row above fits — the composer cleared, so the message was sent, and yet `last_message.role` is not `human` | one attempt to reach the same goal by reading the snapshot, verified exactly as the step says | `needs_human`, reason `ambiguous_ui` |
 | CAPTCHA or security challenge | a challenge, a puzzle, a "verify you are human" page, or a request for a code | none — never attempt one | `needs_human`, reason `captcha` or `security_challenge` |
 | off the migration surface | a helper answers `outside_migration_surface` on any other URL | none, and never a retry: the tab is somewhere this run may not touch | `failed` (`partial` if a chat exists), category `safety` |

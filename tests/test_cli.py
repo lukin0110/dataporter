@@ -14,12 +14,12 @@ from dataporter.exit_codes import ExitCode
 # Every command in `specs/impl/01-foundation.md`, written out rather than derived
 # from the app, so that a command silently disappearing fails this test.
 COMMANDS: list[list[str]] = [
-    ["verify"],
     ["report"],
 ]
 
 EXCLUDED_FROM_69: list[list[str]] = [
     ["import"],
+    ["verify"],
     ["resume"],
     ["seeds"],
     ["inspect"],
@@ -48,7 +48,10 @@ those two groups are exercised in `test_browser_session.py` and
 they are exercised in `test_hermes_setup.py` and `test_hermes_doctor.py`, where the
 fake `hermes` they need lives. `14` implemented `resume`, which exits `4` with
 `nothing to resume` on a workspace nothing has paused in; it is exercised in
-`test_intervention.py`, where the fakes for a whole paused run live."""
+`test_intervention.py`, where the fakes for a whole paused run live. `17`
+implemented `verify`, which exits `4` on a workspace with nothing migrated in it;
+it is exercised in `test_verify.py`, where the fake browser it reads through
+lives."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -158,7 +161,7 @@ def test_unhandled_exception_becomes_exit_70(
         raise ZeroDivisionError("boom")
 
     monkeypatch.setattr(cli, "not_implemented", explode)
-    result = runner.invoke(cli.app, ["verify"], catch_exceptions=False)
+    result = runner.invoke(cli.app, ["report"], catch_exceptions=False)
     assert result.exit_code == ExitCode.INTERNAL
     assert result.stderr == "internal error: ZeroDivisionError\n"
     # The detail goes to the log, never to the operator's terminal.

@@ -30,11 +30,16 @@ surface.
   explicitly in the test suite. The gate runs twice: on the URL in the target list, so a
   tab outside the surface is refused with no CDP call at all, and on the live URL after
   attaching, because the target list is a snapshot.
-- `browser probe [--target ID] [--expect TEXT]…` prints `PageState` from `07` plus `ok`
+- `browser probe [--target ID] [--expect TEXT]… [--messages] [--expect-title TEXT]`
+  prints `PageState` from `07` plus `ok`
   and `last_message`: `{"role": "human"|"assistant"|null, "chars": n, "contains": [...]}`
   where `contains` is the list of `--expect TEXT` values found in the last message (used
   for the ack line). The search happens in the page, so the message text never crosses
-  the wire.
+  the wire. `17` added the last two flags and keeps that property: `--messages` adds
+  `messages`, one `{role, chars, contains}` per turn on the page in order, and `title`,
+  `{chars, source, matches}` — `matches` is `null` unless `--expect-title` asked a
+  question, and the comparison is made in the page, so a chat's name never crosses the
+  wire either. Both fields are absent from the object unless they were asked for.
 - `browser paste --seed PATH [--method insert_text|exec_command] [--append]
   [--target ID]`:
   1. refuse if the composer is missing (`composer_missing`) or, without `--append`,

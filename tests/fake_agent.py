@@ -54,6 +54,7 @@ SCALARS = (
     "resume_from",
     "existing conversation_id",
     "parts already acknowledged",
+    "title",
     "helper",
 )
 BLOCKS = ("seed files", "attachments", "expected acknowledgements")
@@ -86,6 +87,8 @@ class Task:
     resume_from: str
     conversation_id: str | None
     acknowledged: int
+    title: str
+    """What to rename the chat to (`17`), or `""` when the prompt said `none`."""
     helper: tuple[str, ...]
     """The helper command prefix, split into argv."""
 
@@ -130,6 +133,7 @@ def parse(prompt: str) -> Task:
         resume_from=fields["resume_from"],
         conversation_id=None if conversation == NONE else conversation,
         acknowledged=int(fields["parts already acknowledged"]),
+        title="" if fields.get("title", NONE) == NONE else fields["title"],
         helper=tuple(item for item in helper if item != "…"),
     )
 
@@ -143,7 +147,7 @@ class Stopped(Exception):
 
 
 class Browser(Protocol):
-    """The two things the skill asks an agent, not a helper, to do."""
+    """The three things the skill asks an agent, not a helper, to do."""
 
     def navigate(self, url: str) -> None: ...
 
@@ -151,6 +155,13 @@ class Browser(Protocol):
         """Press Enter in the composer. `expected_ack` is what the chat will
         eventually answer with — the test's page needs it, the agent does not,
         and passing it here keeps the agent from ever holding a seed."""
+
+    def rename(self, title: str) -> None:
+        """Open the chat's menu and give it this name (`17`).
+
+        The one thing an agent types that a helper does not, and the one piece
+        of a conversation's metadata that reaches the page through the model —
+        which is why the whole of it is one call a stub can perform."""
 
 
 Helper = Callable[[Sequence[str]], tuple[int, dict[str, Any]]]
@@ -187,13 +198,29 @@ class ScriptedAgent:
             self.errors.append(str(printed.get("error", "unknown")))
         return printed
 
-    def probe(self, task: Task, *expect: str) -> dict[str, Any]:
+    def probe(
+        self,
+        task: Task,
+        *expect: str,
+        messages: bool = False,
+        expect_title: str | None = None,
+    ) -> dict[str, Any]:
         arguments = ["probe"]
+        if messages:
+            arguments.append("--messages")
+        if expect_title is not None:
+            arguments += ["--expect-title", expect_title]
         for item in expect:
             arguments += ["--expect", item]
         return self.call(task, *arguments)
 
-    def look(self, task: Task, *expect: str) -> dict[str, Any]:
+    def look(
+        self,
+        task: Task,
+        *expect: str,
+        messages: bool = False,
+        expect_title: str | None = None,
+    ) -> dict[str, Any]:
         """One probe, with the rows that can fire on any probe already applied.
 
         Four of `13`'s rows are about the page rather than about a step — the
@@ -201,7 +228,7 @@ class ScriptedAgent:
         modal is over it — so they are checked wherever the procedure looks
         rather than repeated at each step that looks.
         """
-        state = self.probe(task, *expect)
+        state = self.probe(task, *expect, messages=messages, expect_title=expect_title)
         if state.get("error") in UNREADABLE:
             # network: navigate back to the run's URL and look once more. The
             # skill's five-second wait is the agent's, and is not scripted here —
@@ -209,13 +236,17 @@ class ScriptedAgent:
             # nothing, and none of these pages changes with time.
             self.recoveries.append("network")
             self.browser.navigate(self.url(task))
-            state = self.probe(task, *expect)
+            state = self.probe(
+                task, *expect, messages=messages, expect_title=expect_title
+            )
             if state.get("error") in UNREADABLE:
                 self.give_up("network", "the page could not be read")
         if state.get("error") == helpers.AMBIGUOUS_TAB:
             self.recoveries.append("ambiguous_tab")
             self.call(task, "close-extra-tabs")
-            state = self.probe(task, *expect)
+            state = self.probe(
+                task, *expect, messages=messages, expect_title=expect_title
+            )
         if self.signed_out(state):
             self.halt("needs_human", "auth", "a sign-in page", "auth_required")
         if state.get("error") == helpers.OUTSIDE_MIGRATION_SURFACE:
@@ -269,6 +300,8 @@ class ScriptedAgent:
         for index in range(task.acknowledged, task.parts):
             self.part(task, index)
         self.identify(task)
+        self.rename(task)
+        self.verify(task)
         self.last = Step.DONE
         if self.failed_attachments:
             # `16`: the chat is there and holds every message, and one of its
@@ -456,6 +489,35 @@ class ScriptedAgent:
             self.give_up("verification", "no conversation id")
         self.conversation_id = str(found)
         self.last = Step.IDENTIFY
+
+    def rename(self, task: Task) -> None:
+        """`rename`: the source title, through the chat's own menu (`17`).
+
+        Best effort by design. A rename that does not take leaves `last_step` at
+        `identify` and the run carries on: the conversation is worth more than
+        its name, and the tool checks the title itself afterwards and records
+        `title_not_set` when it is not there.
+        """
+        if not task.title:
+            return
+        self.browser.rename(task.title)
+        self.actions += 1
+        state = self.look(task, expect_title=task.title)
+        if state.get("title", {}).get("matches") is True:
+            self.last = Step.RENAME
+
+    def verify(self, task: Task) -> None:
+        """`verify`: every part's acknowledgement is on the page, in one probe."""
+        state = self.look(task, *task.acknowledgements, messages=True)
+        seen = {
+            item
+            for message in state.get("messages", [])
+            for item in message.get("contains", [])
+        }
+        for index, ack in enumerate(task.acknowledgements, start=1):
+            if ack not in seen:
+                self.give_up("generation", f"part {index} is not in the chat")
+        self.last = Step.VERIFY
 
     # -- what it prints ----------------------------------------------------- #
 
