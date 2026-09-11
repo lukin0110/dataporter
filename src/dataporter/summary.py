@@ -73,8 +73,13 @@ STATUS_LABELS: tuple[tuple[str, str], ...] = (
 each one reads."""
 
 
-def _number(value: int) -> str:
-    """A count as the block prints it: `,` thousands separators."""
+def number(value: int) -> str:
+    """A count as the block prints it: `,` thousands separators.
+
+    Public because `18` prints counts this module does not own — the bar's
+    `done/total`, the event line's — and a second spelling of the separator rule
+    is how two blocks on one screen come to disagree about 1,234.
+    """
     return f"{value:,}"
 
 
@@ -101,13 +106,13 @@ def _groups(totals: PlanTotals) -> list[list[tuple[str, str]]]:
     """The five §9 rows, in their two groups, as label and rendered value."""
     return [
         [
-            ("Conversations found:", _number(totals.conversations)),
-            ("Messages:", _number(totals.messages)),
-            ("Attachments:", _number(totals.attachments)),
+            ("Conversations found:", number(totals.conversations)),
+            ("Messages:", number(totals.messages)),
+            ("Attachments:", number(totals.attachments)),
         ],
         [
-            ("Migratable:", _number(totals.migratable)),
-            ("Unsupported:", _number(totals.unsupported)),
+            ("Migratable:", number(totals.migratable)),
+            ("Unsupported:", number(totals.unsupported)),
         ],
     ]
 
@@ -142,7 +147,7 @@ def _breakdown_lines(header: str, rows: Sequence[tuple[str, int]]) -> list[str]:
     return [
         header,
         *(
-            f"{INDENT}{label:<{width}}{_number(count):>{COUNT_WIDTH}}"
+            f"{INDENT}{label:<{width}}{number(count):>{COUNT_WIDTH}}"
             for label, count in rows
         ),
     ]
@@ -202,7 +207,7 @@ def counters_lines(counts: Mapping[str, int]) -> list[str]:
     them alone, because a bar that only ever redraws once is a picture of a number
     the line beside it already gives.
     """
-    rows = [(label, _number(counts[key])) for label, key in STATUS_LABELS]
+    rows = [(label, number(counts[key])) for label, key in STATUS_LABELS]
     return _aligned(rows, _column_width(rows, COUNTERS_MIN_WIDTH))
 
 

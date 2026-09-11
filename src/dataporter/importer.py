@@ -18,8 +18,9 @@ Three properties are the point:
   circuit breaker — which is about the run's failures rather than about any one
   of them.
 - **No content, anywhere.** Titles go into `state.json` because §7 puts them
-  there. Stdout gets a short id, a status and two counts; the log gets ids and
-  numbers; Hermes's own stdout stays in the workspace file `09` wrote it to.
+  there. Stdout gets a short id, a status, two counts and a failure's own
+  category; the log gets ids and numbers; Hermes's own stdout stays in the
+  workspace file `09` wrote it to.
 
 `13` is what taught it to react. A conversation whose failure is the kind that
 another attempt could fix is tried again, after a growing wait, until the
@@ -50,6 +51,13 @@ conversation — is put to a person as `14`'s ask. The gaps are `15`'s too: the
 delay between conversations, the delay between parts the agent spends inside one
 run, and the deadline on the one intervention whose resolution this process can
 check for itself.
+
+`18` took the talking away. Every line this loop used to print is now a call on
+`progress.Progress`, and `progress.Reporter` decides whether it becomes a redraw
+of §10's block or a line down a pipe. The loop's part of that is naming the
+moments — a run starting, a conversation ending, a wait, an ask that is about to
+take the screen, a run stopping — and reading the counts it hands over from
+`state.json` rather than from a tally of its own.
 """
 
 import re
@@ -58,10 +66,11 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal
 
-from dataporter import PROGRAM_NAME, log, render, state, summary
+from dataporter import PROGRAM_NAME, log, render, state
 from dataporter import intervention as intervening
+from dataporter import progress as reporting
 from dataporter import seed as seeding
 from dataporter import verify as verifying
 from dataporter.browser import helpers as browser_helpers
@@ -693,69 +702,8 @@ class LoginTimedOut(Exception):
 
 
 # --------------------------------------------------------------------------- #
-# What a run says while it runs
+# What a run comes back with — what it says while it runs is `progress.py`
 # --------------------------------------------------------------------------- #
-
-
-class Progress(Protocol):
-    """Where a run's progress goes. `18` implements the §10 block against this."""
-
-    def conversation(
-        self, short_id: str, status: Status, counts: Mapping[str, int]
-    ) -> None: ...
-
-    def waiting(self, seconds: float, reason: str) -> None:
-        """A wait the run is about to make: `13`'s backoff, `15`'s rate limit."""
-        ...
-
-    def stopping(self, failures: int, category: Category) -> None:
-        """`13`'s circuit breaker, ending the run before the selection does."""
-        ...
-
-    def finish(self, counts: Mapping[str, int]) -> None: ...
-
-
-@dataclass(frozen=True)
-class LineProgress:
-    """Until `18`: one line per conversation, then the counters block.
-
-    The line is `18`'s non-TTY event line without its detail column, and the
-    final block is `06`'s, which is §10's four counters. Neither carries a title
-    or a message — the short id is a uuid's first eight characters and the rest
-    are numbers.
-    """
-
-    quiet: bool = False
-
-    def conversation(
-        self, short_id: str, status: Status, counts: Mapping[str, int]
-    ) -> None:
-        if self.quiet:
-            return
-        done = counts["total"] - counts["pending"]
-        print(f"{short_id}  {status}  ({done}/{counts['total']})")
-
-    def waiting(self, seconds: float, reason: str) -> None:
-        """`waiting 120s (retry 2/3, generation)`, as `13` writes it.
-
-        Progress, so `-q` suppresses it — but it is the reason the line exists:
-        a run that is quiet because it is waiting has to look different from one
-        that is quiet because it is stuck, at every verbosity that prints
-        anything at all.
-        """
-        if self.quiet:
-            return
-        print(f"waiting {seconds:g}s ({reason})")
-
-    def stopping(self, failures: int, category: Category) -> None:
-        """`13`'s stop line. Printed under `--quiet` for the reason `finish` is:
-        it is not a report of progress, it is what became of the run."""
-        print(f"stopping: {failures} consecutive failures ({category}) — see report")
-
-    def finish(self, counts: Mapping[str, int]) -> None:
-        # Printed under `--quiet` for the reason `status` is: `-q` suppresses
-        # progress, and this is what the run amounts to.
-        print("".join(f"{line}\n" for line in summary.counters_lines(counts)), end="")
 
 
 @dataclass(frozen=True)
@@ -793,12 +741,14 @@ class Importer:
         self,
         settings: Settings,
         *,
-        progress: Progress | None = None,
+        progress: reporting.Progress | None = None,
         intervention: intervening.Intervention | None = None,
         force_unlock: bool = False,
     ) -> None:
         self.settings = settings
-        self.progress: Progress = progress if progress is not None else LineProgress()
+        self.progress: reporting.Progress = (
+            progress if progress is not None else reporting.Reporter()
+        )
         self.intervention: intervening.Intervention = (
             intervention if intervention is not None else intervening.Console()
         )
@@ -1072,6 +1022,10 @@ class Importer:
         """
         migratable = {item.uuid for item in plan.conversations if item.migratable}
         of = len(chosen) + offset if total is None else total
+        # §10's header, from the workspace rather than from this selection: the
+        # count is every conversation the plan found, and the block under it
+        # starts at whatever earlier runs already finished (`18`).
+        self.progress.start(state.status_counts(self.store.load()))
         outcomes: dict[str, Status] = {}
         streak = FailureStreak()
         stopped = False
@@ -1111,8 +1065,14 @@ class Importer:
                 status = self.store.load()[uuid].status
                 streak.reset()
             outcomes[uuid] = status
-            counts = state.status_counts(self.store.load())
-            self.progress.conversation(render.short_id(uuid), status, counts)
+            current = self.store.load()
+            counts = state.status_counts(current)
+            # The entry's own error rather than the attempt's: a `partial` this
+            # run wrote and a `failed` `--retry-failed` re-read are the same
+            # line, and §7's record is what `19` will report either way.
+            self.progress.conversation(
+                render.short_id(uuid), status, counts, current[uuid].error
+            )
             tripped = streak.tripped(self.settings.run.stop_after_consecutive_failures)
             if tripped is not None:
                 self._stop(streak.count, tripped)
@@ -1793,16 +1753,24 @@ class Importer:
             if request.reason == intervening.AUTH_REQUIRED
             else None
         )
-        while True:
-            if not acted and not self.intervention.ask(request):
-                return False
-            if request.reason != intervening.AUTH_REQUIRED or self._signed_in():
-                return True
-            if deadline is not None and time.monotonic() >= deadline:
-                raise LoginTimedOut
-            if not self.intervention.retry(intervening.STILL_NOT_LOGGED_IN):
-                return False
-            acted = True
+        # The ask is printed where `18`'s block redraws itself, so the block
+        # stands aside for it and is drawn again underneath — however this
+        # returns, and including the paths that end the run: a person reading a
+        # stopped terminal is owed the numbers it stopped at.
+        self.progress.interrupted()
+        try:
+            while True:
+                if not acted and not self.intervention.ask(request):
+                    return False
+                if request.reason != intervening.AUTH_REQUIRED or self._signed_in():
+                    return True
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise LoginTimedOut
+                if not self.intervention.retry(intervening.STILL_NOT_LOGGED_IN):
+                    return False
+                acted = True
+        finally:
+            self.progress.resumed()
 
     def _note_login_timeout(self) -> None:
         """Say why the run stopped on an ask it had been answering (`15`)."""

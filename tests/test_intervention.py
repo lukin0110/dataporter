@@ -744,7 +744,9 @@ def test_import_exits_5_and_resume_finishes_the_run(
     )
 
     assert paused.exit_code == ExitCode.PAUSED
-    assert paused.stdout.startswith("Human intervention required\n")
+    # `18`'s header, then `14`'s ask underneath it.
+    assert paused.stdout.startswith("Claude migration\n")
+    assert "\nHuman intervention required\n" in paused.stdout
 
     resumed = runner.invoke(cli.app, ["resume"], catch_exceptions=False)
 

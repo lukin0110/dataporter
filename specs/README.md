@@ -131,7 +131,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [15](impl/15-pacing.md) | Pacing and limits | §13 | Done |
 | [16](impl/16-attachments.md) | Attachments | §14 | Done |
 | [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Done |
-| [18](impl/18-progress-output.md) | Progress output | §10 | Not started |
+| [18](impl/18-progress-output.md) | Progress output | §10 | Done |
 | [19](impl/19-report.md) | Report | §16 | Not started |
 | [20](impl/20-pilot.md) | Pilot experiment | §18 | Not started |
 | [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | Not started |

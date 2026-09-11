@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §10
 **Depends on:** [06](06-migration-state.md), [12](12-import-loop.md)
 **Enables:** [19](19-report.md)
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -58,6 +58,8 @@ when piped — with no conversation content, ever.
   shipped it without the bar — one that is drawn once is a picture of a number the line
   under it already gives — and owns `summary.counters_lines`; whether `status` grows a
   bar here is this slice's call, and the header and redraw are this slice's either way.
+  **Settled: it does not.** `06`'s reason still holds, and a `status` that printed a bar
+  would be a second block to keep in step with §10's for no question it answers.
 - Counters are read from `state.json` on every redraw, so a resumed run continues from
   its real numbers instead of restarting at zero.
 
@@ -71,6 +73,29 @@ when piped — with no conversation content, ever.
   reproduces it exactly, including `91/127` → 14 filled cells.
 - Waits get their own visible line because §13 makes the run slow on purpose; a silent
   two-minute gap would look like a hang.
+- `progress.py` owns the strings and the two modes; `12`'s `Progress` protocol moved
+  there with them, the way `14`'s `Intervention` lives beside `Console`. The loop names
+  moments and hands over counts; nothing in `importer.py` formats a line any more.
+- The protocol grew three methods and one argument, and each is a thing only the loop
+  knows: `start` (the header, once, from the entries `12` writes before the first
+  conversation), `interrupted`/`resumed` (`14` is about to print where the redraw would
+  land, and has finished), and the entry's own `ErrorRecord` on `conversation`, which is
+  what the detail column renders. The pair redraws the *same* numbers — the conversation
+  that paused is still running — so a resumed block cannot disagree with the one the ask
+  scrolled up.
+- Status padded to 10 with a single space after it is what reproduces both of the spec's
+  example lines; the detail column is `{category}: {detail}`, folded to one line and cut
+  at 60 characters. `19` prints the whole record from `state.json`; a terminal gets as
+  much of it as fits on a line, and an unbounded string from Hermes cannot break the one
+  thing the redraw depends on — that the block is exactly six lines high.
+- `--quiet` prints no header. §10's rule is that `-q` keeps the final block, and a run
+  that announces itself and then says nothing for an hour is not what `-q` was asked for
+  — `13`'s stop line and the block (bar included) are what a quiet run says.
+- The wait line is rubbed out by the next thing drawn rather than by the wait ending.
+  The loop announces a wait before sleeping through it (`12`'s shape, kept), so "the
+  wait is over" is not a moment anything reports; what an operator must never see is the
+  line still there under a block that has moved on, and clearing it inside the draw is
+  what guarantees that.
 
 ## Acceptance criteria
 
