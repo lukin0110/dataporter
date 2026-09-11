@@ -524,6 +524,95 @@ def test_a_browser_that_cannot_come_back_ends_the_run(
     assert not (world.settings.workspace / state.LOCK_FILENAME).exists()
 
 
+class AfterOne:
+    """A progress sink that kills the browser once, after the first conversation.
+
+    The `_ensure_browser` path only exists for a Chrome that went away between
+    conversations, and this is how a test arranges one.
+    """
+
+    def __init__(self, world: World) -> None:
+        self.seen: list[str] = []
+        self.world = world
+
+    def conversation(
+        self, short_id: str, status: Status, counts: Mapping[str, int]
+    ) -> None:
+        self.seen.append(short_id)
+        if len(self.seen) == 1:
+            self.world.browser.chrome.stop()
+
+    def finish(self, counts: Mapping[str, int]) -> None:
+        pass
+
+
+def replacement(
+    monkeypatch: pytest.MonkeyPatch, world: World, browser: Browser
+) -> None:
+    """Launch the world's browser first, then `browser` for every relaunch."""
+    launched = 0
+
+    def launch(settings: Settings, url: str) -> launcher.BrowserSession:
+        nonlocal launched
+        launched += 1
+        port = world.browser.chrome.port if launched == 1 else browser.chrome.port
+        return launcher.BrowserSession(
+            client=CdpClient(port=port, timeout=2.0),
+            profile=settings.browser_profile_dir,
+            adopted=True,
+        )
+
+    monkeypatch.setattr(launcher, "launch", launch)
+
+
+def test_a_relaunched_browser_is_put_through_the_preflight_checks(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Chrome restarted over our profile can restore the tabs it had open, so
+    the tab it leaves us with is as unproven as a freshly launched one's."""
+    came_back = Browser(
+        FakePage(url=NEW_URL, composer=""), FakePage(url="about:blank", composer=None)
+    )
+    came_back.__enter__()
+    replacement(monkeypatch, world, came_back)
+    progress = AfterOne(world)
+
+    try:
+        summary = world.importer(progress=progress).run(
+            world.export, state.Selection(limit=2)
+        )
+        # The blank tab the replacement came back with is gone: `close-extra-tabs`
+        # ran on it, exactly as the preflight would have.
+        assert [target.url for target in came_back.chrome.targets] == [NEW_URL]
+    finally:
+        came_back.chrome.stop()
+
+    assert summary.exit_code is ExitCode.OK
+    assert progress.seen == ["aa000001", "bb000002"]
+
+
+def test_a_relaunched_browser_that_is_signed_out_ends_the_run(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exit `3` wherever it is noticed: every conversation left would fail the
+    same way, and `14` is where this becomes a pause instead."""
+    came_back = Browser(FakePage(url=NEW_URL, composer=None))
+    came_back.__enter__()
+    replacement(monkeypatch, world, came_back)
+
+    try:
+        with pytest.raises(AuthError):
+            world.importer(progress=AfterOne(world)).run(
+                world.export, state.Selection(limit=2)
+            )
+    finally:
+        came_back.chrome.stop()
+
+    assert world.entry(FIRST).status is Status.COMPLETED
+    assert world.entry(LONG).status is Status.PENDING  # never started
+    assert len(world.hermes.one_shots) == 1
+
+
 def test_a_browser_the_run_started_is_closed_on_the_way_out(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
