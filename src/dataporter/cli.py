@@ -12,7 +12,7 @@ the progress block and `08`'s helpers print exactly one JSON object there.
 
 import importlib.metadata
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
@@ -23,6 +23,7 @@ from typer.core import TyperGroup
 from dataporter import log, state, summary
 from dataporter import seed as seeding
 from dataporter.browser import cdp, launcher, probe
+from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import session as browser_session
 from dataporter.config import ConfigError, Settings, load_settings, with_attachments_dir
 from dataporter.errors import BrowserError, ExportError
@@ -644,31 +645,140 @@ def session_logout(ctx: typer.Context) -> None:
     )
 
 
+# --------------------------------------------------------------------------- #
+# The browser helpers Hermes calls (`08`)
+# --------------------------------------------------------------------------- #
+
+TargetOption = Annotated[
+    str | None,
+    typer.Option(
+        "--target",
+        metavar="ID",
+        help="Drive this CDP target instead of the only claude.ai tab.",
+    ),
+]
+ExpectOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--expect",
+        metavar="TEXT",
+        help="Report whether the last message contains TEXT. Repeatable.",
+    ),
+]
+
+
+def emit_helper(
+    ctx: typer.Context,
+    name: str,
+    work: Callable[[cdp.CdpClient, Settings], browser_helpers.Outcome],
+) -> NoReturn:
+    """Run one helper, print its object and exit with its code.
+
+    One `print` and nothing else on stdout, ever: Hermes parses the line, and
+    `19` reads the workspace. Diagnostics go to stderr under `--verbose` like
+    everywhere else, and are suppressed by default here for the same reason
+    `--quiet` cannot suppress this line — the object *is* the result.
+    """
+    emission = browser_helpers.run(app_context(ctx).settings, name, work)
+    print(emission.text)
+    raise typer.Exit(emission.exit_code)
+
+
 @browser_app.command("probe")
-def browser_probe(ctx: typer.Context) -> None:
+def browser_probe(
+    ctx: typer.Context, target: TargetOption = None, expect: ExpectOption = None
+) -> None:
     """Report the current page state as JSON."""
-    not_implemented(ctx)
+    emit_helper(
+        ctx,
+        "probe",
+        lambda client, settings: browser_helpers.probe_page(
+            client, settings, target=target, expect=tuple(expect or ())
+        ),
+    )
 
 
 @browser_app.command("paste")
-def browser_paste(ctx: typer.Context) -> None:
+def browser_paste(
+    ctx: typer.Context,
+    seed: Annotated[
+        Path,
+        typer.Option("--seed", metavar="PATH", help="The seed part to insert."),
+    ],
+    method: Annotated[
+        browser_helpers.PasteMethod,
+        typer.Option("--method", help="How to insert the text."),
+    ] = browser_helpers.PasteMethod.INSERT_TEXT,
+    append: Annotated[
+        bool,
+        typer.Option("--append", help="Insert after what the composer holds."),
+    ] = False,
+    target: TargetOption = None,
+) -> None:
     """Insert a seed into the composer byte for byte."""
-    not_implemented(ctx)
+    emit_helper(
+        ctx,
+        "paste",
+        lambda client, settings: browser_helpers.paste_seed(
+            client, settings, seed=seed, method=method, append=append, target=target
+        ),
+    )
 
 
 @browser_app.command("attach")
-def browser_attach(ctx: typer.Context) -> None:
+def browser_attach(
+    ctx: typer.Context,
+    file: Annotated[
+        Path,
+        typer.Option("--file", metavar="PATH", help="The file to upload."),
+    ],
+    target: TargetOption = None,
+) -> None:
     """Upload a file through the composer."""
-    not_implemented(ctx)
+    emit_helper(
+        ctx,
+        "attach",
+        lambda client, settings: browser_helpers.attach_file(
+            client, settings, file=file, target=target
+        ),
+    )
 
 
 @browser_app.command("await-response")
-def browser_await_response(ctx: typer.Context) -> None:
+def browser_await_response(
+    ctx: typer.Context,
+    timeout: Annotated[
+        float | None,
+        typer.Option(
+            "--timeout",
+            metavar="S",
+            # Not a literal default, for the reason `--limit` is not one: the
+            # configured value is the default, and it is configurable.
+            help="Seconds to wait. Defaults to the configured response timeout.",
+        ),
+    ] = None,
+    expect: ExpectOption = None,
+    target: TargetOption = None,
+) -> None:
     """Wait until generation completes."""
-    not_implemented(ctx)
+    emit_helper(
+        ctx,
+        "await-response",
+        lambda client, settings: browser_helpers.await_response(
+            client,
+            settings,
+            timeout=timeout,
+            expect=tuple(expect or ()),
+            target=target,
+        ),
+    )
 
 
 @browser_app.command("close-extra-tabs")
 def browser_close_extra_tabs(ctx: typer.Context) -> None:
     """Close every tab but the one being driven."""
-    not_implemented(ctx)
+    emit_helper(
+        ctx,
+        "close-extra-tabs",
+        lambda client, settings: browser_helpers.close_extra_tabs(client, settings),
+    )

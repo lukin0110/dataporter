@@ -1,10 +1,73 @@
 <!doctype html>
 <!-- A stand-in for claude.ai/new: an empty composer, a Send button that is not
-     yet enabled, and a hidden file input like the one `08` uploads through. -->
+     yet enabled, and a hidden file input like the one `08` uploads through.
+
+     The composer is ProseMirror-like on purpose. A bare `contenteditable`
+     div is not what claude.ai has: Chrome's own editing turns a blank line
+     into `<div><br></div>`, whose `innerText` reports two line breaks where
+     one was typed, and collapses leading spaces unless the element says not
+     to. A real editor keeps a paragraph per line and sets `white-space:
+     pre-wrap`, so `08`'s paste comes back byte for byte — and a fixture that
+     did otherwise would be testing Chrome's default editor rather than ours.
+
+     The file input grows a chip for each file it is given, because that chip
+     is what `08`'s `attach` waits for rather than trusting the CDP call. -->
 <meta charset="utf-8">
 <title>New chat</title>
+<style>
+  /* `pre-wrap` so that `innerText` reports the spaces that were typed, and a
+     paragraph with no margin so that it reports one line break per line and
+     not the two an unstyled `<p>` is worth. Both are what ProseMirror sets. */
+  div[contenteditable="true"] { white-space: pre-wrap; }
+  div[contenteditable="true"] p { margin: 0; }
+</style>
 <main>
-  <div contenteditable="true" role="textbox" aria-label="Write your prompt"></div>
+  <!-- Empty, and shaped the way an empty ProseMirror document is: one
+       paragraph holding a `<br>`. Its `innerText` is a line break, which is
+       why `probe` counts a composer with `blockText` and not with
+       `innerText` — otherwise a new chat would read as "not empty" and
+       `08`'s paste would refuse it. -->
+  <div contenteditable="true" role="textbox" aria-label="Write your prompt"><p><br></p></div>
   <input type="file" style="display: none">
   <button aria-label="Send message" disabled>Send</button>
+  <div id="attachments"></div>
 </main>
+<script>
+  const composer = document.querySelector('div[contenteditable="true"]');
+
+  const currentText = () =>
+    composer.children.length === 0
+      ? composer.textContent
+      : Array.prototype.map
+          .call(composer.children, (line) => line.textContent)
+          .join('\n');
+
+  const render = (text) => {
+    composer.textContent = '';
+    for (const line of text.split('\n')) {
+      const paragraph = document.createElement('p');
+      if (line === '') {
+        paragraph.appendChild(document.createElement('br'));
+      } else {
+        paragraph.textContent = line;
+      }
+      composer.appendChild(paragraph);
+    }
+  };
+
+  composer.addEventListener('beforeinput', (event) => {
+    if (event.inputType !== 'insertText' || event.data === null) return;
+    event.preventDefault();
+    render(currentText() + event.data);
+  });
+
+  document.querySelector('input[type="file"]').addEventListener('change', (event) => {
+    const chips = document.getElementById('attachments');
+    for (const file of event.target.files) {
+      const chip = document.createElement('div');
+      chip.className = 'attachment-chip';
+      chip.textContent = file.name;
+      chips.appendChild(chip);
+    }
+  });
+</script>

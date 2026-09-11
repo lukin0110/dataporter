@@ -1,11 +1,12 @@
 <!doctype html>
 <!-- A stand-in for a chat mid-generation: the Send button has been replaced by
-     a Stop button, which is the signal `probe.generating` reads. -->
+     a Stop button, which is the signal `probe.generating` reads. It never
+     stops, which is how `08`'s `await-response` timeout is tested. -->
 <meta charset="utf-8">
 <title>Migrated conversation</title>
 <main>
   <div data-testid="conversation">
-    <div data-role="human">Hello there</div>
+    <div data-testid="user-message">Hello there</div>
   </div>
   <div contenteditable="true" role="textbox" aria-label="Write your prompt"></div>
   <button aria-label="Stop response">Stop</button>

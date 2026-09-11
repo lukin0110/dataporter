@@ -58,7 +58,7 @@ stores a password.
   | `url`, `kind` | `kind` = `login` if path starts `/login`; `new_chat` if path is `/new` or `/`; `chat` if `/chat/<uuid>`; else `other` |
   | `logged_in` | `kind != login` and `composer_present` |
   | `composer_present` | `document.querySelector('div[contenteditable="true"]')` is non-null and visible |
-  | `composer_chars` | `innerText.length` of that element |
+  | `composer_chars` | the length of that element's text. **Refined by `08`:** one line per block child rather than `innerText`, which is worth two line breaks at a `<p>` boundary and would count an empty ProseMirror composer as one character |
   | `generating` | a button whose `aria-label` contains `Stop` is present and visible |
   | `send_enabled` | a button whose `aria-label` contains `Send` is present and not disabled |
   | `dialogs` | `javascript:<kind>` per CDP `Page.javascriptDialogOpening` not yet matched by a `…Closed`, plus `dom` per visible `[role=dialog]`. Kinds only: the message is page text |

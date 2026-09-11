@@ -16,7 +16,7 @@ sections (`browser`, `hermes`, `pacing`, `retries`, `timeouts`, `fidelity`) as
 nested models; nothing here needs to change for them. `03` is the first to do it,
 adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS` and
 a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
-`run`; `07` adds `browser` and `timeouts`.
+`run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`.
 """
 
 import os
@@ -136,10 +136,7 @@ class BrowserSettings(BaseModel):
 
 
 class TimeoutSettings(BaseModel):
-    """How long each wait is allowed to take, in seconds.
-
-    `07` needs three; `08` adds `attach_s` and `response_s` when it lands.
-    """
+    """How long each wait is allowed to take, in seconds."""
 
     browser_start_s: float = 30.0
     """From spawning the browser to its debug port answering."""
@@ -150,6 +147,21 @@ class TimeoutSettings(BaseModel):
     login_s: float = 600.0
     """How long `login` waits for the operator to sign in. Ten minutes: it covers
     a password manager, an email code and a second factor without hurrying."""
+
+    attach_s: float = 60.0
+    """How long `browser attach` waits for the attachment chip to appear (`08`).
+
+    An upload that claude.ai is still processing has not failed yet, and a minute
+    covers the largest file `attachments.max_bytes` allows on a slow link.
+    """
+
+    response_s: float = 300.0
+    """How long `browser await-response` waits for generation to finish (`08`).
+
+    Five minutes: a seed is tens of kilobytes and the reply to it is a short
+    acknowledgement, but the destination account may be busy. `15` owns what
+    happens after the wait runs out.
+    """
 
 
 class RunSettings(BaseModel):
