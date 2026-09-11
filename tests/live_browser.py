@@ -13,6 +13,7 @@ both test modules ask for it the same way.
 import os
 import shutil
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -79,3 +80,28 @@ def live_browser() -> Iterator[tuple[launcher.BrowserSession, PageServer]]:
                 yield session, server
             finally:
                 session.close()
+
+
+def visit(session: launcher.BrowserSession, url: str) -> None:
+    """Leave the browser with exactly one tab, on `url`, finished loading.
+
+    Exactly one, because that is the state the helpers are specified against:
+    a second tab is `ambiguous_tab`, which is a different test.
+    """
+    tabs = session.client.pages()
+    for extra in tabs[1:]:
+        session.client.close_target(extra.id)
+    page = session.client.attach(tabs[0].id)
+    try:
+        page.navigate(url)
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            if (
+                page.evaluate("document.readyState") == "complete"
+                and page.evaluate("location.href") == url
+            ):
+                return
+            time.sleep(0.05)
+        raise AssertionError(f"{url} never finished loading")  # pragma: no cover
+    finally:
+        page.close()
