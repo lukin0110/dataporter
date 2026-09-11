@@ -350,6 +350,17 @@ def test_a_report_with_no_failures_has_no_failures_section(tmp_path: Path) -> No
     assert report.FAILURES_HEADER not in report.render(built)
 
 
+def test_both_sections_are_safe_to_render_from_nothing() -> None:
+    """No section rather than an empty one, and no exception either way.
+
+    Raised by Copilot in review on #28: `render` guards both calls, but these
+    are the module's public renderers and a `max()` over an empty list is not
+    the answer "there are none".
+    """
+    assert report.failure_lines([]) == []
+    assert report.limitation_lines({}) == []
+
+
 # --------------------------------------------------------------------------- #
 # Acceptance: the same bytes twice, and through JSON
 # --------------------------------------------------------------------------- #
@@ -663,6 +674,23 @@ def test_report_without_a_plan_exits_2(runner: CliRunner, tmp_path: Path) -> Non
     assert code == ExitCode.USAGE
     assert err == f"error: no plan.json in {tmp_path} — run `import` first\n"
     assert out == ""
+
+
+def test_a_plan_that_cannot_be_read_is_not_reported_as_a_missing_one(
+    tmp_path: Path,
+) -> None:
+    """Raised by Copilot in review on #28: only `FileNotFoundError` means "no
+    run has been made here". Anything else is a filesystem problem, and telling
+    an operator to run `import` would send them at the same file."""
+    workspace_of(tmp_path)
+    path = tmp_path / PLAN_FILENAME
+    path.unlink()
+    path.mkdir()
+
+    with pytest.raises(state.StateError) as raised:
+        report.build(tmp_path)
+
+    assert str(raised.value).startswith(f"cannot read {path}: ")
 
 
 def test_an_unreadable_plan_is_reported_as_one(tmp_path: Path) -> None:
