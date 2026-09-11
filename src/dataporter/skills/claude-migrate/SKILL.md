@@ -176,7 +176,7 @@ Every failure this migration can meet has a row below: how you notice it, the on
 recovery you may attempt inside the run, and what to report when that recovery
 does not work. Nothing is handled by waiting and hoping.
 
-Three rules bound the whole table:
+Four rules bound the whole table:
 
 - **One recovery per step.** If the recovery does not make that step's
   verification pass, stop and report. A conversation that spends a run retrying
