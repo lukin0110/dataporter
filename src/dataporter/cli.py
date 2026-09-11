@@ -33,6 +33,7 @@ from dataporter.config import (
     load_settings,
     with_attachments_dir,
     with_pacing,
+    with_skip_attachments,
 )
 from dataporter.errors import AuthError, BrowserError, ExportError, HermesError
 from dataporter.exit_codes import ExitCode
@@ -405,6 +406,7 @@ def selection_for(
     retry_failed: bool = False,
     retry_partial: bool = False,
     force: bool = False,
+    skip_attachments: bool = False,
 ) -> state.Selection:
     """The flags, as the record `06` selects from and `run.json` keeps.
 
@@ -433,6 +435,7 @@ def selection_for(
         retry_failed=retry_failed,
         retry_partial=retry_partial,
         force=force,
+        skip_attachments=skip_attachments,
     )
 
 
@@ -442,6 +445,7 @@ def plan_for(
     *,
     uuids: Sequence[str] | None = None,
     attachments_dir: Path | None = None,
+    skip_attachments: bool = False,
 ) -> MigrationPlan:
     """Classify a parsed export, or the part of it a selection kept.
 
@@ -450,7 +454,10 @@ def plan_for(
     contain. The fingerprint stays the export's: it identifies the file, not the
     subset of it somebody asked about.
     """
-    settings = with_attachments_dir(app_context(ctx).settings, attachments_dir)
+    settings = with_skip_attachments(
+        with_attachments_dir(app_context(ctx).settings, attachments_dir),
+        skip_attachments,
+    )
     conversations = (
         list(export.conversations)
         if uuids is None
@@ -554,10 +561,11 @@ def import_cmd(
             # ordinary selection instead would migrate a different set of
             # conversations than the one an operator asked for.
             not_implemented(ctx, "--pilot")
-        # `--skip-attachments` is accepted and inert: nothing uploads anything
-        # until `16`, so it already describes what happens.
         settings = with_pacing(
-            with_attachments_dir(context.settings, attachments_dir),
+            with_skip_attachments(
+                with_attachments_dir(context.settings, attachments_dir),
+                skip_attachments,
+            ),
             delay=delay,
             max_retries=max_retries,
             timeout=timeout,
@@ -577,6 +585,7 @@ def import_cmd(
                 retry_failed=retry_failed,
                 retry_partial=retry_partial,
                 force=force,
+                skip_attachments=skip_attachments,
             ),
         )
         raise typer.Exit(outcome.exit_code)
@@ -601,13 +610,20 @@ def import_cmd(
             retry_failed=retry_failed,
             retry_partial=retry_partial,
             force=force,
+            skip_attachments=skip_attachments,
         ),
     )
     if not chosen:
         # `06`'s rule, and the one `seeds` already follows: an empty selection is
         # exit `4`, not a block of zeros that reads like a finished run.
         raise typer.Exit(ExitCode.NOTHING_TO_DO)
-    plan = plan_for(ctx, parsed, uuids=chosen, attachments_dir=attachments_dir)
+    plan = plan_for(
+        ctx,
+        parsed,
+        uuids=chosen,
+        attachments_dir=attachments_dir,
+        skip_attachments=skip_attachments,
+    )
     # Printed even under `--quiet`: `-q` suppresses progress, and this block is
     # the command's whole result rather than a report of its progress.
     print(summary.dry_run_report(plan.totals), end="")
@@ -920,6 +936,29 @@ def browser_attach(
         "attach",
         lambda client, settings: browser_helpers.attach_file(
             client, settings, file=file, target=target
+        ),
+    )
+
+
+@browser_app.command("attachments")
+def browser_attachments(
+    ctx: typer.Context,
+    file: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--file",
+            metavar="PATH",
+            help="A file that must have a chip. Repeatable.",
+        ),
+    ] = None,
+    target: TargetOption = None,
+) -> None:
+    """Check that every named file is attached to the message being composed."""
+    emit_helper(
+        ctx,
+        "attachments",
+        lambda client, settings: browser_helpers.attached_files(
+            client, settings, files=tuple(file or ()), target=target
         ),
     )
 

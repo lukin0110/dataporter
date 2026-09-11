@@ -561,6 +561,66 @@ def test_attach_reports_the_tab_it_could_not_choose(tmp_path: Path) -> None:
     assert outcome.result.error == "ambiguous_tab"
 
 
+# -- attachments ------------------------------------------------------------- #
+
+
+def test_attachments_finds_every_chip_in_one_look(tmp_path: Path) -> None:
+    """`16`'s check before the first paste: all of them, at one moment."""
+    files = [_any_file(tmp_path, "notes.txt"), _any_file(tmp_path, "chart.png")]
+    with Browser(
+        FakePage(url=CHAT_URL, uploaded=["notes.txt", "chart.png"])
+    ) as browser:
+        outcome = helpers.attached_files(
+            browser.client, browser.settings(tmp_path), files=files
+        )
+        # One evaluate for the chips, not one per file: a chip that appeared
+        # between two round trips would describe a page that never existed.
+        expressions = [
+            str(call.params.get("expression", "")) for call in browser.chrome.calls
+        ]
+        assert sum(helpers.CHIPS_TAG in item for item in expressions) == 1
+    result = outcome.result
+    assert isinstance(result, helpers.ChipsResult)
+    assert result.file_names == ("notes.txt", "chart.png")
+    assert result.count == 2
+    assert outcome.conversation_id == CHAT_ID
+
+
+def test_attachments_names_the_file_with_no_chip(tmp_path: Path) -> None:
+    files = [_any_file(tmp_path, "notes.txt"), _any_file(tmp_path, "chart.png")]
+    with Browser(FakePage(url=CHAT_URL, uploaded=["notes.txt"])) as browser:
+        outcome = helpers.attached_files(
+            browser.client, browser.settings(tmp_path), files=files
+        )
+    assert isinstance(outcome.result, helpers.Failure)
+    assert outcome.result.error == "chip_not_found"
+    assert outcome.result.detail == "chart.png"
+
+
+def test_attachments_reports_the_tab_it_could_not_choose(tmp_path: Path) -> None:
+    with Browser(FakePage(url=NEW_URL), FakePage(url=NEW_URL)) as browser:
+        outcome = helpers.attached_files(
+            browser.client,
+            browser.settings(tmp_path),
+            files=[_any_file(tmp_path)],
+        )
+    assert isinstance(outcome.result, helpers.Failure)
+    assert outcome.result.error == "ambiguous_tab"
+
+
+def test_attachments_with_no_files_asks_the_page_nothing(tmp_path: Path) -> None:
+    """A conversation with no attachments asks a question with a true answer."""
+    with Browser(FakePage(url=CHAT_URL)) as browser:
+        outcome = helpers.attached_files(
+            browser.client, browser.settings(tmp_path), files=[]
+        )
+        assert browser.chrome.calls == []
+    result = outcome.result
+    assert isinstance(result, helpers.ChipsResult)
+    assert result.count == 0
+    assert outcome.exit_code == ExitCode.OK
+
+
 # -- await-response ---------------------------------------------------------- #
 
 
@@ -879,6 +939,24 @@ def test_browser_attach_prints_the_file_and_its_size(
         "ok": True,
         "file_name": "notes.txt",
         "bytes": 5,
+    }
+
+
+def test_browser_attachments_prints_what_the_composer_carries(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with Browser(FakePage(url=CHAT_URL, uploaded=["notes.txt"])) as browser:
+        adoptable(browser, tmp_path, monkeypatch)
+        result = runner.invoke(
+            cli.app,
+            ["browser", "attachments", "--file", str(_any_file(tmp_path))],
+            catch_exceptions=False,
+        )
+    assert result.exit_code == ExitCode.OK
+    assert json.loads(result.stdout) == {
+        "ok": True,
+        "file_names": ["notes.txt"],
+        "count": 1,
     }
 
 

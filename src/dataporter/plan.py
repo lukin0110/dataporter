@@ -7,12 +7,14 @@ numbers, the progress block's numbers and the report's numbers the same numbers.
 Determinism is the property to protect: the same export and the same settings must
 produce byte-identical `plan.json`. Everything here iterates in export order, and
 the only observation of the outside world is whether a named file exists under the
-attachments directory and how large it is.
+attachments directory, how large it is, and — since `16` uploads one file once
+however many messages named it — what its bytes hash to.
 
 Nothing in this module may log content. `file_name` is safe; a title, a message or
 a rendered seed is not (`log.FORBIDDEN_FIELDS`).
 """
 
+import hashlib
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Literal
@@ -41,6 +43,19 @@ TYPE_NOT_ACCEPTED = "type_not_accepted"
 BYTES_NOT_IN_EXPORT = "bytes_not_in_export"
 TOO_LARGE = "too_large"
 TOO_MANY_FOR_CHAT = "too_many_for_chat"
+SKIPPED_BY_FLAG = "skipped_by_flag"
+"""`16`'s `--skip-attachments`: a class 2 entry nobody is going to upload.
+
+A reason of its own rather than one of the four above, because §14's question
+about an attachment the report has to answer is "why is it not in the new chat",
+and "the operator asked for that" is a different answer from "we do not have the
+bytes". `19` is what tells the two apart in the report.
+"""
+
+DIGEST_CHUNK = 1 << 20
+"""How much of a file is hashed at a time. `attachments.max_bytes` is thirty
+megabytes by default and the digest is taken during planning, so the file is read
+a megabyte at a time rather than into memory whole."""
 
 _MIME_EXTENSIONS = {
     "application/json": "json",
@@ -105,6 +120,21 @@ class AttachmentPlan(PlanModel):
     """Why it is unsupported. Always set when `klass == "unsupported"`."""
     source_path: Path | None = None
     """Where the bytes are. Set only when `klass == "upload"`."""
+    sha256: str | None = None
+    """Of the bytes at `source_path`. Set only when `klass == "upload"`.
+
+    What `16` deduplicates on: one chat uploads one file once, however many
+    messages of the conversation referred to it.
+    """
+    duplicate_of: str | None = None
+    """The file name this entry's bytes were already planned under, earlier in
+    the same conversation. `None` for the entry that is actually uploaded.
+
+    An entry with this set is still `upload`: the file *is* in the chat, as one
+    chip, and the message this entry belongs to refers to that chip. It is what
+    keeps the upload list one file long while the report still accounts for both
+    references (`19`).
+    """
 
 
 class ConversationPlan(PlanModel):
@@ -279,33 +309,50 @@ class Planner:
         carry content — `plan.json` reaches `19` and a report is not the place for
         the contents of someone's spreadsheet.
 
-        The `max_per_chat` cap is applied last, across the whole conversation: it
-        is a limit on one chat's uploads, not on one message's, and only `upload`
-        entries consume it — an inline attachment is text in the seed and never
-        touches the file picker.
+        Three conversation-wide rules are applied here rather than in
+        `_classify`, because each is about the chat and not about the file:
+
+        - `--skip-attachments` (`16`) turns every class 2 entry into class 3 with
+          the reason `skipped_by_flag`, before either rule below sees it: a file
+          nobody will upload consumes no cap and deduplicates against nothing.
+        - **Identical bytes are uploaded once.** The second entry whose sha256 has
+          already been planned keeps `upload` and points at the first one's name,
+          so the seed refers to the chip that will exist rather than to a second
+          one that will not.
+        - The `max_per_chat` cap is applied last: it is a limit on one chat's
+          uploads, not on one message's, and only `upload` entries that are
+          really uploaded consume it — an inline attachment is text in the seed
+          and never touches the file picker, and a duplicate is a file already
+          counted.
         """
         out: list[AttachmentPlan] = []
         by_message: dict[str, list[render.AttachmentRender]] = {}
+        planned: dict[str, str] = {}
+        """sha256 → the file name it was first planned under."""
         uploads = 0
         limit = self._settings.attachments.max_per_chat
         for message in messages:
             for entry in _distinct(message):
                 item = self._classify(conversation, message, entry)
                 if item.klass == "upload":
-                    if uploads >= limit:
+                    if self._settings.attachments.skip:
+                        item = _refused(item, SKIPPED_BY_FLAG)
+                    elif item.sha256 in planned:
                         item = item.model_copy(
-                            update={
-                                "klass": "unsupported",
-                                "reason": TOO_MANY_FOR_CHAT,
-                                "source_path": None,
-                            }
+                            update={"duplicate_of": planned[item.sha256 or ""]}
                         )
+                    elif uploads >= limit:
+                        item = _refused(item, TOO_MANY_FOR_CHAT)
                     else:
                         uploads += 1
+                        planned[item.sha256 or ""] = item.file_name
                 out.append(item)
                 by_message.setdefault(message.uuid, []).append(
                     render.AttachmentRender(
-                        file_name=item.file_name,
+                        # The name the chat will show: for a duplicate that is
+                        # the name its bytes were uploaded under, which may not
+                        # be the name this message called them.
+                        file_name=item.duplicate_of or item.file_name,
                         file_type=item.file_type,
                         file_size=item.file_size,
                         klass=item.klass,
@@ -343,6 +390,7 @@ class Planner:
             reason: str | None = None,
             source_path: Path | None = None,
             file_size: int | None = None,
+            sha256: str | None = None,
         ) -> AttachmentPlan:
             return AttachmentPlan(
                 message_uuid=message.uuid,
@@ -356,6 +404,7 @@ class Planner:
                 klass=klass,
                 reason=reason,
                 source_path=source_path,
+                sha256=sha256,
             )
 
         if declared is not None and (declared.extracted_content or "").strip():
@@ -373,7 +422,14 @@ class Planner:
         size = source.stat().st_size
         if size > self._settings.attachments.max_bytes:
             return verdict("unsupported", reason=TOO_LARGE, file_size=size)
-        return verdict("upload", source_path=source, file_size=size)
+        digest = _digest(source)
+        if digest is None:
+            # It was there a moment ago and cannot be read now: a permission,
+            # a race with whoever is filling the directory, a disk. Bytes we
+            # cannot read are bytes we do not have, which is the reason the
+            # operator can act on.
+            return verdict("unsupported", reason=BYTES_NOT_IN_EXPORT, file_size=size)
+        return verdict("upload", source_path=source, file_size=size, sha256=digest)
 
     def _locate(self, conversation_uuid: str, file_name: str) -> Path | None:
         """`<dir>/<uuid>/<name>`, then `<dir>/<name>`, or nothing.
@@ -437,6 +493,23 @@ def build_plan(export: Export, settings: Settings) -> MigrationPlan:
     return Planner(settings).plan(export)
 
 
+def upload_paths(item: ConversationPlan) -> list[Path]:
+    """The files `16` hands the prompt, in message order, each one once.
+
+    The duplicates are already marked (`Planner._attachments`), so this is a
+    filter and not a second deduplication: two places deciding which file is the
+    one to upload is two places that can disagree about which name the seed
+    should refer to.
+    """
+    return [
+        attachment.source_path
+        for attachment in item.attachments
+        if attachment.klass == "upload"
+        and attachment.duplicate_of is None
+        and attachment.source_path is not None
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
@@ -466,6 +539,40 @@ def _distinct(message: ChatMessage) -> Iterator[Attachment | FileRef]:
             continue
         seen |= keys
         yield entry
+
+
+def _refused(item: AttachmentPlan, reason: str) -> AttachmentPlan:
+    """A class 2 entry the chat will not take, as the class 3 entry it becomes.
+
+    The source path and the digest go with it: they describe a file that is going
+    to be uploaded, and this one is not.
+    """
+    return item.model_copy(
+        update={
+            "klass": "unsupported",
+            "reason": reason,
+            "source_path": None,
+            "sha256": None,
+        }
+    )
+
+
+def _digest(path: Path) -> str | None:
+    """sha256 of a file's bytes, or `None` when it cannot be read.
+
+    Deduplication is on content and not on the name or the path, because one
+    conversation can name the same bytes twice — `files[]` and `files_v2[]` on
+    different messages, an export that renamed a file between them — and two
+    chips for one file is a chat that does not look like the one it came from.
+    """
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            while chunk := handle.read(DIGEST_CHUNK):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
 
 
 def _extension(file_name: str, file_type: str | None) -> str:

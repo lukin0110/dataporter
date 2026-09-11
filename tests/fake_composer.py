@@ -89,6 +89,10 @@ class FakePage:
             "contains": [item for item in expect if item in self.last_text],
         }
 
+    def attached(self, file_name: str) -> bool:
+        """Whether this file's chip is on the page now."""
+        return file_name in self.uploaded
+
     def composer_text(self) -> str | None:
         self.text_reads += 1
         if self.vanish_text_at is not None and self.text_reads >= self.vanish_text_at:
@@ -123,6 +127,13 @@ class FakePage:
             return True
         if helpers.FILE_INPUT_TAG in expression:
             return self.file_input
+        if helpers.CHIPS_TAG in expression:
+            # `16`'s check before the first paste: which of these files the page
+            # is carrying, in one look. The per-file poll count does not apply —
+            # `attach` has already waited for each chip.
+            return [
+                item for item in js_const(expression, "names") if self.attached(item)
+            ]
         if helpers.CHIP_TAG in expression:
             self.chip_asks += 1
             name = js_const(expression, "name")

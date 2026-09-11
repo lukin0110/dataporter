@@ -84,6 +84,15 @@ class AttachmentSettings(BaseModel):
     """Where attachment bytes are, when the operator has them. `None` means
     `<workspace>/attachments`; read `Settings.attachments_dir`, never this."""
 
+    skip: bool = False
+    """`--skip-attachments` (`16`): upload nothing.
+
+    A setting rather than a flag the import loop carries, because the decision
+    has to reach `03` — an entry nobody will upload is class 3 with the reason
+    `skipped_by_flag`, and the seed then says the file was not reproduced rather
+    than promising a chip that no run is going to attach.
+    """
+
     max_bytes: int = 30_000_000
     max_per_chat: int = 20
     accepted_types: tuple[str, ...] = (
@@ -487,6 +496,21 @@ def with_attachments_dir(settings: Settings, directory: Path | None) -> Settings
         update={
             "attachments": settings.attachments.model_copy(update={"dir": directory})
         }
+    )
+
+
+def with_skip_attachments(settings: Settings, skip: bool) -> Settings:
+    """Apply `--skip-attachments` (`16`), which outranks every other source.
+
+    A copy of the nested model for the reason `with_attachments_dir` is one, and
+    `False` returns the settings unchanged: the flag is an instruction to skip,
+    never an instruction to upload, so an operator who put `skip = true` in
+    `config.toml` is not overridden by its absence on the command line.
+    """
+    if not skip:
+        return settings
+    return settings.model_copy(
+        update={"attachments": settings.attachments.model_copy(update={"skip": True})}
     )
 
 

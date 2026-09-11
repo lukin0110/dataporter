@@ -55,6 +55,13 @@ surface.
   Prints `{"ok": true, "file_name": "...", "bytes": n}` or `{"ok": false, "error":
   "chip_not_found" | "input_not_found" | "upload_rejected", "detail": "..."}`. A `--file`
   that is not there is `file_not_found`, exit `2`.
+- `browser attachments [--file PATH]… [--target ID]` (added by `16`): one look at the
+  page for every chip at once, which is how the skill checks that the composer carries as
+  many files as the conversation has before it pastes into it. Prints
+  `{"ok": true, "file_names": [...], "count": n}`, or `chip_not_found` with the missing
+  names in `detail`. No files is `{"ok": true, "count": 0}` and no CDP call: a
+  conversation with no attachments asks a question with a true answer. Nothing here waits
+  — `attach` has already waited for each chip — so it reads no timeout.
 - `browser await-response [--timeout S] [--expect TEXT]… [--target ID]`: polls `probe`
   every 1 s until `generating` is false **and** the last message is from the assistant
   **and** its char count is unchanged for 3 consecutive polls. Prints `{"ok": true,
@@ -134,7 +141,9 @@ surface.
 - `await-response` against a fixture that toggles a Stop button off after 4 s returns
   `ok: true` with `elapsed_s` between 4 and 8; against one that never toggles, times out
   with `response_timeout`.
-- `attach` against a page with a hidden file input sets the file and finds the chip.
+- `attach` against a page with a hidden file input sets the file and finds the chip;
+  `attachments` over two such files answers with both names in one evaluate, and names the
+  one whose chip is missing when only one attached (`16`).
 - Two claude.ai tabs open → `ambiguous_tab`; with `--target` → proceeds.
 - Every helper appends one line to `logs/actions.jsonl`, a refusal included, and nothing
   else appears in `logs/`.

@@ -210,6 +210,19 @@ class AttachResult(HelperModel):
     bytes: int
 
 
+class ChipsResult(HelperModel):
+    """What `attachments` found: which files the composer is carrying (`16`).
+
+    `count` beside the list because the skill's check is a count — "as many chips
+    as files" — and a number it does not have to compute is a number it cannot
+    compute wrongly.
+    """
+
+    ok: Literal[True] = True
+    file_names: tuple[str, ...]
+    count: int
+
+
 class AwaitResult(HelperModel):
     ok: Literal[True] = True
     elapsed_s: float
@@ -222,7 +235,15 @@ class CloseResult(HelperModel):
     closed: int
 
 
-Result = ProbeResult | PasteResult | AttachResult | AwaitResult | CloseResult | Failure
+Result = (
+    ProbeResult
+    | PasteResult
+    | AttachResult
+    | ChipsResult
+    | AwaitResult
+    | CloseResult
+    | Failure
+)
 
 
 @dataclass(frozen=True)
@@ -262,6 +283,7 @@ FOCUS_TAG = "hcm:focus"
 EXEC_COMMAND_TAG = "hcm:exec_command"
 FILE_INPUT_TAG = "hcm:file_input"
 CHIP_TAG = "hcm:chip"
+CHIPS_TAG = "hcm:chips"
 
 COMPOSER_TEXT_JS = probing.expression(
     COMPOSER_TEXT_TAG,
@@ -309,6 +331,32 @@ def exec_command_js(text: str) -> str:
         f"  const text = {json.dumps(text)};\n"
         + _FOCUS_BODY
         + "  return document.execCommand('insertText', false, text) === true;",
+    )
+
+
+def chips_js(file_names: Sequence[str]) -> str:
+    """Which of these files have a chip, in one look at the page.
+
+    `chip_js`'s test, run over a list instead of over one name, and the same
+    three cheap conditions before `visible` for the same reason. One expression
+    rather than one call per file because this is asked once per conversation,
+    just before the first paste, and the answer has to describe one moment: a
+    chip that appeared between two round trips would make the count agree with a
+    page that never existed.
+
+    What comes back is the caller's own strings, filtered — the same shape
+    `probe`'s `contains` has, and for the same reason: nothing off the page
+    crosses the wire.
+    """
+    return probing.expression(
+        CHIPS_TAG,
+        f"  const names = {json.dumps(list(file_names))};\n"
+        "  const leaves = all('*').filter((el) =>\n"
+        "    el.children.length === 0 &&\n"
+        "    (composer === null || !composer.contains(el)) &&\n"
+        "    visible(el));\n"
+        "  return names.filter((name) =>\n"
+        "    leaves.some((el) => (el.textContent || '').indexOf(name) !== -1));",
     )
 
 
@@ -583,6 +631,59 @@ def attach_file(
                     conversation_id,
                 )
             time.sleep(interval)
+
+
+def attached_files(
+    client: CdpClient,
+    settings: Settings,
+    *,
+    files: Sequence[Path],
+    target: str | None = None,
+    surface: Surface = CLAUDE,
+) -> Outcome:
+    """`browser attachments`: every one of these files has a chip, or which does not.
+
+    `16`'s check before the first paste. `attach` already proved each upload one
+    at a time; this proves they are *all* still there in one look, which is the
+    thing that matters at the moment the message is about to be sent — a chip
+    that was dropped while the next file was being uploaded is a file the chat
+    will not carry, and nothing else would notice.
+
+    `settings` is unused and is taken anyway: every helper in this module has the
+    same shape, and `cli.emit_helper` passes both. There is nothing to wait for
+    here — `attach` has already waited for each chip — so there is no timeout to
+    read.
+    """
+    names = [Path(item).name for item in files]
+    if not names:
+        # Nothing to look for. Asking about no files is a question with a true
+        # answer, not a usage error: it is what a conversation with no
+        # attachments would ask, and refusing it would make the skill branch.
+        return Outcome(ChipsResult(file_names=(), count=0))
+
+    tab = chosen_tab(client, target_id=target, surface=surface)
+    if isinstance(tab, Failure):
+        return Outcome(tab)
+    conversation_id = probing.conversation_id_of(tab.url)
+    with driving(client, tab, surface) as page:
+        found = page.evaluate(chips_js(names))
+        present = [str(item) for item in found] if isinstance(found, list) else []
+        missing = [name for name in names if name not in present]
+        if missing:
+            return Outcome(
+                Failure(
+                    error=CHIP_NOT_FOUND,
+                    detail=log.safe_token(", ".join(missing)),
+                ),
+                conversation_id,
+            )
+        return Outcome(
+            ChipsResult(
+                file_names=tuple(log.safe_token(name) for name in present),
+                count=len(present),
+            ),
+            conversation_id,
+        )
 
 
 def await_response(

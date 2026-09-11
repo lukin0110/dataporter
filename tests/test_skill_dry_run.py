@@ -350,6 +350,114 @@ def test_a_resumed_run_continues_the_chat_it_was_given(
     assert ui.visited == [CHAT_URL]  # never `/new`: that would be a second chat
 
 
+# --------------------------------------------------------------------------- #
+# Attachments (`16`)
+# --------------------------------------------------------------------------- #
+
+
+def a_file(tmp_path: Path, name: str = "notes.txt") -> Path:
+    path = tmp_path / "attachments" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"bytes")
+    return path
+
+
+@pytest.mark.usefixtures("quick_polls")
+def test_an_attachment_goes_in_before_the_first_paste(
+    new_chat: tuple[Browser, FakePage],
+    runner: CliRunner,
+    two_part_seed: seeding.Seed,
+    seed_files: list[Path],
+    tmp_path: Path,
+) -> None:
+    """`16`: the chip belongs to the message part 1 is pasted into, so it is
+    attached first, checked once, and reported by name."""
+    browser, page = new_chat
+    printed, _ = migrate(
+        browser,
+        runner,
+        two_part_seed,
+        seed_files,
+        tmp_path,
+        attachments=[a_file(tmp_path)],
+    )
+
+    result = HermesResult.model_validate(printed)
+    assert result.outcome == "completed"
+    assert result.attachments_uploaded == ["notes.txt"]
+    assert result.attachments_failed == []
+    assert page.uploaded == ["notes.txt"]
+
+
+@pytest.mark.usefixtures("quick_polls")
+def test_a_file_the_page_refuses_does_not_stop_the_migration(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    two_part_seed: seeding.Seed,
+    seed_files: list[Path],
+    tmp_path: Path,
+) -> None:
+    """Both parts still land, and the run says which file did not."""
+    page = FakePage(url=NEW_URL, composer="", send_enabled=True, accept_files=False)
+    browser = browser_with(page, monkeypatch)
+    try:
+        printed, _ = migrate(
+            browser,
+            runner,
+            two_part_seed,
+            seed_files,
+            tmp_path,
+            attachments=[a_file(tmp_path)],
+        )
+    finally:
+        browser.chrome.stop()
+
+    result = HermesResult.model_validate(printed)
+    assert result.outcome == "partial"
+    assert result.chunks_acked == 2
+    assert result.conversation_id == CHAT_ID
+    assert result.error is not None
+    assert result.error.category == "unsupported"
+    assert result.error.detail == "attachment upload failed: notes.txt"
+    assert [item.file_name for item in result.attachments_failed] == ["notes.txt"]
+    assert result.attachments_failed[0].error == "upload_rejected"
+
+
+@pytest.mark.usefixtures("quick_polls")
+def test_a_resume_with_nothing_left_to_paste_attaches_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    two_part_seed: seeding.Seed,
+    seed_files: list[Path],
+    tmp_path: Path,
+) -> None:
+    """There is no message being composed, so a chip would belong to nothing."""
+    last_ack = two_part_seed.chunks[-1].ack
+    page = FakePage(
+        url=CHAT_URL, composer="", last_role="assistant", last_text=last_ack
+    )
+    browser = browser_with(page, monkeypatch)
+    try:
+        printed, _ = migrate(
+            browser,
+            runner,
+            two_part_seed,
+            seed_files,
+            tmp_path,
+            resume_from=Step.IDENTIFY,
+            conversation_id=CHAT_ID,
+            acknowledged=2,
+            attachments=[a_file(tmp_path)],
+        )
+    finally:
+        browser.chrome.stop()
+
+    result = HermesResult.model_validate(printed)
+    assert result.outcome == "partial"
+    assert page.uploaded == []
+    assert result.attachments_failed[0].error == "nothing_to_attach_to"
+
+
 def test_a_chat_that_does_not_hold_the_acknowledgement_is_not_resumed(
     monkeypatch: pytest.MonkeyPatch,
     runner: CliRunner,

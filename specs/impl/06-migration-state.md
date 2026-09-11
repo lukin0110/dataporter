@@ -26,7 +26,14 @@ restarts.
     "chunks_acked": 2,
     "chunks_total": 2,
     "messages_represented": 38,
-    "attachments": { "uploaded": 1, "inline": 0, "unsupported": 1 },
+    "attachments": {
+      "uploaded": 1,
+      "inline": 0,
+      "unsupported": 1,
+      "failed": 0,
+      "detail": [{ "file_name": "notes.csv", "klass": "unsupported",
+                   "reason": "bytes_not_in_export" }]
+    },
     "error": null,
     "limitations": ["thinking_omitted:3"],
     "updated_at": "2026-09-10T14:03:11Z"
@@ -36,6 +43,10 @@ restarts.
   The first three keys are the brief's; the rest are extensions. `destination` is
   `{"conversation_id": null}` until known. `error` is
   `{"category": "...", "detail": "...", "retry_recommended": true|false|null}` or `null`.
+  `attachments` grew its fourth count and its `detail` list in `16`: `failed` is a class 2
+  file the upload itself refused, and `detail` carries one entry per attachment that is not
+  in the chat as an upload, so the four counts always add up to the number of attachments
+  `plan.json` found for that conversation.
 - `status` ∈ `pending | running | completed | partial | failed` — the five in §7, no
   others. Transitions:
 
@@ -50,7 +61,8 @@ restarts.
 
 - `<workspace>/run.json` — run-level record, kept out of `state.json` so that file stays
   §7-shaped: `schema_version`, `export_fingerprint`, `export_path` (`14`), `runs[]`
-  (started, ended, exit code, selection), counters `browser_actions`, `retries`,
+  (started, ended, exit code, selection — including `16`'s `skip_attachments`), counters
+  `browser_actions`, `retries`,
   `human_interventions`, a `paused` record (`14`) or `null`, and `previous_destinations`
   for `--force` re-runs.
 - `StateStore`: `load()`, `update(uuid, **fields)`, `bump_counter(name)`; every mutation

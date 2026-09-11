@@ -50,7 +50,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from dataporter import PROGRAM_NAME, log, render, state, summary
 from dataporter import intervention as intervening
@@ -73,7 +73,13 @@ from dataporter.export import Conversation, Export, load_export
 from dataporter.hermes import doctor as hermes_doctor
 from dataporter.hermes import prompt as prompting
 from dataporter.hermes import runner as hermes_running
-from dataporter.plan import MigrationPlan, build_plan
+from dataporter.plan import (
+    AttachmentPlan,
+    ConversationPlan,
+    MigrationPlan,
+    build_plan,
+    upload_paths,
+)
 from dataporter.seed import Seed
 from dataporter.state import ConversationState, ErrorRecord, Status
 from dataporter.steps import Step
@@ -114,6 +120,66 @@ Minutes, because the waits are quarters of an hour and longer.
 
 NO_CONVERSATION_ID = "no conversation id"
 """Why a `completed` run with no destination id is recorded as `partial`."""
+
+ATTACHMENT_UPLOAD_FAILED = "attachment upload failed: {file_name}"
+"""`16`'s detail for a conversation whose chat is missing one of its files.
+
+The conversation is worth more than the attachment, so the run carries on and
+this is what it is recorded as: a `partial` that names the file, because a chat
+that is missing a page of a PDF is not a chat anybody should be told is finished.
+"""
+
+NOT_REPORTED = "not_reported"
+"""A planned upload the run said nothing about.
+
+Neither uploaded nor refused: the agent was given the file and its answer
+mentions it in neither list. `16` counts evidence, so what nobody confirmed is
+not counted as done — an operator reading `failed: 1, not_reported` goes and
+looks at the chat, which is the right thing to do.
+"""
+
+ATTACHMENTS_README_FILENAME = "README.txt"
+ATTACHMENTS_README = """\
+Attachment bytes go here.
+
+A Claude export names the files a conversation carried but does not contain
+them, so this directory is how you supply the ones you still have. Anything
+found here is uploaded through the claude.ai UI before the conversation's first
+message is sent; anything missing is recorded as bytes_not_in_export, and the
+migrated conversation says the file was not reproduced.
+
+The layout is one directory per source conversation:
+
+    attachments/<conversation-uuid>/<file name>
+
+A file placed directly in this directory is used by any conversation that names
+it, which is the fallback for bytes you have without knowing which chat they
+came from. The file name must match the export exactly.
+
+The uuids and the file names are in plan.json, and
+
+    hermes-claude-migrate inspect <export>
+
+lists every attachment and what would become of it.
+
+This file is the only thing the tool writes here; your files are read and never
+changed. Deleting what is in this directory only means those files are not
+migrated.
+"""
+"""What `import` leaves in the default attachments directory.
+
+Written because the directory is otherwise an empty folder whose convention
+lives in a spec the operator has not read, and because `02` expects the export
+to carry no attachment bytes at all — so this file is the only instruction
+anybody gets about the one thing they can do about that.
+"""
+
+NOT_ATTEMPTED = "not_attempted"
+"""A planned upload in a conversation that was never migrated.
+
+The chat it belonged to does not exist — the conversation is unmigratable
+(`03`) — so the file is not in the account and never will be by this route.
+"""
 
 UNREPORTED = "hermes reported {outcome} without an error"
 """A result that stopped and did not say why. The contract requires an `error`
@@ -241,6 +307,96 @@ def _error(category: Category, detail: str) -> ErrorRecord:
     )
 
 
+def attachments_of(
+    item: ConversationPlan,
+    result: hermes_running.HermesResult | None = None,
+) -> state.AttachmentCounts:
+    """§14's classes for one conversation, as the run left them (`16`).
+
+    Every attachment the plan named ends in exactly one of the four counts, so
+    `uploaded + inline + unsupported + failed` is the number of attachments
+    `plan.json` found — the reconciliation `19` reports on. Everything that is
+    not an upload is detailed as well, with the reason it is not, because §14's
+    rule is that nothing is silently ignored.
+
+    `result` is `None` for a conversation nothing ran: its planned uploads are
+    `not_attempted` rather than missing from the account for a reason of their
+    own.
+
+    A duplicate (`03`, and `16`'s deduplication) is accounted under the name its
+    bytes were uploaded as, because that is the one chip the chat has and the one
+    name the agent can have reported.
+    """
+    uploaded: set[str] = set()
+    refused: dict[str, str] = {}
+    if result is not None:
+        uploaded = set(result.attachments_uploaded)
+        refused = {
+            failure.file_name: failure.error for failure in result.attachments_failed
+        }
+
+    counts = {"uploaded": 0, "inline": 0, "unsupported": 0, "failed": 0}
+    detail: list[state.AttachmentDetail] = []
+    for attachment in item.attachments:
+        klass, reason = _became(attachment, uploaded, refused, ran=result is not None)
+        counts[klass] += 1
+        if klass != "uploaded":
+            detail.append(
+                state.AttachmentDetail(
+                    file_name=log.safe_token(attachment.file_name),
+                    klass=klass,
+                    reason=reason,
+                )
+            )
+    return state.AttachmentCounts(**counts, detail=detail)
+
+
+def _became(
+    attachment: AttachmentPlan,
+    uploaded: set[str],
+    refused: Mapping[str, str],
+    *,
+    ran: bool,
+) -> tuple[Literal["uploaded", "inline", "unsupported", "failed"], str | None]:
+    """What became of one attachment, and why — `attachments_of`'s one decision."""
+    if attachment.klass == "inline":
+        # Reproduced in the seed, so there is nothing to explain.
+        return "inline", None
+    if attachment.klass == "unsupported":
+        return "unsupported", attachment.reason
+    chip = attachment.duplicate_of or attachment.file_name
+    if not ran:
+        return "failed", NOT_ATTEMPTED
+    if chip in refused:
+        return "failed", refused[chip] or NOT_REPORTED
+    if chip in uploaded:
+        return "uploaded", None
+    return "failed", NOT_REPORTED
+
+
+def _attachment_failure(result: hermes_running.HermesResult) -> ErrorRecord | None:
+    """`16`'s record for a run that could not put a file in the chat.
+
+    `retry_recommended` is `True` and is written here rather than read off the
+    category, which is the second place in this module where the two disagree
+    (`_record_failure` is the first). The category is `unsupported` because that
+    is §14's word for a file the destination would not take; the transience is
+    not the category's, though — an upload that was refused once may well work
+    from a chat with room in it, or after the operator replaces the file, and a
+    record saying otherwise would stop `13` from ever finding out.
+    """
+    if not result.attachments_failed:
+        return None
+    first = result.attachments_failed[0]
+    return ErrorRecord(
+        category=Category.UNSUPPORTED,
+        detail=ATTACHMENT_UPLOAD_FAILED.format(
+            file_name=log.safe_token(first.file_name)
+        ),
+        retry_recommended=True,
+    )
+
+
 def interpret(result: hermes_running.HermesResult, *, landed: bool) -> Mapped:
     """`12`'s mapping table, as a function of the result and one fact.
 
@@ -253,6 +409,15 @@ def interpret(result: hermes_running.HermesResult, *, landed: bool) -> Mapped:
     outcome = result.outcome
     if outcome == "completed":
         if landed:
+            # `16`: a chat that is missing one of its files is not finished, and
+            # a run that said `completed` while listing a file it could not
+            # attach has told us both things. The list is what decides, not the
+            # word: the skill is asked to report `partial` here itself, and a
+            # conversation recorded as done is a conversation nobody looks at
+            # again.
+            missing = _attachment_failure(result)
+            if missing is not None:
+                return Mapped(Status.PARTIAL, result.step, missing)
             return Mapped(Status.COMPLETED, Step.DONE, None)
         # The agent believes it finished and cannot say where. Something may well
         # be in the account, so this is not `failed`; `17` re-verifies from the
@@ -633,6 +798,13 @@ class Importer:
         self.runner = hermes_running.HermesRunner(settings)
         self.seeds = seeding.SeedGenerator(settings)
         self.session: launcher.BrowserSession | None = None
+        self.plans: dict[str, ConversationPlan] = {}
+        """The plan, by conversation, as `_prepare` wrote it.
+
+        Held rather than passed down because every step from `_migrate` to
+        `_record` needs one field of it — which files to upload, and what became
+        of them — and the alternative is the same object threaded through four
+        signatures that have nothing else to do with attachments."""
         self.interventions = 0
         """How many times *this* run has stopped to ask (`14`).
 
@@ -729,10 +901,36 @@ class Importer:
         self, parsed: Export
     ) -> tuple[MigrationPlan, Mapping[str, Conversation]]:
         """The plan on disk and an entry per planned conversation, before any run."""
+        self._attachments_directory()
         plan = self._write_plan(parsed)
+        self.plans = {item.uuid: item for item in plan.conversations}
         conversations = {item.uuid: item for item in parsed.conversations}
         self._create_entries(plan, conversations)
         return plan, conversations
+
+    def _attachments_directory(self) -> None:
+        """Make the default attachments directory, and say what goes in it (`16`).
+
+        Only the default one, inside the workspace: a directory the operator
+        named with `--attachments-dir` is theirs, and writing a README into it
+        would be this tool leaving litter in somebody else's folder. The export
+        is expected to carry no attachment bytes at all (`02`), so an empty
+        directory with an explanation in it is the whole mechanism by which an
+        operator can supply them.
+        """
+        if self.settings.attachments.dir is not None:
+            return
+        directory = self.settings.attachments_dir
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            readme = directory / ATTACHMENTS_README_FILENAME
+            if not readme.exists():
+                readme.write_text(ATTACHMENTS_README, encoding="utf-8", newline="")
+        except OSError as exc:
+            # Not fatal: a migration without attachments is still a migration,
+            # and `03` reports every file it could not find as
+            # `bytes_not_in_export` either way.
+            _logger.warning("attachments directory", extra={"error": str(exc)})
 
     # -- 1. preflight ------------------------------------------------------- #
 
@@ -840,6 +1038,10 @@ class Importer:
                     detail=item.reasons[0] if item.reasons else "",
                     retry_recommended=False,
                 ),
+                # A conversation that will not be migrated takes its files with
+                # it, and `16` says so rather than leaving four zeros that read
+                # as a conversation with no attachments.
+                attachments=attachments_of(item),
             )
 
     # -- 3. one conversation at a time -------------------------------------- #
@@ -1209,6 +1411,11 @@ class Importer:
             seed,
             seed_files=files,
             workspace=self.settings.workspace,
+            # `16`: the class 2 files, each one once, in message order. The
+            # plan decided which they are — offline, before the run — so a
+            # conversation's upload list cannot change between the dry run that
+            # showed it and the run that performs it.
+            attachments=self._uploads(uuid),
             resume_from=resume_from,
             conversation_id=resume,
             acknowledged=acknowledged,
@@ -1225,6 +1432,17 @@ class Importer:
             # A run that timed out still spent tokens, so this is read on every
             # path rather than only on the one that produced a result.
             self._record_usage(run_id)
+
+    def _uploads(self, uuid: str) -> list[Path]:
+        """The files this conversation's prompt lists, or none.
+
+        A conversation with no plan entry has no uploads rather than an error:
+        `_prepare` writes one for every conversation in the export, so the only
+        way here is a caller of `_attempt` that never went through it — a test,
+        and one that is not about attachments.
+        """
+        item = self.plans.get(uuid)
+        return [] if item is None else upload_paths(item)
 
     # -- what a conversation leaves behind ---------------------------------- #
 
@@ -1256,6 +1474,13 @@ class Importer:
             ),
             "error": mapped.error,
         }
+        item = self.plans.get(uuid)
+        if item is not None:
+            # `16`: what became of every file, from the plan that named them and
+            # the two lists the run answered with. Written on every outcome,
+            # `needs_human` included — a file that was attached before the page
+            # blocked is attached, and the resume will not attach it twice.
+            reached["attachments"] = attachments_of(item, result)
         if mapped.needs_human:
             self.store.update(uuid, **reached)
         else:
