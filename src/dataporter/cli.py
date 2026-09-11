@@ -23,6 +23,7 @@ from typer.core import TyperGroup
 
 from dataporter import PROGRAM_NAME, log, progress, state, summary
 from dataporter import importer as importing
+from dataporter import report as reporting
 from dataporter import seed as seeding
 from dataporter import verify as verifying
 from dataporter.browser import cdp, launcher, probe
@@ -474,6 +475,23 @@ def plan_for(
 # --------------------------------------------------------------------------- #
 
 
+def print_report(outcome: importing.RunSummary) -> None:
+    """§16's block, last, whatever became of the run.
+
+    Printed under `--quiet` for the reason `18`'s final block is: `-q` suppresses
+    progress, and this is what the run amounts to. Printed after a run that
+    stopped, too — a paused or circuit-broken run is the one an operator most
+    needs the failure list of, and the numbers are true of the workspace either
+    way.
+
+    The blank line is this function's and not `19`'s: something is always on the
+    screen above it — §10's final block at every verbosity — and `report` prints
+    the same text with nothing above it at all.
+    """
+    if outcome.report is not None:
+        print(f"\n{reporting.render(outcome.report)}", end="")
+
+
 LOGIN_PROMPT = "Log in to Claude in the browser window that just opened."
 SIGNED_IN = browser_session.SIGNED_IN
 SIGNED_OUT = browser_session.SIGNED_OUT
@@ -589,6 +607,7 @@ def import_cmd(
                 skip_attachments=skip_attachments,
             ),
         )
+        print_report(outcome)
         raise typer.Exit(outcome.exit_code)
 
     # Nothing below this line writes, and nothing below it is allowed to: no run
@@ -739,6 +758,7 @@ def resume(ctx: typer.Context) -> None:
         # same "nothing to do" the other commands use for an empty selection.
         print(importing.NOTHING_TO_RESUME)
         raise typer.Exit(ExitCode.NOTHING_TO_DO) from None
+    print_report(outcome)
     raise typer.Exit(outcome.exit_code)
 
 
@@ -813,7 +833,19 @@ def verify(ctx: typer.Context, only: Only = None) -> None:
 @app.command()
 def report(ctx: typer.Context, json_output: JsonOutput = False) -> None:
     """Print the end-of-migration report."""
-    not_implemented(ctx)
+    workspace = app_context(ctx).settings.workspace
+    # Reads `state.json`, `run.json`, `plan.json` and `logs/actions.jsonl`, and
+    # writes nothing: no lock, no browser, no Hermes. A report is a question
+    # about a workspace, and one that rewrote what it was asked to read could
+    # not be run beside a migration that is still going — `import` is what
+    # writes `report.json`, at the end of a run and under the lock.
+    built = reporting.build(workspace)
+    if json_output:
+        print(built.model_dump_json(indent=2))
+        return
+    # Printed even under `--quiet`, like `status`: `-q` suppresses progress, and
+    # this block is the command's whole result.
+    print(reporting.render(built), end="")
 
 
 @app.command()

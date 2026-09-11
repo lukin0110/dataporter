@@ -13,7 +13,8 @@ by three counters agreeing.
 
 `06` adds the four counter lines `status` prints, which are the same alignment
 rule with a different floor — `18` builds the progress bar and the redraw on top
-of them, and this is the module that owns the rule.
+of them, `19` renders §16's block and its limitation breakdown with them, and
+this is the module that owns the rule.
 
 The formats are golden strings; `MIN_WIDTH`, `COUNTERS_MIN_WIDTH` and
 `COUNT_WIDTH` are the whole rule, and `tests/test_summary.py` compares bytes. No
@@ -83,7 +84,7 @@ def number(value: int) -> str:
     return f"{value:,}"
 
 
-def _column_width(rows: Sequence[tuple[str, str]], minimum: int) -> int:
+def column_width(rows: Sequence[tuple[str, str]], minimum: int) -> int:
     """`max(minimum, longest label + 1 + longest value)`.
 
     One rule for both blocks: §9's five lines and §10's four are aligned the same
@@ -97,7 +98,7 @@ def _column_width(rows: Sequence[tuple[str, str]], minimum: int) -> int:
     )
 
 
-def _aligned(rows: Sequence[tuple[str, str]], width: int) -> list[str]:
+def aligned(rows: Sequence[tuple[str, str]], width: int) -> list[str]:
     """`label`, spaces, right-aligned value, every line `width` columns wide."""
     return [f"{label}{value:>{width - len(label)}}" for label, value in rows]
 
@@ -126,17 +127,28 @@ def totals_lines(totals: PlanTotals) -> list[str]:
     for all five lines, which is why three lines of the brief's example do not
     come back byte-identical — see the spec's design notes.
     """
-    groups = _groups(totals)
-    width = _column_width([row for group in groups for row in group], MIN_WIDTH)
+    return aligned_groups(_groups(totals), MIN_WIDTH)
+
+
+def aligned_groups(
+    groups: Sequence[Sequence[tuple[str, str]]], minimum: int
+) -> list[str]:
+    """Aligned rows in groups, one blank line between each pair of groups.
+
+    One width across every group, so the groups align with each other and not
+    merely within themselves. `19`'s §16 block is this function with a wider
+    floor and a third group; §9's is the two above.
+    """
+    width = column_width([row for group in groups for row in group], minimum)
     lines: list[str] = []
     for index, group in enumerate(groups):
         if index:
             lines.append("")
-        lines.extend(_aligned(group, width))
+        lines.extend(aligned(group, width))
     return lines
 
 
-def _breakdown_lines(header: str, rows: Sequence[tuple[str, int]]) -> list[str]:
+def breakdown_lines(header: str, rows: Sequence[tuple[str, int]]) -> list[str]:
     """A header and one indented `label  count` line per row.
 
     The label column is the longest label plus `GUTTER`; counts are right-aligned
@@ -195,8 +207,8 @@ def inspect_report(plan: MigrationPlan) -> str:
     lines = totals_lines(plan.totals)
     reasons = unsupported_reasons(plan)
     if reasons:
-        lines += ["", *_breakdown_lines(UNSUPPORTED_REASONS_HEADER, reasons)]
-    lines += ["", *_breakdown_lines(ATTACHMENTS_HEADER, attachment_classes(plan))]
+        lines += ["", *breakdown_lines(UNSUPPORTED_REASONS_HEADER, reasons)]
+    lines += ["", *breakdown_lines(ATTACHMENTS_HEADER, attachment_classes(plan))]
     return "".join(f"{line}\n" for line in lines)
 
 
@@ -208,7 +220,7 @@ def counters_lines(counts: Mapping[str, int]) -> list[str]:
     the line beside it already gives.
     """
     rows = [(label, number(counts[key])) for label, key in STATUS_LABELS]
-    return _aligned(rows, _column_width(rows, COUNTERS_MIN_WIDTH))
+    return aligned(rows, column_width(rows, COUNTERS_MIN_WIDTH))
 
 
 def status_report(state: MigrationState) -> str:
