@@ -25,7 +25,7 @@ Both exist so the meaning cannot drift away from what the suite actually does.
 
 import os
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -89,7 +89,9 @@ def no_expensive_fakes(
     if request.node.get_closest_marker("slow") is not None:
         return
 
-    def refuse(name: str):  # noqa: ANN202 - a factory for three identical guards
+    def refuse(name: str) -> Callable[..., None]:
+        """One guard per class, so the message names the one that was built."""
+
         def guard(*args: object, **kwargs: object) -> None:
             raise AssertionError(EXPENSIVE.format(name=name))
 

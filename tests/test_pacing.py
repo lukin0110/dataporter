@@ -39,6 +39,7 @@ from dataporter.browser import probe
 from dataporter.browser import session as browser_session
 from dataporter.config import (
     DEFAULT_WORKSPACE,
+    ConfigError,
     PacingSettings,
     RetrySettings,
     RunSettings,
@@ -203,6 +204,87 @@ def test_a_flag_does_not_drop_the_rest_of_its_table(workspace: Path) -> None:
     assert flagged.pacing.delay_between_conversations_s == 1.0
     assert flagged.pacing.delay_between_parts_s == 9.0
     assert flagged.pacing.max_rate_limit_wait_s == 60.0
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "field"),
+    [
+        ({"delay": -5.0}, "delay_between_conversations_s"),
+        ({"max_retries": -1}, "max_attempts"),
+        ({"timeout": -30.0}, "hermes_task_s"),
+        # Zero is in range for a flag counting seconds and not for a subprocess
+        # deadline, so this one is the settings field's to refuse.
+        ({"timeout": 0.0}, "hermes_task_s"),
+    ],
+)
+def test_a_nonsensical_pacing_value_is_refused(
+    workspace: Path, kwargs: dict[str, float], field: str
+) -> None:
+    """`model_copy(update=...)` does not validate, which is how `--max-retries -1`
+    became a budget of zero attempts — and a conversation with no attempts has
+    its first failure recorded `retry_recommended: false`, about a retry nothing
+    made. The constraint is on the field, so the same value is refused however it
+    arrives. (Raised by Copilot in review on #24.)
+    """
+    with pytest.raises(ConfigError) as raised:
+        with_pacing(load_settings(), **kwargs)
+
+    assert field in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("section", "key", "env", "value"),
+    [
+        (
+            "pacing",
+            "delay_between_conversations_s",
+            "HCM_PACING__DELAY_BETWEEN_CONVERSATIONS_S",
+            "-1",
+        ),
+        ("retries", "max_attempts", "HCM_RETRIES__MAX_ATTEMPTS", "0"),
+        ("timeouts", "hermes_task_s", "HCM_TIMEOUTS__HERMES_TASK_S", "0"),
+    ],
+)
+def test_the_same_value_is_refused_from_the_environment(
+    workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    section: str,
+    key: str,
+    env: str,
+    value: str,
+) -> None:
+    """The point of putting the rule on the field rather than only on the flag."""
+    monkeypatch.setenv(env, value)
+
+    with pytest.raises(ConfigError):
+        load_settings()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"delay": 0.0}, {"max_retries": 0}, {"timeout": 1.0}],
+)
+def test_the_edges_that_are_meant_to_work_still_do(
+    workspace: Path, kwargs: dict[str, float]
+) -> None:
+    """No gap between conversations, no retries and a one-second budget are all
+    things an operator may legitimately ask for."""
+    assert with_pacing(load_settings(), **kwargs) is not None
+
+
+def test_a_negative_flag_is_refused_by_the_command_line_itself(
+    runner: CliRunner, workspace: Path, export_dir: Path
+) -> None:
+    """And the message names the flag that was typed, not the field behind it:
+    `--max-retries` counts retries and `retries.max_attempts` counts attempts."""
+    result = runner.invoke(
+        cli.app,
+        ["import", str(export_dir), "--dry-run", "--max-retries", "-1"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == ExitCode.USAGE
+    assert "--max-retries" in result.output
 
 
 def test_import_offers_the_three_flags_and_all(runner: CliRunner) -> None:
