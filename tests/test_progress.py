@@ -116,13 +116,18 @@ def terminal() -> Iterator[tuple[IO[str], Callable[[], str]]]:
     `ONLCR` is switched off first: a terminal in its default mode rewrites every
     `\\n` on its way through as `\\r\\n`, and this slice's whole subject is which
     bytes reach a screen.
+
+    Both ends are UTF-8 by name rather than by locale. The block is drawn in
+    U+2588 and U+2591, and `os.fdopen` would otherwise encode them with whatever
+    `locale.getencoding()` says — ASCII under `LC_ALL=C` with UTF-8 mode off,
+    where writing the bar raises instead of testing anything.
     """
     main, follower = pty.openpty()
     attributes = termios.tcgetattr(follower)
     attributes[1] &= ~termios.ONLCR  # oflag
     termios.tcsetattr(follower, termios.TCSANOW, attributes)
     os.set_blocking(main, False)
-    stream = os.fdopen(follower, "w")
+    stream = os.fdopen(follower, "w", encoding="utf-8")
     written: list[str] = []
 
     def read() -> str:
@@ -133,7 +138,7 @@ def terminal() -> Iterator[tuple[IO[str], Callable[[], str]]]:
                 chunk = os.read(main, 65536)
             except BlockingIOError:
                 break
-            written.append(chunk.decode())
+            written.append(chunk.decode("utf-8"))
         return "".join(written)
 
     try:
