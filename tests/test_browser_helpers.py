@@ -13,7 +13,6 @@ Four kinds of test, in this order:
 
 import json
 import re
-import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -34,7 +33,7 @@ from fake_pages import (
     RESPONDING_CHAT_ID,
     PageServer,
 )
-from live_browser import live_browser, requires_a_browser
+from live_browser import live_browser, requires_a_browser, visit
 
 CHAT_URL = f"https://claude.ai/chat/{CHAT_ID}"
 NEW_URL = "https://claude.ai/new"
@@ -1029,31 +1028,6 @@ def fixture_surface(server: PageServer) -> helpers.Surface:
             rf"^http://127\.0\.0\.1:{server.port}/(new|chat/[0-9a-f-]{{36}})(\?.*)?$"
         ),
     )
-
-
-def visit(session: launcher.BrowserSession, url: str) -> None:
-    """Leave the browser with exactly one tab, on `url`, finished loading.
-
-    Exactly one, because that is the state the helpers are specified against:
-    a second tab is `ambiguous_tab`, which is a different test.
-    """
-    tabs = session.client.pages()
-    for extra in tabs[1:]:
-        session.client.close_target(extra.id)
-    page = session.client.attach(tabs[0].id)
-    try:
-        page.navigate(url)
-        deadline = time.monotonic() + 30.0
-        while time.monotonic() < deadline:
-            if (
-                page.evaluate("document.readyState") == "complete"
-                and page.evaluate("location.href") == url
-            ):
-                return
-            time.sleep(0.05)
-        raise AssertionError(f"{url} never finished loading")  # pragma: no cover
-    finally:
-        page.close()
 
 
 def live_settings(session: launcher.BrowserSession, workspace: Path) -> Settings:

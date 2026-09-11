@@ -265,7 +265,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-prompt",
         action="store_true",
-        help="never ask the human anything; every answer they own reads `unknown`",
+        help=(
+            "never ask the human anything. Only the first round is measured: "
+            "clearing the composer between rounds is a human step"
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -279,8 +282,20 @@ def main(argv: list[str] | None = None) -> int:
     directory.mkdir(parents=True, exist_ok=True)
 
     context = spike.Context.read()
+    methods = [item.strip() for item in args.methods.split(",") if item.strip()]
+    if not prompt and len(sizes) * len(methods) > 1:
+        # Nothing in `08` clears a composer, so between rounds only a human can.
+        # Unattended, round two meets round one's text and every round after the
+        # first is refused with `composer_not_empty` — honestly marked `unknown`
+        # by `table`, but a ladder of one rung. Said here rather than discovered
+        # at the bottom of a table.
+        print(
+            "warning: --no-prompt measures only the first round; the composer is "
+            "never cleared, so the rest will be refused as `composer_not_empty`",
+            file=sys.stderr,
+        )
     rows: list[dict[str, Any]] = []
-    for method in [item.strip() for item in args.methods.split(",") if item.strip()]:
+    for method in methods:
         for size in sizes:
             seed = directory / f"sample-{size}.txt"
             seed.write_text(sample(size), encoding="utf-8")
