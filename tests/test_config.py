@@ -213,3 +213,36 @@ def test_timeouts_have_defaults_and_can_be_overridden(
     assert settings.timeouts.login_s == 30.0
     assert settings.timeouts.browser_start_s == 30.0
     assert settings.timeouts.cdp_call_s == 20.0
+
+
+# --------------------------------------------------------------------------- #
+# The section `13` added
+# --------------------------------------------------------------------------- #
+
+
+def test_the_retry_budget_has_the_spec_defaults(workspace: Path) -> None:
+    settings = load_settings()
+    assert settings.retries.max_attempts == 3
+    assert settings.retries.backoff_s == (30.0, 120.0, 300.0)
+    assert settings.run.stop_after_consecutive_failures == 3
+
+
+def test_the_retry_budget_follows_the_ladder(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`15` owns these numbers; `13` only has to make them reachable."""
+    write_config(
+        workspace / DEFAULT_WORKSPACE,
+        "[retries]\nmax_attempts = 5\nbackoff_s = [1, 2]\n"
+        "[run]\nstop_after_consecutive_failures = 9\n",
+    )
+    settings = load_settings()
+    assert settings.retries.max_attempts == 5
+    assert settings.retries.backoff_s == (1.0, 2.0)
+    assert settings.run.stop_after_consecutive_failures == 9
+
+    monkeypatch.setenv("HCM_RETRIES__MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("HCM_RUN__STOP_AFTER_CONSECUTIVE_FAILURES", "0")
+    overridden = load_settings()
+    assert overridden.retries.max_attempts == 2
+    assert overridden.run.stop_after_consecutive_failures == 0

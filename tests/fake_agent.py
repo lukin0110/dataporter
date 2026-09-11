@@ -7,6 +7,12 @@ procedure, so this is the third thing: a scripted reader of the task prompt that
 performs `11`'s steps in `11`'s order, with `11`'s verifications, against a
 browser the test supplies.
 
+`13` gave the procedure a *Recovery* table, and this performs that too — the
+half of it a script can perform. Every row whose signal is a field of a `probe`
+object or the `error` string of a helper answer is here: the detection, the one
+recovery the table allows, and the outcome when that recovery does not work.
+`test_recovery.py` drives one fixture page per row through it.
+
 What it is worth, and what it is not:
 
 - it proves the **prompt** carries everything the procedure needs — nothing here
@@ -15,24 +21,31 @@ What it is worth, and what it is not:
 - it proves the **helpers** compose into a migration: every step goes through the
   real CLI and the real page model, so a helper that changed its error vocabulary
   or stopped clearing the composer fails here;
+- it proves the **recovery table is performable** — that each signal it names can
+  actually be read off a page, and that the outcome it prescribes is the outcome
+  a run following it produces;
 - it proves nothing about **Hermes**. A real agent has to decide when to act and
-  can decide wrongly; this one cannot. `10`'s throwaway prompts and `20` are
-  where that is measured.
+  can decide wrongly; this one cannot. Three rows of the table — rate limiting, a
+  CAPTCHA and a security challenge — rest entirely on reading a snapshot, which
+  is judgement and not a script, and they are out of reach here. `10`'s throwaway
+  prompts and `20` are where all of that is measured.
 
-The class deliberately has no judgement in it. Where the skill says "classify and
-stop", this stops.
+Where the table says classify and stop, this stops: `Stopped` carries the result
+object out, so each step reads as the step rather than as a chain of returns.
 """
 
 import re
 import shlex
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, NoReturn, Protocol
 
+from dataporter.browser import helpers
 from dataporter.steps import Step
 
 NEW_CHAT_URL = "https://claude.ai/new"
 CHAT_URL = "https://claude.ai/chat/{uuid}"
+LOGIN_URL = "https://claude.ai/login"
 
 SCALARS = (
     "short_id",
@@ -48,6 +61,11 @@ NONE = "none"
 KEY_LINE = re.compile(r"^[a-z][a-z_ ]*:( |$)")
 """What ends a block: the next field. A seed path starts with a separator and an
 acknowledgement line starts with `MIGRATION-ACK`, so neither can look like one."""
+
+UNREADABLE = (helpers.NO_CLAUDE_TAB, helpers.UNKNOWN_TARGET)
+"""`13`'s network row, as the helpers spell it: the tab this run was driving is
+not there to be read. A browser error page looks exactly like this, because the
+page it went to is not on claude.ai any more."""
 
 
 @dataclass(frozen=True)
@@ -110,6 +128,14 @@ def parse(prompt: str) -> Task:
     )
 
 
+class Stopped(Exception):
+    """The procedure cannot go on. Carries the result object to print."""
+
+    def __init__(self, printed: dict[str, Any]) -> None:
+        super().__init__(printed.get("outcome", ""))
+        self.printed = printed
+
+
 class Browser(Protocol):
     """The two things the skill asks an agent, not a helper, to do."""
 
@@ -127,7 +153,7 @@ Helper = Callable[[Sequence[str]], tuple[int, dict[str, Any]]]
 
 @dataclass
 class ScriptedAgent:
-    """`11`'s procedure, performed without an agent."""
+    """`11`'s procedure and `13`'s recovery, performed without an agent."""
 
     helper: Helper
     browser: Browser
@@ -138,6 +164,9 @@ class ScriptedAgent:
     errors: list[str] = field(default_factory=list)
     """The helper `error` strings met on the way. Never content: the helpers
     print ids, counts and digests, and this keeps only their error names."""
+    recoveries: list[str] = field(default_factory=list)
+    """Which rows of `13`'s table fired, in order. A test asserts on the outcome;
+    this is what says the outcome came from the row it was meant to come from."""
 
     # -- the two ways to look at the page ----------------------------------- #
 
@@ -154,67 +183,109 @@ class ScriptedAgent:
             arguments += ["--expect", item]
         return self.call(task, *arguments)
 
+    def look(self, task: Task, *expect: str) -> dict[str, Any]:
+        """One probe, with the rows that can fire on any probe already applied.
+
+        Four of `13`'s rows are about the page rather than about a step — the
+        tab is unreadable, there are two of it, it is a sign-in page, something
+        modal is over it — so they are checked wherever the procedure looks
+        rather than repeated at each step that looks.
+        """
+        state = self.probe(task, *expect)
+        if state.get("error") in UNREADABLE:
+            # network: wait, navigate back to the run's URL, and look once more.
+            self.recoveries.append("network")
+            self.browser.navigate(self.url(task))
+            state = self.probe(task, *expect)
+            if state.get("error") in UNREADABLE:
+                self.give_up("network", "the page could not be read")
+        if state.get("error") == helpers.AMBIGUOUS_TAB:
+            self.recoveries.append("ambiguous_tab")
+            self.call(task, "close-extra-tabs")
+            state = self.probe(task, *expect)
+        if self.signed_out(state):
+            self.halt("needs_human", "auth", "a sign-in page", "auth_required")
+        if state.get("error") == helpers.OUTSIDE_MIGRATION_SURFACE:
+            self.give_up("safety", "the tab is somewhere this run may not touch")
+        if state.get("dialogs"):
+            self.halt("needs_human", "dialog", "a dialog is in the way", "ambiguous_ui")
+        return state
+
+    @staticmethod
+    def signed_out(state: dict[str, Any]) -> bool:
+        """`13`'s login-expiry signal, as a helper can see it.
+
+        The login page is outside the migration surface, so no helper will drive
+        it and none reports `kind: login`; what comes back is the wall's refusal
+        with the URL it refused. `kind` is checked too, for the day a probe can
+        answer from a page our own helpers are allowed to read.
+        """
+        if state.get("kind") == "login":
+            return True
+        return state.get("error") == helpers.OUTSIDE_MIGRATION_SURFACE and str(
+            state.get("url", "")
+        ).startswith(LOGIN_URL)
+
+    def url(self, task: Task) -> str:
+        """Where this run belongs: its chat, or `/new` while it has no id."""
+        if self.conversation_id is None:
+            return NEW_CHAT_URL
+        return CHAT_URL.format(uuid=self.conversation_id)
+
     # -- the run ------------------------------------------------------------ #
 
     def run(self, prompt: str) -> dict[str, Any]:
         task = parse(prompt)
+        try:
+            return self.migrate(task)
+        except Stopped as stopped:
+            return stopped.printed
+
+    def migrate(self, task: Task) -> dict[str, Any]:
         if len(task.seed_files) != task.parts:
-            return self.stop("failed", "hermes", "the prompt does not add up")
+            self.halt("failed", "hermes", "the prompt does not add up")
         self.conversation_id = task.conversation_id
 
         state = self.open(task)
-        if state is None:
-            return self.result(
-                "needs_human",
-                needs_human_reason="auth_required",
-                error={"category": "auth", "detail": "no composer to type into"},
-            )
-        if task.conversation_id is None and not self.new_chat(task, state):
-            return self.stop("failed", "browser", "no empty composer on /new")
-        if not self.resumable(task):
-            return self.stop("partial", "verification", "the chat is not where it was")
+        if task.conversation_id is None:
+            self.new_chat(task, state)
+        self.check_resumable(task)
         for path in task.attachments:
             if self.call(task, "attach", "--file", path).get("ok") is not True:
-                return self.stop("failed", "browser", "attach refused")
+                self.give_up("browser", "attach refused")
             self.last = Step.ATTACH
 
         self.acked = task.acknowledged
         for index in range(task.acknowledged, task.parts):
-            if not self.part(task, index):
-                return self.stop(
-                    "partial" if self.conversation_id else "failed",
-                    "browser",
-                    f"part {index + 1} stopped at {self.last}",
-                )
-        if not self.identify(task):
-            return self.stop("partial", "verification", "no conversation id")
+            self.part(task, index)
+        self.identify(task)
         self.last = Step.DONE
         return self.result("completed")
 
-    def open(self, task: Task) -> dict[str, Any] | None:
+    def open(self, task: Task) -> dict[str, Any]:
         """`open`: navigate, then prove there is a composer to type into."""
-        self.browser.navigate(
-            NEW_CHAT_URL
-            if task.conversation_id is None
-            else CHAT_URL.format(uuid=task.conversation_id)
-        )
-        state = self.probe(task)
-        if not state.get("logged_in") or not state.get("composer_present"):
-            return None
+        self.browser.navigate(self.url(task))
+        state = self.look(task)
+        if not state.get("composer_present"):
+            # missing composer: reload the run's URL and look once more.
+            self.recoveries.append("missing_composer")
+            self.browser.navigate(self.url(task))
+            state = self.look(task)
+            if not state.get("composer_present"):
+                self.give_up("ui", "there is no composer on the page")
         self.last = Step.OPEN
         return state
 
-    def new_chat(self, task: Task, state: dict[str, Any]) -> bool:
+    def new_chat(self, task: Task, state: dict[str, Any]) -> None:
         """`new_chat`: on `/new`, with nothing in the composer."""
         if state.get("kind") != "new_chat":
             self.browser.navigate(NEW_CHAT_URL)
-            state = self.probe(task)
+            state = self.look(task)
         if state.get("kind") != "new_chat" or state.get("composer_chars") != 0:
-            return False
+            self.give_up("browser", "no empty composer on /new")
         self.last = Step.NEW_CHAT
-        return True
 
-    def resumable(self, task: Task) -> bool:
+    def check_resumable(self, task: Task) -> None:
         """The chat really does hold the acknowledgement it is said to hold.
 
         One probe, one `--expect`, no snapshot: the count in the prompt is
@@ -222,54 +293,120 @@ class ScriptedAgent:
         page.
         """
         if not task.acknowledged:
-            return True
+            return
         expected = task.acknowledgements[task.acknowledged - 1]
-        state = self.probe(task, expected)
-        return expected in state.get("last_message", {}).get("contains", [])
+        state = self.look(task, expected)
+        if expected not in state.get("last_message", {}).get("contains", []):
+            self.halt("partial", "verification", "the chat is not where it was")
 
-    def part(self, task: Task, index: int) -> bool:
+    # -- one part ----------------------------------------------------------- #
+
+    def part(self, task: Task, index: int) -> None:
         """`paste` → `submit` → `await` → `ack`, for one seed part."""
         ack = task.acknowledgements[index]
+        self.paste(task, index)
+        self.submit(task, ack)
+        self.answer(task, ack)
+
+    def paste(self, task: Task, index: int) -> None:
         pasted = self.call(task, "paste", "--seed", task.seed_files[index])
+        if pasted.get("error") == helpers.COMPOSER_NOT_EMPTY:
+            # The page may still be settling after the previous submit; this is
+            # the one helper error the skill lets a step re-run on.
+            self.recoveries.append("composer_not_empty")
+            pasted = self.call(task, "paste", "--seed", task.seed_files[index])
         if pasted.get("ok") is not True:
-            return False
+            self.give_up("browser", f"paste answered {pasted.get('error')}")
         self.last = Step.PASTE
 
-        self.browser.submit(ack)
-        self.actions += 1
-        state = self.probe(task)
+    def submit(self, task: Task, ack: str) -> None:
+        """`submit`, and the two rows that tell its failures apart.
+
+        A composer that still holds the part is a click that did not land, and
+        the table allows one more. A composer that cleared with no turn to show
+        for it is the page having changed under us: the message went somewhere,
+        and nowhere the procedure knows how to look.
+        """
+        state = self.press(task, ack)
         if state.get("composer_chars") != 0:
-            return False
+            self.recoveries.append("failed_click")
+            state = self.press(task, ack)
+            if state.get("composer_chars") != 0:
+                self.give_up("ui", "the composer still holds the part")
         if state.get("last_message", {}).get("role") != "human":
-            return False
+            self.halt(
+                "needs_human",
+                "ui",
+                "the message was sent and no turn appeared",
+                "ambiguous_ui",
+            )
+        self.check_url(task, state)
         self.last = Step.SUBMIT
 
+    def press(self, task: Task, ack: str) -> dict[str, Any]:
+        self.browser.submit(ack)
+        self.actions += 1
+        return self.look(task)
+
+    def check_url(self, task: Task, state: dict[str, Any]) -> None:
+        """`13`'s page-navigation row: the tab is still where this run put it."""
+        found = state.get("conversation_id")
+        if self.conversation_id is None and found:
+            self.conversation_id = str(found)
+        if self.on_track(state):
+            return
+        self.recoveries.append("navigation")
+        self.browser.navigate(self.url(task))
+        if not self.on_track(self.look(task)):
+            self.give_up("navigation", "the tab left this run's chat")
+
+    def on_track(self, state: dict[str, Any]) -> bool:
+        if state.get("kind") not in ("new_chat", "chat"):
+            return False
+        found = state.get("conversation_id")
+        return not (self.conversation_id and found and found != self.conversation_id)
+
+    def answer(self, task: Task, ack: str) -> None:
+        """`await` and `ack`, with the generation-failure row between them."""
         answered = self.call(task, "await-response", "--expect", ack)
         if answered.get("ok") is not True:
-            return False
+            # A real agent clicks the retry control first if the page offers one;
+            # a script has no way to find one, so this is the second half of the
+            # row — wait for the answer once more.
+            self.recoveries.append("generation")
+            answered = self.call(task, "await-response", "--expect", ack)
+            if answered.get("ok") is not True:
+                self.give_up("generation", "no answer to this part")
         self.last = Step.AWAIT
 
         if ack not in answered.get("last_message", {}).get("contains", []):
-            return False
+            self.give_up("generation", "the acknowledgement did not appear")
         self.last = Step.ACK
         self.acked += 1
         self.conversation_id = answered.get("conversation_id") or self.conversation_id
-        return True
 
-    def identify(self, task: Task) -> bool:
+    def identify(self, task: Task) -> None:
         """`identify`: the destination id, read off the URL."""
-        state = self.probe(task)
+        state = self.look(task)
         found = state.get("conversation_id")
         if not found or (self.conversation_id and found != self.conversation_id):
-            return False
-        self.conversation_id = found
+            self.give_up("verification", "no conversation id")
+        self.conversation_id = str(found)
         self.last = Step.IDENTIFY
-        return True
 
     # -- what it prints ----------------------------------------------------- #
 
-    def stop(self, outcome: str, category: str, detail: str) -> dict[str, Any]:
-        return self.result(outcome, error={"category": category, "detail": detail})
+    def give_up(self, category: str, detail: str) -> NoReturn:
+        """Stop, as `partial` when a chat exists and `failed` when none does."""
+        self.halt("partial" if self.conversation_id else "failed", category, detail)
+
+    def halt(
+        self, outcome: str, category: str, detail: str, reason: str | None = None
+    ) -> NoReturn:
+        extra: dict[str, Any] = {"error": {"category": category, "detail": detail}}
+        if reason is not None:
+            extra["needs_human_reason"] = reason
+        raise Stopped(self.result(outcome, **extra))
 
     def result(self, outcome: str, **extra: Any) -> dict[str, Any]:
         return {

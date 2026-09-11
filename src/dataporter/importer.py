@@ -14,21 +14,27 @@ Three properties are the point:
 - **One conversation's failure is one conversation's failure.** Every error a
   conversation can raise is recorded against that conversation and the run moves
   on. What ends a run early is never about one conversation: the workspace lock,
-  the export fingerprint, a browser that cannot be brought back, and — once `15`
-  lands — the circuit breaker.
+  the export fingerprint, a browser that cannot be brought back, and `13`'s
+  circuit breaker — which is about the run's failures rather than about any one
+  of them.
 - **No content, anywhere.** Titles go into `state.json` because §7 puts them
   there. Stdout gets a short id, a status and two counts; the log gets ids and
   numbers; Hermes's own stdout stays in the workspace file `09` wrote it to.
 
-What this slice deliberately does not do is react: a failure is recorded and the
-loop continues, with no retry, no pause and no rate-limit wait. `13`, `14` and
-`15` are those three, and the mapping table below has a row marked for each.
+`13` is what taught it to react. A conversation whose failure is the kind that
+another attempt could fix is tried again, after a growing wait, until the
+per-conversation budget is spent; a category that no attempt would fix is
+recorded once; and a run whose conversations keep failing the same way stops
+itself rather than spending an account's quota proving it. What is still not
+handled here is a failure a *person* has to clear (`14`) and a wait the account
+asks for (`15`) — both are recognised, both end this run's interest in that
+conversation, and the mapping table below has a row marked for each.
 """
 
 import re
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -37,7 +43,7 @@ from dataporter import seed as seeding
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher, probe
 from dataporter.browser import session as browser_session
-from dataporter.config import Settings
+from dataporter.config import RetrySettings, Settings
 from dataporter.errors import (
     ERROR_CLASSES,
     AuthError,
@@ -91,10 +97,11 @@ NEEDS_HUMAN_CATEGORIES: dict[str, Category] = {
 }
 """`09`'s six `needs_human` reasons, as the error categories `01` fixed.
 
-`14` turns these into a pause; until it does they are recorded like any other
-failure, and the category is what tells an operator — and `19` — which of the six
-it was. A test reads `runner.NEEDS_HUMAN_REASONS` against this, so a seventh
-reason cannot arrive without a category to put it in.
+`14` turns these into a pause; until it does they are recorded as a failure and
+left alone — `13` spends no retry on one, because none of the six is something a
+second identical attempt clears. The category is what tells an operator — and
+`19` — which of the six it was. A test reads `runner.NEEDS_HUMAN_REASONS` against
+this, so a seventh reason cannot arrive without a category to put it in.
 """
 
 _NOT_IN_A_RUN_ID = re.compile(r"[^A-Za-z0-9]")
@@ -132,6 +139,11 @@ class Mapped:
     status: Status
     last_step: Step | None
     error: ErrorRecord | None
+    deferred: bool = False
+    """`needs_human` or `rate_limited`: the two outcomes this run does not try
+    again, because somebody else owns what happens next — a person (`14`) or a
+    clock (`15`). Recorded here rather than re-read from the outcome so that
+    `13`'s retry policy and `12`'s mapping table are the same table."""
 
 
 def retry_recommended(category: Category) -> bool | None:
@@ -173,19 +185,29 @@ def interpret(result: hermes_running.HermesResult, *, landed: bool) -> Mapped:
         )
     stopped = Status.PARTIAL if landed else Status.FAILED
     if outcome == "rate_limited":
-        # `15` waits and retries; until then it is a failure like any other, and
-        # `retry_after_s` is kept in the detail rather than thrown away.
+        # `15` waits and retries. Retrying it here on `13`'s budget would spend
+        # three attempts inside the window the account asked us to wait out, so
+        # the row is deferred; `retry_after_s` is kept in the detail rather than
+        # thrown away, because it is the number `15` will wait.
         detail = _detail(result) or RATE_LIMITED
         if result.retry_after_s is not None:
             detail = f"{detail}; retry after {result.retry_after_s}s"
-        return Mapped(Status.FAILED, result.step, _error(Category.RATE_LIMIT, detail))
+        return Mapped(
+            Status.FAILED,
+            result.step,
+            _error(Category.RATE_LIMIT, detail),
+            deferred=True,
+        )
     if outcome == "needs_human":
         # `14` pauses on these. The reason is the category, so that a run an
         # operator reads afterwards says which of the six stopped it.
         reason = result.needs_human_reason
         category = NEEDS_HUMAN_CATEGORIES.get(reason or "", Category.UI)
         return Mapped(
-            stopped, result.step, _error(category, _detail(result) or reason or "")
+            stopped,
+            result.step,
+            _error(category, _detail(result) or reason or ""),
+            deferred=True,
         )
     return Mapped(
         stopped,
@@ -202,6 +224,107 @@ def _detail(result: hermes_running.HermesResult) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# `13`: what to do about it
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Attempt:
+    """What one try at one conversation ended as.
+
+    The pair `12` already wrote down — a status and an error record — plus the
+    two numbers `13` decides with: which attempt this was, and whether somebody
+    else owns the outcome.
+    """
+
+    status: Status
+    error: ErrorRecord | None
+    attempts: int
+    """The entry's `attempts` after this try. What the budget is measured
+    against, and it is §7's cumulative count rather than a per-run one."""
+    deferred: bool = False
+    """`needs_human` or `rate_limited`. Not a failure to try again: `14` waits
+    for a person and `15` waits for a clock, and neither wait is a retry."""
+
+    @property
+    def retryable(self) -> bool:
+        """Whether another attempt is worth making, as the record already says.
+
+        `retry_recommended` is the whole decision. `01` made `transient` a
+        property of the error class precisely so that this is a lookup and not a
+        judgement: `interpret` reads it off the class and `_record_failure` off
+        the exception, which is where the one `hermes` failure that is *not*
+        worth retrying — `HermesUsageError`, the same wrong invocation made again
+        at a later time — gets its `False`.
+
+        `None` is "unknown", the three per-instance categories `ui`, `browser`
+        and `verification`, and it does not retry: the skill has already spent
+        this failure's one in-run recovery on the page, and a record that came
+        back `null` must still read `null` in the report rather than the `false`
+        an exhausted budget would leave.
+        """
+        return (
+            not self.deferred
+            and self.status in (Status.FAILED, Status.PARTIAL)
+            and self.error is not None
+            and self.error.retry_recommended is True
+        )
+
+
+def backoff_for(retries: RetrySettings, attempt: int) -> float:
+    """How long to wait after `attempt` failed, before making the next one.
+
+    `13` indexes `backoff_s` by the attempt that just failed. A schedule shorter
+    than `max_attempts` repeats its last value rather than running off the end:
+    the wait is meant to grow and then stay long, and an operator who shortened
+    the list did not ask for the waits to stop.
+    """
+    schedule = retries.backoff_s
+    if not schedule:
+        return 0.0
+    return schedule[min(max(attempt, 1), len(schedule)) - 1]
+
+
+@dataclass
+class FailureStreak:
+    """`13`'s circuit breaker: how many conversations in a row failed alike.
+
+    Only `failed` counts, and only a conversation the loop actually attempted. A
+    `partial` left a chat at the destination, and an unsupported entry was never
+    handed to Hermes; neither is evidence that the next conversation would go the
+    same way, which is the only thing this number is for.
+    """
+
+    category: Category | None = None
+    count: int = 0
+
+    def record(self, attempt: Attempt) -> None:
+        category = attempt.error.category if attempt.error is not None else None
+        if attempt.status is not Status.FAILED or category is None:
+            self.category, self.count = None, 0
+            return
+        if category is self.category:
+            self.count += 1
+            return
+        self.category, self.count = category, 1
+
+    def reset(self) -> None:
+        """A conversation the loop skipped says nothing either way."""
+        self.category, self.count = None, 0
+
+    def tripped(self, limit: int) -> Category | None:
+        """The category that has failed `limit` times running, or `None`.
+
+        Returns the category rather than a boolean so that the caller cannot
+        reach for `self.category` and find the `None` that would mean no streak.
+        A limit of zero or less switches the breaker off.
+        """
+        if limit > 0 and self.count >= limit and self.category is not None:
+            return self.category
+        return None
+
+
+# --------------------------------------------------------------------------- #
 # What a run says while it runs
 # --------------------------------------------------------------------------- #
 
@@ -212,6 +335,14 @@ class Progress(Protocol):
     def conversation(
         self, short_id: str, status: Status, counts: Mapping[str, int]
     ) -> None: ...
+
+    def waiting(self, seconds: float, reason: str) -> None:
+        """A wait the run is about to make: `13`'s backoff, `15`'s rate limit."""
+        ...
+
+    def stopping(self, failures: int, category: Category) -> None:
+        """`13`'s circuit breaker, ending the run before the selection does."""
+        ...
 
     def finish(self, counts: Mapping[str, int]) -> None: ...
 
@@ -236,6 +367,23 @@ class LineProgress:
         done = counts["total"] - counts["pending"]
         print(f"{short_id}  {status}  ({done}/{counts['total']})")
 
+    def waiting(self, seconds: float, reason: str) -> None:
+        """`waiting 120s (retry 2/3, generation)`, as `13` writes it.
+
+        Progress, so `-q` suppresses it — but it is the reason the line exists:
+        a run that is quiet because it is waiting has to look different from one
+        that is quiet because it is stuck, at every verbosity that prints
+        anything at all.
+        """
+        if self.quiet:
+            return
+        print(f"waiting {seconds:g}s ({reason})")
+
+    def stopping(self, failures: int, category: Category) -> None:
+        """`13`'s stop line. Printed under `--quiet` for the reason `finish` is:
+        it is not a report of progress, it is what became of the run."""
+        print(f"stopping: {failures} consecutive failures ({category}) — see report")
+
     def finish(self, counts: Mapping[str, int]) -> None:
         # Printed under `--quiet` for the reason `status` is: `-q` suppresses
         # progress, and this is what the run amounts to.
@@ -254,6 +402,9 @@ class RunSummary:
     counts: Mapping[str, int]
     """`state.status_counts` over the whole workspace, after the run."""
     exit_code: ExitCode
+    stopped: bool = False
+    """`13`'s circuit breaker ended the run. Everything the selection had left is
+    still `pending`, so the next invocation picks it up with no flags at all."""
 
 
 # --------------------------------------------------------------------------- #
@@ -401,17 +552,29 @@ class Importer:
     ) -> RunSummary:
         migratable = {item.uuid for item in plan.conversations if item.migratable}
         outcomes: dict[str, Status] = {}
+        streak = FailureStreak()
+        stopped = False
         for position, uuid in enumerate(chosen):
             if uuid in migratable:
-                status = self._migrate(conversations[uuid])
+                attempt = self._migrate(conversations[uuid])
+                status = attempt.status
+                streak.record(attempt)
             else:
                 # Selected by `--retry-failed` over an entry `_create_entries`
                 # wrote. There is no seed to paste, so there is nothing to run;
-                # the entry already says why, and the line says so again.
+                # the entry already says why, and the line says so again. It is
+                # also not a failure of the destination, so the breaker forgets
+                # rather than counts it.
                 status = self.store.load()[uuid].status
+                streak.reset()
             outcomes[uuid] = status
             counts = state.status_counts(self.store.load())
             self.progress.conversation(render.short_id(uuid), status, counts)
+            tripped = streak.tripped(self.settings.run.stop_after_consecutive_failures)
+            if tripped is not None:
+                self._stop(streak.count, tripped)
+                stopped = True
+                break
             if position + 1 < len(chosen):
                 pause(DELAY_BETWEEN_CONVERSATIONS_S)
 
@@ -428,14 +591,46 @@ class Importer:
             exit_code=ExitCode.NOTHING_TO_DO
             if not chosen
             else (ExitCode.OK if finished else ExitCode.FAILED),
+            stopped=stopped,
         )
 
-    def _migrate(self, conversation: Conversation) -> Status:
-        """One conversation: seed, prompt, Hermes, state. Never raises upward
-        for anything that is about this conversation rather than about the run."""
+    def _stop(self, failures: int, category: Category) -> None:
+        """End the run early, cleanly: the state is written, the lock is released
+        by `run`'s `finally`, and what is left of the selection is untouched."""
+        _logger.warning(
+            "stopping after consecutive failures",
+            extra={"failures": failures, "category": str(category)},
+        )
+        self.progress.stopping(failures, category)
+
+    def _migrate(self, conversation: Conversation) -> Attempt:
+        """One conversation, with `13`'s retry budget around it.
+
+        The loop is here and not inside `_attempt` because every attempt is a
+        whole attempt: it re-reads the entry, writes this attempt's seed, renders
+        a prompt that resumes from wherever the last one stopped, and runs Hermes
+        again. A retry of a `partial` therefore continues the chat that exists
+        rather than opening a second one (§17) — `_begin` and `resuming` are what
+        make that true, and they are read afresh each time round.
+        """
+        budget = self.settings.retries
+        while True:
+            attempt = self._attempt(conversation)
+            if not attempt.retryable:
+                return attempt
+            if attempt.attempts >= budget.max_attempts:
+                return self._exhausted(conversation.uuid, attempt)
+            wait = backoff_for(budget, attempt.attempts)
+            self._announce_retry(conversation.uuid, attempt, wait, budget.max_attempts)
+            pause(wait)
+
+    def _attempt(self, conversation: Conversation) -> Attempt:
+        """One try: seed, prompt, Hermes, state. Never raises upward for anything
+        that is about this conversation rather than about the run."""
         uuid = conversation.uuid
         self._ensure_browser()
         entry = self._begin(uuid)
+        attempts = entry.attempts + 1
         actions = self._action_count()
         try:
             seed, result = self._run_hermes(conversation, entry)
@@ -447,10 +642,56 @@ class Importer:
                     "category": str(exc.category),
                 },
             )
-            return self._record_failure(uuid, entry, exc)
+            return self._record_failure(uuid, entry, exc, attempts)
         finally:
             self._count_actions(actions)
-        return self._record(uuid, entry, seed, result)
+        return self._record(uuid, entry, seed, result, attempts)
+
+    def _announce_retry(
+        self, uuid: str, attempt: Attempt, wait: float, max_attempts: int
+    ) -> None:
+        """Say what is about to be waited for, in the log and on stdout.
+
+        The log record is `13`'s: the conversation, the attempt that failed, its
+        category and the wait. The short id and not the uuid, because that is the
+        identifier every other record in this module carries and §10 keeps the
+        two files reading alike.
+        """
+        category = attempt.error.category if attempt.error is not None else None
+        _logger.info(
+            "retry",
+            extra={
+                "conversation_id": render.short_id(uuid),
+                "attempt": attempt.attempts,
+                "category": str(category),
+                "backoff_s": wait,
+            },
+        )
+        self.progress.waiting(
+            wait, f"retry {attempt.attempts + 1}/{max_attempts}, {category}"
+        )
+
+    def _exhausted(self, uuid: str, attempt: Attempt) -> Attempt:
+        """Write down that the budget is spent, so nothing recommends a retry.
+
+        `13`'s rule for the field: `false` when the category is non-transient
+        **or** the attempts are gone. Only a `true` is rewritten — a `null` means
+        the transience was never known, and spending a budget does not turn not
+        knowing into knowing.
+        """
+        if attempt.error is None:  # pragma: no cover - `retryable` implies one
+            return attempt
+        spent = attempt.error.model_copy(update={"retry_recommended": False})
+        self.store.update(uuid, error=spent)
+        _logger.info(
+            "retries exhausted",
+            extra={
+                "conversation_id": render.short_id(uuid),
+                "attempts": attempt.attempts,
+                "category": str(spent.category),
+            },
+        )
+        return replace(attempt, error=spent)
 
     def _begin(self, uuid: str) -> ConversationState:
         """Mark the entry `running` and hand back what it looked like before.
@@ -536,7 +777,8 @@ class Importer:
         before: ConversationState,
         seed: Seed,
         result: hermes_running.HermesResult,
-    ) -> Status:
+        attempts: int,
+    ) -> Attempt:
         acked = max(0, min(result.chunks_acked, len(seed.chunks)))
         conversation_id = result.conversation_id or resuming(before)
         mapped = interpret(result, landed=conversation_id is not None)
@@ -558,29 +800,36 @@ class Importer:
                 "hermes reported actions",
                 extra={"conversation_id": seed.short_id, "actions": result.actions},
             )
-        return mapped.status
+        return Attempt(
+            status=mapped.status,
+            error=mapped.error,
+            attempts=attempts,
+            deferred=mapped.deferred,
+        )
 
     def _record_failure(
-        self, uuid: str, before: ConversationState, exc: MigrationError
-    ) -> Status:
+        self, uuid: str, before: ConversationState, exc: MigrationError, attempts: int
+    ) -> Attempt:
         """An exception, as one conversation's entry.
 
         `partial` when a chat already exists, `failed` otherwise — the same rule
         the result mapping uses, and for the same reason: `failed` means there is
         nothing at the destination to go and look at.
+
+        `retry_recommended` comes off the *instance* here rather than off the
+        category, which is the one place the two disagree: `HermesUsageError` is
+        category `hermes` and never worth retrying, and `13` reads this field as
+        the retry decision.
         """
         resume = resuming(before)
         status = Status.PARTIAL if resume is not None else Status.FAILED
-        self.store.update(
-            uuid,
-            status=status,
-            error=ErrorRecord(
-                category=exc.category,
-                detail=exc.detail or type(exc).__name__,
-                retry_recommended=exc.transient,
-            ),
+        error = ErrorRecord(
+            category=exc.category,
+            detail=exc.detail or type(exc).__name__,
+            retry_recommended=exc.transient,
         )
-        return status
+        self.store.update(uuid, status=status, error=error)
+        return Attempt(status=status, error=error, attempts=attempts)
 
     # -- the run's own housekeeping ----------------------------------------- #
 

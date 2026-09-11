@@ -17,7 +17,8 @@ nested models; nothing here needs to change for them. `03` is the first to do it
 adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS` and
 a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
 `run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`;
-`09` adds `hermes` and three more `timeouts` fields.
+`09` adds `hermes` and three more `timeouts` fields; `13` adds `retries` and one
+more `run` field.
 """
 
 import os
@@ -179,6 +180,33 @@ class HermesSettings(BaseModel):
     whatever recovery costs; `15` owns the number once there is evidence."""
 
 
+class RetrySettings(BaseModel):
+    """How often one conversation is tried again, and how long between tries (`13`).
+
+    The budget is per conversation, not per run: one pathological chat must not
+    be able to spend every attempt the run has, and a run of ten conversations
+    where the fourth needs two retries is not a run in trouble.
+    """
+
+    max_attempts: int = 3
+    """Attempts per conversation, the first one included.
+
+    Counted against `state.json`'s `attempts`, which is cumulative over every run
+    the workspace has seen — so a conversation that has already had three goes
+    gets one more per invocation rather than three more, and an operator who asks
+    for it again with `--retry-failed` is never silently refused.
+    """
+
+    backoff_s: tuple[float, ...] = (30.0, 120.0, 300.0)
+    """The wait before attempt `n + 1`, indexed by the attempt that just failed.
+
+    Growing, and generous: the failures worth retrying are a busy account, a
+    dropped connection and a generation that fell over, none of which is helped
+    by trying again immediately. A list shorter than `max_attempts` repeats its
+    last value rather than running off the end; an empty one means no wait.
+    """
+
+
 class TimeoutSettings(BaseModel):
     """How long each wait is allowed to take, in seconds."""
 
@@ -244,6 +272,16 @@ class RunSettings(BaseModel):
     it or passes `--limit` for the full export.
     """
 
+    stop_after_consecutive_failures: int = 3
+    """How many conversations may fail the same way in a row before the run stops.
+
+    The circuit breaker (`13`): three `network` failures back to back say the
+    connection is gone, not that three conversations were unlucky, and every
+    further attempt is an account-modifying action taken on a broken premise.
+    Declared here and spent by `12`'s loop; `15` owns the number once a pilot has
+    shown what a real run's failure runs look like.
+    """
+
 
 class Settings(BaseSettings):
     """Effective settings for one invocation."""
@@ -263,6 +301,7 @@ class Settings(BaseSettings):
     attachments: AttachmentSettings = AttachmentSettings()
     browser: BrowserSettings = BrowserSettings()
     hermes: HermesSettings = HermesSettings()
+    retries: RetrySettings = RetrySettings()
     timeouts: TimeoutSettings = TimeoutSettings()
     run: RunSettings = RunSettings()
 
