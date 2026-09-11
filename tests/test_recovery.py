@@ -32,6 +32,7 @@ from typer.testing import CliRunner
 
 from dataporter import cli
 from dataporter import importer as importing
+from dataporter import progress as reporting
 from dataporter import seed as seeding
 from dataporter.browser import helpers
 from dataporter.config import RetrySettings, RunSettings
@@ -708,7 +709,7 @@ def test_the_stop_line_survives_quiet(
     world.retries(max_attempts=1)
     world.answers(failure("network"))
 
-    world.importer(progress=importing.LineProgress(quiet=True)).run(
+    world.importer(progress=reporting.Reporter(quiet=True)).run(
         world.export, importing.state.Selection(limit=5)
     )
     printed = capsys.readouterr().out
@@ -812,7 +813,7 @@ def test_a_failure_with_no_category_breaks_the_streak() -> None:
 def test_the_wait_line_is_suppressed_by_quiet(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    importing.LineProgress(quiet=True).waiting(30.0, "retry 2/3, network")
+    reporting.Reporter(quiet=True).waiting(30.0, "retry 2/3, network")
     assert capsys.readouterr().out == ""
 
 
@@ -820,7 +821,7 @@ def test_the_wait_line_has_no_trailing_zeros(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`30`, not `30.0`: the line is read by a person watching a run."""
-    importing.LineProgress().waiting(30.0, "retry 2/3, network")
+    reporting.Reporter().waiting(30.0, "retry 2/3, network")
     assert capsys.readouterr().out == "waiting 30s (retry 2/3, network)\n"
 
 
@@ -860,7 +861,7 @@ def test_nothing_a_recovery_prints_is_content(
 def test_the_stop_line_names_the_category_that_tripped_it(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    importing.LineProgress().stopping(3, Category.GENERATION)
+    reporting.Reporter().stopping(3, Category.GENERATION)
     assert capsys.readouterr().out == (
         "stopping: 3 consecutive failures (generation) — see report\n"
     )

@@ -21,7 +21,7 @@ from typing import Annotated, Any, NoReturn
 import typer
 from typer.core import TyperGroup
 
-from dataporter import PROGRAM_NAME, log, state, summary
+from dataporter import PROGRAM_NAME, log, progress, state, summary
 from dataporter import importer as importing
 from dataporter import seed as seeding
 from dataporter import verify as verifying
@@ -574,7 +574,7 @@ def import_cmd(
         log.enable_run_log(settings.workspace)
         outcome = importing.Importer(
             settings,
-            progress=importing.LineProgress(quiet=context.quiet),
+            progress=progress.Reporter(quiet=context.quiet),
             force_unlock=force_unlock,
         ).run(
             path,
@@ -731,7 +731,7 @@ def resume(ctx: typer.Context) -> None:
     log.enable_run_log(settings.workspace)
     try:
         outcome = importing.Importer(
-            settings, progress=importing.LineProgress(quiet=context.quiet)
+            settings, progress=progress.Reporter(quiet=context.quiet)
         ).resume()
     except importing.NothingToResume:
         # Not an error, so no `error:` and no stderr: `resume` was asked whether

@@ -36,7 +36,7 @@ from dataporter.config import Settings
 from dataporter.errors import AuthError, BrowserError, Category, HermesError
 from dataporter.exit_codes import ExitCode
 from dataporter.hermes import runner as hermes_running
-from dataporter.state import Status
+from dataporter.state import ErrorRecord, Status
 from dataporter.steps import Step
 from fake_composer import Browser, FakePage
 from world import (
@@ -138,9 +138,10 @@ def test_titles_are_in_state_and_nowhere_else(
     for phrase in CONTENT:
         assert phrase not in captured.out
         assert phrase not in captured.err
-    # Two of six are done after the first: the unsupported one was written as
-    # `failed` before the loop started.
-    assert captured.out.startswith("aa000001  completed  (2/6)\n")
+    # `18`'s header first, then the event lines. Two of six are done after the
+    # first: the unsupported one was written as `failed` before the loop started.
+    assert captured.out.startswith("Claude migration\n\n6 conversations found\n\n")
+    assert "aa000001  completed  (2/6)\n" in captured.out
     assert captured.out.endswith(
         "Completed:  5\nPartial:    0\nFailed:     1\nPending:    0\n"
     )
@@ -358,12 +359,16 @@ def test_a_browser_that_cannot_come_back_ends_the_run(
 ) -> None:
     """One conversation lands, then Chrome goes away for good: exit `6`."""
 
-    class StopTheBrowser:
+    class StopTheBrowser(Silent):
         def __init__(self) -> None:
             self.seen: list[str] = []
 
         def conversation(
-            self, short_id: str, status: Status, counts: Mapping[str, int]
+            self,
+            short_id: str,
+            status: Status,
+            counts: Mapping[str, int],
+            error: ErrorRecord | None = None,
         ) -> None:
             self.seen.append(short_id)
             world.browser.chrome.stop()
@@ -403,7 +408,42 @@ def test_a_browser_that_cannot_come_back_ends_the_run(
     assert not (world.settings.workspace / state.LOCK_FILENAME).exists()
 
 
-class AfterOne:
+class Silent:
+    """A `progress.Progress` that says nothing, for tests that watch the loop.
+
+    Every method, so that a test double cannot fall behind the protocol the loop
+    calls — the two doubles below override only the one they are about.
+    """
+
+    def start(self, counts: Mapping[str, int]) -> None:
+        pass
+
+    def conversation(
+        self,
+        short_id: str,
+        status: Status,
+        counts: Mapping[str, int],
+        error: ErrorRecord | None = None,
+    ) -> None:
+        pass
+
+    def waiting(self, seconds: float, reason: str) -> None:
+        pass
+
+    def interrupted(self) -> None:
+        pass
+
+    def resumed(self) -> None:
+        pass
+
+    def stopping(self, failures: int, category: Category) -> None:
+        pass
+
+    def finish(self, counts: Mapping[str, int]) -> None:
+        pass
+
+
+class AfterOne(Silent):
     """A progress sink that kills the browser once, after the first conversation.
 
     The `_ensure_browser` path only exists for a Chrome that went away between
@@ -415,20 +455,15 @@ class AfterOne:
         self.world = world
 
     def conversation(
-        self, short_id: str, status: Status, counts: Mapping[str, int]
+        self,
+        short_id: str,
+        status: Status,
+        counts: Mapping[str, int],
+        error: ErrorRecord | None = None,
     ) -> None:
         self.seen.append(short_id)
         if len(self.seen) == 1:
             self.world.browser.chrome.stop()
-
-    def waiting(self, seconds: float, reason: str) -> None:
-        pass
-
-    def stopping(self, failures: int, category: Category) -> None:
-        pass
-
-    def finish(self, counts: Mapping[str, int]) -> None:
-        pass
 
 
 def replacement(
@@ -746,7 +781,9 @@ def test_import_exits_0_and_prints_the_counters(
     )
 
     assert outcome.exit_code == ExitCode.OK
-    assert outcome.stdout.splitlines()[0] == "aa000001  completed  (2/6)"
+    lines = outcome.stdout.splitlines()
+    assert lines[0] == "Claude migration"
+    assert lines[4] == "aa000001  completed  (2/6)"
     assert world.entry(FIRST).status is Status.COMPLETED
 
 
@@ -761,8 +798,10 @@ def test_import_quiet_still_prints_the_final_block(
         catch_exceptions=False,
     )
 
+    # No header and no event line: `-q` leaves the bar and the four counters,
+    # which are what the run amounts to rather than a report of its progress.
     assert "aa000001" not in outcome.stdout
-    assert outcome.stdout.startswith("Completed:  1\n")
+    assert outcome.stdout.startswith("[██████░░░░░░░░░░░░░░] 2/6\n\nCompleted:  1\n")
 
 
 def test_import_exits_1_when_a_conversation_did_not_make_it(
@@ -838,9 +877,16 @@ def test_an_unknown_only_is_a_selection_error(world: World) -> None:
         world.run(only=["nope"])
 
 
-def test_line_progress_counts_done_against_the_total(
-    capsys: pytest.CaptureFixture[str],
+def test_the_loop_hands_progress_the_counts_it_reads_from_state(
+    world: World, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    counts = {"total": 127, "completed": 89, "partial": 1, "failed": 1, "pending": 36}
-    importing.LineProgress().conversation("3f9c2a1e", Status.COMPLETED, counts)
-    assert capsys.readouterr().out == "3f9c2a1e  completed  (91/127)\n"
+    """`12`'s half of `18`: the numbers are `state.json`'s, not a tally.
+
+    The line's own shape is `18`'s and is measured in `tests/test_progress.py`.
+    What this asserts is that the loop counts the unmigratable conversation the
+    entry-writing step already failed — a run of one selected conversation
+    reports two of six done.
+    """
+    world.run(limit=1)
+
+    assert "aa000001  completed  (2/6)" in capsys.readouterr().out
