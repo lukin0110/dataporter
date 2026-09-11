@@ -34,6 +34,14 @@ that is already open, and then attempts *the same conversation from its last
 successful step*. It is the same loop `13` retries in, entered through a
 different door, and `resume` is that door from a second process.
 
+`17` added the second opinion. A run that comes back `completed` or `partial`
+with a chat behind it is not believed on its own: the tool navigates to that
+chat, reads it back through our own probe and checks that every part and every
+acknowledgement is there (`verify.py`). What the page says is what is recorded —
+a verification that fails writes `partial` over the agent's `completed` — and it
+is folded into the one state write the attempt already makes, so an entry is
+never briefly finished before being un-finished.
+
 `15` filled in the third door, and slowed everything down. A `rate_limited`
 result is waited out rather than retried: the account named a time, so the run
 sleeps until then and attempts the same conversation again, and only a wait
@@ -55,6 +63,7 @@ from typing import Literal, Protocol
 from dataporter import PROGRAM_NAME, log, render, state, summary
 from dataporter import intervention as intervening
 from dataporter import seed as seeding
+from dataporter import verify as verifying
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher, probe
 from dataporter.browser import session as browser_session
@@ -1422,6 +1431,11 @@ class Importer:
             # §13's other gap. Ours to send and the agent's to spend: the
             # per-part loop is inside the run this line is about to start.
             delay_between_parts_s=self.settings.pacing.delay_between_parts_s,
+            # `17`: what the chat should be called. Capped and squashed by the
+            # same function that later compares the page against it, and empty —
+            # `none` in the prompt, no rename step at all — when the source had
+            # no title or `fidelity.rename_title` is off.
+            title=verifying.intended_title(self.settings, before.title),
         )
         run_id = run_id_for(seed.short_id, before.attempts + 1)
         try:
@@ -1460,6 +1474,7 @@ class Importer:
         acked = max(0, min(result.chunks_acked, len(seed.chunks)))
         conversation_id = result.conversation_id or resuming(before)
         mapped = interpret(result, landed=conversation_id is not None)
+        status, error = mapped.status, mapped.error
         # `14`: a conversation waiting for a person is not finished, so its entry
         # keeps the status it has. Everything else about where it got to is
         # written either way — the resume reads it back.
@@ -1472,7 +1487,7 @@ class Importer:
             "messages_represented": sum(
                 len(chunk.message_uuids) for chunk in seed.chunks[:acked]
             ),
-            "error": mapped.error,
+            "error": error,
         }
         item = self.plans.get(uuid)
         if item is not None:
@@ -1484,15 +1499,24 @@ class Importer:
         if mapped.needs_human:
             self.store.update(uuid, **reached)
         else:
-            self.store.update(uuid, status=mapped.status, **reached)
+            # `17`: the page, not the agent. Folded into this one update rather
+            # than written after it, so that a chat the page says is incomplete
+            # is never `completed` in the file for the length of a CDP call — and
+            # so that `verified_at` and the status it belongs to are stamped
+            # together.
+            found = self._verify(uuid, before, seed, result, conversation_id)
+            if found is not None:
+                status, error = verifying.applied(found, status, error)
+                reached.update(verifying.fields(self.store.load()[uuid], found))
+            self.store.update(uuid, **{**reached, "status": status, "error": error})
         if result.actions:
             _logger.debug(
                 "hermes reported actions",
                 extra={"conversation_id": seed.short_id, "actions": result.actions},
             )
         return Attempt(
-            status=mapped.status,
-            error=mapped.error,
+            status=status,
+            error=error,
             attempts=attempts,
             deferred=mapped.deferred,
             rate_limited=mapped.rate_limited,
@@ -1510,6 +1534,35 @@ class Importer:
             )
             if mapped.needs_human
             else None,
+        )
+
+    def _verify(
+        self,
+        uuid: str,
+        before: ConversationState,
+        seed: Seed,
+        result: hermes_running.HermesResult,
+        conversation_id: str | None,
+    ) -> verifying.Verification | None:
+        """Read the chat back, or say why there was nothing to read (`17`).
+
+        `None` — no verification at all — in the two cases `17` names: a run that
+        reported neither `completed` nor `partial`, and a run with no chat to
+        navigate to. The first is the more interesting: `rate_limited` and
+        `needs_human` are conversations somebody else still owns, and `failed` is
+        a run that already said what went wrong and where it got to — reading its
+        chat back would find exactly the parts it told us were missing.
+        """
+        if conversation_id is None or result.outcome not in ("completed", "partial"):
+            return None
+        expected = verifying.Expected(
+            conversation_uuid=uuid,
+            conversation_id=conversation_id,
+            parts=len(seed.chunks),
+            title=verifying.intended_title(self.settings, before.title),
+        )
+        return verifying.Verifier(self.settings, self._session().client).verify(
+            expected
         )
 
     def _record_failure(

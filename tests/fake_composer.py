@@ -33,6 +33,14 @@ def js_const(expression: str, name: str) -> Any:
     raise AssertionError(f"no const {name} in expression")
 
 
+@dataclass(frozen=True)
+class Turn:
+    """One message in a modelled transcript (`17`)."""
+
+    role: str
+    text: str
+
+
 @dataclass
 class FakePage:
     """What one tab holds, and how it answers being asked about it."""
@@ -62,6 +70,25 @@ class FakePage:
     """Called before each state read, with the number of reads so far. How a
     fixture changes under a poll loop."""
 
+    transcript: list[Turn] | None = None
+    """The whole conversation, as `17`'s `probe --messages` reads it.
+
+    `None` is the accommodating stand-in `12`'s world uses: a chat that holds
+    whatever it is asked about — one human turn per question and an assistant
+    turn carrying all of them — so that a run whose page was never really pasted
+    into still verifies. It is a stub for the tests that are *not* about
+    verification; `test_verify.py` writes its transcripts out.
+    """
+
+    title: str | None = None
+    """The chat's displayed title. `None` is the same stand-in: a chat called
+    whatever the caller expected it to be called."""
+
+    follows_navigation: bool = True
+    """Whether a `Page.navigate` moves this page. `False` is a chat that is not
+    there: the browser asks for `/chat/<uuid>` and ends up somewhere else, which
+    is what a 404 or a redirect looks like to `17`."""
+
     uploaded: list[str] = field(default_factory=list)
     views: int = 0
     text_reads: int = 0
@@ -89,6 +116,35 @@ class FakePage:
             "contains": [item for item in expect if item in self.last_text],
         }
 
+    def messages(self, expect: list[str]) -> list[dict[str, Any]]:
+        """Every turn, in page order, each answering the caller's questions."""
+        if self.transcript is None:
+            return [
+                *(
+                    {"role": "human", "chars": 1, "contains": list(expect)}
+                    for _ in range(max(len(expect), 1))
+                ),
+                {"role": "assistant", "chars": 1, "contains": list(expect)},
+            ]
+        return [
+            {
+                "role": turn.role,
+                "chars": len(turn.text),
+                "contains": [item for item in expect if item in turn.text],
+            }
+            for turn in self.transcript
+        ]
+
+    def title_match(self, expected: str | None) -> dict[str, Any]:
+        shown = "" if self.title is None else self.title
+        return {
+            "chars": len(expected or "") if self.title is None else len(shown),
+            "source": "chat",
+            "matches": None
+            if expected is None
+            else (True if self.title is None else shown == expected),
+        }
+
     def attached(self, file_name: str) -> bool:
         """Whether this file's chip is on the page now."""
         return file_name in self.uploaded
@@ -109,6 +165,14 @@ class FakePage:
     def evaluate(self, expression: str) -> Any:
         if expression == "location.href":
             return self.url
+        if probe.PAGE_REPORT_TAG in expression:
+            expect = js_const(expression, "expect")
+            return {
+                **self.state(),
+                "last_message": self.last_message(expect),
+                "messages": self.messages(expect),
+                "title": self.title_match(js_const(expression, "expectTitle")),
+            }
         if probe.PAGE_VIEW_TAG in expression:
             return {
                 **self.state(),
@@ -145,6 +209,13 @@ class FakePage:
         if call.method == "Runtime.evaluate":
             value = self.evaluate(str(call.params.get("expression", "")))
             return {"result": {"result": {"value": value}}}
+        if call.method == "Page.navigate":
+            # Answered here as well as by `FakeChrome`, which updates the target
+            # list: `location.href` is the page's own, and `17` is the first
+            # caller that navigates a tab rather than only reading it.
+            if self.follows_navigation:
+                self.url = str(call.params.get("url", self.url))
+            return None
         if call.method == "Input.insertText":
             self.insert_text(str(call.params.get("text", "")))
             return {"result": {}}

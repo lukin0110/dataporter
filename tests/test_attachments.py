@@ -39,7 +39,16 @@ from dataporter.export.model import ChatMessage, Conversation, Export
 from dataporter.hermes.runner import HermesResult
 from dataporter.state import Status
 from dataporter.steps import Step
-from world import ATTACHED, CHART, INLINED, World, cli_env, completed, result
+from world import (
+    ATTACHED,
+    CHART,
+    INLINED,
+    OTHER_CHAT,
+    World,
+    cli_env,
+    completed,
+    result,
+)
 
 WHEN = datetime(2024, 5, 3, 9, 0, tzinfo=UTC)
 CONVERSATION = "aaaaaaaa-1111-4111-8111-111111111111"
@@ -680,7 +689,9 @@ def test_inspect_reports_a_file_the_operator_supplied(
 def test_a_result_that_mentions_no_attachments_still_runs(world: World) -> None:
     """The two lists are optional in the contract: a run that had no files to
     attach has nothing to say about them."""
-    world.answers(result(outcome="completed", conversation_id="c" * 36))
+    # A real uuid, because `17` reads the chat back off `/chat/<uuid>`: an id
+    # that is not one is a chat the verification cannot find.
+    world.answers(result(outcome="completed", conversation_id=OTHER_CHAT))
 
     summary = world.run(limit=1)
 

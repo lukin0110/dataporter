@@ -40,6 +40,7 @@ AttachmentClass = Literal["inline", "upload", "unsupported"]
 ARTIFACT_TOOL = "artifacts"
 SEPARATOR = "---"
 ACK_PREFIX = "MIGRATION-ACK"
+SOURCE_ID_PREFIX = "Original conversation ID:"
 CONTINUED = "(continued)"
 SHORT_ID_CHARS = 8
 
@@ -281,13 +282,24 @@ def _header(
         "Original conversation:\n"
         f"{title}\n"
         "\n"
-        f"Original conversation ID: {conversation.uuid}\n"
+        f"{source_id_line(conversation.uuid)}\n"
         f"Created: {format_timestamp(conversation.created_at)}\n"
         f"Messages: {message_count}\n"
         f"Part {part} of {total}\n"
         "\n"
         "The following is the historical conversation:"
     )
+
+
+def source_id_line(uuid: str) -> str:
+    """The header line that ties a migrated chat back to its source (§7, §15).
+
+    Built here rather than spelled twice for the reason `ack_line` is: `17`
+    verifies a reloaded chat by looking for this exact line in its first human
+    message, and a header and a matcher that disagreed would fail every
+    verification of every conversation with nothing to show for it.
+    """
+    return f"{SOURCE_ID_PREFIX} {uuid}"
 
 
 def _continuation(token: str, part: int, total: int) -> str:

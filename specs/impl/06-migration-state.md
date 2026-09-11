@@ -35,7 +35,8 @@ restarts.
                    "reason": "bytes_not_in_export" }]
     },
     "error": null,
-    "limitations": ["thinking_omitted:3"],
+    "limitations": ["thinking_omitted:3", "timestamps_not_preserved"],
+    "verified_at": "2026-09-10T14:03:19Z",
     "updated_at": "2026-09-10T14:03:11Z"
   }
   ```
@@ -43,6 +44,13 @@ restarts.
   The first three keys are the brief's; the rest are extensions. `destination` is
   `{"conversation_id": null}` until known. `error` is
   `{"category": "...", "detail": "...", "retry_recommended": true|false|null}` or `null`.
+  `verified_at` is `17`'s and is `null` until a verification passes: the timestamp says
+  the destination chat was read back off the page and held every part and every
+  acknowledgement, which is a different claim from `status: completed` — that one is the
+  agent's. A verification that fails clears it and leaves the entry `partial`.
+  `limitations` carries `04`'s rendering slugs first and then `17`'s observations of the
+  destination — `timestamps_not_preserved` always, `title_not_set` when the chat is not
+  called what the source conversation was called.
   `attachments` grew its fourth count and its `detail` list in `16`: `failed` is a class 2
   file the upload itself refused, and `detail` carries one entry per attachment that is not
   in the chat as an upload, so the four counts always add up to the number of attachments
@@ -56,6 +64,7 @@ restarts.
                      └──> failed       (no chat, or abandoned before identify)
   partial / failed ──> running         (--retry-partial / --retry-failed / resume)
   completed ──> running                (--force only; old id kept in run.json)
+  completed ──> partial                (17 only: the page does not hold what was claimed)
   running ──> pending | partial        (crash recovery at startup, see below)
   ```
 

@@ -19,7 +19,7 @@ a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
 `run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`;
 `09` adds `hermes` and three more `timeouts` fields; `13` adds `retries` and one
 more `run` field; `14` adds another `run` field; `15` adds `pacing` and the three
-`with_pacing` flags.
+`with_pacing` flags; `17` adds `fidelity` and one more `timeouts` field.
 """
 
 import os
@@ -300,6 +300,15 @@ class TimeoutSettings(BaseModel):
     distinguish "does not work" from "is slow".
     """
 
+    verify_s: float = 30.0
+    """How long `17`'s verification waits for a reloaded chat to render.
+
+    Not `response_s`: nothing is being generated here. The page is navigated to a
+    chat that already exists and polled until its transcript is there, which is a
+    page load and a render — half a minute is generous for both, and a wait that
+    runs out is reported as a failed check rather than as a passed one.
+    """
+
     hermes_task_s: float = Field(default=1800.0, gt=0)
     """One conversation's `hermes -z` run (`09`, spent by `12`).
 
@@ -309,6 +318,39 @@ class TimeoutSettings(BaseModel):
     Half an hour covers a multi-part seed whose every part waits on generation,
     with room for one recovery attempt inside the run. `15` owns it once a pilot
     has produced real durations.
+    """
+
+
+class FidelitySettings(BaseModel):
+    """What `17` tries to reproduce beyond the messages themselves (§15).
+
+    One question, asked twice: is a chat's *title* part of what gets migrated?
+    §15 asks for "equivalent titles", the UI is the only way to set one, and
+    `10`'s question 7 is whether renaming through it is reliable enough to be a
+    verified step. Until somebody has watched it, the default is to try —
+    a rename that does not take is recorded as the limitation `title_not_set`
+    and costs the conversation nothing.
+    """
+
+    rename_title: bool = True
+    """Whether the `rename` step runs at all.
+
+    `false` skips it and records `title_not_set` for every conversation, which is
+    what an operator sets when `10` finds no rename affordance — or when they
+    would rather not have an agent opening chat menus in their account. Either
+    way "equivalent titles" is then met only by the header line `04` writes into
+    the seed, and `docs/LIMITATIONS.md` says so.
+    """
+
+    title_max_chars: int = Field(default=200, ge=1)
+    """How much of a source title is typed into the rename field.
+
+    A title comes out of an export we do not control and reaches the page
+    through the agent's own `browser_type` (`17`'s design notes), so it is
+    bounded before it is sent: anything longer is truncated and ends in `…`, and
+    the same truncated string is what verification compares the displayed title
+    against. Two hundred characters is longer than any title a person writes and
+    short enough to type in one action.
     """
 
 
@@ -368,6 +410,7 @@ class Settings(BaseSettings):
     attachments: AttachmentSettings = AttachmentSettings()
     browser: BrowserSettings = BrowserSettings()
     hermes: HermesSettings = HermesSettings()
+    fidelity: FidelitySettings = FidelitySettings()
     pacing: PacingSettings = PacingSettings()
     retries: RetrySettings = RetrySettings()
     timeouts: TimeoutSettings = TimeoutSettings()

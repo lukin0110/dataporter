@@ -53,8 +53,8 @@ the step name that `state.json` and the report use.
   | `await` (per part) | `terminal: hermes-claude-migrate browser await-response --expect "MIGRATION-ACK …"` | helper `ok: true` |
   | `ack` (per part) | read `last_message.contains` | contains the expected ack line; if not, `browser_snapshot` and classify (`13`) |
   | `identify` | `browser probe` | `conversation_id` is a uuid; URL is `/chat/<uuid>` |
-  | `rename` (`17`) | rename flow from the UI map | title element shows the source title — *not performed in this version: the UI map has no observed rename affordance, so there is nothing to quote and nothing to verify* |
-  | `verify` (`17`) | reload `/chat/<uuid>` | user message count ≥ parts, every ack present — *not performed in this version* |
+  | `rename` (`17`) | only when the prompt gives a `title`: the chat's own menu, its rename affordance, the title typed through `browser_type` | `browser probe --expect-title "<title>"` → `title.matches` is `true`; a rename that does not take leaves `last_step` at `identify` and stops nothing (`17`) |
+  | `verify` (`17`) | `browser probe --messages --expect "<each ack line>"` | every part's ack line is in some message's `contains`; if one is not, classify it as a generation failure for that part (`13`) |
   | `done` | — | result emitted |
 
   Parts after the first repeat `paste → submit → await → ack` in the same chat.
@@ -130,11 +130,15 @@ the step name that `state.json` and the report use.
   elided the ack lines with `…`; these strings are matched literally by
   `await-response --expect`, and a list the agent has to reconstruct is a list it can
   reconstruct wrongly.
-- **`rename` and `verify` are named but not performed.** `docs/claude-ui-map.md` has no
-  observed rename affordance — Q7 is still `*unknown*` — and this slice's own rule is
-  that selectors and labels are quoted from that document, never invented. So the skill
-  lists both steps, says a later version performs them, and forbids attempting a rename;
-  `17` writes the flow once `10` has looked. A run that passes `identify` reports `done`.
+- **`rename` and `verify` were named and not performed, and `17` wrote them.** This
+  slice shipped both steps as placeholders because `docs/claude-ui-map.md` had — and
+  still has — no observed rename affordance, and this slice's rule is that selectors and
+  labels are quoted from that document, never invented. `17` performs them anyway, and
+  says why in its own design notes: the rename is described by *affordance* rather than
+  by selector ("the chat's own menu, its rename affordance"), which is a thing Hermes
+  finds by looking rather than a string we would be inventing, and a rename that does
+  not take costs the conversation nothing. The `verify` step needs no selector at all —
+  it is one `probe --messages` against ack lines we wrote ourselves.
 - **`open` navigates to the existing chat when there is one.** The sketch had it always
   go to `/new`, which on a retry would create a second chat for the same conversation —
   the one failure §17 has no cleanup for, since nothing may be deleted.

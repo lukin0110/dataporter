@@ -467,8 +467,11 @@ def test_a_relaunched_browser_is_put_through_the_preflight_checks(
             world.export, state.Selection(limit=2)
         )
         # The blank tab the replacement came back with is gone: `close-extra-tabs`
-        # ran on it, exactly as the preflight would have.
-        assert [target.url for target in came_back.chrome.targets] == [NEW_URL]
+        # ran on it, exactly as the preflight would have. The one that is left is
+        # in the chat `17`'s verification navigated it to.
+        assert [target.url for target in came_back.chrome.targets] == [
+            f"https://claude.ai/chat/{CHAT}"
+        ]
     finally:
         came_back.chrome.stop()
 

@@ -24,6 +24,7 @@ from typer.core import TyperGroup
 from dataporter import PROGRAM_NAME, log, state, summary
 from dataporter import importer as importing
 from dataporter import seed as seeding
+from dataporter import verify as verifying
 from dataporter.browser import cdp, launcher, probe
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import session as browser_session
@@ -741,10 +742,72 @@ def resume(ctx: typer.Context) -> None:
     raise typer.Exit(outcome.exit_code)
 
 
+def verified(
+    settings: Settings,
+    store: state.StateStore,
+    wanted: Sequence[tuple[str, verifying.Expected]],
+) -> int:
+    """Re-read every chosen chat, print a line each, and return the failures.
+
+    The browser is opened here and not by an `Importer`: `17`'s `verify` runs
+    without Hermes at all — no profile, no subprocess, no model — because the
+    whole point of it is to check the account rather than to ask the thing that
+    wrote to the account what it did.
+    """
+    # `launch` adopts the browser already on the port when it is ours, so a
+    # `verify` run beside a window the operator left open reuses it. `12` opens
+    # one the same way, and the rule for closing it is the same rule.
+    browser = launcher.launch(settings, probe.NEW_CHAT_URL)
+    failures = 0
+    try:
+        if not browser_session.signed_in(browser):
+            # Exit `3`: a signed-out session makes every chat unreadable, and
+            # reporting a hundred failed verifications would bury the one fact
+            # that matters.
+            raise AuthError(detail=SIGNED_OUT)
+        verifier = verifying.Verifier(settings, browser.client)
+        for uuid, expected in wanted:
+            found = verifier.verify(expected)
+            verifying.record(store, uuid, found)
+            failures += 0 if found.ok else 1
+            # Printed even under `--quiet`, for the reason `status`'s block is:
+            # `-q` suppresses progress, and these lines are the whole result.
+            print(found.line())
+    finally:
+        # A browser this command started is one it closes; one that was already
+        # running belongs to whoever started it — `12`'s rule, and `07`'s flag.
+        if not browser.adopted:
+            browser.close()
+    return failures
+
+
 @app.command()
 def verify(ctx: typer.Context, only: Only = None) -> None:
     """Check that migrated conversations exist in the destination account."""
-    not_implemented(ctx)
+    settings = app_context(ctx).settings
+    log.enable_run_log(settings.workspace)
+    store = state.StateStore(settings.workspace)
+    # Read before anything is printed, like `status`: a workspace written by a
+    # build with a different state schema stops the command here.
+    store.run()
+    wanted = list(verifying.verifiable(settings, store.load()))
+    if only:
+        chosen = set(state.resolve_only([uuid for uuid, _ in wanted], only))
+        wanted = [item for item in wanted if item[0] in chosen]
+    if not wanted:
+        # Nothing migrated, or nothing selected. Exit `4` rather than the `0`
+        # that "everything verified" would give it, for `06`'s reason: an empty
+        # selection is not a success.
+        raise typer.Exit(ExitCode.NOTHING_TO_DO)
+    # Under the lock: this writes `state.json`, and a `verify` racing an `import`
+    # would overwrite the status of a conversation being migrated as it reads it.
+    lock = state.WorkspaceLock(settings.workspace)
+    lock.acquire()
+    try:
+        failures = verified(settings, store, wanted)
+    finally:
+        lock.release()
+    raise typer.Exit(ExitCode.FAILED if failures else ExitCode.OK)
 
 
 @app.command()
@@ -882,14 +945,38 @@ def emit_helper(
 
 @browser_app.command("probe")
 def browser_probe(
-    ctx: typer.Context, target: TargetOption = None, expect: ExpectOption = None
+    ctx: typer.Context,
+    target: TargetOption = None,
+    expect: ExpectOption = None,
+    messages: Annotated[
+        bool,
+        typer.Option(
+            "--messages",
+            help="Report every message on the page, not only the last one.",
+        ),
+    ] = False,
+    expect_title: Annotated[
+        str | None,
+        typer.Option(
+            "--expect-title",
+            metavar="TEXT",
+            # Whether the title *is* TEXT, never what the title is: §10 keeps a
+            # chat's name off stdout, and `17` needs an answer rather than a name.
+            help="Report whether the chat's title is TEXT.",
+        ),
+    ] = None,
 ) -> None:
     """Report the current page state as JSON."""
     emit_helper(
         ctx,
         "probe",
         lambda client, settings: browser_helpers.probe_page(
-            client, settings, target=target, expect=tuple(expect or ())
+            client,
+            settings,
+            target=target,
+            expect=tuple(expect or ()),
+            messages=messages,
+            expect_title=expect_title,
         ),
     )
 

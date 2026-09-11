@@ -20,12 +20,16 @@ from dataporter.browser.probe import (
     LastMessage,
     PageKind,
     PageState,
+    TitleMatch,
     conversation_id_of,
     kind_of,
+    normalise_title,
+    page_report,
     page_view,
     path_of,
     probe,
 )
+from dataporter.render import ack_line, source_id_line
 from fake_chrome import (
     FakeChrome,
     FakeTarget,
@@ -33,7 +37,14 @@ from fake_chrome import (
     dialog_event,
     page_state,
 )
-from fake_pages import CHAT_ID, GENERATING_CHAT_ID, PageServer
+from fake_pages import (
+    CHAT_ID,
+    GENERATING_CHAT_ID,
+    MIGRATED_CHAT_ID,
+    MIGRATED_SOURCE,
+    MIGRATED_TITLE,
+    PageServer,
+)
 from live_browser import live_browser, requires_a_browser
 
 pytestmark = pytest.mark.slow
@@ -193,6 +204,53 @@ def test_page_view_is_one_evaluate_for_both_answers(fake: FakeChrome) -> None:
     assert fake.methods().count("Runtime.evaluate") == 1
 
 
+def test_page_report_is_also_one_evaluate(fake: FakeChrome) -> None:
+    """`17` asks for the whole transcript and the title; it is still one look."""
+    fake.targets[0].evaluate = page_state(
+        url=CHAT_URL,
+        last_message={"role": "assistant", "chars": 9, "contains": []},
+        messages=[
+            {"role": "human", "chars": 40, "contains": ["ACK part 1"]},
+            {"role": "assistant", "chars": 9, "contains": []},
+        ],
+        title={"chars": 4, "source": "chat", "matches": False},
+    )
+    client = CdpClient(port=fake.port, timeout=5.0)
+    with client.attach("page-1") as page:
+        report = page_report(page, expect=["ACK part 1"], expect_title="Name")
+    assert [item.role for item in report.messages] == ["human", "assistant"]
+    assert report.messages[0].contains == ("ACK part 1",)
+    assert report.title == TitleMatch(chars=4, source="chat", matches=False)
+    assert fake.methods().count("Runtime.evaluate") == 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [None, "not an object", {}, {"chars": None, "source": "nowhere"}],
+)
+def test_a_page_that_answers_with_nonsense_has_no_title(raw: object) -> None:
+    """An unrendered chat reads as an empty title nobody asked about, never as a
+    title that matched."""
+    assert TitleMatch.from_raw(raw) == TitleMatch(
+        chars=0, source="document", matches=None
+    )
+
+
+def test_a_page_that_answers_with_no_messages_reads_as_no_transcript(
+    fake: FakeChrome,
+) -> None:
+    fake.targets[0].evaluate = page_state(url=CHAT_URL, messages="not a list")
+    client = CdpClient(port=fake.port, timeout=5.0)
+    with client.attach("page-1") as page:
+        assert page_report(page).messages == ()
+
+
+def test_a_title_is_squashed_the_same_way_on_both_sides() -> None:
+    """The other half of the rule is `_TITLE_OBJECT`, which squashes the same
+    runs of whitespace in the page."""
+    assert normalise_title("  two   words\n") == "two words"
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -312,6 +370,48 @@ def test_live_generating_page(live: tuple[launcher.BrowserSession, PageServer]) 
     assert state.generating
     assert not state.send_enabled
     assert state.conversation_id == GENERATING_CHAT_ID
+
+
+@requires_a_browser
+def test_live_migrated_chat_page(
+    live: tuple[launcher.BrowserSession, PageServer],
+) -> None:
+    """`17`, against a real renderer: two parts, two acknowledgements, a title.
+
+    The one test that proves `MESSAGE_SELECTOR` really does separate the roles in
+    page order and that `TITLE_SELECTOR` finds the heading — everything else
+    about `17` is checked against a page model that was told what to say.
+    """
+    session, server = live
+    url = server.url(f"/chat/{MIGRATED_CHAT_ID}")
+    short = MIGRATED_SOURCE[:8]
+    expect = [
+        source_id_line(MIGRATED_SOURCE),
+        ack_line(short, 1, 2),
+        ack_line(short, 2, 2),
+    ]
+    page: Page = browser_session.open_claude_tab(session, url)
+    try:
+        page.navigate(url)
+        deadline = time.monotonic() + 30.0
+        while page.evaluate("document.readyState") != "complete":  # pragma: no cover
+            assert time.monotonic() < deadline, url
+            time.sleep(0.1)
+        report = page_report(page, expect=expect, expect_title=MIGRATED_TITLE)
+    finally:
+        page.close()
+
+    assert [item.role for item in report.messages] == [
+        "human",
+        "assistant",
+        "human",
+        "assistant",
+    ]
+    assert report.messages[0].contains == (expect[0],)
+    assert report.messages[1].contains == (expect[1],)
+    assert report.messages[3].contains == (expect[2],)
+    assert report.title.matches is True
+    assert report.title.source == "chat"
 
 
 @requires_a_browser

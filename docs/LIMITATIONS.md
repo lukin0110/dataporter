@@ -26,7 +26,9 @@ Every entry carries a mark:
 - **Original message timestamps.** Every migrated message is timestamped when it is
   pasted, not when it was written. The composer offers no way to set a send time. The
   original times survive only inside the seed text, where `04` renders them as part of the
-  transcript. *by construction*
+  transcript. `17` records this against every chat that lands, as the per-conversation
+  limitation `timestamps_not_preserved`, so that `19`'s account of one conversation is
+  complete without this file. *by construction*
 - **Message identifiers.** The destination account mints its own message ids. The source
   export's ids are not carried over and cannot be referenced from the destination.
   *by construction*
@@ -49,9 +51,15 @@ Every entry carries a mark:
 - **Conversation identifiers.** The destination mints a new `/chat/<uuid>`; `06`'s
   `state.json` maps source id to destination id, which is the only place the two are tied
   together. *by construction*
-- **Titles.** Whether a chat can be renamed through the UI reliably enough to be a
-  verified step is `10`'s Q7 and `17`'s whole subject. If the answer is no, "equivalent
-  titles" moves from `17` into this file. *unknown*
+- **Titles.** `17` renames the chat through the UI — Hermes opens the chat's own menu and
+  types the source title, capped at `fidelity.title_max_chars` — and then checks the
+  displayed title from the page. Whether that affordance exists and is reliable is `10`'s
+  Q7, still unanswered, so the step is best effort by design: a chat whose title did not
+  take is recorded as `title_not_set` against that conversation and migrated all the same,
+  and an operator who finds the rename unreliable sets `fidelity.rename_title = false` and
+  gets `title_not_set` for every conversation. Where the title is not set, "equivalent
+  titles" is met only by the header line `04` writes into the first seed part, which names
+  the source conversation inside the chat's first message. *unknown*
 - **Chronological order between conversations.** Conversations are migrated in the order
   `12` picks, so the destination's sidebar order reflects the migration, not the source
   history. *by construction*
