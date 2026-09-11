@@ -234,6 +234,20 @@ def test_no_title_to_set_is_the_same_limitation() -> None:
     )
 
 
+def test_a_chat_that_is_not_this_one_is_never_correctly_titled() -> None:
+    """A page we could not identify says nothing about *this* conversation.
+
+    The `matches` below is `true` — a redirect to a chat somebody renamed the
+    same way, or a title element that outlived the navigation — and it must not
+    become "the title was set", because the only thing this page established is
+    that the chat is missing. (Raised by Copilot in review on #26.)
+    """
+    found = verifying.checks(migrated_at(NEW_URL), expected())
+    assert found.failed == verifying.CHAT_MISSING
+    assert not found.title_set
+    assert verifying.TITLE_NOT_SET in found.limitations
+
+
 def test_timestamps_are_a_limitation_of_every_chat_that_lands() -> None:
     """Even one that failed a check: the messages that *are* there were still
     timestamped when they were pasted."""
@@ -485,6 +499,68 @@ def test_a_transcript_that_has_not_rendered_yet_is_waited_for(
 
     page.on_view = render_after_two
     assert verifier(browser, tmp_path).verify(expected()).ok
+
+
+@pytest.mark.slow
+def test_a_navigation_still_in_flight_is_not_a_missing_chat(
+    chat: tuple[Browser, FakePage], tmp_path: Path
+) -> None:
+    """`Page.navigate` returns before the tab shows the page it asked for.
+
+    The tab is still on `/new` for the first two reads, which is what a slow
+    load looks like from here — and calling that `chat missing` would fail a
+    conversation for the speed of a page.
+    """
+    browser, page = chat
+    page.follows_navigation = False
+
+    def arrive(current: FakePage, views: int) -> None:
+        if views >= 2:
+            current.url = CHAT_URL
+
+    page.on_view = arrive
+    assert verifier(browser, tmp_path).verify(expected()).ok
+
+
+@pytest.mark.slow
+def test_landing_in_another_chat_ends_the_wait_at_once(
+    chat: tuple[Browser, FakePage], tmp_path: Path
+) -> None:
+    """A tab that settled in somebody else's chat is settled: waiting out
+    `timeouts.verify_s` would add half a minute to a verification whose answer
+    is already known. (Raised by Copilot in review on #26.)"""
+    browser, page = chat
+    page.url = f"https://claude.ai/chat/{'c7e1b3f5-2d99-4f4b-8b2a-3a1f6e8d9c02'}"
+    page.follows_navigation = False
+
+    found = verifier(browser, tmp_path).verify(expected())
+
+    assert found.failed == verifying.CHAT_MISSING
+    # One look at the page, not `verify_s` divided by the poll interval.
+    assert page.views == 1
+
+
+@pytest.mark.slow
+def test_a_session_that_expires_mid_verification_stops_the_read(
+    chat: tuple[Browser, FakePage], tmp_path: Path
+) -> None:
+    """The wall is re-checked on every poll, as `08`'s response wait checks it:
+    a tab redirected to a page no helper may read is not read."""
+    browser, page = chat
+    # The chat is reached and is still rendering, so the poll goes round again —
+    # and by then the tab is on a sign-in page.
+    page.transcript = []
+
+    def expire(current: FakePage, views: int) -> None:
+        if views >= 2:
+            current.url = "https://claude.ai/login?returnTo=/chat"
+
+    page.on_view = expire
+
+    found = verifier(browser, tmp_path).verify(expected())
+
+    assert found.failed == verifying.CHAT_UNREADABLE
+    assert page.views == 2
 
 
 @pytest.mark.slow

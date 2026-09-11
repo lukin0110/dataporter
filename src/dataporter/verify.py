@@ -270,8 +270,19 @@ def checks(report: probing.PageReport, expected: Expected) -> Verification:
     migrated is the whole of `17`, and it is testable against a `PageReport`
     built by hand — no Chrome, no fixtures, no timing.
     """
+    page = report.state
+    found = (
+        page.kind is probing.PageKind.CHAT
+        and page.conversation_id == expected.conversation_id
+    )
+    # Title first in the reading, identity first in the logic: what a page that
+    # is not this chat says it is called is not evidence about this chat. A
+    # redirect to a chat somebody renamed the same way would otherwise be
+    # recorded as a correctly titled conversation, which is the one thing a
+    # limitation must never say wrongly — and `_unreadable` already answers the
+    # same question the same way for a page that could not be read at all.
     limitations = [TIMESTAMPS_NOT_PRESERVED]
-    title_set = expected.title != "" and report.title.matches is True
+    title_set = found and expected.title != "" and report.title.matches is True
     if not title_set:
         limitations.append(TITLE_NOT_SET)
 
@@ -284,11 +295,7 @@ def checks(report: probing.PageReport, expected: Expected) -> Verification:
             title_set=title_set,
         )
 
-    page = report.state
-    if (
-        page.kind is not probing.PageKind.CHAT
-        or page.conversation_id != expected.conversation_id
-    ):
+    if not found:
         return outcome(CHAT_MISSING)
 
     human = report.with_role("human")
@@ -391,23 +398,42 @@ class Verifier:
                     expect=expected.expect,
                     expect_title=expected.title or None,
                 )
-                if self._rendered(report, expected) or time.monotonic() >= deadline:
+                # Re-checked every poll, as `08`'s `await-response` re-checks it:
+                # a session that expires mid-verification redirects the tab to a
+                # page no helper may read, and the wall is what stops us reading
+                # it rather than waiting the deadline out on it.
+                browser_helpers.guard(report.state.url, self.surface)
+                if self._settled(report, expected) or time.monotonic() >= deadline:
                     return report
                 time.sleep(self.poll_s)
 
     @staticmethod
-    def _rendered(report: probing.PageReport, expected: Expected) -> bool:
-        """Whether there is anything worth checking yet.
+    def _settled(report: probing.PageReport, expected: Expected) -> bool:
+        """Whether the page has stopped being on its way somewhere.
 
-        A chat that is still loading is at the right URL with an empty
-        transcript, which would read as `history missing` — the failure of a
-        migration rather than of a page load. So the poll waits for the URL *and*
-        a turn on the page; a URL that is not this chat's is not going to become
-        one by waiting, so that ends the wait immediately.
+        Three cases, because `Page.navigate` returns before the page it asked
+        for is the page the tab shows:
+
+        - **This chat.** Wait for a turn to render. A chat that is still drawing
+          is at the right URL with an empty transcript, and reading that moment
+          would report `history missing` — the failure of a migration rather
+          than of a page load.
+        - **Another chat.** Settled, and settled somewhere wrong. Nothing about
+          it will change by waiting, so the wait ends here and `checks` reports
+          `chat missing` in a second rather than in thirty. (Raised by Copilot
+          in review on #26, which also caught this test the wrong way round: as
+          first written it ended the wait on every page that was *not* a chat,
+          so a navigation still in flight was reported as a missing chat and a
+          tab in the wrong chat was waited out. Both halves are inverted here.)
+        - **Not a chat at all.** `/new`, which is both what the tab shows while
+          the navigation is in flight and where a chat that no longer exists
+          redirects to. The two are indistinguishable from here, so this is the
+          one case that is waited out — erring towards giving a slow page time
+          rather than towards calling a conversation missing.
         """
-        if report.state.conversation_id != expected.conversation_id:
-            return report.state.kind is not probing.PageKind.CHAT
-        return bool(report.messages)
+        if report.state.conversation_id == expected.conversation_id:
+            return bool(report.messages)
+        return report.state.kind is probing.PageKind.CHAT
 
 
 # --------------------------------------------------------------------------- #

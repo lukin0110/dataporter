@@ -104,6 +104,17 @@ And give the chat its source title through the UI, as a verified step.
   agree with the agent it exists to check would not be a verification, so the table grew
   that edge and nothing else writes it.
 
+- **Waiting for a chat is not the same as waiting for a page.** `Page.navigate`
+  returns before the tab shows what it asked for, so the verification polls — and
+  what it polls *for* is the difference between a slow load and a missing chat.
+  `Verifier._settled` ends the wait on a page that has landed (this chat, once a
+  turn has rendered; or any other chat, immediately) and keeps waiting only on a
+  page that is not a chat at all, because `/new` is both what a tab shows in
+  transit and where a chat that no longer exists sends you. The live URL is
+  re-checked against the migration surface on every poll, as `08`'s
+  `await-response` does, so a session that expires mid-verification reads as
+  `chat unreadable` rather than as thirty seconds spent on a sign-in page.
+
 ## Acceptance criteria
 
 - A static chat fixture with two parts and both acks: `verify` passes and sets
