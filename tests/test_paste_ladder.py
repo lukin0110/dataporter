@@ -33,6 +33,12 @@ import spike  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 
+SPIKE_DIR = REPO / "docs" / "spike"
+LADDER_WRITES = ("notes.jsonl", "paste-ladder.json")
+"""The two files a ladder run creates, named so the test below can say which
+absence it is asserting. `docs/spike/README.md` documents both as written by the
+spike, not committed with it."""
+
 
 @pytest.fixture
 def notes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -383,7 +389,11 @@ def test_the_ladder_writes_nothing_into_the_repository(
     """`spike.NOTES` points inside the repository. A run that forgot to redirect
     would commit a fabricated observation into `docs/spike/`."""
     ladder_on_path(live, tmp_path, monkeypatch)
-    before = sorted(path.name for path in (REPO / "docs" / "spike").iterdir())
+    # Named rather than a whole-directory listing: an observation committed by an
+    # earlier run would sit in `before` and the equality below would still pass.
+    for name in LADDER_WRITES:
+        assert not (SPIKE_DIR / name).exists(), f"{name} is committed"
+    before = sorted(path.name for path in SPIKE_DIR.iterdir())
 
     paste_ladder.main(
         [
@@ -397,6 +407,5 @@ def test_the_ladder_writes_nothing_into_the_repository(
         ]
     )
 
-    assert sorted(path.name for path in (REPO / "docs" / "spike").iterdir()) == before
-    assert before == ["README.md"]
+    assert sorted(path.name for path in SPIKE_DIR.iterdir()) == before
     assert notes.is_file(), "the note went to the redirected file instead"
