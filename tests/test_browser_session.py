@@ -21,6 +21,11 @@ from dataporter.exit_codes import ExitCode
 from dataporter.state import StateError
 from fake_chrome import Call, FakeChrome, FakeTarget, free_port, page_state
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: a fake Chrome per test, and two login waits that really
+wait.
+"""
+
 
 def make_settings(tmp_path: Path, port: int) -> Settings:
     return Settings(

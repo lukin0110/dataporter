@@ -12,6 +12,11 @@ from dataporter.exit_codes import ExitCode
 from dataporter.hermes import profile as profiling
 from fake_hermes import FakeHermes
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: `setup` is fifteen `hermes` invocations, which is the point
+of the test.
+"""
+
 MODEL = "anthropic/claude-sonnet-5"
 
 

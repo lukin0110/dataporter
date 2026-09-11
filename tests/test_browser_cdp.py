@@ -16,6 +16,10 @@ from fake_chrome import (
     free_port,
 )
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: every test binds a port and speaks CDP over a
+real socket."""
+
 
 @pytest.fixture
 def chrome() -> Iterator[FakeChrome]:

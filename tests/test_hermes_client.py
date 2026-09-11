@@ -29,11 +29,13 @@ def fake(tmp_path: Path) -> FakeHermes:
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.slow
 def test_the_configured_executable_wins(tmp_path: Path, fake: FakeHermes) -> None:
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
     assert cli.path == fake.executable
 
 
+@pytest.mark.slow
 def test_a_bare_name_is_looked_up_on_path(
     tmp_path: Path, fake: FakeHermes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -62,6 +64,7 @@ def test_a_configured_executable_that_is_not_there_says_so(
         cli.path
 
 
+@pytest.mark.slow
 def test_the_path_is_resolved_once(tmp_path: Path, fake: FakeHermes) -> None:
     """A `PATH` that changes under `doctor`'s five calls is a stranger problem."""
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
@@ -100,6 +103,7 @@ def test_an_unset_variable_is_not_invented(
 COERCED = {"LC_CTYPE", "LC_ALL"}
 
 
+@pytest.mark.slow
 def test_the_child_really_sees_only_that(tmp_path: Path, fake: FakeHermes) -> None:
     """Asserted against the process's own view, not against our call record."""
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
@@ -114,11 +118,13 @@ def test_the_child_really_sees_only_that(tmp_path: Path, fake: FakeHermes) -> No
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.slow
 def test_version_is_parsed(tmp_path: Path, fake: FakeHermes) -> None:
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
     assert cli.version() == (1, 2, 3)
 
 
+@pytest.mark.slow
 def test_an_unreadable_version_is_an_error(tmp_path: Path, fake: FakeHermes) -> None:
     fake.write(version="not a version at all")
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
@@ -126,6 +132,7 @@ def test_an_unreadable_version_is_an_error(tmp_path: Path, fake: FakeHermes) -> 
         cli.version()
 
 
+@pytest.mark.slow
 def test_a_non_zero_exit_becomes_a_usage_error(
     tmp_path: Path, fake: FakeHermes
 ) -> None:
@@ -147,6 +154,7 @@ def test_an_unrunnable_executable_is_a_usage_error(
         cli.run("--version")
 
 
+@pytest.mark.slow
 def test_a_call_that_never_returns_is_cut_off(tmp_path: Path, fake: FakeHermes) -> None:
     fake.write(version="hermes 1.0.0", sleep=30)
     settings = Settings(
@@ -160,6 +168,7 @@ def test_a_call_that_never_returns_is_cut_off(tmp_path: Path, fake: FakeHermes) 
         cli.run("-z", "anything")
 
 
+@pytest.mark.slow
 def test_profiles_and_creation_round_trip(tmp_path: Path, fake: FakeHermes) -> None:
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
     assert cli.profiles() == []
@@ -168,6 +177,7 @@ def test_profiles_and_creation_round_trip(tmp_path: Path, fake: FakeHermes) -> N
     assert fake.profiles == ["dataporter"]
 
 
+@pytest.mark.slow
 def test_config_set_is_passed_through_verbatim(
     tmp_path: Path, fake: FakeHermes
 ) -> None:

@@ -19,6 +19,10 @@ from dataporter.hermes import version as versioning
 from fake_chrome import BROKEN_TARGET, Call, FakeChrome, FakeTarget, page_state
 from fake_hermes import FakeHermes
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: nine of the ten checks shell out, and two launch
+a browser."""
+
 MODEL = "anthropic/claude-sonnet-5"
 ANSWER = "__NONCE__\nhttps://claude.ai/new\ntrue\n"
 """What a working Hermes answers both `doctor` tasks with: the nonce, the URL of

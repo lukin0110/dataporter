@@ -13,6 +13,11 @@ from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import BrowserError
 from fake_chrome import FakeChrome, free_port
 
+pytestmark = pytest.mark.slow
+"""Slow all the way through: launching is the subject, and the fake browser is a real
+server.
+"""
+
 
 class StubProcess:
     """A `Popen` that never was. Enough of one for `BrowserSession.close`."""

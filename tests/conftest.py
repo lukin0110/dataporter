@@ -1,8 +1,26 @@
-"""Shared fixtures.
+"""Shared fixtures, and the line between the fast suite and the slow one.
 
 The content guard runs in strict mode for the whole suite, so a record that could
 carry conversation content raises here instead of being silently dropped the way it
 is in an operator's terminal.
+
+`22` is where the *cost* of the slow half gets fixed. This file is where the two
+halves are told apart, and it does that twice over:
+
+- **The marker follows the fixture.** A test that asks for `world` spawns a fake
+  Hermes fifteen times before its body runs, so `pytest_collection_modifyitems`
+  marks it `slow` rather than leaving that to whoever writes the next one. The
+  wholly-slow modules carry a module-level `pytestmark` instead, which is one
+  line each and says the same thing.
+- **And the fast half is held to it.** Marking by hand is a rule that rots
+  silently: a test that builds a `FakeChrome` inline has no fixture name to give
+  it away, and a fast suite that quietly grows a half-second teardown is a fast
+  suite nobody notices losing. So `no_expensive_fakes` makes constructing one an
+  error in an unmarked test. Green is then a proof rather than a hope, and the
+  failure lands on the pull request that introduced it.
+
+Neither mechanism decides what `slow` *means*; `pyproject.toml`'s `markers` does.
+Both exist so the meaning cannot drift away from what the suite actually does.
 """
 
 import os
@@ -18,9 +36,68 @@ from dataporter import log
 from dataporter import seed as seeding
 from dataporter.config import AttachmentSettings, SeedSettings, Settings
 from dataporter.export import load_export
+from fake_chrome import FakeChrome
+from fake_hermes import FakeHermes
+from fake_pages import PageServer
 from world import World
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+SLOW_FIXTURES = frozenset({"world"})
+"""Fixtures whose cost is a process or a socket, wherever they are asked for.
+
+`world` alone, because it is the only expensive fixture shared across modules —
+it builds a Hermes profile with fifteen subprocess calls and a fake Chrome with a
+threaded HTTP server, per test. The module-local ones (`chrome`, `fake`,
+`browser`, `new_chat`) are not listed: their names are generic, five modules
+spell them differently, and a list of them would rot on the first rename. Those
+modules carry a module-level `pytestmark` instead, and `no_expensive_fakes` is
+what catches anything either mechanism misses.
+"""
+
+EXPENSIVE = "{name} is expensive; mark the test `slow` (see pyproject.toml markers)"
+"""What an unmarked test that reaches for a fake is told.
+
+Named rather than inlined so the test that proves the guard is armed can match on
+it instead of on a phrase somebody may reword.
+"""
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Mark by fixture, so `slow` cannot drift away from what a test costs."""
+    for item in items:
+        if SLOW_FIXTURES & set(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.slow)
+
+
+@pytest.fixture(autouse=True)
+def no_expensive_fakes(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In a test that is not `slow`, building a fake is an error.
+
+    The attribute is patched on the class object rather than on the module
+    namespace, because `fake_composer` imports `FakeChrome` by name — a
+    module-level patch would have to be made in two places and would still miss
+    the third importer.
+
+    Silent about it when the test *is* marked: the guard is a statement about the
+    fast half, and the slow half is where these belong.
+    """
+    if request.node.get_closest_marker("slow") is not None:
+        return
+
+    def refuse(name: str):  # noqa: ANN202 - a factory for three identical guards
+        def guard(*args: object, **kwargs: object) -> None:
+            raise AssertionError(EXPENSIVE.format(name=name))
+
+        return guard
+
+    monkeypatch.setattr(FakeChrome, "__init__", refuse("FakeChrome"))
+    monkeypatch.setattr(FakeHermes, "__init__", refuse("FakeHermes"))
+    monkeypatch.setattr(PageServer, "__enter__", refuse("PageServer"))
 
 
 @pytest.fixture(autouse=True)

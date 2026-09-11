@@ -73,11 +73,15 @@ Follow these steps to create a Pull Request:
 6.  **Preflight Check**: Before creating the PR, run the checks CI runs, and
     fix anything they report.
     ```bash
-    make check   # ruff check, ruff format --check, ty check, pytest
+    make check-all   # lint, types, the whole suite, and the coverage gate
     ```
-    `make check` is the single command CI runs (see `Makefile` and
-    `.github/workflows/ci.yml`); keep them identical. If any check fails,
-    address the issue before proceeding to create the PR.
+    `make check` is what CI runs on a pull request — lint, types and the fast
+    half of the suite. `make check-all` is what CI runs on `main` after a merge,
+    and it is the only command that measures coverage, so `fail_under` is
+    checked there and nowhere else (see `Makefile`, `pyproject.toml` and
+    `.github/workflows/ci.yml`). Run `check-all` before opening a PR: a coverage
+    regression would otherwise not surface until after it merged. If any check
+    fails, address the issue before proceeding to create the PR.
 
 7.  **Push Branch**: Push the current branch to the remote repository.
     **CRITICAL SAFETY RAIL:** Double-check your branch name before pushing.
@@ -152,8 +156,11 @@ unaddressed. Then work in this order:
     someone else's branch — no rebase, amend, or force-push, since a merge
     commit keeps their checkout valid.
 2.  **CI red** → diagnose from the actual job logs, not from the check name.
-    Reproduce the failure locally first (`make check`, or the single failing
-    command), fix it, and confirm the same check passes before pushing.
+    Reproduce the failure locally first (`make check-all`, or the single failing
+    command), fix it, and confirm the same check passes before pushing. Note
+    that a `slow`-marked test is deselected by default, so naming one by node id
+    reports `1 deselected` and exits `0`; run it with
+    `uv run pytest -m "slow or not slow" <node id>`.
 3.  **Review comments** → implement and push small, local asks (nits, renames,
     an added test, a one-function refactor). For larger asks on a PR you do not
     own — multi-file refactors, API changes, open-ended design feedback — reply
@@ -168,7 +175,7 @@ unaddressed. Then work in this order:
 The same preflight as step 6 applies to every fix, not just the first commit:
 
 ```bash
-make check
+make check-all
 ```
 
 A push that turns CI red costs a cycle and the reviewers' trust. Keep each fix
