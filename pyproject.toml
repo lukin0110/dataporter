@@ -32,6 +32,14 @@ dependencies = [
     "orval>=0.0.12",
     "pydantic>=2",
     "pydantic-settings>=2",
+    # `13`'s retry loop, and nothing else: `Importer._migrate` builds one
+    # `Retrying` per conversation whose `retry`/`stop`/`wait` read our own
+    # cumulative `attempts` minus the deferrals `14` and `15` spared, so the
+    # library owns the shape of the loop and none of its arithmetic. `sleep=` is
+    # passed `pause`, which is what keeps every wait behind the one seam the
+    # tests record. >=9 is the line this was verified against; it has no
+    # dependencies of its own.
+    "tenacity>=9",
     # >=0.27 specifically: `typer.TyperException` (the base of the vendored click
     # exception hierarchy, which cli.py's exit-70 guard catches) does not exist in
     # 0.26 or earlier, where typer still depends on real click. Verified against

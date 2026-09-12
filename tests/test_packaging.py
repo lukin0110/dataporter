@@ -55,6 +55,7 @@ REQUIREMENTS = (
     "orval>=0.0.12",
     "pydantic>=2",
     "pydantic-settings>=2",
+    "tenacity>=9",
     "typer>=0.27",
     "websockets>=12",
 )
@@ -173,7 +174,7 @@ def test_the_wheel_carries_the_licence(
 
 @requires_uv
 def test_the_wheel_states_what_a_host_project_inherits(metadata: Message) -> None:
-    """The floor and the five dependencies, as an installer reads them."""
+    """The floor and the six dependencies, as an installer reads them."""
     assert metadata["Requires-Python"] == ">=3.12"
     every = metadata.get_all("Requires-Dist", [])
     required = [value for value in every if "extra ==" not in value]
