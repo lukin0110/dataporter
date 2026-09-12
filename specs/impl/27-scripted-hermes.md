@@ -97,6 +97,11 @@ about whether a model can follow the skill (§27).
 - No credential reaches this process: the sign-in task's prompt carries none, and
   the tool types them itself.
 
+Every criterion above was met on 2026-09-12, against a real headless Chromium and
+the mock; [`docs/rehearsal-01.md`](../../docs/rehearsal-01.md) is the record. A
+rehearsal needs no real Hermes and no account, which is why `Done` rather than
+`Built` is the honest value here.
+
 ## Risks
 
 - **It is not Hermes.** Everything it proves is about the deterministic half. The

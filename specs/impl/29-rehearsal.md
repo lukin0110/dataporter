@@ -97,6 +97,11 @@ mock (ADR [0001](../../docs/adr/0001-no-door-in-the-wall.md)).
   account identifier.
 - Run twice against the same fresh mock, it refuses the second time.
 
+Every criterion above was met on 2026-09-12;
+[`docs/rehearsal-01.md`](../../docs/rehearsal-01.md) is the record. M7 sits
+outside the milestone gates (`specs/README.md`) because a rehearsal needs no
+account and no model, so nothing here waits on `10` or `20` to become `Done`.
+
 ## Risks
 
 - **A rehearsal can only find what the mock can show.** The failure states §21

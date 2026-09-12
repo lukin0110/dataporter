@@ -66,6 +66,10 @@ complete run in one mode takes minutes at rehearsal pacing.
 - `seeds` writes two parts for `b2000002` and one for each of the others.
 - The same command run twice produces byte-identical files.
 
+Every criterion above is met by `tests/test_rehearsal.py`, and the export was
+migrated whole by [`docs/rehearsal-01.md`](../../docs/rehearsal-01.md)'s run on
+2026-09-12: nine `completed`, one unsupported, two parts for the long one.
+
 ## Risks
 
 - **It is the only export a rehearsal has ever migrated.** Anything about real

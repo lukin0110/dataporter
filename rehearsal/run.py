@@ -1012,7 +1012,7 @@ def ledger_block(counted: Mapping[str, int]) -> str:
     """The mock's block, rebuilt from its numbers.
 
     Rebuilt rather than fetched as text so that a record can be rendered from a
-    run whose mock has since been stopped — the shape is §21's, and the mock's
+    run whose mock has since been stopped — the shape is `26`'s, and the mock's
     own tests are what hold it to it.
     """
     labels = (

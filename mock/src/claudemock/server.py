@@ -9,10 +9,10 @@ operator is told to paste.
 Three things about it are worth knowing:
 
 - **It is HTTPS, always.** The tool refuses every URL that is not
-  `https://claude.ai/…` (§17, §22), and that refusal is what a rehearsal is
-  partly there to exercise. Serving plain HTTP would make the mock reachable only
-  by a tool that had been told to accept it, which is the door in the wall ADR
-  0001 refuses.
+  `https://claude.ai/…` — `08`'s resolution of §17, kept by §22 — and that
+  refusal is part of what a rehearsal exercises. Serving plain HTTP would make
+  the mock reachable only by a tool that had been told to accept it, which is
+  the door in the wall ADR 0001 refuses.
 - **It is stateful and it is in memory.** A rehearsal in several sessions sees
   the same chats throughout; restarting the process resets it.
 - **It counts.** Every request that does something — a sign-in, a chat, a
