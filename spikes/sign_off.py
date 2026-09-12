@@ -39,7 +39,7 @@ import sqlite3
 import sys
 import tempfile
 from collections import Counter
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,6 +93,20 @@ UNKNOWN = "unknown"
 UNMEASURED = "—"
 
 GRADES = ("pass", "weak", "fail")
+
+EXPORT_CHECK = "export sha-256 unchanged"
+HISTORY_CHECKS = (
+    "history: migration URLs",
+    "history: chats this workspace did not create",
+    "history: other hosts",
+    "history: other claude.ai paths",
+)
+SAFETY_CHECKS = (EXPORT_CHECK, *HISTORY_CHECKS)
+"""`safety`'s rows, in order, as `docs/experiment-02.md` carries them. One
+tuple, checked from both ends like `METRIC_NAMES`: the §17 table in the write-up
+is pasted from this command, and a bucket the script reports separately must not
+arrive as a row somebody has to aggregate by hand. (Raised by Copilot in review
+on #30.)"""
 
 
 def plural(count: int, noun: str, many: str = "") -> str:
@@ -264,9 +278,18 @@ def interventions_by_conversation(workspace: Workspace) -> dict[str, list[str]]:
     return found
 
 
-def intervened(workspace: Workspace) -> set[str]:
-    """The uuids a person was asked about, by any run in this workspace."""
-    short_ids = set(interventions_by_conversation(workspace))
+def intervened(
+    workspace: Workspace, asks: Mapping[str, list[str]] | None = None
+) -> set[str]:
+    """The uuids a person was asked about, by any run in this workspace.
+
+    `asks` is `interventions_by_conversation`'s answer where a caller already
+    has it. Parsing the logs is the most expensive thing this script does — a
+    days-long run leaves one file per session — and a caller that needs both the
+    reasons and the uuids should read them once. (Raised by Copilot in review on
+    #30, which found this called once per conversation.)
+    """
+    short_ids = set(interventions_by_conversation(workspace) if asks is None else asks)
     return {
         uuid for uuid, _ in workspace.migration.items() if short_id(uuid) in short_ids
     }
@@ -444,15 +467,18 @@ class Metric:
     note: str = ""
 
 
-def unattended(workspace: Workspace) -> Number:
+def unattended(workspace: Workspace, paused: set[str] | None = None) -> Number:
     """§19's primary metric: migrated without a person in the loop.
 
     `completed`, on the first attempt, and never the subject of a pause — which
     is `21`'s definition and not a softer one. The denominator is the source
     conversations, so a conversation the run never reached counts against it:
     "how many of the export made it by itself" is the question the brief asks.
+
+    `paused` is `intervened`'s answer where the caller already has it, for that
+    function's reason.
     """
-    paused = intervened(workspace)
+    paused = intervened(workspace) if paused is None else paused
     clean = sum(
         1
         for uuid, entry in workspace.migration.items()
@@ -503,18 +529,19 @@ def metrics(workspace: Workspace, *, recoveries: int | None) -> list[Metric]:
     grades = probe_grades(workspace)
     hours = elapsed_hours(workspace.run)
     terminal = totals.created + totals.partial + totals.failed
+    # Once, before anything below reads it: three of these rows need what the
+    # run logs remember, and a workspace of a thousand conversations has one log
+    # per session to parse.
+    asks = interventions_by_conversation(workspace)
+    paused = intervened(workspace, asks)
     needed = [
         entry
         for uuid, entry in workspace.migration.items()
-        if entry.attempts > 1 or uuid in intervened(workspace)
+        if entry.attempts > 1 or uuid in paused
     ]
     recovered = sum(1 for entry in needed if entry.status is Status.COMPLETED)
-    reasons = Counter(
-        reason
-        for asks in interventions_by_conversation(workspace).values()
-        for reason in asks
-    )
-    primary = unattended(workspace)
+    reasons = Counter(reason for reasons_of in asks.values() for reason in reasons_of)
+    primary = unattended(workspace, paused)
     fidelity = Number(grades.get("pass", 0), sum(grades.values()), known=bool(grades))
     reliability = Number(
         totals.browser_actions,
@@ -746,18 +773,30 @@ def known_chats(workspace: Workspace) -> set[str]:
 def safety(workspace: Workspace, *, export: Path | None, profile: Path) -> list[Check]:
     """The two §17 criteria: the export is untouched, and so is everything that
     is not this migration."""
-    checks: list[Check] = []
-    if export is not None:
-        digest = export_digest(export)
-        recorded = workspace.run.export_fingerprint or workspace.plan.export_fingerprint
-        checks.append(
+    recorded = workspace.run.export_fingerprint or workspace.plan.export_fingerprint
+    if export is None:
+        # A row, not a silence. `safety` answers "was anything outside this
+        # migration touched", and an audit that simply left the export out when
+        # nobody named one would read as a §17 pass that had checked it.
+        # (Raised by Copilot in review on #30.)
+        checks = [
             Check(
-                "export sha-256 unchanged",
+                EXPORT_CHECK,
+                UNMEASURED,
+                "pass --export <export> to re-digest it",
+                UNKNOWN,
+            )
+        ]
+    else:
+        digest = export_digest(export)
+        checks = [
+            Check(
+                EXPORT_CHECK,
                 digest[:16],
                 f"recorded {recorded[:16] or UNMEASURED}",
                 GO if recorded and digest == recorded else NO_GO,
             )
-        )
+        ]
     if not profile.is_dir():
         checks.append(
             Check("browser history", UNMEASURED, f"no profile at {profile}", UNKNOWN)
@@ -769,25 +808,25 @@ def safety(workspace: Workspace, *, export: Path | None, profile: Path) -> list[
     checks.extend(
         [
             Check(
-                "history: migration URLs",
+                HISTORY_CHECKS[0],
                 str(len(buckets["expected"])),
                 "/new and /chat/<id> this workspace created",
                 GO,
             ),
             Check(
-                "history: chats this workspace did not create",
+                HISTORY_CHECKS[1],
                 str(len(buckets["unknown_chat"])),
                 ", ".join(visit.path for visit in buckets["unknown_chat"]) or "none",
                 GO if not buckets["unknown_chat"] else NO_GO,
             ),
             Check(
-                "history: other hosts",
+                HISTORY_CHECKS[2],
                 str(len(buckets["foreign"])),
                 ", ".join(hosts) or "none",
                 GO if not buckets["foreign"] else NO_GO,
             ),
             Check(
-                "history: other claude.ai paths",
+                HISTORY_CHECKS[3],
                 str(len(buckets["other_claude"])),
                 ", ".join(paths) or "none",
                 GO if not paths else UNKNOWN,
