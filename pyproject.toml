@@ -129,7 +129,12 @@ extend-exclude = ["specs", "docs"]
 # ANN replaces the one thing `mypy --strict` enforced that ty does not: every def
 # annotated. ANN401 (no explicit `Any`) is stricter than mypy --strict ever was;
 # the export parser genuinely reads `Any` off untrusted JSON.
-select = ["E", "F", "I", "UP", "ANN"]
+# W605 alone out of the `W` group, because the formatter already owns the rest of
+# it: an invalid escape sequence in a docstring is a `SyntaxWarning` a reader sees
+# in CI output and a future Python will make an error, and the bytecode cache
+# means `pytest -W error` catches it only on the run that compiles the file.
+# (`26` wrote `\s+` in prose and CI printed the warning.)
+select = ["E", "F", "I", "UP", "ANN", "W605"]
 ignore = ["ANN401"]
 
 [tool.ty.environment]  # https://docs.astral.sh/ty/configuration/

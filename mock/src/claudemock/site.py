@@ -35,7 +35,7 @@ from claudemock.ledger import Ledger
 ASK = re.compile(
     r"Reply\s+with\s+exactly\s+one\s+line:[ \t]*\r?\n[ \t]*(?P<line>[^\r\n]+)"
 )
-"""What a seed asks for (`dataporter`'s `render.py` writes it at the end of every
+r"""What a seed asks for (`dataporter`'s `render.py` writes it at the end of every
 part).
 
 Two details, both of them found by a rehearsal rather than designed:
