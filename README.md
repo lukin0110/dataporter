@@ -54,16 +54,42 @@ Hermes's own `.env`.
 
 ## Requirements
 
-- Python ≥ 3.12 and [`uv`](https://docs.astral.sh/uv/).
+- Python ≥ 3.12. [`uv`](https://docs.astral.sh/uv/) to develop on this repository;
+  a project that only *depends* on the package needs whatever installer it already uses.
 - Google Chrome, Chromium, Brave or Edge, installed locally.
 - Hermes, installed with its official installer, on `PATH`, with a model configured and an
   API key in its `.env`. `doctor` checks the version, the profile, the model and the
-  config, and tells you which of them is missing.
+  config, and tells you which of them is missing. Hermes is a subprocess and never an
+  import, so it constrains nothing about a host project's dependencies or its Python
+  version — it only has to be on the `PATH` the process inherits.
 - A **throwaway destination account**. Not the source account, and not an account whose
   contents you would miss: this is an experiment that writes to it.
 - Your Claude data export, as the `.zip` you were sent or a directory you unpacked it to.
 
 ## Install
+
+There is no release on PyPI — `25` shaped the package to be installable and deliberately
+left publishing alone — so the install is a git URL or a path.
+
+**Into another project**, which is what makes it a library rather than a checkout:
+
+```sh
+uv add git+https://github.com/lukin0110/dataporter   # or: uv add ../dataporter
+uv add dataporter[judge] --no-sources                # `20`'s optional model judge
+```
+
+`pip install git+https://github.com/lukin0110/dataporter` does the same thing for a
+project that uses pip. Either way you get the `hermes-claude-migrate` command in that
+project's environment, `python -m dataporter` as the same command under another name, and
+the library described in [From another project](#from-another-project) below.
+
+**For just the command**, with no project to put it in:
+
+```sh
+uv tool install git+https://github.com/lukin0110/dataporter
+```
+
+**To develop on it:**
 
 ```sh
 git clone <this repository> && cd dataporter
@@ -145,6 +171,57 @@ up. Missing credentials are exit `2` before a browser starts. An account whose s
 an emailed code, a CAPTCHA or a challenge cannot be signed in unattended; the run says so
 and stops. [`docs/runbook.md`](docs/runbook.md) has the exit codes and the details.
 
+## From another project
+
+Everything the CLI does is a library call (`23`). Each command's body is a function in the
+module that owns it — `importer.import_command`, `browser.session.login`,
+`verify.verify_all` — that takes `Settings`, writes its lines to a `console.Sink` and
+returns a frozen outcome with an `exit_code`. A Python caller gets the same words and the
+same codes, and never imports `typer`:
+
+```python
+from pathlib import Path
+
+from dataporter import console, importer
+from dataporter.config import load_settings
+
+settings = load_settings(workspace=Path("var/claude-migration"))
+sink = console.Collected()
+outcome = importer.import_command(
+    settings,
+    importer.ImportRequest(export="./claude-export", dry_run=True),
+    sink=sink,
+)
+print(sink.stdout, outcome.exit_code)
+```
+
+The operations table in [`specs/impl/23-library-operations.md`](specs/impl/23-library-operations.md)
+is the API: one row per command, naming the function, its options and the outcome it
+returns. They are reached where they live rather than re-exported from the top level,
+because a re-export is a second spelling of where a thing lives. The package ships
+`py.typed`, so a host project's type checker reads the real signatures instead of `Any`.
+
+Four things are worth knowing before the first call:
+
+- **Pass `workspace=` explicitly.** The default is `./migration`, relative to the working
+  directory of whatever process is calling — which for a library is the host
+  application's, not an operator's shell. The example above names one rather than
+  discovering one.
+- **Nothing prints unless you ask.** The default sink is `console.DISCARD`; pass
+  `console.Collected()` to read the lines back, or `console.Terminal()` to let them
+  through to stdout and stderr.
+- **Errors raise, results return.** An outcome's `exit_code` carries "nothing to do" or
+  "a conversation did not make it" (`exit_codes.ExitCode`); anything an operator could fix
+  is an `errors.MigrationError` subclass, or `errors.UsageError` for a contradiction in
+  what was asked.
+- **Hermes and Chrome are still required.** A dry run, `inspect` and `seeds` touch neither
+  and work anywhere the package is installed. Everything else needs `hermes` on the
+  `PATH` of the calling process and a browser on the machine — run `doctor` (or
+  `hermes.doctor.run_doctor`) once from the host project to find out which is missing.
+
+`python -m dataporter <command>` runs the CLI without the console script being on `PATH`,
+which is the easier spelling from inside another project's environment.
+
 ## Where your conversations end up
 
 Three places, all local, and each one is purged by deleting a directory:
@@ -170,22 +247,9 @@ make check-all    # everything, with the coverage gate — what CI runs on main
 make fmt
 ```
 
-Everything the CLI does is a library call (`23`). `cli.py` parses flags and exits; each
-command's body is a function in the module that owns it — `importer.import_command`,
-`browser.session.login`, `verify.verify_all` — that takes `Settings`, writes its lines to
-a `console.Sink` and returns an outcome with an `exit_code`. A Python caller gets the same
-words through `console.Collected` and never imports `typer`:
-
-```python
-from dataporter import console, importer
-from dataporter.config import load_settings
-
-sink = console.Collected()
-outcome = importer.import_command(
-    load_settings(), importer.ImportRequest(export="./claude-export", dry_run=True), sink=sink
-)
-print(sink.stdout, outcome.exit_code)
-```
+[From another project](#from-another-project) is the library half of this, and `23` is
+where the shape came from: `cli.py` parses flags and exits, and every command's body is a
+function in the module that owns the domain.
 
 `make check` is about four seconds and `make check-all` about twenty-five; the second one
 runs the suite across every core. The `check`/`check-all` line is the `slow` marker —

@@ -1,9 +1,33 @@
 [project]
 name = "dataporter"
-version = "0.1.0"
+# The version is `dataporter.__version__` and nowhere else (`[tool.hatch.version]`
+# below reads it): `--version` prints that string, a caller reads it off the
+# module, and the wheel's metadata is built from the same line, so the three
+# cannot drift.
+dynamic = ["version"]
 description = "Migrate a Claude data export into another Claude account via Hermes."
 readme = "README.md"
 requires-python = ">=3.12"
+# PEP 639: an SPDX expression plus the files it refers to. No `License ::`
+# classifier beside it — the classifiers were deprecated by that PEP and
+# declaring both is what a modern backend rejects, so adding one back would look
+# like an improvement and break the build.
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "lukin0110" }]
+keywords = ["claude", "hermes", "migration", "browser-automation", "data-export"]
+classifiers = [
+    # Alpha because `21`'s full run has not happened: the tool is built and
+    # tested, and the experiment it exists to run has not produced its number.
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Utilities",
+    # Claimed by `src/dataporter/py.typed`, and true only while it ships.
+    "Typing :: Typed",
+]
 dependencies = [
     "orval>=0.0.12",
     "pydantic>=2",
@@ -28,6 +52,11 @@ judge = ["pydantic-ai"]
 [project.scripts]
 hermes-claude-migrate = "dataporter.cli:app"
 
+[project.urls]
+Homepage = "https://github.com/lukin0110/dataporter"
+Repository = "https://github.com/lukin0110/dataporter"
+Issues = "https://github.com/lukin0110/dataporter/issues"
+
 [dependency-groups]
 dev = [
     "ruff",
@@ -41,15 +70,40 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+# >=1.27 specifically: PEP 639's `license` expression and `license-files` are
+# read by that version and ignored (or rejected) by earlier ones. The build
+# backend is not a locked dependency, so this floor is the only thing that says
+# it — `uv.lock` will not notice a stale hatchling.
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
+[tool.hatch.version]
+# The single source, read by regex from the module that defines it.
+path = "src/dataporter/__init__.py"
+
 [tool.hatch.build.targets.wheel]
+# Everything under the package directory, which is what puts `py.typed` and
+# `skills/claude-migrate/SKILL.md` in the wheel. `25`'s packaging test asserts
+# both are there, because `hermes.skill.packaged_dir` reads the second out of the
+# install and a wheel missing it fails at `setup` on somebody else's machine.
 packages = ["src/dataporter"]
 
 [tool.hatch.build.targets.sdist]
-# 10 adds spikes/; it is never part of the distribution.
-exclude = ["spikes", "specs", "docs"]
+# 10 adds spikes/; it is never part of the distribution. `.claude`, `.agents` and
+# `graft` are the coding agents' scaffolding (`25`) — development tooling that no
+# consumer of the source distribution needs. `tests` is deliberately *not*
+# excluded: an sdist somebody can run `make check` against is worth more than a
+# smaller one.
+exclude = [
+    "spikes",
+    "specs",
+    "docs",
+    ".claude",
+    ".agents",
+    ".mcp.json",
+    "skills-lock.json",
+    "graft",
+]
 
 [tool.ruff]
 line-length = 88
@@ -118,6 +172,13 @@ source = ["src/dataporter"]
 # `17`: 4642/4669, 99.4%. `18`: 4782/4810, 99.4%. `19`: 4959/4986, 99.5%.
 # `20`: 5348/5382, 99.4%. `21`: 5362/5390, 99.5% — it adds no `src` code,
 # and the sign-off script it does add lives in `spikes/`, which is not measured.
-# `23`: 5571/5599, 99.5%. `24`: 5897/5925, 99.5%.
+# `23`: 5571/5599, 99.5%. `24`: 5897/5925, 99.5%. `25`: 5901/5929, 99.5% — the
+# only code it adds is `__main__.py`, whose `if __name__` guard is excluded below
+# because it runs in a subprocess.
 fail_under = 99
 show_missing = true
+# `python -m dataporter`'s guard runs in a subprocess, where coverage does not
+# follow it. Excluding the line is honest; lowering the gate to accommodate one
+# uncoverable statement would not be. `25`'s packaging test is what proves the
+# module works.
+exclude_also = ['if __name__ == "__main__":']
