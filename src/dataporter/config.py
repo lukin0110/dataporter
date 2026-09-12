@@ -28,6 +28,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
+from orval import coalesce_lazy
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import (
     BaseSettings,
@@ -542,21 +543,29 @@ class Settings(BaseSettings):
         return tuple(sources)
 
 
+def _workspace_from_env() -> Path | None:
+    """`HCM_WORKSPACE`, or `None` when it is unset or blank.
+
+    Blank is `None` rather than `Path("")`, which is `Path(".")` — an empty
+    variable means the operator said nothing, not that the workspace is the
+    working directory.
+    """
+    value = os.environ.get(WORKSPACE_ENV_VAR, "").strip()
+    return Path(value) if value else None
+
+
 def bootstrap_workspace(workspace: Path | None = None) -> Path:
     """Where to look for `config.toml`: CLI flag > environment > default.
 
-    Written out rather than as an `orval.coalesce_lazy` chain, which is what this
-    is: `coalesce_lazy` is typed `-> T | None` even when its last argument cannot
-    be `None`, so `ty` rejects it against `-> Path`. Reaching for a helper and
-    then adding a `cast` to silence what it cost is not a trade worth making.
+    An `orval.coalesce_lazy` chain, which is exactly what this is. It could not
+    be one until 0.0.12: `coalesce_lazy` was typed `-> T | None` even when its
+    last argument could not be `None`, so `ty` rejected it against `-> Path`.
+    0.0.12's overloads narrow the return type for chains of up to five values.
     See `docs/orval-candidates.md` (D2).
     """
-    if workspace is not None:
-        return workspace
-    from_env = os.environ.get(WORKSPACE_ENV_VAR, "").strip()
-    if from_env:
-        return Path(from_env)
-    return DEFAULT_WORKSPACE
+    return coalesce_lazy(
+        lambda: workspace, _workspace_from_env, lambda: DEFAULT_WORKSPACE
+    )
 
 
 def config_file_for(workspace: Path | None = None) -> Path:

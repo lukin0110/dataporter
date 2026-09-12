@@ -57,7 +57,6 @@ fields. `ContentGuard` raises on either violation in strict mode.
 import json
 import logging
 import os
-import re
 import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -65,7 +64,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
 
-from orval import to_bool, utcnow
+from orval import strip_control, to_bool, utcnow
 
 LOGGER_NAME = "dataporter"
 LOGS_DIRNAME = "logs"
@@ -85,14 +84,6 @@ retry record (`{event: "retry", uuid, …}`) needs rewriting as
 
 _MAX_SCAN_DEPTH = 5
 
-CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
-"""Characters no legitimate identifier, name or reason carries.
-
-Public because `03` needs the same set for a different reason: here one would
-forge a line of output, and in `plan.safe_component` one would reach a path.
-The export is trusted or distrusted once, so both read the same rule.
-"""
-
 _TOKEN_LIMIT = 120
 
 
@@ -106,7 +97,7 @@ def safe_token(value: str, limit: int = _TOKEN_LIMIT) -> str:
     bounded; nothing else is altered, because this is for identifiers, not for
     display.
     """
-    return CONTROL_CHARACTERS.sub("?", value)[:limit] or "(empty)"
+    return strip_control(value, "?")[:limit] or "(empty)"
 
 
 _RESERVED_RECORD_ATTRS = frozenset(

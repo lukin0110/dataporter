@@ -162,6 +162,29 @@ def test_a_javascript_dialog_is_reported_by_kind_never_by_message(
     assert "are you sure" not in state.model_dump_json()
 
 
+def test_a_malformed_dialog_event_is_still_reported_as_a_dialog(
+    fake: FakeChrome,
+) -> None:
+    """§17: a dialog is a thing to stop for. An unreadable one is still a dialog.
+
+    `orval.deep_get` supplies the `dialog` default when `params` is missing or is
+    not a mapping, where the old `.get("params", {}).get(...)` chain raised
+    `AttributeError` on the second form — the sentinel only ever covered a
+    *missing* key. Chrome does not send either shape; the point is that the
+    enumeration degrades to a generic label instead of failing, because a safety
+    listing that raises reports nothing at all.
+    """
+    fake.targets[0].evaluate = page_state()
+    fake.events = [
+        {"method": "Page.javascriptDialogOpening", "params": None},
+        {"method": "Page.javascriptDialogOpening"},
+    ]
+    client = CdpClient(port=fake.port, timeout=5.0)
+    with client.attach("page-1") as page:
+        state = probe(page)
+    assert state.dialogs == ("javascript:dialog", "javascript:dialog")
+
+
 def test_a_dialog_that_has_been_closed_is_not_pending(fake: FakeChrome) -> None:
     fake.targets[0].evaluate = page_state()
     fake.events = [dialog_event(), dialog_closed_event()]

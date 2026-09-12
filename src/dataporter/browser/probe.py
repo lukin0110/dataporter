@@ -42,6 +42,7 @@ from enum import StrEnum
 from typing import Any, Literal, Self
 from urllib.parse import urlparse
 
+from orval import deep_get
 from pydantic import BaseModel, ConfigDict
 
 from dataporter import log
@@ -490,8 +491,7 @@ def pending_dialogs(page: Page) -> list[str]:
     opened = page.events(DIALOG_OPENING)
     closed = page.events(DIALOG_CLOSED)
     return [
-        "javascript:"
-        + log.safe_token(str(item.get("params", {}).get("type", "dialog")))
+        "javascript:" + log.safe_token(str(deep_get(item, "params.type", "dialog")))
         for item in opened[len(closed) :]
     ]
 

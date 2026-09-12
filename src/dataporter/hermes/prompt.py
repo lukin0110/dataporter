@@ -44,7 +44,9 @@ files and reads the result; this renders a string.
 from collections.abc import Sequence
 from pathlib import Path
 
-from dataporter import PROGRAM_NAME, log
+from orval import strip_control
+
+from dataporter import PROGRAM_NAME
 from dataporter.hermes.client import quoted
 from dataporter.seed import Seed
 from dataporter.steps import Step
@@ -92,7 +94,7 @@ def _one_line(value: str) -> str:
     agent would be told to paste it. So the control characters go and the length
     stays.
     """
-    return log.CONTROL_CHARACTERS.sub("?", value)
+    return strip_control(value, "?")
 
 
 def _block(key: str, values: Sequence[str]) -> list[str]:
