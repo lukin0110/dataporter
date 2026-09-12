@@ -379,3 +379,11 @@ def lines(records: Sequence[PilotChoice]) -> list[str]:
 def block(records: Sequence[PilotChoice]) -> str:
     """`lines`, as the text a command prints. Trailing newline, like §9's block."""
     return "".join(f"{line}\n" for line in lines(records))
+
+
+PILOT_CHOOSES = (
+    "--pilot chooses the conversations itself: drop --only, --limit and --all"
+)
+"""`20`'s usage error. The pilot selection is the experiment's design — ten
+categories, in order — so a flag that would narrow, widen or reorder it is
+refused rather than silently losing to it, whichever way round that went."""

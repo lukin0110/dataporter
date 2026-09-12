@@ -1,20 +1,25 @@
 """What `login`, `session status` and `session logout` actually do.
 
-The commands themselves are three short functions in `cli`; everything they know
-about tabs, waiting and profiles is here, so that `12`'s run loop can ask the
-same questions ("is this session usable?") without going through the CLI.
+Everything the three commands know about tabs, waiting and profiles is here, so
+that `12`'s run loop can ask the same questions ("is this session usable?")
+without going through the CLI — and since `23`, so are the commands themselves:
+`login`, `status` and `logout` at the bottom of this module are what `cli`
+calls, and the CLI adds nothing but the flag parsing and the exit.
 """
 
 import shutil
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from dataporter import PROGRAM_NAME, log
 from dataporter.browser.cdp import CdpClient, Page, Target
-from dataporter.browser.launcher import BrowserSession, PortInUse
+from dataporter.browser.launcher import BrowserSession, PortInUse, adopt, launch
 from dataporter.browser.probe import CLAUDE_HOST, NEW_CHAT_URL, PageState, probe
 from dataporter.config import Settings
-from dataporter.errors import BrowserError
+from dataporter.console import DISCARD, Sink
+from dataporter.errors import AuthError, BrowserError
+from dataporter.exit_codes import ExitCode
 from dataporter.state import StateError
 
 _logger = log.get_logger(__name__)
@@ -171,3 +176,109 @@ def remove_profile(settings: Settings) -> bool:
         raise StateError(f"cannot remove {profile}: {exc.strerror or exc}") from exc
     _logger.info("browser profile removed")
     return True
+
+
+# --------------------------------------------------------------------------- #
+# The three commands (`23`)
+# --------------------------------------------------------------------------- #
+
+LOGIN_PROMPT = "Log in to Claude in the browser window that just opened."
+LOGGED_IN = "Logged in. Session stored in {profile}/."
+LOGIN_TIMED_OUT = "timed out after {seconds:g}s waiting for login"
+REMOVED = "Removed {profile}/."
+NOTHING_TO_REMOVE = "Nothing to remove: {profile}/ does not exist."
+
+
+@dataclass(frozen=True)
+class LoginOutcome:
+    """`login` ended signed in. Any other ending raises."""
+
+    exit_code: ExitCode = ExitCode.OK
+
+
+@dataclass(frozen=True)
+class StatusOutcome:
+    """`session status`: the answer, and exit `3` when it is no."""
+
+    signed_in: bool
+    exit_code: ExitCode
+
+
+@dataclass(frozen=True)
+class LogoutOutcome:
+    """`session logout`: whether there was a profile to remove."""
+
+    removed: bool
+    exit_code: ExitCode = ExitCode.OK
+
+
+def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
+    """Open Claude in the dedicated browser profile and wait for sign-in (§8).
+
+    The prompt is a line on the sink rather than a log record: it is an
+    instruction to the person at the keyboard, and it is the only thing this
+    command asks of them. A wait that runs out is `AuthError`, exit `3`.
+    """
+    log.enable_run_log(settings.workspace)
+    browser = launch(settings, NEW_CHAT_URL)
+    try:
+        if not signed_in(browser):
+            sink.line(LOGIN_PROMPT)
+            arrived = wait_for_login(browser, timeout_s=settings.timeouts.login_s)
+            if arrived is None:
+                raise AuthError(
+                    detail=LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s)
+                )
+        sink.line(LOGGED_IN.format(profile=settings.browser_profile_dir))
+    finally:
+        # Always, on every path: Chrome writes its cookie jar and session store
+        # out on exit, so a profile that is never closed can come back signed
+        # out — and a browser left running would hold the next run's port.
+        browser.close()
+    return LoginOutcome()
+
+
+def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
+    """Report whether the destination account is signed in.
+
+    The answer is a line and an exit code rather than an `AuthError`: `SIGNED_OUT`
+    is the command's result, not an error, and it carries no `error:` prefix.
+    """
+    client = CdpClient(
+        port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s
+    )
+    # Raises `PortInUse` when the port answers and the browser on it is not
+    # ours, which is the right answer to "what is my session doing" as well.
+    running = adopt(client, settings.browser_profile_dir)
+    if running is None and not settings.browser_profile_dir.exists():
+        # No profile and no browser: there is nothing that could be signed in,
+        # and starting Chrome to be told so would cost ten seconds and a window.
+        sink.line(SIGNED_OUT)
+        return StatusOutcome(signed_in=False, exit_code=ExitCode.NOT_AUTHENTICATED)
+
+    browser = running or launch(settings, NEW_CHAT_URL)
+    try:
+        answer = signed_in(browser)
+    finally:
+        # A browser this command started is a browser this command cleans up;
+        # one that was already running belongs to whoever started it.
+        if running is None:
+            browser.close()
+    sink.line(SIGNED_IN if answer else SIGNED_OUT)
+    return StatusOutcome(
+        signed_in=answer,
+        exit_code=ExitCode.OK if answer else ExitCode.NOT_AUTHENTICATED,
+    )
+
+
+def logout(settings: Settings, *, sink: Sink = DISCARD) -> LogoutOutcome:
+    """Remove the browser profile. Local only, and said so: the account itself is
+    untouched, and a session on another machine is not ended by this."""
+    removed = remove_profile(settings)
+    profile = settings.browser_profile_dir
+    sink.line(
+        REMOVED.format(profile=profile)
+        if removed
+        else NOTHING_TO_REMOVE.format(profile=profile)
+    )
+    return LogoutOutcome(removed=removed)

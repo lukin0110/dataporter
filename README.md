@@ -148,6 +148,23 @@ make check-all    # everything, with the coverage gate — what CI runs on main
 make fmt
 ```
 
+Everything the CLI does is a library call (`23`). `cli.py` parses flags and exits; each
+command's body is a function in the module that owns it — `importer.import_command`,
+`browser.session.login`, `verify.verify_all` — that takes `Settings`, writes its lines to
+a `console.Sink` and returns an outcome with an `exit_code`. A Python caller gets the same
+words through `console.Collected` and never imports `typer`:
+
+```python
+from dataporter import console, importer
+from dataporter.config import load_settings
+
+sink = console.Collected()
+outcome = importer.import_command(
+    load_settings(), importer.ImportRequest(export="./claude-export", dry_run=True), sink=sink
+)
+print(sink.stdout, outcome.exit_code)
+```
+
 `make check` is about four seconds and `make check-all` about twenty-five; the second one
 runs the suite across every core. The `check`/`check-all` line is the `slow` marker —
 anything that spawns a subprocess, binds a socket or launches a browser — so a pull

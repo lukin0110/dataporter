@@ -49,7 +49,9 @@ from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import probe as probing
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import Settings
-from dataporter.errors import BrowserError, Category, MigrationError
+from dataporter.console import DISCARD, Sink
+from dataporter.errors import AuthError, BrowserError, Category, MigrationError
+from dataporter.exit_codes import ExitCode
 from dataporter.state import ConversationState, ErrorRecord, Status
 
 _logger = log.get_logger(__name__)
@@ -540,3 +542,82 @@ def record(
     entry = store.load()[uuid]
     status, error = applied(found, entry.status, entry.error)
     return store.update(uuid, **fields(entry, found), status=status, error=error)
+
+
+# --------------------------------------------------------------------------- #
+# The `verify` command (`23`)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class VerifyOutcome:
+    """Every chat re-read, with what was found; exit `1` if any check failed and
+    `4` if there was nothing to check."""
+
+    found: tuple[tuple[str, Verification], ...]
+    exit_code: ExitCode
+
+
+def verify_all(
+    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD
+) -> VerifyOutcome:
+    """Check that migrated conversations exist in the destination account (`17`).
+
+    Nothing migrated, or nothing selected, is exit `4` rather than the `0` that
+    "everything verified" would give it, for `06`'s reason: an empty selection is
+    not a success. Under the lock: this writes `state.json`, and a `verify` racing
+    an `import` would overwrite the status of a conversation being migrated as it
+    reads it.
+    """
+    from dataporter.browser import launcher
+    from dataporter.browser import session as browser_session
+
+    log.enable_run_log(settings.workspace)
+    store = state.StateStore(settings.workspace)
+    # Read before anything is printed, like `status`: a workspace written by a
+    # build with a different state schema stops the command here.
+    store.run()
+    wanted = list(verifiable(settings, store.load()))
+    if only:
+        chosen = set(state.resolve_only([uuid for uuid, _ in wanted], only))
+        wanted = [item for item in wanted if item[0] in chosen]
+    if not wanted:
+        return VerifyOutcome(found=(), exit_code=ExitCode.NOTHING_TO_DO)
+
+    lock = state.WorkspaceLock(settings.workspace)
+    lock.acquire()
+    found: list[tuple[str, Verification]] = []
+    try:
+        # The browser is opened here and not by an `Importer`: `verify` runs
+        # without Hermes at all — no profile, no subprocess, no model — because
+        # the whole point of it is to check the account rather than to ask the
+        # thing that wrote to the account what it did. `launch` adopts the
+        # browser already on the port when it is ours, so a `verify` run beside
+        # a window the operator left open reuses it.
+        browser = launcher.launch(settings, probing.NEW_CHAT_URL)
+        try:
+            if not browser_session.signed_in(browser):
+                # Exit `3`: a signed-out session makes every chat unreadable,
+                # and reporting a hundred failed verifications would bury the
+                # one fact that matters.
+                raise AuthError(detail=browser_session.SIGNED_OUT)
+            verifier = Verifier(settings, browser.client)
+            for uuid, expected in wanted:
+                result = verifier.verify(expected)
+                record(store, uuid, result)
+                found.append((uuid, result))
+                # Printed even under `--quiet`, for the reason `status`'s block
+                # is: `-q` suppresses progress, and these lines are the result.
+                sink.line(result.line())
+        finally:
+            # A browser this command started is one it closes; one that was
+            # already running belongs to whoever started it (`12`, `07`).
+            if not browser.adopted:
+                browser.close()
+    finally:
+        lock.release()
+    failures = sum(0 if result.ok else 1 for _, result in found)
+    return VerifyOutcome(
+        found=tuple(found),
+        exit_code=ExitCode.FAILED if failures else ExitCode.OK,
+    )

@@ -29,12 +29,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
 from dataporter import cli
 from dataporter import importer as importing
 from dataporter import intervention as intervening
+from dataporter import selection as selecting
 from dataporter.browser import probe
 from dataporter.browser import session as browser_session
 from dataporter.config import (
@@ -48,7 +48,7 @@ from dataporter.config import (
     load_settings,
     with_pacing,
 )
-from dataporter.errors import BrowserError
+from dataporter.errors import BrowserError, UsageError
 from dataporter.exit_codes import ExitCode
 from dataporter.hermes import doctor as hermes_doctor
 from dataporter.hermes import prompt as prompting
@@ -313,54 +313,49 @@ def test_the_pacing_line_says_what_the_flags_made_it(workspace: Path) -> None:
 
 
 def test_an_unset_limit_is_the_configured_maximum(workspace: Path) -> None:
-    chosen = cli.selection_for(load_settings(), only=[], limit=None)
+    chosen = selecting.selection_for(load_settings(), only=[], limit=None)
     assert chosen.limit == 10
 
 
 def test_all_on_its_own_is_no_limit_at_all(workspace: Path) -> None:
-    chosen = cli.selection_for(
+    chosen = selecting.selection_for(
         load_settings(), only=[], limit=None, all_conversations=True
     )
     assert chosen.limit is None
 
 
 def test_a_limit_under_the_ceiling_needs_nothing(workspace: Path) -> None:
-    chosen = cli.selection_for(load_settings(), only=[], limit=10)
+    chosen = selecting.selection_for(load_settings(), only=[], limit=10)
     assert chosen.limit == 10
 
 
-def test_a_limit_over_the_ceiling_is_a_usage_error(
-    workspace: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_limit_over_the_ceiling_is_a_usage_error(workspace: Path) -> None:
     """`15`'s fourth criterion, and the message names the flag that lifts it."""
-    with pytest.raises(typer.Exit) as raised:
-        cli.selection_for(load_settings(), only=[], limit=11)
+    with pytest.raises(UsageError) as raised:
+        selecting.selection_for(load_settings(), only=[], limit=11)
 
-    assert raised.value.exit_code == ExitCode.USAGE
-    # `error: ` is `01`'s prefix on every usage error; the rest is `15`'s words.
-    assert capsys.readouterr().err == (
-        "error: use --all to migrate more than 10 conversations in one run\n"
+    # `error: ` is `01`'s prefix on every usage error, added by the CLI; the rest
+    # is `15`'s words, and they are the exception's whole message.
+    assert str(raised.value) == (
+        "use --all to migrate more than 10 conversations in one run"
     )
 
 
 def test_all_with_a_limit_is_that_limit(workspace: Path) -> None:
     """An operator who typed both has asked for a number, knowing the ceiling."""
-    chosen = cli.selection_for(
+    chosen = selecting.selection_for(
         load_settings(), only=[], limit=11, all_conversations=True
     )
     assert chosen.limit == 11
 
 
-def test_a_raised_ceiling_raises_the_message_with_it(
-    workspace: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_raised_ceiling_raises_the_message_with_it(workspace: Path) -> None:
     write_config(workspace / DEFAULT_WORKSPACE, "[run]\nmax_conversations = 40\n")
     settings = load_settings()
 
-    assert cli.selection_for(settings, only=[], limit=40).limit == 40
-    with pytest.raises(typer.Exit):
-        cli.selection_for(settings, only=[], limit=41)
-    assert "more than 40 conversations" in capsys.readouterr().err
+    assert selecting.selection_for(settings, only=[], limit=40).limit == 40
+    with pytest.raises(UsageError, match="more than 40 conversations"):
+        selecting.selection_for(settings, only=[], limit=41)
 
 
 def test_the_dry_run_refuses_the_same_limit(

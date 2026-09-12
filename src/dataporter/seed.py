@@ -17,7 +17,7 @@ No conversation content may reach a log record from here. A chunk is content and
 paths, and an id that came out of the export goes through `log.safe_token` first.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,7 +27,9 @@ from pydantic import BaseModel, ConfigDict
 from dataporter import log, render
 from dataporter import plan as planning
 from dataporter.config import Settings
+from dataporter.console import DISCARD, Sink
 from dataporter.errors import UnsupportedError
+from dataporter.exit_codes import ExitCode
 from dataporter.export.model import Conversation
 
 _logger = log.get_logger(__name__)
@@ -230,3 +232,76 @@ def write_seed(seed: Seed, root: Path) -> list[Path]:
         },
     )
     return written
+
+
+# --------------------------------------------------------------------------- #
+# The `seeds` command (`23`)
+# --------------------------------------------------------------------------- #
+
+SKIPPED = "skipped {short_id}: {reason}"
+WRITTEN = "{short_id}  parts={parts}  chars={chars}"
+
+
+@dataclass(frozen=True)
+class SeedsOutcome:
+    """What `seeds` wrote, what it skipped and why, and exit `4` for nothing."""
+
+    written: int
+    skipped: tuple[tuple[str, str], ...]
+    """`(short_id, reason)` per conversation that got no seed."""
+    exit_code: ExitCode
+
+
+def write_seeds(
+    settings: Settings,
+    export: str,
+    *,
+    only: Sequence[str] = (),
+    out: Path | None = None,
+    quiet: bool = False,
+    sink: Sink = DISCARD,
+) -> SeedsOutcome:
+    """Generate migration seeds without touching a browser (`04`).
+
+    Stdout is one line per *written* seed, and stderr is where an operator who
+    asked for one conversation by uuid is owed the reason nothing appeared — one
+    note per skipped conversation, whatever it contains, with the short id
+    passed through `log.safe_token` because a skipped conversation is the one
+    case where the export's uuid may be malformed. `05` is where the full
+    accounting lives. `quiet` suppresses the written lines and nothing else: they
+    are progress, and the notes are results.
+    """
+    from dataporter.export import load_export
+    from dataporter.selection import export_path, selected_conversations
+
+    path = export_path(export)
+    root = out if out is not None else settings.seeds_dir
+    log.enable_run_log(settings.workspace)
+
+    conversations = selected_conversations(load_export(path), only)
+    generator = SeedGenerator(settings)
+    written = 0
+    skipped: list[tuple[str, str]] = []
+    for outcome in generator.seeds(conversations):
+        if outcome.seed is None:
+            reason = outcome.reason or ""
+            skipped.append((outcome.short_id, reason))
+            sink.note(
+                SKIPPED.format(short_id=log.safe_token(outcome.short_id), reason=reason)
+            )
+            continue
+        write_seed(outcome.seed, root)
+        written += 1
+        if not quiet:
+            sink.line(
+                WRITTEN.format(
+                    short_id=outcome.short_id,
+                    parts=len(outcome.seed.chunks),
+                    chars=outcome.seed.total_chars,
+                )
+            )
+    return SeedsOutcome(
+        written=written,
+        skipped=tuple(skipped),
+        exit_code=ExitCode.OK if written else ExitCode.NOTHING_TO_DO,
+    )

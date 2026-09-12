@@ -34,7 +34,8 @@ What this module does not do is judge the replies. A person grades them in
 this file rather than asking anything again.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -43,7 +44,9 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from dataporter import log, render, state
 from dataporter import verify as verifying
 from dataporter.config import Settings
-from dataporter.errors import HermesError
+from dataporter.console import DISCARD, Sink
+from dataporter.errors import AuthError, HermesError
+from dataporter.exit_codes import ExitCode
 from dataporter.hermes import prompt as prompting
 from dataporter.hermes import runner as hermes_running
 from dataporter.state import ConversationState, Instant, MigrationState, Status
@@ -394,3 +397,88 @@ class Prober:
                 detail=f"invalid probe json: {_describe(exc)}; "
                 f"stdout: {raw.stdout_path}"
             ) from exc
+
+
+# --------------------------------------------------------------------------- #
+# The `followup` command (`23`)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class FollowupOutcome:
+    """Every chat asked, with its reply record; exit `1` if any went unanswered
+    and `4` if there was nothing to ask."""
+
+    probes: tuple[Probe, ...]
+    exit_code: ExitCode
+
+
+def ask_all(
+    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD
+) -> FollowupOutcome:
+    """Ask each migrated chat one follow-up question (the pilot's probe, `20`).
+
+    Nothing completed, or nothing selected, is exit `4` — `06`'s rule for an
+    empty selection: a probe of no conversations is not a finished experiment.
+    The same local half of `doctor` a run makes before it starts (`12`) comes
+    next: every probe is a Hermes task, so a machine with no Hermes would
+    otherwise report ten identical failures instead of the one fact behind them.
+    Under the lock: this writes `<workspace>/pilot/`, and a probe racing an
+    `import` would ask a question in a chat that run is still writing into.
+
+    The browser is opened here for the reason `verify` opens one: the probe is a
+    question about the account, so the command that asks it is the command that
+    proves the account is signed in. Every answer is written as it arrives rather
+    than at the end: a probe run is ten Hermes tasks and a minute each, and a run
+    interrupted at the seventh should leave six replies rather than none. §13's
+    gap between conversations is kept, for §13's reason: this is one more message
+    into a real account, sent by the same browser.
+    """
+    from dataporter import importer as importing
+    from dataporter.browser import launcher
+    from dataporter.browser import session as browser_session
+    from dataporter.browser.probe import NEW_CHAT_URL
+    from dataporter.hermes import doctor as hermes_doctor
+
+    log.enable_run_log(settings.workspace)
+    store = state.StateStore(settings.workspace)
+    store.run()
+    wanted = list(probeable(store.load()))
+    if only:
+        chosen = set(state.resolve_only([uuid for uuid, _ in wanted], only))
+        wanted = [item for item in wanted if item[0] in chosen]
+    if not wanted:
+        return FollowupOutcome(probes=(), exit_code=ExitCode.NOTHING_TO_DO)
+    failure = hermes_doctor.local_failure(settings)
+    if failure is not None:
+        raise HermesError(detail=f"{failure.label}: {failure.detail}")
+
+    lock = state.WorkspaceLock(settings.workspace)
+    lock.acquire()
+    answers: list[Probe] = []
+    try:
+        browser = launcher.launch(settings, NEW_CHAT_URL)
+        asking = Prober(settings)
+        file = read(settings)
+        try:
+            if not browser_session.signed_in(browser):
+                raise AuthError(detail=browser_session.SIGNED_OUT)
+            for position, (uuid, entry) in enumerate(wanted):
+                answer = asking.ask(uuid, entry)
+                file = file.replace(answer)
+                write(settings, file)
+                answers.append(answer)
+                # Printed even under `--quiet`, like `verify`'s lines.
+                sink.line(answer.line())
+                if position + 1 < len(wanted):
+                    importing.pause(settings.pacing.delay_between_conversations_s)
+        finally:
+            if not browser.adopted:
+                browser.close()
+    finally:
+        lock.release()
+    missing = sum(0 if answer.answered else 1 for answer in answers)
+    return FollowupOutcome(
+        probes=tuple(answers),
+        exit_code=ExitCode.FAILED if missing else ExitCode.OK,
+    )

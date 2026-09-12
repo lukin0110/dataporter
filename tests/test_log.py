@@ -211,6 +211,19 @@ def test_dry_run_leaves_no_workspace_directory(
     assert not (workspace / "migration").exists()
 
 
+def test_a_second_run_log_replaces_the_first(workspace: Path) -> None:
+    """`23`: two operations in one process log once each, not twice into both."""
+    log.configure_logging(verbose=False)
+    first = log.enable_run_log(workspace / "one")
+    second = log.enable_run_log(workspace / "two")
+
+    log.get_logger("test").info("now")
+    assert not first.exists()
+    assert second.exists()
+    handlers = logging.getLogger(log.LOGGER_NAME).handlers
+    assert sum(1 for item in handlers if isinstance(item, logging.FileHandler)) == 1
+
+
 def test_run_log_filename_is_sortable(workspace: Path) -> None:
     path = log.run_log_path(workspace)
     assert path.parent == workspace / log.LOGS_DIRNAME

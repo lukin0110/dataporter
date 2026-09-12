@@ -29,8 +29,11 @@ leave the same config, and the skill is copied over whatever was there.
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from dataporter import log
+from dataporter import PROGRAM_NAME, log
 from dataporter.config import Settings
+from dataporter.console import DISCARD, Sink
+from dataporter.errors import HermesError
+from dataporter.exit_codes import ExitCode
 from dataporter.hermes import skill as skilling
 from dataporter.hermes.client import HermesCli, home_relative
 
@@ -166,3 +169,37 @@ def run_setup(settings: Settings) -> SetupReport:
         skill_dir=home_relative(skilling.install_dir(settings)),
         model=configured_model(cli.config()),
     )
+
+
+# --------------------------------------------------------------------------- #
+# The `setup` command (`23`)
+# --------------------------------------------------------------------------- #
+
+NEXT = f"Next: {PROGRAM_NAME} doctor"
+
+
+@dataclass(frozen=True)
+class SetupOutcome:
+    """`setup` finished with a model configured. Any other ending raises."""
+
+    report: SetupReport
+    exit_code: ExitCode = ExitCode.OK
+
+
+def setup(settings: Settings, *, sink: Sink = DISCARD) -> SetupOutcome:
+    """Create the Hermes profile and install the migration skill.
+
+    The purge hint is said on every run, not only the first: the transcripts
+    accumulate, and an operator who read this once during setup has forgotten it
+    by `21`. A profile with no model is `HermesError` — exit `6` like the rest of
+    "the environment is not ready" — raised *after* the lines, because the lines
+    are true and the operator needs them to fix it.
+    """
+    report = run_setup(settings)
+    for line in report.lines():
+        sink.line(line)
+    sink.line(purge_hint(settings))
+    if not report.model:
+        raise HermesError(detail=NO_MODEL.format(profile=settings.hermes.profile))
+    sink.line(NEXT)
+    return SetupOutcome(report=report)

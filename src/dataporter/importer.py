@@ -68,7 +68,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
-from dataporter import PROGRAM_NAME, log, render, state
+from dataporter import PROGRAM_NAME, log, render, state, summary
 from dataporter import intervention as intervening
 from dataporter import progress as reporting
 from dataporter import seed as seeding
@@ -76,7 +76,14 @@ from dataporter import verify as verifying
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher, probe
 from dataporter.browser import session as browser_session
-from dataporter.config import RetrySettings, Settings
+from dataporter.config import (
+    RetrySettings,
+    Settings,
+    with_attachments_dir,
+    with_pacing,
+    with_skip_attachments,
+)
+from dataporter.console import DISCARD, Sink
 from dataporter.errors import (
     ERROR_CLASSES,
     AuthError,
@@ -85,6 +92,7 @@ from dataporter.errors import (
     HermesError,
     MigrationError,
     UnsupportedError,
+    UsageError,
 )
 from dataporter.exit_codes import ExitCode
 from dataporter.export import Conversation, Export, load_export
@@ -101,6 +109,7 @@ from dataporter.plan import (
 )
 from dataporter.report import Report
 from dataporter.report import build as build_report
+from dataporter.report import render as render_report
 from dataporter.report import write as write_report
 from dataporter.seed import Seed
 from dataporter.state import ConversationState, ErrorRecord, Status
@@ -1950,3 +1959,203 @@ def resuming(entry: ConversationState) -> str | None:
     if entry.status not in RESUMABLE:
         return None
     return entry.destination.conversation_id
+
+
+# --------------------------------------------------------------------------- #
+# The `import` and `resume` commands (`23`)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class ImportRequest:
+    """`import`'s flags, one field each, as typed.
+
+    `export` stays a `str` so that a path that is not there is echoed back
+    exactly as the operator typed it. `limit`, `delay`, `max_retries` and
+    `timeout` are `None` when unset, for `15`'s reason: the effective value
+    belongs to `Settings`, and a default typed here would outrank an operator's
+    `config.toml`.
+    """
+
+    export: str
+    dry_run: bool = False
+    limit: int | None = None
+    all_conversations: bool = False
+    only: Sequence[str] = ()
+    delay: float | None = None
+    max_retries: int | None = None
+    timeout: float | None = None
+    retry_failed: bool = False
+    retry_partial: bool = False
+    force: bool = False
+    skip_attachments: bool = False
+    attachments_dir: Path | None = None
+    force_unlock: bool = False
+    pilot: bool = False
+
+
+@dataclass(frozen=True)
+class ImportOutcome:
+    """What `import` or `resume` amounted to.
+
+    `summary` is the run's, and `None` for a dry run; `plan` is what a dry run
+    counted, and `None` for a run; `choices` is `20`'s record of why each
+    conversation was in a `--pilot` selection, and empty otherwise.
+    """
+
+    exit_code: ExitCode
+    summary: RunSummary | None = None
+    plan: MigrationPlan | None = None
+    choices: Sequence[state.PilotChoice] = ()
+
+
+def report_text(outcome: RunSummary) -> str:
+    """§16's block, last, whatever became of the run.
+
+    Printed under `--quiet` for the reason `18`'s final block is: `-q` suppresses
+    progress, and this is what the run amounts to. Printed after a run that
+    stopped, too — a paused or circuit-broken run is the one an operator most
+    needs the failure list of, and the numbers are true of the workspace either
+    way.
+
+    The blank line is this function's and not `19`'s: something is always on the
+    screen above it — §10's final block at every verbosity — and `report` prints
+    the same text with nothing above it at all. Empty when the run produced no
+    report, which nothing in this module does.
+    """
+    if outcome.report is None:
+        return ""
+    return f"\n{render_report(outcome.report)}"
+
+
+def import_command(
+    settings: Settings,
+    request: ImportRequest,
+    *,
+    quiet: bool = False,
+    sink: Sink = DISCARD,
+) -> ImportOutcome:
+    """Migrate conversations from an export into the destination account.
+
+    Three paths share the front half — the export must exist, and `--pilot`
+    chooses the selection before anything else reads it — and part at
+    `dry_run`: a run opens the workspace, the browser and Hermes; a dry run
+    opens nothing and writes nothing, not even `<workspace>/logs/`. §9 says no
+    Claude account is modified by a dry run; a workspace appearing next to the
+    export is the local half of the same promise. Reading `06`'s state is still
+    fair — what a run *would* do depends on what earlier runs already did.
+    """
+    from dataporter import pilot as piloting
+    from dataporter import selection as selecting
+
+    path = selecting.export_path(request.export)
+    parsed: Export | None = None
+    """The export, once, when `--pilot` has already had to read it."""
+    only: Sequence[str] = request.only
+    limit = request.limit
+    choices: list[state.PilotChoice] = []
+    if request.pilot:
+        if only or limit is not None or request.all_conversations:
+            # A selection flag beside a flag that *is* the selection: one of the
+            # two would have to be ignored, and `12`'s rule about `--pilot` — a
+            # flag that chooses cannot be inert — cuts both ways.
+            raise UsageError(piloting.PILOT_CHOOSES)
+        parsed = load_export(path)
+        choices = piloting.choose(
+            parsed,
+            selecting.plan_for(
+                settings,
+                parsed,
+                attachments_dir=request.attachments_dir,
+                skip_attachments=request.skip_attachments,
+            ),
+        )
+        only = piloting.uuids(choices)
+        limit = piloting.PILOT_LIMIT
+        # Printed before anything is migrated, and even under `--quiet`: §18's
+        # answers are only worth having if the conversations behind them were
+        # chosen for a reason, and this block is that reason. It is on stdout
+        # rather than in the log because `run.json` is where it is kept and an
+        # operator is who it is for.
+        sink.block(piloting.block(choices))
+        if not only:
+            # Nothing migratable in the whole export: `06`'s rule for an empty
+            # selection, reached here rather than below so that a dry run says
+            # it too.
+            return ImportOutcome(exit_code=ExitCode.NOTHING_TO_DO, choices=choices)
+
+    def selection(effective: Settings) -> state.Selection:
+        return selecting.selection_for(
+            effective,
+            only=only,
+            limit=limit,
+            all_conversations=request.all_conversations,
+            retry_failed=request.retry_failed,
+            retry_partial=request.retry_partial,
+            force=request.force,
+            skip_attachments=request.skip_attachments,
+            pilot=choices,
+        )
+
+    if not request.dry_run:
+        effective = with_pacing(
+            with_skip_attachments(
+                with_attachments_dir(settings, request.attachments_dir),
+                request.skip_attachments,
+            ),
+            delay=request.delay,
+            max_retries=request.max_retries,
+            timeout=request.timeout,
+        )
+        log.enable_run_log(effective.workspace)
+        outcome = Importer(
+            effective,
+            progress=reporting.Reporter(quiet=quiet),
+            force_unlock=request.force_unlock,
+        ).run(path, selection(effective))
+        sink.block(report_text(outcome))
+        return ImportOutcome(
+            exit_code=outcome.exit_code, summary=outcome, choices=choices
+        )
+
+    parsed = parsed if parsed is not None else load_export(path)
+    store = state.StateStore(settings.workspace)
+    store.check_export(parsed.fingerprint)
+    chosen = state.select(
+        [item.uuid for item in parsed.conversations], store.load(), selection(settings)
+    )
+    if not chosen:
+        # `06`'s rule, and the one `seeds` already follows: an empty selection is
+        # exit `4`, not a block of zeros that reads like a finished run.
+        return ImportOutcome(exit_code=ExitCode.NOTHING_TO_DO, choices=choices)
+    plan = selecting.plan_for(
+        settings,
+        parsed,
+        uuids=chosen,
+        attachments_dir=request.attachments_dir,
+        skip_attachments=request.skip_attachments,
+    )
+    # Printed even under `--quiet`: `-q` suppresses progress, and this block is
+    # the command's whole result rather than a report of its progress.
+    sink.block(summary.dry_run_report(plan.totals))
+    return ImportOutcome(exit_code=ExitCode.OK, plan=plan, choices=choices)
+
+
+def resume_command(
+    settings: Settings, *, quiet: bool = False, sink: Sink = DISCARD
+) -> ImportOutcome:
+    """Continue a migration that paused for human intervention (`14`).
+
+    No pause to continue is not an error, so no `error:` and nothing on stderr:
+    `resume` was asked whether there was anything to continue and the answer was
+    no. Exit `4` is the same "nothing to do" the other commands use for an empty
+    selection.
+    """
+    log.enable_run_log(settings.workspace)
+    try:
+        outcome = Importer(settings, progress=reporting.Reporter(quiet=quiet)).resume()
+    except NothingToResume:
+        sink.line(NOTHING_TO_RESUME)
+        return ImportOutcome(exit_code=ExitCode.NOTHING_TO_DO)
+    sink.block(report_text(outcome))
+    return ImportOutcome(exit_code=outcome.exit_code, summary=outcome)
