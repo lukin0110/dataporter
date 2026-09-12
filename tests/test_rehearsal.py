@@ -559,7 +559,10 @@ def test_the_committed_record_keeps_26s_discipline() -> None:
     rows = [
         line
         for line in text.splitlines()
-        if line.startswith("| ") and " pass " in line or " FAIL " in line
+        # Parenthesised: `and` binds tighter than `or`, so without them a line
+        # carrying " FAIL " anywhere in the record would be counted as a row of
+        # the criteria table. (Raised by Copilot in review on #36.)
+        if line.startswith("| ") and (" pass " in line or " FAIL " in line)
     ]
     assert rows
     assert all("*measured on " in row for row in rows)
