@@ -29,10 +29,15 @@ from typing import Any
 
 import spike
 
+from dataporter import PROGRAM_NAME
+
 DEFAULT_SIZES = (5_000, 20_000, 50_000, 100_000, 200_000)
 DEFAULT_METHODS = ("insert_text", "exec_command")
 
-CLI = "dataporter"
+CLI = PROGRAM_NAME
+"""The command the ladder drives, read from the package rather than spelled here,
+so a rename of the console script cannot leave the spike running a name that is
+gone (raised by Copilot in review on #38)."""
 HELPER_TIMEOUT_S = 300.0
 
 TEXT_MISMATCH = "text_mismatch"
