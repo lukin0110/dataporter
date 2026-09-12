@@ -31,6 +31,10 @@ SHIM_NAME = PROGRAM_NAME
 """The shim's file name, which is what `prompt.helper_command()` tells the agent
 to run: read from the package so the two cannot disagree."""
 
+SHIM_SOURCE = "ladder_shim.py"
+"""The Python behind the shim. A name that is not the package's, because the
+shim's directory is `sys.path[0]` when it runs (see `write_shim`)."""
+
 _SOURCE = """\
 import argparse
 import re
@@ -103,7 +107,13 @@ def write_shim(directory: Path, *, cdp_port: int, server_port: int) -> Path:
     with `shutil.which`, exactly as it would find the installed console script.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    script = directory / f"{SHIM_NAME}.py"
+    # Not `f"{SHIM_NAME}.py"`: Python puts a script's own directory first on
+    # `sys.path`, so a source file named `dataporter.py` beside the shim *is* the
+    # `dataporter` the shim then tries to import — "'dataporter' is not a
+    # package", one probe answering nothing, and every ladder round skipped as
+    # "no composer". The old name never collided because the command was not the
+    # package; ADR 0004 made them the same word.
+    script = directory / SHIM_SOURCE
     script.write_text(
         _SOURCE.format(cdp_port=cdp_port, server_port=server_port), encoding="utf-8"
     )
