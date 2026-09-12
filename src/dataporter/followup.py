@@ -65,6 +65,9 @@ migration's run id so a transcript can be told apart from one `12` produced."""
 ANSWERED = "answered"
 """The one outcome that produces evidence. The other three are why it did not."""
 
+WRONG_CHAT = "answered in another chat: {reported}"
+"""Why a reply that arrived is not recorded (`Prober.ask`)."""
+
 
 # --------------------------------------------------------------------------- #
 # What one probe run answers with
@@ -188,10 +191,16 @@ def read(settings: Settings) -> ProbeFile:
 
 
 def write(settings: Settings, file: ProbeFile) -> Path:
-    """Write the whole file atomically, as every other workspace file is."""
+    """Write the whole file atomically, as every other workspace file is.
+
+    Newline-terminated, because `state._dump` and `19`'s `report.json` are: one
+    convention for the workspace's JSON keeps its diffs quiet and its files
+    readable by the line-oriented tools an operator reaches for. (Raised by
+    Copilot in review on #29.)
+    """
     target = probes_path(settings)
     target.parent.mkdir(parents=True, exist_ok=True)
-    state.write_atomically(target, file.model_dump_json(indent=2))
+    state.write_atomically(target, file.model_dump_json(indent=2) + "\n")
     return target
 
 
@@ -218,6 +227,31 @@ def _describe(exc: ValidationError) -> str:
 # --------------------------------------------------------------------------- #
 # Who gets asked
 # --------------------------------------------------------------------------- #
+
+
+def in_the_right_chat(result: ProbeResult, conversation_id: str) -> ProbeResult:
+    """`result`, or a failure when it says it answered somewhere else.
+
+    The agent is told which chat to ask in and reports which chat it asked in,
+    and those two disagreeing is the one way a probe can produce a reply that is
+    evidence about the wrong conversation — which is worse than no evidence,
+    because nothing downstream could tell. So the reply is dropped rather than
+    filed: it belongs to a chat this record does not describe, and it is
+    somebody else's conversation as far as this row is concerned.
+
+    A result that names no chat at all is left alone. It is not evidence of a
+    wrong chat, only of an agent that did not say — and the reply it carries is
+    still the answer to a question asked in the chat the prompt named.
+    (Raised by Copilot in review on #29.)
+    """
+    reported = result.conversation_id
+    if not reported or reported == conversation_id:
+        return result
+    return ProbeResult(
+        outcome="failed",
+        conversation_id=reported,
+        error=WRONG_CHAT.format(reported=log.safe_token(reported)),
+    )
 
 
 def probeable(migration: MigrationState) -> Iterator[tuple[str, ConversationState]]:
@@ -317,6 +351,7 @@ class Prober:
             result = self._run(text, short_id)
         except HermesError as exc:
             result = ProbeResult(outcome="failed", error=exc.detail or "hermes failed")
+        result = in_the_right_chat(result, conversation_id)
         _logger.info(
             "probe",
             extra={
