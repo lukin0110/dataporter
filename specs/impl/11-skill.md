@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §4 (Hermes capabilities), §5 (selectors, verify after each action), §11 (agent verification), §17 (safety)
 **Depends on:** [10](10-attach-spike.md)
 **Enables:** [12](12-import-loop.md), [13](13-recovery.md)
-**Status:** Done
+**Status:** Built
 
 ## Goal
 

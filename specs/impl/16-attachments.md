@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §14
 **Depends on:** [03](03-classification.md), [08](08-browser-helpers.md), [12](12-import-loop.md)
 **Enables:** [19](19-report.md) (attachment figures)
-**Status:** Done
+**Status:** Built
 
 ## Goal
 

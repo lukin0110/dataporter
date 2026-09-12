@@ -2,22 +2,21 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | [`01-initial-brief.md`](01-initial-brief.md) | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
 | **Audience** | Anyone deciding whether this is the right experiment | Whoever is building the next slice |
 | **Voice** | Requirements and outcomes | Commands, flags, files, types, schemas, golden outputs |
-| **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands, marked `Done` when shipped |
+| **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands; `Built` when its tests pass, `Done` when its live criteria are met |
 | **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
-| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are treated as golden strings | Normative |
+| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings; the blocks in brief `02` (§21, §23, §25) are illustrative | Normative |
 
 There are two briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19) and
 [`02-claude-mock.md`](02-claude-mock.md) (§20–§28). Section numbers continue across them,
-so `§N` names one section anywhere in the repository
-([ADR 0002](../docs/adr/0002-section-numbers-continue-across-briefs.md)). The words the
-briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
+so `§N` names one section anywhere in the repository (a working rule, below). The words
+the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
 
 The rule that keeps them apart: **if it could change without changing what we are trying to
 achieve, it belongs in `impl/`.** A retry budget, a JSON field, a package name, a CSS
@@ -86,7 +85,8 @@ Tooling — no milestone, may land at any time
 M6 — Operability
   24  Non-interactive mode: credentials, an agentic sign-in, headless Chrome, never a keypress
 
-M7 — Rehearsal (brief 02, §20–§28)
+M7 — Rehearsal (brief 02, §20–§28) — outside the gates: it needs no account, and §27
+     makes a passed rehearsal the precondition for 10's live run, not its successor
   slices not yet carved
 ```
 
@@ -141,17 +141,17 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [04](impl/04-seed-generation.md) | Seed generation | §3, §6, §15 | Done |
 | [05](impl/05-dry-run.md) | Dry run and inspect | §9 | Done |
 | [06](impl/06-migration-state.md) | Migration state | §6, §7 | Done |
-| [07](impl/07-browser-session.md) | Browser session and login | §8 | Done |
+| [07](impl/07-browser-session.md) | Browser session and login | §8 | Built |
 | [08](impl/08-browser-helpers.md) | Browser helpers | §4, §5, §17 | Done |
-| [09](impl/09-hermes-runner.md) | Hermes profile and runner | §2, §4, §17 | Done |
+| [09](impl/09-hermes-runner.md) | Hermes profile and runner | §2, §4, §17 | Built |
 | [10](impl/10-attach-spike.md) | Attach spike and Claude UI map | §4, §5, §11 | In progress |
-| [11](impl/11-skill.md) | Skill and step protocol | §4, §5, §11, §17 | Done |
-| [12](impl/12-import-loop.md) | Import loop | §6, §10 | Done |
-| [13](impl/13-recovery.md) | Recovery | §11 | Done |
+| [11](impl/11-skill.md) | Skill and step protocol | §4, §5, §11, §17 | Built |
+| [12](impl/12-import-loop.md) | Import loop | §6, §10 | Built |
+| [13](impl/13-recovery.md) | Recovery | §11 | Built |
 | [14](impl/14-human-intervention.md) | Human intervention | §12 | Done |
 | [15](impl/15-pacing.md) | Pacing and limits | §13 | Done |
-| [16](impl/16-attachments.md) | Attachments | §14 | Done |
-| [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Done |
+| [16](impl/16-attachments.md) | Attachments | §14 | Built |
+| [17](impl/17-verification-and-title.md) | Verification and title | §2, §11, §15 | Built |
 | [18](impl/18-progress-output.md) | Progress output | §10 | Done |
 | [19](impl/19-report.md) | Report | §16 | Done |
 | [20](impl/20-pilot.md) | Pilot experiment | §18 | In progress |
@@ -160,6 +160,13 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [23](impl/23-library-operations.md) | Library operations | — tooling | Done |
 | [24](impl/24-non-interactive.md) | Non-interactive mode | §8 (amended), §12 | Done |
 | [25](impl/25-distribution.md) | Distribution | — tooling | Done |
+
+`Built` is the value between `In progress` and `Done`: the slice's code is in and its
+tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
+account are still marked *unverified* in the slice itself. `10` is `In progress` and its
+own text gates `11` onward on its answers; the slices after it were built against the
+fakes rather than waiting, which is what this value records. `20` is where those criteria
+are met, and it is what turns `Built` into `Done`.
 
 `21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
 still reporting what is true rather than what the plan hoped: `20` and `21` are built and
@@ -186,6 +193,9 @@ what the brief asks for, and they are outside the milestone gates for the same r
   the set skimmable.
 - **Words come from `CONTEXT.md`.** A term a document needs and the glossary lacks is
   added there first.
+- **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
+  `§N` stays one global identifier and every `Implements: §N` line keeps its meaning. A
+  third brief starts where `02` ends. Cite `§N`, never `02§N`.
 
 ## Shared decisions
 

@@ -6,7 +6,7 @@
 **Enables:** [19](19-report.md)
 **Composes with:** [14](14-human-intervention.md) — this slice hands `needs_human` to it
 (see the table below); neither gates the other, and both share `Importer._migrate`
-**Status:** Done
+**Status:** Built
 
 ## Goal
 

@@ -59,9 +59,9 @@ per run, and there is no model behind it.
 ### A separate project
 
 The mock is its own project — its own project file, dependencies, tests and README —
-listed as a member of this repository's workspace for now. It imports nothing from the
-tool, and the tool imports nothing from it. Moving it to its own repository is a directory
-move. *(ADR [0003](../docs/adr/0003-the-mock-is-a-separate-project.md).)*
+living inside this repository for now. It imports nothing from the tool, and the tool
+imports nothing from it. Moving it to its own repository is a directory move.
+*(ADR [0003](../docs/adr/0003-the-mock-is-a-separate-project.md).)*
 
 ### Obedient
 
@@ -113,24 +113,12 @@ can tell a rehearsal from a real run (§22), so the mock is the only party that 
 
 ### Reachability
 
-The mock tells the operator how to reach it; nobody composes a resolver rule by hand. On
-start it prints:
-
-```text
-Mock claude.ai listening on https://127.0.0.1:8443
-
-Add to <workspace>/config.toml before running the tool:
-
-[browser]
-extra_args = [
-  "--host-resolver-rules=MAP claude.ai 127.0.0.1:8443",
-  "--ignore-certificate-errors-spki-list=AbCdEf0123456789AbCdEf0123456789AbCdEf0123456789=",
-]
-
-```
-
-Trust is scoped to the mock's own key, never to every certificate. Which mechanism
-establishes that trust is an implementation detail; the shape of what is printed is not.
+The mock tells the operator how to reach it; nobody composes a resolver rule or a
+certificate fingerprint by hand. On start it prints the exact lines to add to the
+rehearsal workspace's browser configuration, and those lines do two things: send the
+`claude.ai` host to the mock, and trust the mock's own key — never every certificate.
+Which port it listens on, which mechanism establishes that trust and what the printed
+lines look like are the slice's to choose.
 
 ### Lifetime
 
@@ -153,8 +141,8 @@ Named here so that a later brief or slice can claim them (§28):
 
 The tool under rehearsal is byte-identical to the tool that will meet claude.ai, and it
 runs as a black-box process. It has no host setting, no flag and no environment variable
-that names the mock. The helpers' refusal of every URL that is not on `claude.ai` (§17)
-stays exactly as it ships.
+that names the mock. The helpers' refusal of every URL that is not on `claude.ai` —
+`08`'s resolution of §17 — stays exactly as it ships.
 
 The mock is reached through configuration an operator may already write: the browser's
 extra arguments, in the rehearsal's own workspace, map the host to the mock and trust its
