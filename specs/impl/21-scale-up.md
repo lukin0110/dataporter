@@ -97,7 +97,10 @@ Resolved while building:
   really happened also visits `/login`. A foreign host or a chat id this workspace never
   created is a finding the script asserts; another claude.ai path is one it counts and
   prints for a person to judge. It selects the `url` column and never `title`, because a
-  claude.ai page title is somebody's conversation (§10).
+  claude.ai page title is somebody's conversation (§10). The export's digest is a row on
+  every run, `unmeasured` when no `--export` was named: an audit that left the check out
+  when nobody asked for it would read as a §17 pass that had made it. (Raised by Copilot
+  in review on #30, which also found the run logs being parsed once per conversation.)
 - **The write-up exists before the experiment does, and is marked.** `20`'s rule, inherited
   wholesale: `docs/experiment-02.md` carries `*not yet run*` against every number, and
   `tests/test_scale_up_doc.py` refuses a document that claims a measurement while its
@@ -139,8 +142,9 @@ Resolved while building:
   and `claude.ai/chat/<id>` URLs created by this workspace — checked by a script over the
   profile's `History` database).
   *Prepared:* `sign_off.py safety` re-digests `conversations.json` against the fingerprint
-  the run recorded, and reads the profile's `History` — the `url` column only — into four
-  buckets, failing on a foreign host or a chat this workspace did not create.
+  the run recorded — or says it was not asked to — and reads the profile's `History` — the
+  `url` column only — into four buckets, failing on a foreign host or a chat this
+  workspace did not create.
 
 ## Risks
 

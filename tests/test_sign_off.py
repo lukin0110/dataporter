@@ -112,6 +112,18 @@ def opened(root: Path) -> sign_off.Workspace:
     return sign_off.open_workspace(root)
 
 
+def named(checks: list[sign_off.Check], name: str) -> sign_off.Check:
+    """One row of a check block, by name rather than by position.
+
+    By name because `safety`'s rows are a fixed list a reviewer can read off
+    `SAFETY_CHECKS`, and a test that indexed them would have to be renumbered
+    every time a row is added — which is how a row stops being checked.
+    """
+    found = [check for check in checks if check.name == name]
+    assert len(found) == 1, f"{name}: {len(found)} rows"
+    return found[0]
+
+
 def log_line(root: Path, **fields: object) -> None:
     """One record in a run log, as `log.JsonlFormatter` writes it."""
     path = root / "logs" / "run-20260101T000000Z.jsonl"
@@ -484,6 +496,38 @@ def test_intervention_reasons_are_counted_by_name(tmp_path: Path) -> None:
     assert rows[6].note == "captcha 2"
 
 
+def test_the_run_logs_are_parsed_once_per_invocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Three rows need what the logs remember, and a workspace of a thousand
+    conversations has one log per session: reading them per conversation is what
+    would make this command unusable on the run it is for. (Raised by Copilot in
+    review on #30.)"""
+    root = workspace_of(tmp_path)
+    log_line(
+        root,
+        event=sign_off.INTERVENTION_EVENT,
+        conversation_id="11112222",
+        reason="captcha",
+    )
+    reads = 0
+    original = sign_off.log_records
+
+    def counted(workspace: Path) -> object:
+        nonlocal reads
+        reads += 1
+        return original(workspace)
+
+    monkeypatch.setattr(sign_off, "log_records", counted)
+    rows = sign_off.metrics(opened(root), recoveries=None)
+
+    assert reads == 1
+    # And the one parse is still the one the rows use: the pause above is
+    # `FIRST`'s, which was the only conversation that had made it unattended.
+    assert rows[0].terms == "0 ÷ 3"
+    assert rows[6].note == "captcha 1"
+
+
 def test_the_metrics_command_reports_what_it_could_not_measure(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -588,8 +632,9 @@ def test_the_history_audit_accepts_new_and_the_chats_this_workspace_made(
         opened(root), export=None, profile=root / "browser-profile"
     )
 
-    assert checks[0].number == "3"
-    assert [check.verdict for check in checks] == [sign_off.GO] * 4
+    assert [check.name for check in checks] == list(sign_off.SAFETY_CHECKS)
+    assert named(checks, sign_off.HISTORY_CHECKS[0]).number == "3"
+    assert [check.verdict for check in checks[1:]] == [sign_off.GO] * 4
 
 
 def test_a_chat_this_workspace_never_created_fails_the_audit(tmp_path: Path) -> None:
@@ -600,7 +645,7 @@ def test_a_chat_this_workspace_never_created_fails_the_audit(tmp_path: Path) -> 
         opened(root), export=None, profile=root / "browser-profile"
     )
 
-    assert checks[1].verdict == sign_off.NO_GO
+    assert named(checks, sign_off.HISTORY_CHECKS[1]).verdict == sign_off.NO_GO
 
 
 def test_another_host_fails_the_audit(tmp_path: Path) -> None:
@@ -610,8 +655,9 @@ def test_another_host_fails_the_audit(tmp_path: Path) -> None:
         opened(root), export=None, profile=root / "browser-profile"
     )
 
-    assert checks[2].verdict == sign_off.NO_GO
-    assert checks[2].terms == "example.com"
+    foreign = named(checks, sign_off.HISTORY_CHECKS[2])
+    assert foreign.verdict == sign_off.NO_GO
+    assert foreign.terms == "example.com"
 
 
 def test_another_claude_path_is_reported_for_a_person_to_judge(
@@ -625,8 +671,9 @@ def test_another_claude_path_is_reported_for_a_person_to_judge(
         opened(root), export=None, profile=root / "browser-profile"
     )
 
-    assert checks[3].verdict == sign_off.UNKNOWN
-    assert checks[3].terms == "/login"
+    other = named(checks, sign_off.HISTORY_CHECKS[3])
+    assert other.verdict == sign_off.UNKNOWN
+    assert other.terms == "/login"
 
 
 def test_the_audit_never_prints_a_query_string_or_a_title(tmp_path: Path) -> None:
@@ -650,7 +697,28 @@ def test_a_missing_profile_is_unknown_rather_than_clean(tmp_path: Path) -> None:
     root = workspace_of(tmp_path)
     checks = sign_off.safety(opened(root), export=None, profile=root / "nowhere")
 
-    assert checks[0].verdict == sign_off.UNKNOWN
+    assert [check.name for check in checks] == [
+        sign_off.EXPORT_CHECK,
+        "browser history",
+    ]
+    assert [check.verdict for check in checks] == [sign_off.UNKNOWN] * 2
+
+
+def test_an_unnamed_export_is_a_row_and_not_a_silence(tmp_path: Path) -> None:
+    """`safety` answers "was anything outside this migration touched", so an
+    audit that simply left the export out when nobody named one would read as a
+    §17 pass that had checked it. (Raised by Copilot in review on #30.)"""
+    root = workspace_of(tmp_path)
+    history_of(root / "browser-profile" / "Default", "https://claude.ai/new")
+    checks = sign_off.safety(
+        opened(root), export=None, profile=root / "browser-profile"
+    )
+    digest = named(checks, sign_off.EXPORT_CHECK)
+
+    assert digest.number == sign_off.UNMEASURED
+    assert "--export" in digest.terms
+    assert digest.verdict == sign_off.UNKNOWN
+    assert sign_off.main(["safety", "--workspace", str(root)]) == ExitCode.FAILED
 
 
 def test_the_export_digest_is_compared_with_the_one_the_run_recorded(
@@ -728,12 +796,19 @@ def test_the_sample_command_prints_a_short_id_and_a_uuid(
 def test_the_safety_command_runs_end_to_end(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    root = workspace_of(tmp_path)
+    """Every row of the §17 audit, passing: the export re-digests to what the
+    run recorded, and the history holds one `/new` and nothing else."""
+    export = tmp_path / "export"
+    export.mkdir()
+    (export / "conversations.json").write_text("[]", encoding="utf-8")
+    root = tmp_path / "workspace"
+    root.mkdir()
+    workspace_of(root, fingerprint=sign_off.export_digest(export))
     history_of(root / "browser-profile" / "Default", "https://claude.ai/new")
-    code = sign_off.main(["safety", "--workspace", str(root)])
+    code = sign_off.main(["safety", "--workspace", str(root), "--export", str(export)])
 
     assert code == ExitCode.OK
-    assert "go: 4 checks passed" in capsys.readouterr().out
+    assert "go: 5 checks passed" in capsys.readouterr().out
 
 
 def test_columns_are_padded_but_the_last_one_is_not() -> None:

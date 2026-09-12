@@ -132,11 +132,16 @@ a killed run costs no conversation and creates no duplicate chat.
 
 ## Safety (§17)
 
+One row per check `sign_off.py safety` prints, in its order, so the block is pasted rather
+than aggregated:
+
 | Check | Number | Mark |
 | --- | --- | --- |
-| Source export's SHA-256 after the run, against the fingerprint the run recorded | — | *not yet run* |
-| Browser profile history: `/new` and `/chat/<id>` this workspace created | — | *not yet run* |
-| Browser profile history: anything else | — | *not yet run* |
+| `export sha-256 unchanged` — the source export re-digested, against the fingerprint the run recorded | — | *not yet run* |
+| `history: migration URLs` — `/new` and `/chat/<id>` this workspace created | — | *not yet run* |
+| `history: chats this workspace did not create` — fails the audit | — | *not yet run* |
+| `history: other hosts` — fails the audit | — | *not yet run* |
+| `history: other claude.ai paths` — `/login` and the like, counted for a person to judge | — | *not yet run* |
 
 The source account was never opened by the tool: it has no credential for it, it reads the
 export as a file, and the only browser it drives is the profile inside the workspace.

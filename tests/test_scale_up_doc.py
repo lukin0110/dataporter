@@ -177,6 +177,16 @@ def test_the_gate_has_a_row_per_threshold() -> None:
     assert all(MARK.search(row[-1]) for row in table)
 
 
+def test_the_safety_table_has_a_row_per_check_the_script_prints() -> None:
+    """`sign_off.py safety` reports the export digest and four history buckets
+    apart, so a table with one "anything else" row would have to be aggregated
+    by hand out of the script's own output. (Raised by Copilot in review on
+    #30.)"""
+    table = rows(section(TEXT, "## Safety (§17)"))
+    assert [row[0].split("`")[1] for row in table] == list(sign_off.SAFETY_CHECKS)
+    assert all(MARK.search(row[-1]) for row in table)
+
+
 def test_the_drill_reports_duplicates_and_losses() -> None:
     body = " ".join(section(TEXT, "## The interruption drill"))
     assert "Distinct `/chat/<id>` ids" in body
@@ -222,7 +232,11 @@ def test_every_command_named_exists(path: Path) -> None:
 @pytest.mark.parametrize("path", OPERATOR_DOCS, ids=lambda path: path.name)
 def test_every_sign_off_subcommand_named_exists(path: Path) -> None:
     named = set(re.findall(r"sign_off\.py ([a-z-]+)", path.read_text(encoding="utf-8")))
-    assert named <= set(sign_off.COMMANDS), f"not subcommands: {sorted(named)}"
+    # The difference, not `named`: a message listing every subcommand the
+    # document names reads as though the valid ones were wrong too. (Raised by
+    # Copilot in review on #30.)
+    unknown = named - set(sign_off.COMMANDS)
+    assert not unknown, f"not subcommands: {sorted(unknown)}"
 
 
 @pytest.mark.parametrize("name", sign_off.COMMANDS)
