@@ -74,6 +74,7 @@ from dataporter import PROGRAM_NAME, log, render, signin, state, summary
 from dataporter import intervention as intervening
 from dataporter import progress as reporting
 from dataporter import seed as seeding
+from dataporter import store as storing
 from dataporter import verify as verifying
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher, probe
@@ -2183,6 +2184,11 @@ def import_command(
     from dataporter import selection as selecting
 
     path = selecting.export_path(request.export)
+    # Before anything reads the export, and before a dry run too: the guard is
+    # about where this invocation *would* write, and an operator who learns
+    # after a clean dry run that the real run cannot use that workspace has
+    # been told late. §33 — the store holds nothing a migration writes.
+    storing.refuse_workspace_inside(path, settings.workspace)
     parsed: Export | None = None
     """The export, once, when `--pilot` has already had to read it."""
     only: Sequence[str] = request.only

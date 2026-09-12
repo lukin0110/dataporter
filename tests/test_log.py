@@ -257,3 +257,9 @@ def test_safe_token_cannot_forge_a_second_line() -> None:
     assert log.safe_token("ordinary-name.png") == "ordinary-name.png"
     assert log.safe_token("x" * 300) == "x" * 120
     assert log.safe_token("") == "(empty)"
+
+
+def test_the_link_is_a_forbidden_field(workspace: Path) -> None:
+    """`30`: the vendor's download link is a credential to the whole archive
+    while it lasts (brief `03` §32), so no record may carry one."""
+    assert "link" in log.FORBIDDEN_FIELDS

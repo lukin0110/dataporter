@@ -405,3 +405,53 @@ def test_both_backends_refuse_an_absent_member_alike(
                 source.read("nope.json")
         details.append(excinfo.value.detail.replace(str(subject), "<export>"))
     assert details[0] == details[1] == "nope.json missing from export: <export>"
+
+
+# --------------------------------------------------------------------------- #
+# A snapshot is the export inside it (`30`)
+# --------------------------------------------------------------------------- #
+
+
+def test_a_snapshot_and_its_archive_parse_identically(
+    snapshot_dir: Path, export_zip: Path
+) -> None:
+    """§39's question 3, as an identity rather than as a comparison of numbers."""
+    assert load_export(snapshot_dir).model_dump_json() == (
+        load_export(export_zip).model_dump_json()
+    )
+
+
+def test_the_snapshots_own_files_are_not_part_of_the_export(
+    snapshot_dir: Path,
+) -> None:
+    """`snapshot.json` and `COMPLETE` are ours, not the vendor's: listing them as
+    known members would make them part of the export and change `unsupported`."""
+    export = load_export(snapshot_dir)
+    reasons = {item.path: item.reason for item in export.unsupported}
+
+    assert "snapshot.json" not in reasons
+    assert "COMPLETE" not in reasons
+    # The fixture's own unknown file is still counted, so this is not an empty set.
+    assert reasons["extra.json"] == "unknown_file"
+
+
+def test_a_snapshot_without_the_marker_is_refused(snapshot_dir: Path) -> None:
+    (snapshot_dir / "COMPLETE").unlink()
+
+    with pytest.raises(ExportError) as raised:
+        load_export(snapshot_dir)
+
+    assert raised.value.detail == f"snapshot is incomplete: {snapshot_dir}"
+
+
+def test_projects_and_memories_are_counted(export_dir: Path) -> None:
+    """`30`'s manifest takes them off the same parse the conversations came from."""
+    export = load_export(export_dir)
+
+    assert (export.projects, export.memories) == (0, 1)
+
+
+def test_a_snapshot_is_read_as_an_archive(snapshot_dir: Path) -> None:
+    with ExportSource.open(snapshot_dir) as source:
+        assert source.is_archive
+        assert CONVERSATIONS_FILE in source.names()

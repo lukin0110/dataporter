@@ -1,8 +1,10 @@
 """Reading an export, without ever writing to it.
 
-`ExportSource` accepts a `.zip` or an extracted directory. Zips are opened in mode
-`r` and members are read from the archive stream — nothing is extracted, so a
-member name is never joined to a filesystem path and cannot escape anywhere.
+`ExportSource` accepts a `.zip`, an extracted directory, or — since `30` — a
+snapshot, which is the vendor's archive with a manifest of ours beside it and is
+read as the archive inside it. Zips are opened in mode `r` and members are read
+from the archive stream — nothing is extracted, so a member name is never joined
+to a filesystem path and cannot escape anywhere.
 
 This module is the only place a library exception becomes an `ExportError`: a
 `zipfile.BadZipFile`, a `json.JSONDecodeError` or a pydantic `ValidationError`
@@ -40,7 +42,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from dataporter import log
+from dataporter import log, store
 from dataporter.errors import ExportError
 from dataporter.export.model import (
     KNOWN_BLOCK_TYPES,
@@ -48,6 +50,7 @@ from dataporter.export.model import (
     Export,
     UnknownBlock,
     UnsupportedItem,
+    file_entries,
 )
 
 _logger = log.get_logger(__name__)
@@ -125,12 +128,23 @@ class ExportSource:
         """
 
     @classmethod
-    def open(cls, path: Path | str) -> "ExportSource":
-        """Open a `.zip` or an extracted directory."""
-        display = str(path)
+    def open(cls, path: Path | str, *, display: str | None = None) -> "ExportSource":
+        """Open a snapshot, a `.zip` or an extracted directory.
+
+        `display` overrides the name every message about this source uses.
+        `30`'s fetch verifies a download in a temp file whose name is a uuid,
+        and an operator reading `conversations.json missing from export` is owed
+        the words "the download" rather than a path they never typed.
+        """
+        display = str(path) if display is None else display
         resolved = Path(path)
         if not resolved.exists():
             raise ExportError(detail=f"export not found: {display}")
+        if store.is_snapshot(resolved):
+            # Before the directory branch: a snapshot *is* a directory, and one
+            # read as an export would find `export.zip` where it wanted
+            # `conversations.json`.
+            return _SnapshotSource(resolved, display)
         if resolved.is_dir():
             return _DirectorySource(resolved, display)
         # The suffix counts as well as the magic bytes: `is_zipfile` reads the
@@ -272,6 +286,40 @@ class _ZipSource(ExportSource):
         self._archive.close()
 
 
+class _SnapshotSource(ExportSource):
+    """A snapshot (`30`), read as the export inside it.
+
+    A wrapper rather than three more names in `KNOWN_FILES`: `snapshot.json` and
+    `COMPLETE` are ours and not the vendor's, and listing them as known members
+    would make them part of the export — changing `unsupported`, and with it
+    what `05` prints. Delegating instead keeps `names()`, `read()` and therefore
+    `fingerprint` the inner archive's own, which is what makes §39's question 3
+    — the same dry run as the archive given directly — true by construction.
+    """
+
+    def __init__(self, path: Path, display: str) -> None:
+        super().__init__(path, display)
+        if not (path / store.COMPLETE_NAME).exists():
+            # The marker is the whole of §33's "in progress or finished". A
+            # snapshot without it is one a fetch did not finish, and reading it
+            # would be reading whatever happened to have landed.
+            raise ExportError(detail=f"snapshot is incomplete: {display}")
+        self._archive = _ZipSource(path / store.ARCHIVE_NAME, display)
+
+    @property
+    def is_archive(self) -> bool:
+        return self._archive.is_archive
+
+    def names(self) -> list[str]:
+        return self._archive.names()
+
+    def read(self, member: str) -> bytes:
+        return self._archive.read(member)
+
+    def close(self) -> None:
+        self._archive.close()
+
+
 def _archive_prefix(members: list[str]) -> str:
     """`""`, or the single wrapping directory an export was zipped inside.
 
@@ -354,8 +402,10 @@ def read_export(source: ExportSource) -> Export:
         users=users,
         unsupported=unsupported.items(),
         fingerprint=fingerprint,
+        projects=len(projects),
+        memories=len(memories),
     )
-    _log_shape(export, projects=len(projects), memories=len(memories))
+    _log_shape(export)
     return export
 
 
@@ -465,7 +515,7 @@ def _optional_list(
     ]
 
 
-def _log_shape(export: Export, *, projects: int, memories: int) -> None:
+def _log_shape(export: Export) -> None:
     """One record per export, so a shape drift is visible on the run that hits it.
 
     Counts, uuid-free tokens and file names only: `ToolResultBlock` has a field
@@ -477,7 +527,6 @@ def _log_shape(export: Export, *, projects: int, memories: int) -> None:
     with_index = 0
     with_files = 0
     with_files_v2 = 0
-    attachments = 0
     block_types: set[str] = set()
     for conversation in export.conversations:
         for message in conversation.chat_messages:
@@ -486,9 +535,6 @@ def _log_shape(export: Export, *, projects: int, memories: int) -> None:
             with_index += message.index is not None
             with_files += bool(message.files)
             with_files_v2 += bool(message.files_v2)
-            attachments += (
-                len(message.attachments) + len(message.files) + len(message.files_v2)
-            )
             block_types.update(_block_type(block) for block in message.content)
     _logger.info(
         "export shape",
@@ -503,11 +549,11 @@ def _log_shape(export: Export, *, projects: int, memories: int) -> None:
             ),
             "with_files": with_files,
             "with_files_v2": with_files_v2,
-            "attachments": attachments,
+            "attachments": file_entries(export),
             "block_types": sorted(block_types),
             "users": len(export.users),
-            "projects": projects,
-            "memories": memories,
+            "projects": export.projects,
+            "memories": export.memories,
             "unsupported": len(export.unsupported),
             "fingerprint": export.fingerprint,
         },

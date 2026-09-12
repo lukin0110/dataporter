@@ -11,18 +11,27 @@ which marks them `slow`; the ones that read a file or a directory need nothing.
 """
 
 import json
+import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from dataporter import cli, console
+from dataporter import extract as extracting
 from dataporter import importer as importing
 from dataporter import report as reporting
 from dataporter import seed as seeding
 from dataporter import selection as selecting
+from dataporter import store as storing
 from dataporter.browser import session as browser_session
-from dataporter.config import load_settings
+from dataporter.config import (
+    Settings,
+    load_settings,
+    with_account,
+    with_store_dir,
+)
 from dataporter.exit_codes import ExitCode
 from dataporter.state import Status
 from world import FIRST, World, cli_env
@@ -122,6 +131,107 @@ def test_seeds_of_nothing_is_exit_4(workspace: Path, tmp_path: Path) -> None:
 
     assert outcome.exit_code == ExitCode.NOTHING_TO_DO
     assert outcome.written == 0
+
+
+# --------------------------------------------------------------------------- #
+# The store (`30`)
+# --------------------------------------------------------------------------- #
+
+
+def extract_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str = "store"
+) -> tuple[Settings, list[str]]:
+    """Settings for the library call, and the flags that produce the same ones.
+
+    A store per caller: the two file the same archive moments apart, and §33's
+    "the store never overwrites" is exactly what would refuse the second one
+    when both land in the same second. `blanked` is what puts the two blocks
+    back on the same footing.
+    """
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
+    root = tmp_path / name
+    settings = with_account(with_store_dir(load_settings(), root), "claude", "a")
+    return settings, ["--account", "a", "--store", str(root)]
+
+
+def test_extract_from_is_the_same_through_the_library(
+    runner: CliRunner,
+    workspace: Path,
+    export_zip: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings, _ = extract_env(tmp_path, monkeypatch, "store-library")
+    _, flags = extract_env(tmp_path, monkeypatch, "store-cli")
+    sink = console.Collected()
+    outcome = extracting.file(settings, export_zip, sink=sink)
+    code, out, err = invoke(runner, "extract", *flags, "--from", str(export_zip))
+
+    assert (outcome.exit_code, sink.stderr) == (code, err)
+    assert blanked(sink.stdout, tmp_path) == blanked(out, tmp_path)
+    assert outcome.snapshot is not None
+
+
+def test_extract_abandon_is_the_same_through_the_library(
+    runner: CliRunner,
+    workspace: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings, flags = extract_env(tmp_path, monkeypatch)
+    extracting.write_ask(settings, datetime.now(UTC))
+    sink = console.Collected()
+    outcome = extracting.abandon(settings, sink=sink)
+
+    extracting.write_ask(settings, datetime.now(UTC))
+    code, out, err = invoke(runner, "extract", *flags, "--abandon")
+
+    assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
+
+
+def test_snapshots_is_the_same_through_the_library(
+    runner: CliRunner,
+    workspace: Path,
+    export_zip: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings, flags = extract_env(tmp_path, monkeypatch)
+    extracting.file(settings, export_zip)
+
+    for json_output in (False, True):
+        sink = console.Collected()
+        outcome = storing.list_command(settings, json_output=json_output, sink=sink)
+        code, out, err = invoke(
+            runner, "snapshots", *flags[2:], *(["--json"] if json_output else [])
+        )
+
+        assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
+        assert len(outcome.rows) == 1
+
+
+def test_snapshots_of_an_empty_store_is_the_same_through_the_library(
+    runner: CliRunner, workspace: Path, tmp_path: Path
+) -> None:
+    settings = with_store_dir(load_settings(), tmp_path / "store")
+    sink = console.Collected()
+    outcome = storing.list_command(settings, sink=sink)
+    code, out, err = invoke(runner, "snapshots", "--store", str(tmp_path / "store"))
+
+    assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
+    assert outcome.exit_code == ExitCode.OK
+
+
+def blanked(text: str, tmp_path: Path) -> str:
+    """A block with the stamp and the store's name taken out of it.
+
+    Two filings of the same archive are two moments into two stores, and every
+    other byte of the two blocks has to match.
+    """
+    without_stamp = re.sub(r"\d{4}-\d\d-\d\dT\d\d-\d\d-\d\dZ", "<stamp>", text)
+    return without_stamp.replace(f"{tmp_path}/store-library", "<store>").replace(
+        f"{tmp_path}/store-cli", "<store>"
+    )
 
 
 # --------------------------------------------------------------------------- #

@@ -24,6 +24,8 @@ COMMANDS: list[list[str]] = [
     ["resume"],
     ["seeds"],
     ["inspect"],
+    ["extract"],
+    ["snapshots"],
     ["status"],
     ["login"],
     ["session", "status"],
@@ -59,8 +61,11 @@ on a workspace no run has written a plan into, and is exercised in
 on a workspace nothing has been migrated or probed in; they are exercised in
 `test_followup.py` and `test_judge.py`.
 
-Nothing in the surface answers `69` any more, and nothing refuses a flag either:
-`--pilot` was the last refusal and `20` implemented it."""
+`30` added the last two, `extract` and `snapshots`; they are exercised in
+`test_extract.py` and `test_store.py`, where the store and the injected opener
+live. `extract` with no mode flag is the one thing in the surface that answers
+`69` again — deliberately, because the ask it holds the place for is `31`'s and a
+flag that chooses cannot be accepted and quietly ignored."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -115,6 +120,18 @@ def test_import_help_carries_every_flag(runner: CliRunner) -> None:
         "--pilot",
     ):
         assert flag in result.stdout
+
+
+def test_extract_help_carries_every_flag(runner: CliRunner) -> None:
+    result = runner.invoke(cli.app, ["extract", "--help"], catch_exceptions=False)
+    for flag in ("--source", "--account", "--link", "--from", "--abandon", "--store"):
+        assert flag in result.stdout
+
+
+def test_source_has_no_literal_default(runner: CliRunner, workspace: Path) -> None:
+    """`claude` is the default in `Settings`, not on the flag: a literal here
+    would outrank `DATAPORTER_SOURCE`, the way `--limit` would outrank config."""
+    assert inspect.signature(cli.extract).parameters["source"].default is None
 
 
 def test_limit_has_no_literal_default(runner: CliRunner, workspace: Path) -> None:

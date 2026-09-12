@@ -213,6 +213,8 @@ source = ["src/dataporter"]
 # (`browser/session.py`, `browser/login_form.py`, `verify.py`). `mock/` and
 # `rehearsal/` are not measured here and are not meant to be: the mock has its
 # own suite (`make test-mock`) and the rehearsal is measured by running it.
+# `30`: 6463/6495, 99.51% — `store.py` and `extract.py` are both at 100%, which
+# is what a module that writes files once and never again has to be.
 fail_under = 99
 show_missing = true
 # `python -m dataporter`'s guard runs in a subprocess, where coverage does not

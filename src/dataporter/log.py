@@ -81,11 +81,18 @@ FORBIDDEN_FIELDS = frozenset(
         "email",
         "secret",
         "credentials",
+        "link",
     }
 )
 """Field names that would carry conversation content — see `01` and §10 of the
 brief — or, since `24`, a credential: the account's email and whatever `auth`
-holds beside it are never a log field either."""
+holds beside it are never a log field either.
+
+`30` adds `link` to the second group. The vendor's download link is a credential
+to the whole archive while it lasts and is deliberately never kept (brief `03`
+§32), so it is not a field a record may carry under any spelling of the name.
+A record about a fetch carries `stamp`, `source`, `account`, `bytes` and
+`origin`, which are the numbers and labels §38 allows."""
 
 SCHEMA_FIELDS = frozenset({"ts", "level", "logger", "event", "exception"})
 """Keys the JSON-lines record owns.

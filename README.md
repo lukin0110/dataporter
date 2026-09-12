@@ -140,7 +140,9 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 | `doctor` | Check Hermes, Chrome and the configuration. Exits `6` at the first failure. |
 | `login` | Open the dedicated browser profile and wait for you to sign in. |
 | `session status` / `session logout` | Whether that profile is signed in; remove it locally. |
-| `inspect <export>` | What the export contains, and what is migratable. |
+| `extract` | Ask a source for an account's export, then file what comes back as a snapshot. `--source`, `--account`, `--link`, `--from`, `--abandon`, `--store`. |
+| `snapshots` | What the store holds: source, account, stamp, conversations, state. `--json`. |
+| `inspect <export>` | What the export contains, and what is migratable. A snapshot works wherever an export does. |
 | `seeds <export>` | Write the migration seeds without touching a browser. |
 | `import <export>` | Migrate. `--dry-run`, `--pilot`, `--all`, `--limit`, `--only`, `--retry-failed`, `--retry-partial`, `--force`, `--skip-attachments`. |
 | `status` | What the workspace records, per conversation. |
@@ -154,6 +156,43 @@ Global options go before the subcommand: `--workspace PATH`, `--verbose`, `--qui
 Configuration is `<workspace>/config.toml`, `DATAPORTER_…` environment variables and flags, in
 that order of precedence, ending at the flags — except the mode and the credentials, which
 `config.toml` may not carry.
+
+## Backing an account up
+
+`extract` takes data *out* of an account and files it where it can never be
+overwritten; `import` is the restore. The two never run in one go — a person who only
+wants a backup never migrates — and a person stands between them, because the vendor
+puts an inbox there:
+
+```sh
+# 1. Ask Claude for the account's export. The tool signs in and presses the button.
+dataporter extract --source claude --account old-personal      # the ask — `31`, not built yet
+
+# 2. Claude emails a link. Hand it over; the tool downloads, checks and files it.
+dataporter extract --source claude --account old-personal --link 'https://…'
+
+# An archive you already have is filed the same way, with no ask behind it:
+dataporter extract --source claude --account old-personal --from ./data-2026-09-12.zip
+
+dataporter snapshots                                           # what the store holds
+dataporter import ~/.dataporter/store/claude/old-personal/2026-09-12T20-51-07Z
+```
+
+A snapshot is the vendor's own archive, byte for byte, with everything of ours beside it
+— the stamp, the provenance, the counts, and every gap with its reason. It is written
+once and never touched again: a second extraction is a second snapshot with a later
+stamp, and a stamp that already exists is an error rather than a merge.
+
+| Where | What is in it |
+| --- | --- |
+| `~/.dataporter/store/<source>/<account>/<stamp>/` | The snapshots: `export.zip`, `snapshot.json`, `COMPLETE`. `--store DIR` or `[store] dir` moves it. |
+| `~/.dataporter/accounts/<source>/<account>/` | What is *not* a snapshot: the open ask, the logs, and (`31`) the source session's browser profile. `[accounts] dir` moves it. |
+
+`--account` is your label for the account, not its login: emails change and ids are the
+vendor's. The link is used once and never written down — not in the snapshot, not in a
+log — because it expires and is a credential to the archive while it lasts.
+[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) has the two things to know before relying on
+a store.
 
 ## Running unattended
 
@@ -231,6 +270,8 @@ Three places, all local, and each one is purged by deleting a directory:
 | `<export>` | Your export, opened read-only. The tool never writes to it. | Yours; keep it. |
 | `migration/` (the workspace, `--workspace` to move it) | `state.json`, `run.json`, `plan.json`, `report.json`, `seeds/` (the rendered transcripts), `attachments/`, `pilot/probes.json` (replies Claude wrote), `browser-profile/` (a signed-in Chrome profile) and `logs/`. | `rm -rf migration/` |
 | `~/.hermes/profiles/dataporter/` | Hermes's own session transcripts, which contain page snapshots and therefore conversation content. | `rm -rf ~/.hermes/profiles/dataporter/` — `setup` prints the path on every run. |
+| `~/.dataporter/store/` (`30`, `--store` to move it) | The snapshots `extract` files: one vendor archive each, and a manifest beside it. Holds conversations because that is what a backup is for. | `rm -rf ~/.dataporter/store/` — the tool never deletes from the store itself. |
+| `~/.dataporter/accounts/` (`[accounts] dir` to move it) | Per source account, and never a snapshot: the open ask and the run logs. | `rm -rf ~/.dataporter/accounts/` |
 
 The workspace holds content by design: a seed *is* a conversation. What does not hold
 content is the terminal and the run logs — no title and no message is printed or logged at
