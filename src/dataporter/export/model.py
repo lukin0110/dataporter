@@ -398,3 +398,30 @@ class Export(ExportModel):
     but `Planner.plan(export, settings)` receives only this object, so without it
     the planner would have to re-open the archive it was handed a parse of.
     """
+
+    projects: int = 0
+    memories: int = 0
+    """How many entries `projects.json` and `memories.json` held.
+
+    Counts and never contents, because nothing migrates either: `05`'s block
+    does not print them and `03`'s plan does not read them. `30` needs them for
+    a snapshot's manifest, and taking them off the same parse that produced the
+    conversations is what keeps the manifest's numbers and the dry run's numbers
+    the same numbers.
+    """
+
+
+def file_entries(export: Export) -> int:
+    """How many files the export *refers* to, across every message.
+
+    `attachments`, `files` and `files_v2` together, which is what `30` records
+    as the snapshot's one gap: a Claude export names the files a conversation
+    carried and ships none of their bytes. One function rather than two
+    accumulators, because `source._log_shape` logs the same number and two
+    spellings of it are two numbers waiting to disagree.
+    """
+    return sum(
+        len(message.attachments) + len(message.files) + len(message.files_v2)
+        for conversation in export.conversations
+        for message in conversation.chat_messages
+    )

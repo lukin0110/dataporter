@@ -25,6 +25,7 @@ Neither mechanism decides what `slow` *means*; `pyproject.toml`'s `markers` does
 Both exist so the meaning cannot drift away from what the suite actually does.
 """
 
+import hashlib
 import os
 import zipfile
 from collections.abc import Callable, Iterator
@@ -36,6 +37,7 @@ from typer.testing import CliRunner
 import world as world_module
 from dataporter import log
 from dataporter import seed as seeding
+from dataporter import store as storing
 from dataporter.config import AttachmentSettings, SeedSettings, Settings
 from dataporter.export import load_export
 from fake_chrome import FakeChrome
@@ -175,6 +177,36 @@ def export_zip(export_dir: Path, tmp_path: Path) -> Path:
         for item in sorted(export_dir.iterdir()):
             archive.write(item, item.name)
     return target
+
+
+@pytest.fixture
+def snapshot_dir(export_zip: Path, tmp_path: Path) -> Path:
+    """The same fixture, filed as a snapshot (`30`).
+
+    Filed by the store's own `file_archive` rather than by three `write_bytes`
+    calls, so a test that reads one is reading what `extract` really writes —
+    and by that function rather than through `extract` itself, because a
+    snapshot is a thing on disk and the fetch is not what is under test here.
+    """
+    export = load_export(export_zip)
+    directory, _ = storing.Store(tmp_path / "store").file_archive(
+        export_zip,
+        storing.Filing(
+            source="claude",
+            account="fixture",
+            stamp="2026-09-12T20-51-07Z",
+            origin="file",
+            sha256=hashlib.sha256(export_zip.read_bytes()).hexdigest(),
+            bytes=export_zip.stat().st_size,
+            export_fingerprint=export.fingerprint,
+            counts=storing.Counts(
+                conversations=len(export.conversations),
+                projects=export.projects,
+                memories=export.memories,
+            ),
+        ),
+    )
+    return directory
 
 
 @pytest.fixture

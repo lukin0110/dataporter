@@ -6,11 +6,15 @@ import pytest
 from pydantic import BaseModel
 
 from dataporter.config import (
+    DEFAULT_ACCOUNTS,
+    DEFAULT_STORE,
     DEFAULT_WORKSPACE,
     ConfigError,
     Settings,
     config_file_for,
     load_settings,
+    with_account,
+    with_store_dir,
 )
 
 
@@ -341,7 +345,15 @@ def test_the_secret_never_appears_in_a_dump(
     assert "hunter2" not in repr(settings.credentials)
 
 
-@pytest.mark.parametrize("table", ["[auth]\nemail = 'x'\n", "non_interactive = true\n"])
+@pytest.mark.parametrize(
+    "table",
+    [
+        "[auth]\nemail = 'x'\n",
+        "non_interactive = true\n",
+        "source = 'claude'\n",
+        "account = 'old-personal'\n",
+    ],
+)
 def test_the_config_file_may_not_carry_the_mode_or_a_credential(
     workspace: Path, table: str
 ) -> None:
@@ -371,3 +383,102 @@ def test_a_blank_first_line_in_the_secret_file_is_no_credential(
     secret = tmp_path / "secret.txt"
     secret.write_text("\nhunter2\n", encoding="utf-8")
     assert load_settings(password_file=secret).credentials is None
+
+
+# --------------------------------------------------------------------------- #
+# `30`: the store, the accounts tree, and whose account this is
+# --------------------------------------------------------------------------- #
+
+
+def test_the_store_and_the_accounts_tree_default_under_the_home(
+    workspace: Path,
+) -> None:
+    settings = load_settings()
+    assert settings.store_dir == Path(DEFAULT_STORE).expanduser().absolute()
+    assert settings.accounts_dir == Path(DEFAULT_ACCOUNTS).expanduser().absolute()
+    # Printed as configured: an operator who named no store reads the tilde back.
+    assert settings.store_display == "~/.dataporter/store"
+
+
+@pytest.mark.parametrize(
+    ("variable", "read"),
+    [
+        ("DATAPORTER_STORE__DIR", lambda s: s.store_dir),
+        ("DATAPORTER_ACCOUNTS__DIR", lambda s: s.accounts_dir),
+    ],
+)
+def test_the_new_directories_take_an_environment_override(
+    workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    variable: str,
+    read: object,
+) -> None:
+    monkeypatch.setenv(variable, str(workspace / "elsewhere"))
+    assert read(load_settings()) == workspace / "elsewhere"  # type: ignore[operator]
+
+
+def test_the_store_section_is_read_from_the_config_file(workspace: Path) -> None:
+    write_config(workspace / "migration", "[store]\nmax_download_bytes = 1024\n")
+    assert load_settings().store.max_download_bytes == 1024
+
+
+def test_a_download_cap_of_zero_is_refused(workspace: Path) -> None:
+    write_config(workspace / "migration", "[store]\nmax_download_bytes = 0\n")
+    with pytest.raises(ConfigError, match="max_download_bytes"):
+        load_settings()
+
+
+def test_the_store_flag_outranks_the_environment(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATAPORTER_STORE__DIR", str(workspace / "from-env"))
+    settings = with_store_dir(load_settings(), workspace / "from-flag")
+    assert settings.store_dir == workspace / "from-flag"
+    # `None` is "the flag was not given", never a value that blanks a setting.
+    assert with_store_dir(settings, None).store_dir == workspace / "from-flag"
+
+
+def test_an_account_names_its_home_and_its_logs(workspace: Path) -> None:
+    settings = with_account(load_settings(), "claude", "old-personal")
+    home = settings.accounts_dir / "claude" / "old-personal"
+
+    assert settings.account_home == home
+    assert settings.logs_dir == home
+    # Without one, the commands of the first brief still mean the workspace.
+    assert load_settings().account_home is None
+    assert load_settings().logs_dir == load_settings().workspace
+
+
+def test_the_source_defaults_to_claude_and_the_flag_may_be_absent(
+    workspace: Path,
+) -> None:
+    assert load_settings().source == "claude"
+    assert with_account(load_settings(), None, "a").source == "claude"
+
+
+@pytest.mark.parametrize("token", ["chatgpt", "Claude", "claude/../..", ""])
+def test_a_source_the_tool_does_not_have_is_refused(
+    workspace: Path, token: str
+) -> None:
+    with pytest.raises(ConfigError, match=f"no such source: {token}"):
+        with_account(load_settings(), token, "a")
+
+
+@pytest.mark.parametrize("token", ["Old Personal", "..", ".", "a" * 65, "", "-x/y"])
+def test_a_label_that_is_not_one_is_refused(workspace: Path, token: str) -> None:
+    with pytest.raises(ConfigError, match="account label must be"):
+        with_account(load_settings(), "claude", token)
+
+
+@pytest.mark.parametrize("token", ["old-personal", "a.b_c", "0", "x" * 64])
+def test_a_label_that_is_one_is_accepted(workspace: Path, token: str) -> None:
+    assert with_account(load_settings(), "claude", token).account == token
+
+
+def test_a_source_from_the_environment_is_validated_too(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flag may be absent; the rule is about the value that results."""
+    monkeypatch.setenv("DATAPORTER_SOURCE", "gemini")
+    with pytest.raises(ConfigError, match="no such source: gemini"):
+        with_account(load_settings(), None, "a")

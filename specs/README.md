@@ -203,7 +203,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [27](impl/27-scripted-hermes.md) | The scripted agent as a `hermes` | §23 | Done |
 | [28](impl/28-rehearsal-export.md) | The rehearsal export | §24 | Done |
 | [29](impl/29-rehearsal.md) | The rehearsal | §22, §23, §25, §26, §27 | Done |
-| [30](impl/30-store-and-snapshot.md) | The store and the snapshot | §30, §31, §32, §33, §37, §38 | Not started |
+| [30](impl/30-store-and-snapshot.md) | The store and the snapshot | §30, §31, §32, §33, §37, §38 | Built |
 | [31](impl/31-source-session-and-ask.md) | The source session and the ask | §31, §35, §36, §38, §39 | Not started |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
@@ -212,6 +212,11 @@ account are still marked *unverified* in the slice itself. `10` is `In progress`
 own text gates `11` onward on its answers; the slices after it were built against the
 fakes rather than waiting, which is what this value records. `20` is where those criteria
 are met, and it is what turns `Built` into `Done`.
+
+`30` carries the same value for a different half of the world: it needs no Hermes, no
+Chrome and no account, and every acceptance criterion it states passes — but no *real*
+vendor link has been fetched, and §39's questions about one cannot be answered until
+`31`'s ask exists to produce a link. The slice says so in its own first design note.
 
 `21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
 still reporting what is true rather than what the plan hoped: `20` and `21` are built and
@@ -230,7 +235,8 @@ Of the third brief, §30–§39 are claimed by `30` and `31`: `30` takes the sto
 snapshot, the fetch and import from a snapshot, `31` takes the ask, the source session
 and the safety boundaries, and §31 and §38 are split between them along the same line.
 §29 is that brief's goal and is claimed by both; §40 is its list of what is deliberately
-left, which no slice claims until one of its items is built. Neither slice is started.
+left, which no slice claims until one of its items is built. `30` is built; `31` is not
+started.
 
 ## Working rules
 

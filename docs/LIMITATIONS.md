@@ -180,6 +180,24 @@ here.
   `login` by hand is the remedy. Nothing in the tool reads a mailbox or solves a challenge,
   and nothing will. *by construction*
 
+## The store (`30`)
+
+Two things to know before relying on a store. Neither is about fidelity, which is what
+the rest of this file is about; both are about what a backup does *not* promise.
+
+- **An unfinished snapshot has to be removed by hand.** A fetch that dies partway through
+  the copy leaves a stamp directory with no `COMPLETE` in it, which is exactly how an
+  unfinished snapshot is meant to look — but the next fetch under the same ask computes
+  the same stamp and is refused, because §33 says the store never overwrites. The tool
+  deletes nothing from the store, so the refusal names the directory and an operator
+  removes it. `snapshots` shows such a row as `incomplete`. *by construction*
+- **The link's host is not pinned, so the label is the operator's word.** A vendor emails
+  a signed URL on a storage host nobody can predict, so the fetch checks the scheme and
+  then the content — is this a zip, is it an export of this source — and never the host.
+  A link that leads to a valid export of somebody *else's* account would be filed, under
+  whatever `--account` said. The label is the operator's claim about whose account it is,
+  and the tool cannot check it. *by construction*
+
 ## How to add to this file
 
 One bullet, one mark, and the slice that found it. A limitation discovered without a mark

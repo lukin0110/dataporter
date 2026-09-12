@@ -24,7 +24,7 @@ from pathlib import Path
 from orval import hashify
 from pydantic import BaseModel, ConfigDict
 
-from dataporter import log, render
+from dataporter import log, render, store
 from dataporter import plan as planning
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
@@ -275,6 +275,7 @@ def write_seeds(
     from dataporter.selection import export_path, selected_conversations
 
     path = export_path(export)
+    store.refuse_workspace_inside(path, settings.workspace)
     root = out if out is not None else settings.seeds_dir
     log.enable_run_log(settings.workspace)
 

@@ -5,7 +5,7 @@
 filing; the ask is `31`'s), §32, §33, §37, §38
 **Depends on:** [02](02-export-model.md), [23](23-library-operations.md)
 **Enables:** [31](31-source-session-and-ask.md)
-**Status:** Not started
+**Status:** Built
 
 ## Goal
 
@@ -33,8 +33,9 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
     be dots alone, else `ConfigError` `account label must be letters, digits, dots,
     dashes or underscores: <token>`.
   - `Settings.account_home`: `accounts_dir / source / account`, or `None` with no
-    account. `Settings.logs_dir`: `account_home / "logs"` when an account is set, else
-    the workspace. `log.enable_run_log` takes whichever it is given.
+    account. `Settings.logs_dir` is what `log.enable_run_log` is handed — the account
+    home when an account is set, else the workspace — and the run log lands in
+    `<it>/logs/` either way, because `enable_run_log` is what appends `logs/`.
   - `TimeoutSettings.download_idle_s: float = 120.0` (`gt=0`). `urllib`'s timeout is per
     read, not per download, and the name says so.
   - `with_store_dir(settings, directory)` for `--store DIR`.
@@ -54,9 +55,13 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   `export_fingerprint` (the SHA-256 of `conversations.json`, the same number as
   `Export.fingerprint`), `counts: {conversations, projects, memories}` and
   `gaps: [{kind, count, reason}]`. The one gap kind today is `plan.BYTES_NOT_IN_EXPORT`,
-  with count = every `attachments`, `files` and `files_v2` entry across all messages (the
-  number `export.source._log_shape` already computes as `attachments`) and reason
-  `the export does not carry file bytes`. No references, no gap.
+  with count = every `attachments`, `files` and `files_v2` entry across all messages and
+  reason `files the export does not carry`. The count is
+  `export.model.file_entries(export)`, which `source._log_shape` logs as `attachments`
+  as well, so the manifest's number and the log's are one function rather than two
+  accumulators; the reason is worded so that the block's line is §31's own
+  `Gaps: 38 files the export does not carry` and not a second spelling of it. No
+  references, no gap.
 - **The ask record** (`store.Ask`, `<account home>/ask.json`): `{asked_at, source,
   account, tool_version}`. `extract.py` owns it, not `Store`: it is operational,
   abandonable state, and a cloud store must never receive it. `31` writes it (`O_EXCL`);
@@ -88,14 +93,19 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   after `COMPLETE`.
 - **Filing a file**: `file(settings, path, *, sink)`. `.zip` only: a directory is refused
   with `--from takes the vendor's archive (.zip); a directory is not one` — the vendor's
-  shape is the archive, and a tree has no `archive.sha256`. Same verification, origin
-  `file`, stamp now.
+  shape is the archive, and a tree has no `archive.sha256` — and something that is not a
+  zip at all with `--from takes the vendor's archive (.zip): <path>`. Same verification,
+  origin `file`, stamp now.
 - **Abandoning**: `abandon(settings, *, sink)` deletes `ask.json`; none there → `no ask
   is open for <source>/<account>`, exit `2`.
 - **`extract`** (`cli.py`, one call, no control flow): `dataporter extract --source SRC
-  --account LABEL [--link URL | --from PATH | --abandon] [--store DIR]`. `--source`
-  defaults to `claude`; `--account` is required. The body is
-  `extract.extract_command(settings, ExtractRequest(link, from_path, abandon), sink)`;
+  --account LABEL [--link URL | --from PATH | --abandon] [--store DIR]`. `--account` is
+  required; `--source` has no literal default — `None` means "not given" and
+  `Settings.source` is what says `claude`, for the reason `--limit` is `None`. The body is
+  `extract.extract_command(with_account(with_store_dir(settings, store), source, account),
+  ExtractRequest(link, from_path, abandon), sink)` — three nested calls and no control
+  flow, because the two labels and the store are per-invocation overrides in the
+  `with_pacing` family and the mode is the library's to pick;
   the library picks the mode and refuses `--link` with `--from`, or `--abandon` with
   either, with `UsageError`, as `import_command` does for `--pilot`. No mode flag →
   `sink.note("not implemented in this build: extract (the ask)")` and
@@ -132,6 +142,8 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
 
   An empty store prints `No snapshots in <store>.` and exits `0`: nothing there is an
   answer, as `status` on an empty workspace is. `--json` emits a list of `SnapshotRow`.
+  Rows are ordered by account, then source, then stamp, and the count of a row whose
+  manifest could not be read is `?` rather than `0`.
 - **Import from a snapshot** (`export/source.py`): `ExportSource.open` gains a first
   branch — a directory holding `snapshot.json` is a `_SnapshotSource`, which refuses a
   missing `COMPLETE` with `ExportError` `snapshot is incomplete: <display>` and delegates
@@ -145,8 +157,9 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   inside the snapshot directory is refused with `UsageError` `the workspace cannot be
   inside a snapshot: <path>`. `ensure_gitignore` and `state` would otherwise write into a
   finished snapshot.
-- **Documentation**: `README.md` gains the two commands and the store's location;
-  `docs/LIMITATIONS.md` gains the two limits under *Risks*.
+- **Documentation**: `README.md` gains the two commands, a *Backing an account up*
+  section and the two directories; `docs/LIMITATIONS.md` gains the two limits of the
+  store, under a section of its own; `23`'s operations table gains the two rows.
 - **Tests**:
   - `tests/test_store.py` — the layout; stamps round-trip; the write order and the
     marker; an existing stamp refused with nothing written; listing with `complete`,
@@ -186,6 +199,13 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
 
 ## Design notes
 
+- **What `Built` leaves unverified.** Every acceptance criterion below passes, and none
+  of them needs Hermes, Chrome or an account — but none of them has met a *real* vendor
+  link either, and `02` is still `In progress`, so the archive being verified is the
+  synthetic fixture. §39's questions 2 and 5 — is the fetched archive byte-identical to
+  the one a person downloads, and how long does a link live — are answered by the first
+  real extraction, which needs `31`'s ask to have a link to answer about.
+
 - **Vendor-native, never normalised.** The archive is kept byte for byte and everything
   of ours sits beside it. ADR [0005](../../docs/adr/0005-snapshots-are-vendor-native.md).
 - **Download to a temp file, verify, then copy.** Brief §33 forbids renames in the store
@@ -222,6 +242,42 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   fingerprint is the inner archive's, so a workspace begun from the raw export accepts
   its snapshot on `resume`, and the reverse. That is a feature: the two are the same
   export.
+- **The listing is ordered by account, then source, then stamp.** §33's own block puts
+  `claude/old-personal` above `chatgpt/work`, which is account order and not source
+  order, and that block is golden. It is also the right rule: the account label is the
+  operator's own word and the thing they scan a listing for, the stamp is the only
+  ordering §33 gives *within* an account, and the source breaks a tie between two
+  vendors somebody labelled the same way.
+- **`<n> gaps` counts things, not kinds.** A row's last column is the state, except that
+  a finished snapshot with gaps says `2 gaps` instead of `complete`. The number is the
+  sum of the gaps' counts — the same number the fetch block's `Gaps:` line prints — and
+  not how many gap *records* there are, which for a Claude snapshot would be the word
+  `1 gaps` on every row that has any.
+- **The workspace guard refuses a dry run too.** A dry run writes nothing, so the guard
+  is not protecting the snapshot from it. It is protecting the operator from learning
+  after a clean dry run that the run itself cannot use that workspace, which is the one
+  moment they are most likely to try it.
+- **`LINK_SCHEME` is a constant so the streaming test can stand it down.** The one test
+  that drives the real `urlopen` serves the fixture over plain HTTP from `127.0.0.1`,
+  because a local server has no certificate anybody trusts. It monkeypatches the
+  constant rather than the URL or `urlsplit`, which keeps the rule in one readable place
+  and keeps the test honest about which rule it is standing down;
+  `test_a_link_that_is_not_https_is_refused_before_any_request` is what proves the rule.
+- **The manifest is `extra="forbid"`, like everything else this tool writes.** A
+  snapshot from a later build — a new field, or `version: 2` — therefore reads as
+  `unreadable` in a listing rather than as a snapshot with half its numbers. That is the
+  point of the `version` field: this build says it cannot read it instead of guessing.
+  Import is unaffected either way, because `_SnapshotSource` reads `COMPLETE` and the
+  archive and never the manifest.
+- **`write_ask` lives in `extract.py` although `31` is what calls it.** The record's whole
+  life — created with `O_EXCL`, read by the fetch, deleted by the fetch or by
+  `--abandon` — is one module's, and splitting the write from the two deletes would put
+  "one ask is open per account at a time" in two places. `31` calls it after the vendor's
+  button has actually been pressed.
+- **`ExportSource.open` grows a `display=`.** The fetch verifies a download in a temp
+  file named with a uuid, and an operator reading `conversations.json missing from
+  export: /…/8f3c….zip` is being shown a path they never typed. The override is how the
+  refusal says `the download` instead.
 - **An incomplete stamp is the operator's to remove.** A copy that fails midway leaves
   the stamp directory without `COMPLETE`; the next fetch under the same ask computes the
   same stamp and is refused. The tool never deletes from the store, so the refusal names
@@ -229,6 +285,9 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   `LIMITATIONS.md`.
 
 ## Acceptance criteria
+
+Every one of these is a test that passes; see *What `Built` leaves unverified* above for
+what they do not yet cover.
 
 - `dataporter extract --source claude --account a --from export-small.zip` into an empty
   store exits `0`, prints the fetch block byte for byte with the fixture's numbers, and

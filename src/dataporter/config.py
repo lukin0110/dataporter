@@ -19,10 +19,13 @@ and a `[attachments]` table in `config.toml` work with no new machinery. `06` ad
 `run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`;
 `09` adds `hermes` and three more `timeouts` fields; `13` adds `retries` and one
 more `run` field; `14` adds another `run` field; `15` adds `pacing` and the three
-`with_pacing` flags; `17` adds `fidelity` and one more `timeouts` field.
+`with_pacing` flags; `17` adds `fidelity` and one more `timeouts` field. `30`
+adds `store` and `accounts`, one more `timeouts` field, and the two per-invocation
+labels — `source` and `account` — that say whose account a command is about.
 """
 
 import os
+import re
 import tomllib
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -48,6 +51,8 @@ PILOT_DIRNAME = "pilot"
 BROWSER_PROFILE_DIRNAME = "browser-profile"
 HERMES_DIRNAME = "hermes"
 DEFAULT_HERMES_HOME = Path("~/.hermes")
+DEFAULT_STORE = Path("~/.dataporter/store")
+DEFAULT_ACCOUNTS = Path("~/.dataporter/accounts")
 
 _config_file: ContextVar[Path | None] = ContextVar("_config_file", default=None)
 """Set by `load_settings` so the TOML source knows which file to read."""
@@ -325,6 +330,15 @@ class TimeoutSettings(BaseModel):
     runs out is reported as a failed check rather than as a passed one.
     """
 
+    download_idle_s: float = Field(default=120.0, gt=0)
+    """How long one read of a fetched archive may stall (`30`).
+
+    `urllib`'s `timeout` is per socket operation and not per download, and the
+    name says so: a two-gigabyte archive on a slow link is not late, a
+    connection that has sent nothing for two minutes is. A whole-download
+    deadline would have to be guessed from a size nobody knows in advance.
+    """
+
     hermes_task_s: float = Field(default=1800.0, gt=0)
     """One conversation's `hermes -z` run (`09`, spent by `12`).
 
@@ -437,6 +451,46 @@ class RunSettings(BaseModel):
     """
 
 
+class StoreSettings(BaseModel):
+    """Where snapshots are kept, and how much one fetch may download (`30`).
+
+    Brief `03` §33: the store is a directory on disk today and a bucket later,
+    and nothing about a snapshot changes when it is. Only two things about it
+    are an operator's to set — where it is, and the ceiling on a download — so
+    that is the whole table.
+    """
+
+    dir: Path | None = None
+    """The store's root. `None` means `~/.dataporter/store`; read
+    `Settings.store_dir` for the resolved path and `Settings.store_display` for
+    the one an operator reads back."""
+
+    max_download_bytes: int = Field(default=5_000_000_000, ge=1)
+    """The ceiling on one fetched archive.
+
+    Five gigabytes: larger than any export anybody has reported and small enough
+    that a link leading to something else cannot fill a disk before it is
+    refused. Enforced on the stream rather than on a `Content-Length` header,
+    which the vendor's storage host is not obliged to send and which a wrong
+    link is under no obligation to tell the truth in.
+    """
+
+
+class AccountsSettings(BaseModel):
+    """Where the tool keeps what it knows about a source account (`30`, `31`).
+
+    The account home is the operational half of an account: its browser profile,
+    its open ask, its logs. None of it is a snapshot, so none of it is in the
+    store — brief `03` §33 says the store holds nothing a migration writes, and
+    cookies and abandonable records are exactly what a cloud store must never
+    receive.
+    """
+
+    dir: Path | None = None
+    """The root that holds `<source>/<account>/`. `None` means
+    `~/.dataporter/accounts`; read `Settings.accounts_dir`."""
+
+
 class AuthSettings(BaseModel):
     """The destination account's credentials, for a non-interactive run (`24`).
 
@@ -482,7 +536,25 @@ class Settings(BaseSettings):
     `DATAPORTER_NON_INTERACTIVE=1`; never `config.toml`, for the reason `auth` is
     not."""
 
+    source: str = "claude"
+    """Which vendor this invocation is talking to (`30`, brief `03` §34).
+
+    One of `store.SOURCES`. Set for one invocation by `with_account`, never by
+    `config.toml`: a source in a file would silently send the next `extract` at
+    a vendor the operator did not name.
+    """
+
+    account: str | None = None
+    """The source account's label — the operator's own word for whose account
+    this is, never the login (brief `03` §33).
+
+    `None` outside `extract` and `31`'s `login --account`: the commands of the
+    first brief mean the destination, and they go on meaning it.
+    """
+
     auth: AuthSettings = AuthSettings()
+    store: StoreSettings = StoreSettings()
+    accounts: AccountsSettings = AccountsSettings()
     seed: SeedSettings = SeedSettings()
     attachments: AttachmentSettings = AttachmentSettings()
     browser: BrowserSettings = BrowserSettings()
@@ -529,6 +601,63 @@ class Settings(BaseSettings):
         if self.attachments.dir is not None:
             return Path(os.path.abspath(self.attachments.dir))
         return self.workspace / ATTACHMENTS_DIRNAME
+
+    @property
+    def store_dir(self) -> Path:
+        """Where snapshots are filed: `store.dir`, else `~/.dataporter/store`.
+
+        A property for the reason `attachments_dir` is one — `~` and a relative
+        path are resolved for this invocation and not baked into a `config.toml`
+        somebody else reads. `store_display` is the same path as an operator
+        typed it, which is what the blocks print.
+        """
+        if self.store.dir is not None:
+            return Path(os.path.abspath(self.store.dir.expanduser()))
+        return Path(os.path.abspath(DEFAULT_STORE.expanduser()))
+
+    @property
+    def store_display(self) -> str:
+        """The store as configured, `~` unexpanded when the default was used.
+
+        §31's block prints a snapshot's path, and an operator who has never
+        configured a store reads `~/.dataporter/store/…` rather than one
+        machine's home directory. `str(Path("~/x"))` keeps the tilde, so this is
+        the same join the resolved path makes and not a second spelling of it.
+        """
+        configured = self.store.dir
+        return str(configured if configured is not None else DEFAULT_STORE)
+
+    @property
+    def accounts_dir(self) -> Path:
+        """Where account homes live: `accounts.dir`, else `~/.dataporter/accounts`."""
+        if self.accounts.dir is not None:
+            return Path(os.path.abspath(self.accounts.dir.expanduser()))
+        return Path(os.path.abspath(DEFAULT_ACCOUNTS.expanduser()))
+
+    @property
+    def account_home(self) -> Path | None:
+        """`<accounts>/<source>/<account>`, or `None` when no account is named.
+
+        Everything the tool keeps about one source account that is not a
+        snapshot: `31`'s browser profile, the open ask, the logs. Never in the
+        store (brief `03` §33).
+        """
+        if self.account is None:
+            return None
+        return self.accounts_dir / self.source / self.account
+
+    @property
+    def logs_dir(self) -> Path:
+        """What `log.enable_run_log` is handed: the account home, else the
+        workspace. The run log lands in `<it>/logs/` either way.
+
+        An extraction has no workspace — it is about an account rather than
+        about a migration — so its records belong beside the account's other
+        operational files rather than in a `./migration` that nothing else in
+        the command would have created.
+        """
+        home = self.account_home
+        return self.workspace if home is None else home
 
     @property
     def seeds_dir(self) -> Path:
@@ -610,13 +739,18 @@ class Settings(BaseSettings):
         return tuple(sources)
 
 
-NOT_IN_CONFIG_FILE = ("auth", "non_interactive")
-"""The two tables `config.toml` may not carry (`24`).
+NOT_IN_CONFIG_FILE = ("auth", "non_interactive", "source", "account")
+"""The keys `config.toml` may not carry (`24`, `30`).
 
 A credential in a file next to the export is a credential somebody will commit,
 copy or leave behind; `non_interactive` travels with it because a file that
 switches the mode on is a file that expects the credentials to be there too.
-Both come from the environment or the command line, per invocation.
+
+`30` adds the other two for a different reason: `source` and `account` say
+*whose* account a command is about, and a label left in a file would silently
+send the next `login` or `extract` at an account nobody named on the command
+line. Like the credentials, they are set per invocation — by `with_account`,
+from the flags — and never read out of a file.
 """
 
 CONFIG_FILE_REFUSED = (
@@ -686,6 +820,77 @@ def with_attachments_dir(settings: Settings, directory: Path | None) -> Settings
         update={
             "attachments": settings.attachments.model_copy(update={"dir": directory})
         }
+    )
+
+
+SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9-]*$")
+"""What a source name may look like before it is looked up at all.
+
+The lookup is what actually decides — `SOURCES` is the list of sources that
+exist — but a token that could never be a source name is refused with the same
+message rather than reaching a path join.
+"""
+
+LABEL_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+"""What an account label may look like.
+
+It becomes a directory name in the store and in the accounts tree, so it is
+bounded, lowercase, and free of anything a shell, a path or an object key would
+have to be told about. Sixty-four characters is longer than any label anybody
+writes twice.
+"""
+
+NO_SUCH_SOURCE = "no such source: {token}"
+BAD_LABEL = (
+    "account label must be letters, digits, dots, dashes or underscores: {token}"
+)
+
+
+def with_account(settings: Settings, source: str | None, account: str) -> Settings:
+    """Name whose account this invocation is about (`30`), for this one call.
+
+    `None` for `source` means the flag was not given, and the settings' own
+    value — `claude` unless the environment says otherwise — stands; the value
+    that results is validated either way, so an impossible source arriving
+    through `DATAPORTER_SOURCE` is refused by the same rule as one typed.
+
+    A `model_copy` override in the `with_attachments_dir` family, and for the
+    same reason: these are two scalar fields of one invocation rather than a
+    table an operator configured, and `config.toml` may carry neither.
+
+    Both are checked before anything joins them to a path. `..` is not a legal
+    label under `LABEL_PATTERN` and `claude/../..` is not a legal source, which
+    is what keeps `<store>/<source>/<account>/` inside the store.
+    """
+    effective = settings.source if source is None else source
+    if not SOURCE_PATTERN.match(effective) or effective not in _sources():
+        raise ConfigError(NO_SUCH_SOURCE.format(token=effective))
+    if not LABEL_PATTERN.match(account) or set(account) <= {"."}:
+        raise ConfigError(BAD_LABEL.format(token=account))
+    return settings.model_copy(update={"source": effective, "account": account})
+
+
+def _sources() -> tuple[str, ...]:
+    """`store.SOURCES`, imported here so that `store` may import this module.
+
+    The same shape as `cli.state_error`: the list of vendors the tool has is a
+    fact about the store, and the store is what needs `Settings`.
+    """
+    from dataporter.store import SOURCES
+
+    return SOURCES
+
+
+def with_store_dir(settings: Settings, directory: Path | None) -> Settings:
+    """Apply `--store DIR`, which outranks every other source.
+
+    A copy of the nested model, and `None` returning the settings unchanged, for
+    the reasons `with_attachments_dir` is both.
+    """
+    if directory is None:
+        return settings
+    return settings.model_copy(
+        update={"store": settings.store.model_copy(update={"dir": directory})}
     )
 
 

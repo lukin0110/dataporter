@@ -57,6 +57,32 @@ class UsageError(Exception):
     """
 
 
+class StoreError(UsageError):
+    """The store cannot be written as asked (`30`). Exit `2`.
+
+    A stamp that already exists, an ask already open, no ask to abandon, a label
+    or a source that is not one, a store that cannot be written to, a snapshot
+    that never finished. Every one of them is the operator's to fix — by
+    choosing a different label, by abandoning the ask, by removing a directory —
+    which is what makes it a `UsageError` and not a row of `01`'s table.
+    """
+
+
+class FetchError(UsageError):
+    """The link did not lead to this source's export (`30`). Exit `2`.
+
+    Not `https`, refused by the vendor, expired, not a zip, not an export, over
+    the byte cap, or a copy that did not match what was downloaded. Exit `2`
+    rather than `6`: an expired link is fixed by asking again, and `6` sends an
+    operator to `doctor` for a machine that is missing something.
+
+    A detail never carries `str()` of an `HTTPError` or a `URLError`, both of
+    which stringify the URL they failed on, and the link is a credential to the
+    archive for as long as it lives (§32). Only `.code` and `.reason` ever reach
+    a message.
+    """
+
+
 class MigrationError(Exception):
     """Base class. Abstract — raise one of the subclasses below."""
 

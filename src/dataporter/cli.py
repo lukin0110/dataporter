@@ -29,22 +29,31 @@ import typer
 from typer.core import TyperGroup
 
 from dataporter import PROGRAM_NAME, console, log
+from dataporter import extract as extracting
 from dataporter import followup as following
 from dataporter import importer as importing
 from dataporter import judge as judging
 from dataporter import report as reporting
 from dataporter import seed as seeding
 from dataporter import selection as selecting
+from dataporter import store as storing
 from dataporter import verify as verifying
 from dataporter.browser import cdp
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import session as browser_session
-from dataporter.config import ConfigError, Settings, load_settings
+from dataporter.config import (
+    ConfigError,
+    Settings,
+    load_settings,
+    with_account,
+    with_store_dir,
+)
 from dataporter.errors import (
     AuthError,
     BrowserError,
     ExportError,
     HermesError,
+    NetworkError,
     UsageError,
 )
 from dataporter.exit_codes import ExitCode
@@ -185,6 +194,12 @@ class _RootGroup(TyperGroup):
             # Exit `6`, the "environment not ready" row: no browser installed,
             # a debug port that never opened, a CDP call that went unanswered.
             # `doctor` (`09`) is what an operator runs next.
+            fail(exc.detail or type(exc).__name__, ExitCode.ENVIRONMENT)
+        except NetworkError as exc:
+            # Exit `6`, the environment row again: `30`'s fetch could not reach
+            # the vendor's host at all. A link that is *refused* is a
+            # `FetchError` and exit `2` — that one the operator fixes by asking
+            # again, and only "no network" is the machine's fault.
             fail(exc.detail or type(exc).__name__, ExitCode.ENVIRONMENT)
         except HermesError as exc:
             # The same row, for the other half of the environment: Hermes missing,
@@ -429,6 +444,37 @@ constraints as well, which is what refuses the same value arriving through
 `DATAPORTER_…` or `config.toml`, and what catches `--timeout 0` — zero is in range for
 a flag and not for a subprocess deadline. (Raised by Copilot in review on #24.)"""
 
+Source = Annotated[
+    str | None,
+    typer.Option(
+        "--source",
+        metavar="SRC",
+        # `None` rather than a literal `claude`, for the reason `--limit` is
+        # `None`: the effective default belongs to `Settings`, and a default
+        # typed here would outrank an operator's environment.
+        help="The vendor the account belongs to. Defaults to claude.",
+    ),
+]
+Account = Annotated[
+    str,
+    typer.Option(
+        "--account",
+        metavar="LABEL",
+        help="Your label for the account. Not the login; it names the snapshots.",
+    ),
+]
+StoreDir = Annotated[
+    Path | None,
+    typer.Option(
+        "--store",
+        metavar="DIR",
+        help="Where snapshots are kept. Defaults to ~/.dataporter/store.",
+    ),
+]
+"""`30`'s three. `--account` is required wherever it appears: a snapshot is
+addressed by source, account and stamp, and the tool does not guess whose account
+it is looking at."""
+
 AttachmentsDir = Annotated[
     Path | None,
     typer.Option(
@@ -566,6 +612,60 @@ def seeds(
             only=only or (),
             out=out,
             quiet=context.quiet,
+            sink=console.Terminal(),
+        )
+    )
+
+
+@app.command()
+def extract(
+    ctx: typer.Context,
+    account: Account,
+    source: Source = None,
+    link: Annotated[
+        str | None,
+        typer.Option(
+            "--link",
+            metavar="URL",
+            # A value and not a file, unlike `--password-file`: the link is what
+            # the vendor emailed and what a person pastes, and it is refused,
+            # used once and never written down.
+            help="The download link the vendor emailed. Fetch and file it.",
+        ),
+    ] = None,
+    from_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--from",
+            metavar="PATH",
+            help="File an archive you already have, with no ask behind it.",
+        ),
+    ] = None,
+    abandon: Annotated[
+        bool,
+        typer.Option("--abandon", help="Give up the open ask for this account."),
+    ] = False,
+    store: StoreDir = None,
+) -> None:
+    """Ask a source for an account's export, then file what comes back."""
+    finish(
+        extracting.extract_command(
+            with_account(with_store_dir(settings_of(ctx), store), source, account),
+            extracting.ExtractRequest(link=link, from_path=from_path, abandon=abandon),
+            sink=console.Terminal(),
+        )
+    )
+
+
+@app.command()
+def snapshots(
+    ctx: typer.Context, json_output: JsonOutput = False, store: StoreDir = None
+) -> None:
+    """List the snapshots in the store."""
+    finish(
+        storing.list_command(
+            with_store_dir(settings_of(ctx), store),
+            json_output=json_output,
             sink=console.Terminal(),
         )
     )
