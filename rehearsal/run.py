@@ -40,6 +40,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from rehearsal import export as exporting
@@ -524,7 +525,7 @@ def criteria(
     steps: Sequence[Outcome],
     signs: Mapping[str, Outcome],
     interrupted: Sequence[str],
-    drill: Mapping[str, int] = {},
+    drill: Mapping[str, int] = MappingProxyType({}),
 ) -> list[Criterion]:
     """Every check §25 lists, as a number and a verdict.
 

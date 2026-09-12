@@ -98,6 +98,11 @@ exclude = [
     "spikes",
     "specs",
     "docs",
+    # `26` and `29`: the mock is its own project and the rehearsal is a
+    # developer's instrument. Neither is part of what a consumer installs, and
+    # `rehearsal` imports the test tree, which a wheel does not carry.
+    "mock",
+    "rehearsal",
     ".claude",
     ".agents",
     ".mcp.json",
@@ -129,9 +134,12 @@ ignore = ["ANN401"]
 
 [tool.ty.environment]  # https://docs.astral.sh/ty/configuration/
 python-version = "3.12"
-# `./spikes` is not shipped (see the sdist exclude above) but is checked: `10`'s
-# scripts import `dataporter`, and a throwaway script that no longer imports is a
-# throwaway script nobody can re-run after the next UI change.
+# Four of these five are not shipped (see the sdist exclude above) and are all
+# checked. `./spikes`: `10`'s scripts import `dataporter`, and a throwaway script
+# that no longer imports is a throwaway script nobody can re-run after the next UI
+# change. `./mock/src`: `26`'s mock is its own project and its own type-checked
+# code. `./tests` and `.`: `29`'s `rehearsal` package imports both the tool and
+# the scripted agent's procedures, which live in the test tree.
 root = ["./src", "./spikes", "./mock/src", "./tests", "."]
 
 [tool.ty.terminal]
