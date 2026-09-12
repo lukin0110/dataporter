@@ -239,7 +239,16 @@ Hermes then opens the Claude web application and allows the user to authenticate
 
 The migration should reuse that browser session.
 
-The tool must not request or store the user's Claude password.
+Interactively, the tool never asks for the user's Claude password: the user signs in
+themselves in the window the tool opens. In non-interactive mode the operator may hand
+the tool the *destination* account's email and password for one invocation, through the
+environment or a file; the tool keeps them in memory only, never writes them to any
+workspace file, log, prompt or transcript, never exposes them to the agent, and types
+them into the sign-in form itself. It never stores them.
+
+*Amended by [`24`](impl/24-non-interactive.md). The original sentence read "The tool must
+not request or store the user's Claude password." Slices `07`, `09`, `11`, `12` and `14`
+were updated with it.*
 
 ## 9. Dry run
 
@@ -348,6 +357,10 @@ Examples:
 - unrecoverable browser error.
 
 After intervention, the migration should resume rather than restart.
+
+Off a terminal, or when asked to run unattended, the tool records the pause and exits so
+that the migration can be resumed later; it never waits for a keypress nobody will make.
+*(Added by [`24`](impl/24-non-interactive.md).)*
 
 ## 13. Rate limiting and pacing
 

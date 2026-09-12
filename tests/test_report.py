@@ -830,3 +830,18 @@ def test_a_failed_conversation_is_reported_with_its_reason(
     ]
     assert unsupported and unsupported[0].retry_recommended is False
     assert report.FAILURES_HEADER in out
+
+
+def test_automatic_sign_ins_are_a_line_only_when_there_were_any() -> None:
+    """`24`'s counter: the golden block is unchanged at zero, and one more line
+    under `Human interventions:` otherwise."""
+    assert report.block(BRIEF_TOTALS.model_copy(update={"auto_signins": 0})) == (
+        BRIEF_BLOCK
+    )
+    rendered = report.block(BRIEF_TOTALS.model_copy(update={"auto_signins": 3}))
+    assert rendered == BRIEF_BLOCK + "Automatic sign-ins:            3\n"
+
+
+def test_the_counter_reaches_the_report_from_run_json(tmp_path: Path) -> None:
+    root = workspace_of(tmp_path, counters={"auto_signins": 2})
+    assert report.build(root).totals.auto_signins == 2

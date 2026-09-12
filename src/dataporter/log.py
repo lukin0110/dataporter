@@ -70,8 +70,22 @@ LOGGER_NAME = "dataporter"
 LOGS_DIRNAME = "logs"
 STRICT_ENV_VAR = "DATAPORTER_LOG_STRICT"
 
-FORBIDDEN_FIELDS = frozenset({"text", "seed", "title", "content", "snapshot", "stdout"})
-"""Field names that would carry conversation content. See `01` and §10 of the brief."""
+FORBIDDEN_FIELDS = frozenset(
+    {
+        "text",
+        "seed",
+        "title",
+        "content",
+        "snapshot",
+        "stdout",
+        "email",
+        "secret",
+        "credentials",
+    }
+)
+"""Field names that would carry conversation content — see `01` and §10 of the
+brief — or, since `24`, a credential: the account's email and whatever `auth`
+holds beside it are never a log field either."""
 
 SCHEMA_FIELDS = frozenset({"ts", "level", "logger", "event", "exception"})
 """Keys the JSON-lines record owns.

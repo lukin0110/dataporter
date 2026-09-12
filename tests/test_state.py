@@ -835,6 +835,7 @@ def test_status_json_is_the_state_file_plus_the_run_counters(
         "retries": 17,
         "rate_limit_waits": 0,
         "human_interventions": 0,
+        "auto_signins": 0,
         "interrupted": 0,
     }
 

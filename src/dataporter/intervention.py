@@ -74,6 +74,14 @@ HEADER = "Human intervention required"
 PROMPT = "Press Enter to resume, or Ctrl-C to stop."
 BROWSER_HELP = "the Chrome window is open — complete the step there"
 
+UNATTENDED_BROWSER_HELP = (
+    f"no window — non-interactive run; clear it, then run: {PROGRAM_NAME} resume"
+)
+UNATTENDED_PROMPT = f"Paused for a person (non-interactive); run: {PROGRAM_NAME} resume"
+"""`24`'s two lines, in place of `BROWSER_HELP` and `PROMPT` when there is no
+window to point at and nobody to press Enter. The other four lines of the block
+are the same four."""
+
 LABEL_WIDTH = 14
 """What the four labels are padded to. `Conversation:` is the longest at 13."""
 
@@ -149,24 +157,31 @@ class Request:
             return f"{phrase}: {self.detail}"
         return phrase
 
-    @property
-    def rows(self) -> Sequence[tuple[str, str]]:
+    def rows_for(self, *, unattended: bool) -> Sequence[tuple[str, str]]:
+        """The four labelled lines, for a terminal or for `24`'s no terminal."""
         return (
             ("Reason:", self.phrase),
             ("Conversation:", f"{self.short_id} ({self.position} of {self.total})"),
             ("Last step:", str(self.last_step)),
-            ("Browser:", BROWSER_HELP),
+            ("Browser:", UNATTENDED_BROWSER_HELP if unattended else BROWSER_HELP),
         )
 
 
-def block(request: Request) -> str:
-    """The §12 ask, newline-terminated, exactly as `14` writes it."""
+def block(request: Request, *, unattended: bool = False) -> str:
+    """The §12 ask, newline-terminated, exactly as `14` writes it.
+
+    `unattended` is `24`'s variant: the same block with the two lines that
+    presume a window and a keyboard replaced by the two that do not.
+    """
     lines = [
         HEADER,
         "",
-        *(f"{label:<{LABEL_WIDTH}}{value}" for label, value in request.rows),
+        *(
+            f"{label:<{LABEL_WIDTH}}{value}"
+            for label, value in request.rows_for(unattended=unattended)
+        ),
         "",
-        PROMPT,
+        UNATTENDED_PROMPT if unattended else PROMPT,
     ]
     return "".join(f"{line}\n" for line in lines)
 
@@ -244,3 +259,29 @@ class Console:
             # A closed or detached stdin. Indistinguishable from EOF as far as
             # the run is concerned: there is nobody to ask.
             return False
+
+
+@dataclass
+class Unattended:
+    """`24`'s answer to every ask: no.
+
+    Prints the block — an operator reading the log of a cron job is owed the
+    same four facts — and returns `False` without touching stdin, so the run
+    pauses to disk for `resume` exactly as `Console` does off a terminal. The
+    difference is that this never blocks on a pipe and never reads a keypress
+    that happens to be there: a terminal a non-interactive run was started
+    from is not a person.
+    """
+
+    stderr: IO[str] | None = None
+
+    def ask(self, request: Request) -> bool:
+        print(block(request, unattended=True), end="")
+        return False
+
+    def retry(self, message: str) -> bool:
+        print(message)
+        return False
+
+    def note(self, message: str) -> None:
+        print(message, file=self.stderr if self.stderr is not None else sys.stderr)

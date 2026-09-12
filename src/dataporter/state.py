@@ -66,6 +66,7 @@ COUNTERS: tuple[str, ...] = (
     "retries",
     "rate_limit_waits",
     "human_interventions",
+    "auto_signins",
     "interrupted",
 )
 """The names `bump_counter` accepts. A typo would otherwise count nothing,
@@ -419,6 +420,12 @@ class RunFile(StateModel):
     not counted here at all — it becomes an intervention, and is counted as one.
     """
     human_interventions: int = 0
+    auto_signins: int = 0
+    """Sign-ins `24` made itself, in an unattended run: at the preflight, or
+    after a login expiry the agent reported mid-run. Counted apart from
+    `human_interventions` because nobody was asked — §19's primary metric is
+    conversations migrated *without* a person, and a machine signing in is not
+    a person."""
     interrupted: int = 0
     """Entries crash recovery converted out of `running`."""
     paused: PauseRecord | None = None

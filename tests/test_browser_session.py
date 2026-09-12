@@ -10,7 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 import dataporter
-from dataporter import cli
+from dataporter import cli, log
 from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
@@ -539,17 +539,29 @@ class _NeverExits:
         return 0
 
 
-def test_the_tool_never_asks_for_a_password() -> None:
-    """§8: the tool must not request or store the operator's Claude password.
+CREDENTIAL_SEAM = frozenset(
+    {"config.py", "cli.py", "signin.py", "browser/login_form.py"}
+)
+"""The four modules `24` lets name a credential: the setting that holds it, the
+flag that reads it, the task that asks for it and the form filler that types
+it. Everywhere else the word is a leak."""
 
-    Login happens in Chrome's own window, so no code path here has anywhere to
-    put one. What is checked is the code rather than the file: the word is
-    allowed in the prose that promises it will never be asked for, and nowhere
-    that a program could act on — no name, no field, no prompt, no key.
+
+def test_the_secret_stays_in_the_credentials_seam() -> None:
+    """§8, as `24` amended it: interactively the tool never asks for the
+    operator's Claude password, and unattended it holds one in memory for one
+    invocation and nowhere else.
+
+    What is checked is the code rather than the file: outside the seam the word
+    is allowed in the prose that promises it will never be asked for, and
+    nowhere that a program could act on — no name, no field, no prompt, no key.
+    Inside the seam a name may carry it, but no string constant may *be* one,
+    and no log call may pass a field the content guard forbids.
     """
     package = Path(dataporter.__file__).parent
     offenders: list[str] = []
     for path in sorted(package.rglob("*.py")):
+        relative = path.relative_to(package).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8"))
         prose = {
             id(node.value)
@@ -561,6 +573,10 @@ def test_the_tool_never_asks_for_a_password() -> None:
         for node in ast.walk(tree):
             if id(node) in prose:
                 continue
+            if relative in CREDENTIAL_SEAM:
+                if _logs_a_forbidden_field(node):
+                    offenders.append(f"{relative}:{node.lineno}")
+                continue
             spellings = [
                 getattr(node, attribute, None)
                 for attribute in ("id", "name", "attr", "arg", "module")
@@ -571,5 +587,22 @@ def test_the_tool_never_asks_for_a_password() -> None:
                 isinstance(item, str) and "password" in item.lower()
                 for item in spellings
             ):
-                offenders.append(f"{path.relative_to(package)}:{node.lineno}")
+                offenders.append(f"{relative}:{node.lineno}")
     assert offenders == []
+
+
+def _logs_a_forbidden_field(node: ast.AST) -> bool:
+    """A `_logger.<level>(..., extra={<forbidden>: ...})` call."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)):
+        return False
+    if func.value.id != "_logger":
+        return False
+    for keyword in node.keywords:
+        if keyword.arg == "extra" and isinstance(keyword.value, ast.Dict):
+            for key in keyword.value.keys:
+                if isinstance(key, ast.Constant) and key.value in log.FORBIDDEN_FIELDS:
+                    return True
+    return False

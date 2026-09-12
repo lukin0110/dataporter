@@ -299,7 +299,12 @@ class FakeChrome:
         if call.method == "DOM.querySelector":
             found = "missing" not in str(call.params.get("selector", ""))
             return {"result": {"nodeId": 2 if found else 0}}
-        if call.method in ("Page.enable", "Input.insertText", "DOM.setFileInputFiles"):
+        if call.method in (
+            "Page.enable",
+            "Input.insertText",
+            "Input.dispatchKeyEvent",
+            "DOM.setFileInputFiles",
+        ):
             return {"result": {}}
         return {"error": {"code": -32601, "message": f"'{call.method}' wasn't found"}}
 

@@ -288,6 +288,33 @@ Version = Annotated[
         help="Print the version and exit.",
     ),
 ]
+NonInteractive = Annotated[
+    bool,
+    typer.Option(
+        "--non-interactive",
+        help="Never wait for a person: headless Chrome, sign in from credentials.",
+    ),
+]
+Email = Annotated[
+    str | None,
+    typer.Option(
+        "--email",
+        metavar="EMAIL",
+        help="The destination account's email, for --non-interactive.",
+    ),
+]
+PasswordFile = Annotated[
+    Path | None,
+    typer.Option(
+        "--password-file",
+        metavar="PATH",
+        # A file and never a value: a value would be in `ps` and the shell's
+        # history, which is exactly where an unattended run's host keeps them.
+        help="A file whose first line is the account password (--non-interactive).",
+    ),
+]
+"""`24`'s three global options. The environment spells them `HCM_NON_INTERACTIVE`,
+`HCM_AUTH__EMAIL` and `HCM_AUTH__PASSWORD`; `config.toml` may carry none of them."""
 
 
 @app.callback()
@@ -297,11 +324,19 @@ def main(
     verbose: Verbose = False,
     quiet: Quiet = False,
     version: Version = False,
+    non_interactive: NonInteractive = False,
+    email: Email = None,
+    password_file: PasswordFile = None,
 ) -> None:
     """Migrate a Claude export into another Claude account, via Hermes."""
     log.configure_logging(verbose=verbose)
     try:
-        settings = load_settings(workspace=workspace)
+        settings = load_settings(
+            workspace=workspace,
+            non_interactive=non_interactive,
+            email=email,
+            password_file=password_file,
+        )
     except ConfigError as exc:
         fail(str(exc))
     ctx.obj = AppContext(settings=settings, verbose=verbose, quiet=quiet)

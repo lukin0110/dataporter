@@ -7,13 +7,18 @@ operator reads mail in. That is what makes §17's promise keepable — the sourc
 account's cookies are never in the browser Hermes drives — and it sidesteps
 Chrome 136+, which refuses to open a debug port on the default profile.
 
-Headed, always: §12 needs a window a human can act in when a CAPTCHA or a login
-appears, and reliability beats throughput (§13). `browser.extra_args` exists for
-environments that cannot show a window at all, and the test suite is its only
-user.
+Headed by default: §12 needs a window a human can act in when a CAPTCHA or a
+login appears, and reliability beats throughput (§13). Headless under
+`--non-interactive` (`24`), where there is no human to hand a window to, or when
+`browser.headless` says so; `Settings.headless` is the one answer, and
+`HEADLESS_FLAG` the one flag it adds. `browser.extra_args` is for what an
+environment needs on top — `--no-sandbox` in a container — and the test suite is
+its only user.
 
-The tool never sees a password (§8). It opens claude.ai and waits; the operator
-types into Chrome, and what is stored afterwards is Chrome's own profile.
+Interactively the tool never sees a password (§8). It opens claude.ai and waits;
+the operator types into Chrome, and what is stored afterwards is Chrome's own
+profile. Unattended, `browser.login_form` types into the same Chrome from this
+process, and what is stored is still only the profile.
 """
 
 import os
@@ -71,6 +76,11 @@ LAUNCH_FLAGS: tuple[str, ...] = (
 signing a profile into a Google account would put the destination session
 somewhere we cannot delete it from; the rest keep first-run interstitials out of
 the way of a probe that is looking for a composer."""
+
+HEADLESS_FLAG = "--headless=new"
+"""Chrome without a window (`24`). The new headless mode and not the old one:
+it is the same browser with the same profile, cookies and rendering, which is
+what makes a session signed in headless usable headed afterwards."""
 
 CLOSE_TIMEOUT_S = 10.0
 """How long a browser gets to exit after `Browser.close` before it is signalled.
@@ -305,6 +315,7 @@ def launch(settings: Settings, url: str) -> BrowserSession:
         f"--user-data-dir={profile}",
         f"--remote-debugging-port={settings.browser.cdp_port}",
         *LAUNCH_FLAGS,
+        *([HEADLESS_FLAG] if settings.headless else []),
         *settings.browser.extra_args,
         url,
     ]

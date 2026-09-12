@@ -246,3 +246,104 @@ def test_the_retry_budget_follows_the_ladder(
     overridden = load_settings()
     assert overridden.retries.max_attempts == 2
     assert overridden.run.stop_after_consecutive_failures == 0
+
+
+# --------------------------------------------------------------------------- #
+# `24`: the mode, the credentials, and where they may not come from
+# --------------------------------------------------------------------------- #
+
+
+def test_the_mode_is_off_and_the_browser_headed_by_default(workspace: Path) -> None:
+    settings = load_settings()
+    assert settings.non_interactive is False
+    assert settings.headless is False
+    assert settings.credentials is None
+
+
+def test_the_flag_and_the_environment_both_switch_the_mode_on(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert load_settings(non_interactive=True).non_interactive is True
+    monkeypatch.setenv("HCM_NON_INTERACTIVE", "1")
+    assert load_settings().non_interactive is True
+    assert load_settings().headless is True
+
+
+def test_headless_follows_the_mode_unless_configured(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HCM_NON_INTERACTIVE", "1")
+    monkeypatch.setenv("HCM_BROWSER__HEADLESS", "false")
+    assert load_settings().headless is False
+    monkeypatch.delenv("HCM_NON_INTERACTIVE")
+    monkeypatch.setenv("HCM_BROWSER__HEADLESS", "true")
+    assert load_settings().headless is True
+
+
+def test_credentials_come_from_the_environment(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("HCM_AUTH__PASSWORD", "hunter2")
+    found = load_settings().credentials
+    assert found is not None
+    assert found.email == "someone@example.test"
+    assert found.password.get_secret_value() == "hunter2"
+
+
+def test_half_a_credential_is_no_credential(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
+    assert load_settings().credentials is None
+
+
+def test_the_flags_set_the_half_they_name_and_keep_the_other(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HCM_AUTH__EMAIL", "env@example.test")
+    monkeypatch.setenv("HCM_AUTH__PASSWORD", "from-env")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("from-file\nsecond line ignored\n", encoding="utf-8")
+
+    found = load_settings(password_file=secret).credentials
+    assert found is not None
+    assert (found.email, found.password.get_secret_value()) == (
+        "env@example.test",
+        "from-file",
+    )
+
+    found = load_settings(email="flag@example.test").credentials
+    assert found is not None
+    assert (found.email, found.password.get_secret_value()) == (
+        "flag@example.test",
+        "from-env",
+    )
+
+
+def test_an_unreadable_secret_file_is_a_configuration_error(
+    workspace: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ConfigError, match="cannot read"):
+        load_settings(password_file=tmp_path / "missing.txt")
+
+
+def test_the_secret_never_appears_in_a_dump(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("HCM_AUTH__PASSWORD", "hunter2")
+    settings = load_settings()
+    for rendering in (repr(settings), str(settings), settings.model_dump_json()):
+        assert "hunter2" not in rendering
+    assert "hunter2" not in repr(settings.model_dump())
+    assert "hunter2" not in repr(settings.credentials)
+
+
+@pytest.mark.parametrize("table", ["[auth]\nemail = 'x'\n", "non_interactive = true\n"])
+def test_the_config_file_may_not_carry_the_mode_or_a_credential(
+    workspace: Path, table: str
+) -> None:
+    write_config(workspace / "migration", table)
+    with pytest.raises(ConfigError, match="not in config.toml"):
+        load_settings()

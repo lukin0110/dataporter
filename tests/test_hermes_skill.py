@@ -255,3 +255,15 @@ def test_the_profile_directory_is_where_transcripts_live(tmp_path: Path) -> None
     assert skilling.profile_dir(settings) == (
         tmp_path / "hermes-home" / "profiles" / "dataporter"
     )
+
+
+def test_the_sign_in_task_is_scoped_and_rule_5_is_intact() -> None:
+    """`24`: one paragraph admits `/login` for one task; the blanket rule stays."""
+    assert "a **sign-in** task asks you to bring the tab to" in SKILL_TEXT
+    assert "rule 1 admits `/login`" in SKILL_TEXT
+    assert "you hold no credentials and must not ask for any" in SKILL_TEXT
+    assert (
+        "If a page asks for a password, a code, a CAPTCHA or a security challenge, do\n"
+        "   not attempt it; return `needs_human` with the matching reason."
+    ) in SKILL_TEXT
+    assert '"outcome": "form_ready"' in SKILL_TEXT

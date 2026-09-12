@@ -76,6 +76,9 @@ STATUS_LABELS: tuple[tuple[str, str], ...] = (
     ("Failed:", "failed"),
 )
 PENDING_LABEL = "Pending:"
+AUTO_SIGNINS_LABEL = "Automatic sign-ins:"
+"""`24`'s line, after `Human interventions:` and only when there were any — the
+other thing about the block that changes shape, for `Pending`'s reason."""
 """Written after `Failed:` and only when it is not zero.
 
 A finished migration that printed `Pending: 0` would invite the question the
@@ -141,6 +144,9 @@ class ReportTotals(ReportModel):
     browser_actions: int
     retries: int
     human_interventions: int
+    auto_signins: int = 0
+    """`24`'s counter. Rendered only when non-zero: §16's block is a golden
+    string, and a run nobody signed in for prints it unchanged."""
 
 
 class FailureRecord(ReportModel):
@@ -300,6 +306,7 @@ def totals_of(
         browser_actions=actions,
         retries=run.retries,
         human_interventions=run.human_interventions,
+        auto_signins=run.auto_signins,
     )
 
 
@@ -481,17 +488,20 @@ def totals_groups(totals: ReportTotals) -> list[list[tuple[str, str]]]:
     ]
     if totals.pending:
         statuses.append((PENDING_LABEL, summary.number(totals.pending)))
+    activity = [
+        ("Browser actions:", summary.number(totals.browser_actions)),
+        ("Retries:", summary.number(totals.retries)),
+        ("Human interventions:", summary.number(totals.human_interventions)),
+    ]
+    if totals.auto_signins:
+        activity.append((AUTO_SIGNINS_LABEL, summary.number(totals.auto_signins)))
     return [
         [(SOURCE_LABEL, summary.number(totals.source_conversations)), *statuses],
         [
             ("Messages represented:", summary.number(totals.messages_represented)),
             ("Attachments migrated:", summary.number(totals.attachments_migrated)),
         ],
-        [
-            ("Browser actions:", summary.number(totals.browser_actions)),
-            ("Retries:", summary.number(totals.retries)),
-            ("Human interventions:", summary.number(totals.human_interventions)),
-        ],
+        activity,
     ]
 
 

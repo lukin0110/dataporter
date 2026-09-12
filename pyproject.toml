@@ -118,5 +118,6 @@ source = ["src/dataporter"]
 # `17`: 4642/4669, 99.4%. `18`: 4782/4810, 99.4%. `19`: 4959/4986, 99.5%.
 # `20`: 5348/5382, 99.4%. `21`: 5362/5390, 99.5% — it adds no `src` code,
 # and the sign-off script it does add lives in `spikes/`, which is not measured.
+# `23`: 5571/5599, 99.5%. `24`: 5897/5925, 99.5%.
 fail_under = 99
 show_missing = true

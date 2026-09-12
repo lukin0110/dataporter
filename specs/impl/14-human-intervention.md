@@ -52,6 +52,17 @@ never restarts.
 - Non-TTY: prints the block, keeps `paused`, releases the lock, exits `5`.
   `hermes-claude-migrate resume` re-locks, re-probes, and continues exactly as the TTY
   path does; with no `paused` record it exits `4` `nothing to resume`.
+- `--non-interactive` (`24`): `intervention.Unattended` answers every ask with no and never
+  touches stdin — a terminal the run was started from is not a person. The block keeps
+  its shape with two lines swapped: `Browser:      no window — non-interactive run;
+  clear it, then run: hermes-claude-migrate resume` and, in place of the prompt, `Paused
+  for a person (non-interactive); run: hermes-claude-migrate resume`. An `auth_required`
+  ask in that mode is first put to the tool itself — a sign-in from the credentials,
+  `13`-shaped, counted as `auto_signins` and never as an intervention — and only when
+  that fails does it become this pause; `resume --non-interactive` tries the sign-in
+  again before re-probing. The two intervention counters are bumped where the ask is
+  put (`_intervene`), not where the record is written (`_pause`), so that a pause the
+  tool cleared itself is written down but never counted as a person's.
 - Ctrl-C at the prompt: `paused` stays, the conversation stays `running` (crash recovery in
   `06` will convert it on the next start), lock released, exit `5`.
 - `confirmation_required`: the printed detail is Hermes's description of the action it

@@ -139,7 +139,10 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
 - Browser Use CLI mode is turned off because its single `browser_exec` tool writes
   arbitrary Python against the page; the ref-based tools plus `browser_cdp` are narrower and
   every action is visible in the transcript.
-- **The environment is built, not filtered.** `client.hermes_env` starts from nothing and
+- **The environment is built, not filtered.** (`24` leans on this: `HCM_AUTH__EMAIL` and
+  `HCM_AUTH__PASSWORD` are deliberately not on the list, so a credential in the parent's
+  environment never reaches the agent, and no helper the agent runs can read it either.)
+  `client.hermes_env` starts from nothing and
   forwards `PATH`, `HOME` and `LANG` when the parent has them, so `HERMES_YOLO_MODE`
   cannot be set by an operator's shell — a structural guarantee rather than a check
   somebody has to remember. `HCM_WORKSPACE` is *set*, which `09` adds to the spec: with

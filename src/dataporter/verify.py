@@ -50,7 +50,7 @@ from dataporter.browser import probe as probing
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
-from dataporter.errors import AuthError, BrowserError, Category, MigrationError
+from dataporter.errors import BrowserError, Category, MigrationError
 from dataporter.exit_codes import ExitCode
 from dataporter.state import ConversationState, ErrorRecord, Status
 
@@ -569,9 +569,11 @@ def verify_all(
     an `import` would overwrite the status of a conversation being migrated as it
     reads it.
     """
+    from dataporter import signin
     from dataporter.browser import launcher
-    from dataporter.browser import session as browser_session
 
+    if settings.non_interactive:
+        signin.require_credentials(settings)
     log.enable_run_log(settings.workspace)
     store = state.StateStore(settings.workspace)
     # Read before anything is printed, like `status`: a workspace written by a
@@ -596,11 +598,11 @@ def verify_all(
         # a window the operator left open reuses it.
         browser = launcher.launch(settings, probing.NEW_CHAT_URL)
         try:
-            if not browser_session.signed_in(browser):
-                # Exit `3`: a signed-out session makes every chat unreadable,
-                # and reporting a hundred failed verifications would bury the
-                # one fact that matters.
-                raise AuthError(detail=browser_session.SIGNED_OUT)
+            # Exit `3` when signed out — after `24`'s one unattended sign-in,
+            # in that mode: a signed-out session makes every chat unreadable,
+            # and reporting a hundred failed verifications would bury the one
+            # fact that matters.
+            signin.ensure_signed_in(settings, browser)
             verifier = Verifier(settings, browser.client)
             for uuid, expected in wanted:
                 result = verifier.verify(expected)

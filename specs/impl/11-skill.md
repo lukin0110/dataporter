@@ -100,6 +100,15 @@ the step name that `state.json` and the report use.
      `needs_human` with reason `confirmation_required`.
   5. If a page asks for a password, a code, a CAPTCHA or a security challenge, do not
      attempt it; return `needs_human` with the matching reason.
+
+  Two tasks are not migrations and each earns one paragraph after the rules, not a
+  sixth rule: `20`'s follow-up probe, and `24`'s **sign-in**. The sign-in task asks the
+  agent to bring the tab to `https://claude.ai/login` until an email or password input
+  is visible and then stop — rule 1 admits `/login` for that task only; rules 2–5 hold in
+  full, and the agent types nothing, submits nothing and holds no credentials. Its result
+  object is `{"outcome": "form_ready", "fields": [...], "url": ...}` or `needs_human` /
+  `failed`; the tool that started it types the credentials itself, in its own process,
+  after the agent has stopped (`signin.py`, `browser/login_form.py`).
 - *Result* section: the `HermesResult` JSON schema from `09`, with one example per
   outcome, and the instruction that it is the last thing printed.
 

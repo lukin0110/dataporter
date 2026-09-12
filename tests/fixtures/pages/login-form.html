@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- A stand-in for a claude.ai sign-in that takes a password: an email step,
+     then a password step, then `/new`. No composer at either step, so the probe
+     reports signed out until the form is through. -->
+<meta charset="utf-8">
+<title>Sign in</title>
+<main>
+  <h1>Sign in</h1>
+  <form id="email-step">
+    <input type="email" autocomplete="username" placeholder="Email">
+    <button type="submit" aria-label="Continue with email">Continue</button>
+  </form>
+  <form id="password-step" hidden>
+    <input type="password" autocomplete="current-password" placeholder="Password">
+    <button type="submit" aria-label="Sign in">Sign in</button>
+  </form>
+</main>
+<script>
+  document.getElementById('email-step').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!event.target.querySelector('input').value) return;
+    event.target.hidden = true;
+    document.getElementById('password-step').hidden = false;
+  });
+  document.getElementById('password-step').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!event.target.querySelector('input').value) return;
+    location.href = '/new';
+  });
+</script>

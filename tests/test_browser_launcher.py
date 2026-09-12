@@ -449,3 +449,34 @@ def _ignore_close(fake: FakeChrome, call: object) -> dict[str, object] | None:
     if getattr(call, "method", "") == "Browser.close":
         return {"result": {}}
     return None
+
+
+def test_headless_follows_the_mode_and_the_setting(tmp_path: Path, rig: Rig) -> None:
+    """`24`: no window under `--non-interactive`, unless `browser.headless` says
+    otherwise, and `browser.headless = true` alone is enough."""
+    settings = make_settings(tmp_path).model_copy(update={"non_interactive": True})
+    session = launcher.launch(settings, "https://claude.ai/new")
+    try:
+        assert rig.command[-2:] == [launcher.HEADLESS_FLAG, "https://claude.ai/new"]
+    finally:
+        session.close()
+
+    settings = make_settings(tmp_path, headless=False).model_copy(
+        update={"non_interactive": True}
+    )
+    session = launcher.launch(settings, "https://claude.ai/new")
+    try:
+        assert launcher.HEADLESS_FLAG not in rig.command
+    finally:
+        session.close()
+
+    settings = make_settings(tmp_path, headless=True, extra_args=("--no-sandbox",))
+    session = launcher.launch(settings, "https://claude.ai/new")
+    try:
+        assert rig.command[-3:] == [
+            launcher.HEADLESS_FLAG,
+            "--no-sandbox",
+            "https://claude.ai/new",
+        ]
+    finally:
+        session.close()

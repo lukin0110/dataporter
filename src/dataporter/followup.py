@@ -45,7 +45,7 @@ from dataporter import log, render, state
 from dataporter import verify as verifying
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
-from dataporter.errors import AuthError, HermesError
+from dataporter.errors import HermesError
 from dataporter.exit_codes import ExitCode
 from dataporter.hermes import prompt as prompting
 from dataporter.hermes import runner as hermes_running
@@ -435,11 +435,13 @@ def ask_all(
     into a real account, sent by the same browser.
     """
     from dataporter import importer as importing
+    from dataporter import signin
     from dataporter.browser import launcher
-    from dataporter.browser import session as browser_session
     from dataporter.browser.probe import NEW_CHAT_URL
     from dataporter.hermes import doctor as hermes_doctor
 
+    if settings.non_interactive:
+        signin.require_credentials(settings)
     log.enable_run_log(settings.workspace)
     store = state.StateStore(settings.workspace)
     store.run()
@@ -461,8 +463,7 @@ def ask_all(
         asking = Prober(settings)
         file = read(settings)
         try:
-            if not browser_session.signed_in(browser):
-                raise AuthError(detail=browser_session.SIGNED_OUT)
+            signin.ensure_signed_in(settings, browser)
             for position, (uuid, entry) in enumerate(wanted):
                 answer = asking.ask(uuid, entry)
                 file = file.replace(answer)

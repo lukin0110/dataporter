@@ -25,11 +25,12 @@ more `run` field; `14` adds another `run` field; `15` adds `pacing` and the thre
 import os
 import tomllib
 from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from orval import coalesce_lazy
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -140,15 +141,23 @@ class BrowserSettings(BaseModel):
     configurable: a debug port reachable from another machine is a full-privilege
     handle on a signed-in Claude account."""
 
+    headless: bool | None = None
+    """Whether Chrome runs without a window (`24`).
+
+    `None` — the default — means "headless exactly when the run is
+    non-interactive": a window is what §12's pause hands a person, and an
+    unattended run has no person. `true` or `false` overrides that either way.
+    Read `Settings.headless`, never this.
+    """
+
     extra_args: tuple[str, ...] = ()
     """Extra command-line flags, appended after the fixed ones and before the URL.
 
-    Empty by design: the migration runs headed (§12 needs a window a human can act
-    in), and every flag the run depends on is fixed in `launcher.LAUNCH_FLAGS` so
-    that two operators launch the same browser. This exists for environments that
-    cannot run that browser at all — a CI container with no display and no user
-    namespaces needs `--headless=new --no-sandbox` — and the test suite is its
-    only user today.
+    Empty by design: every flag the run depends on is fixed in
+    `launcher.LAUNCH_FLAGS` so that two operators launch the same browser, and
+    `headless` is a setting of its own. This exists for what a particular
+    environment needs on top — a CI container with no user namespaces needs
+    `--no-sandbox` — and the test suite is its only user today.
     """
 
 
@@ -270,6 +279,11 @@ class TimeoutSettings(BaseModel):
     login_s: float = 600.0
     """How long `login` waits for the operator to sign in. Ten minutes: it covers
     a password manager, an email code and a second factor without hurrying."""
+
+    signin_s: float = Field(default=120.0, gt=0)
+    """How long the unattended sign-in (`24`) gives the form to become a signed-in
+    page after the credentials went in. Two minutes: a redirect or two and no
+    person to wait for."""
 
     attach_s: float = 60.0
     """How long `browser attach` waits for the attachment chip to appear (`08`).
@@ -423,6 +437,28 @@ class RunSettings(BaseModel):
     """
 
 
+class AuthSettings(BaseModel):
+    """The destination account's credentials, for a non-interactive run (`24`).
+
+    From the environment (`HCM_AUTH__EMAIL`, `HCM_AUTH__PASSWORD`) or the
+    command line (`--email`, `--password-file`) and never from `config.toml` —
+    `_TomlWithoutSecrets` refuses a file that carries them. `SecretStr` keeps
+    the value out of `repr`, `model_dump` and every log record; nothing but
+    `login_form` ever asks it for the value.
+    """
+
+    email: str | None = None
+    password: SecretStr | None = None
+
+
+@dataclass(frozen=True)
+class Credentials:
+    """Both halves, present. What `signin` asks for and `login_form` types."""
+
+    email: str
+    password: SecretStr
+
+
 class Settings(BaseSettings):
     """Effective settings for one invocation."""
 
@@ -437,6 +473,14 @@ class Settings(BaseSettings):
     """Holds state, seeds, logs, the browser profile and the report. Never inside
     the export."""
 
+    non_interactive: bool = False
+    """`24`'s mode: nothing waits for a person. Chrome runs headless unless
+    `browser.headless` says otherwise, a signed-out session is signed in from
+    `auth` rather than handed to an operator, and a page only a person can clear
+    is recorded as a pause and exited on. `--non-interactive` or
+    `HCM_NON_INTERACTIVE=1`; never `config.toml`, for the reason `auth` is not."""
+
+    auth: AuthSettings = AuthSettings()
     seed: SeedSettings = SeedSettings()
     attachments: AttachmentSettings = AttachmentSettings()
     browser: BrowserSettings = BrowserSettings()
@@ -447,6 +491,19 @@ class Settings(BaseSettings):
     timeouts: TimeoutSettings = TimeoutSettings()
     run: RunSettings = RunSettings()
     judge: JudgeSettings = JudgeSettings()
+
+    @property
+    def headless(self) -> bool:
+        """Whether the browser gets a window: `browser.headless`, else the mode."""
+        configured = self.browser.headless
+        return self.non_interactive if configured is None else configured
+
+    @property
+    def credentials(self) -> Credentials | None:
+        """Both halves of `auth`, or nothing: half a credential is no credential."""
+        if self.auth.email and self.auth.password is not None:
+            return Credentials(email=self.auth.email, password=self.auth.password)
+        return None
 
     @property
     def attachments_dir(self) -> Path:
@@ -536,11 +593,38 @@ class Settings(BaseSettings):
         config_file = _config_file.get()
         if config_file is not None:
             # Reads to {} when the file is absent, so no existence check here.
-            sources.append(
-                TomlConfigSettingsSource(settings_cls, toml_file=config_file)
-            )
+            sources.append(_TomlWithoutSecrets(settings_cls, toml_file=config_file))
         # pydantic-settings appends the defaults source itself.
         return tuple(sources)
+
+
+NOT_IN_CONFIG_FILE = ("auth", "non_interactive")
+"""The two tables `config.toml` may not carry (`24`).
+
+A credential in a file next to the export is a credential somebody will commit,
+copy or leave behind; `non_interactive` travels with it because a file that
+switches the mode on is a file that expects the credentials to be there too.
+Both come from the environment or the command line, per invocation.
+"""
+
+CONFIG_FILE_REFUSED = (
+    "{keys} belong in the environment or on the command line, not in config.toml"
+)
+
+
+class _TomlWithoutSecrets(TomlConfigSettingsSource):
+    """`config.toml`, refused rather than read when it carries `24`'s two tables.
+
+    Refused and not ignored: an operator who put them there would otherwise
+    learn that the file did nothing only when the run waited for a person.
+    """
+
+    def __call__(self) -> dict[str, Any]:
+        found = super().__call__()
+        present = [key for key in NOT_IN_CONFIG_FILE if key in found]
+        if present:
+            raise ConfigError(CONFIG_FILE_REFUSED.format(keys=" and ".join(present)))
+        return found
 
 
 def _workspace_from_env() -> Path | None:
@@ -668,18 +752,48 @@ def _revalidated[T: BaseModel](model: T, **changes: Any) -> T:
         raise ConfigError(f"invalid configuration: {_describe(exc)}") from exc
 
 
-def load_settings(*, workspace: Path | None = None) -> Settings:
+def load_settings(
+    *,
+    workspace: Path | None = None,
+    non_interactive: bool = False,
+    email: str | None = None,
+    password_file: Path | None = None,
+) -> Settings:
     """Build `Settings`, honouring the precedence ladder.
 
     `workspace` is the value of the `--workspace` flag, or `None` when it was not
     given. It must be omitted from the init source entirely when unset — passing
-    `None` through would win against the environment and silently blank it.
+    `None` through would win against the environment and silently blank it. The
+    three `24` flags follow the same rule: `--non-interactive` is only an
+    override when it was typed, and `--email` and `--password-file` each set the
+    one half of `auth` they name, so a flag beside an environment variable is
+    the flag winning for that half and the environment keeping the other.
+
+    `password_file` is read here, once, first line only, stripped: a value on
+    the command line would be in `ps` and the shell's history, and a file is the
+    other channel an operator has that neither can see.
 
     Raises `ConfigError` for anything an operator can fix by editing config or
     re-running with different arguments; the CLI turns that into exit code 2.
     """
     config_file = config_file_for(workspace)
     overrides: dict[str, Any] = {} if workspace is None else {"workspace": workspace}
+    if non_interactive:
+        overrides["non_interactive"] = True
+    auth: dict[str, Any] = {}
+    if email is not None:
+        auth["email"] = email
+    if password_file is not None:
+        auth["password"] = _first_line(password_file)
+    if auth:
+        # The init source outranks the environment and would replace the whole
+        # `auth` table, so the half the flags did not set is read from the
+        # environment here and carried along.
+        for key in ("email", "password"):
+            from_env = os.environ.get(f"HCM_AUTH__{key.upper()}", "")
+            if key not in auth and from_env:
+                auth[key] = from_env
+        overrides["auth"] = auth
 
     token = _config_file.set(config_file)
     try:
@@ -692,6 +806,15 @@ def load_settings(*, workspace: Path | None = None) -> Settings:
         raise ConfigError(f"invalid configuration: {exc}") from exc
     finally:
         _config_file.reset(token)
+
+
+def _first_line(path: Path) -> str:
+    """The credential in `path`: its first line, stripped. Never logged."""
+    try:
+        with path.open(encoding="utf-8") as handle:
+            return handle.readline().strip()
+    except OSError as exc:
+        raise ConfigError(f"cannot read {path}: {exc.strerror or exc}") from exc
 
 
 def _describe(exc: ValidationError) -> str:
