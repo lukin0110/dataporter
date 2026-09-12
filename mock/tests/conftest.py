@@ -5,6 +5,7 @@ nothing about HTTP — so this fixture exists for the half that is about cookies
 status codes and redirects.
 """
 
+import json
 import ssl
 import urllib.request
 from collections.abc import Iterator
@@ -73,6 +74,12 @@ class Client:
     def post(self, path: str, body: bytes, **headers: str) -> tuple[int, str, str]:
         return self.request(path, data=body, headers=headers, follow=False)
 
+    def post_json(self, path: str, payload: object) -> tuple[int, str, str]:
+        """As the page's own script posts: JSON, and a header that says so."""
+        return self.post(
+            path, json.dumps(payload).encode(), **{"Content-Type": "application/json"}
+        )
+
     def _remember(self, headers: list[str]) -> None:
         for header in headers:
             pair = header.split(";", 1)[0]
@@ -103,7 +110,6 @@ def site() -> Site:
 def running(site: Site, material: certificate.Material) -> Iterator[Client]:
     started = server.serve(site, port=0, material=material)
     try:
-        yield Client(f"https://127.0.0.1:{server.port_of(started)}")
+        yield Client(f"https://127.0.0.1:{started.port}")
     finally:
-        started.shutdown()
-        started.server_close()
+        started.close()
