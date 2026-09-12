@@ -74,6 +74,7 @@ M5 — Experiment
 Tooling — no milestone, may land at any time
   22  Test performance: the fast/slow split, and the cost underneath it (both landed)
   23  Library operations: every command's body in the module that owns it, the CLI an interface
+  25  Distribution: metadata, `py.typed`, a licence, and a wheel proven outside the checkout
 
 M6 — Operability
   24  Non-interactive mode: credentials, an agentic sign-in, headless Chrome, never a keypress
@@ -148,6 +149,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [22](impl/22-test-performance.md) | Test performance | — tooling | Done |
 | [23](impl/23-library-operations.md) | Library operations | — tooling | Done |
 | [24](impl/24-non-interactive.md) | Non-interactive mode | §8 (amended), §12 | Done |
+| [25](impl/25-distribution.md) | Distribution | — tooling | Done |
 
 `21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
 still reporting what is true rather than what the plan hoped: `20` and `21` are built and
@@ -155,9 +157,9 @@ unrun, and a column that said otherwise would be the one claim the experiment ex
 make honestly. `docs/experiment-02.md` holds the section the sweep is recorded in.
 
 Every brief section §2–§19 is claimed by at least one slice. §1 is the goal and is claimed
-by all of them. `22` and `23` claim none: they are the two slices that exist because of how
-the repo is worked on rather than because of what the brief asks for, and they are outside
-the milestone gates for the same reason.
+by all of them. `22`, `23` and `25` claim none: they are the slices that exist because of
+how the repo is worked on and how it is consumed rather than because of what the brief
+asks for, and they are outside the milestone gates for the same reason.
 
 ## Working rules
 
@@ -202,6 +204,15 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   file, wait for generation to finish). A seed never passes through an LLM's output tokens.
 - **Package and command:** package `dataporter`, CLI `hermes-claude-migrate` exactly as the
   brief writes it in §8–§10.
+- **Distribution (`25`):** an installable package, not only a checkout. A host project adds
+  it from a git URL or a path — there is no PyPI release, because publishing is
+  deliberately a later slice — and gets the command, `python -m dataporter`, and the `23`
+  operations as a typed library (`py.typed` ships; the operations are reached where they
+  live and are never re-exported). The version lives in `dataporter.__version__` and the
+  wheel's metadata is derived from it. `typer` stays a required dependency so a bare
+  install yields a working command. Hermes is neither imported by the package nor a
+  dependency of it: a host project only has to have `hermes` on the `PATH` its process
+  inherits.
 - **Workspace:** `migration/` next to the export by default, `--workspace` to override.
   Holds `state.json` (§7 shape, nothing else in it), `run.json` (run-level counters and
   pause record), `plan.json`, `seeds/`, `attachments/`, `browser-profile/`, `hermes/`,

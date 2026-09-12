@@ -38,3 +38,49 @@ jobs:
       - name: Full suite and coverage gate
         if: github.event_name != 'pull_request'
         run: make test-all
+
+  # The other half of `25`'s claim, and the half no test in the suite can make:
+  # build the distribution, install it into an interpreter that is not this
+  # project's, and run it from a directory holding none of our files. Separate
+  # from `check` because `check` is the name branch protection requires and a
+  # build-and-install cycle belongs beside it, not inside it.
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # The sdist, and then the wheel built from it: a file the sdist omits
+      # cannot reach the wheel.
+      - name: Build
+        run: uv build
+
+      - name: Install the wheel into a project that is not this one
+        run: |
+          uv venv --python 3.12 /tmp/consumer
+          uv pip install --python /tmp/consumer dist/*.whl
+
+      # From /tmp: no pyproject.toml, no src/, no fixtures, nothing of ours on
+      # `sys.path`. `skill.packaged_dir()` is the line that matters — it resolves
+      # the shipped SKILL.md through `importlib.resources` out of site-packages,
+      # which is exactly what `setup` does on a host machine.
+      - name: Run it as a host project would
+        working-directory: /tmp
+        run: |
+          /tmp/consumer/bin/hermes-claude-migrate --version
+          /tmp/consumer/bin/python -m dataporter --version
+          /tmp/consumer/bin/python -c '
+          import dataporter
+          from dataporter import console, importer
+          from dataporter.hermes import skill
+
+          print(dataporter.__version__)
+          print(skill.packaged_dir())
+          request = importer.ImportRequest(export="./nowhere", dry_run=True)
+          print(request.dry_run, repr(console.Collected().stdout))
+          '
