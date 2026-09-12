@@ -18,6 +18,7 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import closing
 from dataclasses import dataclass, field
+from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
 from typing import Any, Self
@@ -26,6 +27,21 @@ from websockets.sync.server import Server, ServerConnection, serve
 
 BROKEN_TARGET = "boom"
 """A target id the fake answers with a 500, for the failure that is not a race."""
+
+HTTP_POLL_S = 0.01
+"""How often the debug port's select loop wakes, and therefore what `stop_http`
+costs.
+
+`ThreadingHTTPServer.shutdown` sets a flag and blocks until the serving loop next
+notices it, so a teardown costs one poll interval. The stdlib default is 0.5 s and
+`22` measured what that came to: bringing the server up and answering a request is
+2 ms, stopping it was 501 ms, and the WebSocket half — which has no such loop —
+stops in about none. A full run builds 331 of these, so that was most of a
+minute and a half spent in `select` timeouts — half the suite's runtime.
+
+Ten milliseconds rather than zero: the loop still sleeps between wakeups, so an
+idle fake costs a hundred syscalls a second instead of a busy spin.
+"""
 
 
 def free_port() -> int:
@@ -79,7 +95,8 @@ class FakeChrome:
         self._lock = threading.Lock()
         self._http = ThreadingHTTPServer(("127.0.0.1", port), self._handler_class())
         self._http_thread = threading.Thread(
-            target=self._http.serve_forever, daemon=True
+            target=partial(self._http.serve_forever, poll_interval=HTTP_POLL_S),
+            daemon=True,
         )
         self._ws: Server = serve(self._serve_websocket, "127.0.0.1", 0)
         self._ws_thread = threading.Thread(target=self._ws.serve_forever, daemon=True)

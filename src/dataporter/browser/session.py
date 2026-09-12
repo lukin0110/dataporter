@@ -21,7 +21,10 @@ _logger = log.get_logger(__name__)
 
 LOGIN_POLL_S = 2.0
 """How often `login` looks. Two seconds is invisible to a human filling in a
-form and costs 300 probes across the ten-minute default."""
+form and costs 300 probes across the ten-minute default.
+
+Never waited out past the deadline: see `wait_for_login`.
+"""
 
 BLANK_URLS = frozenset({"", "about:blank", "chrome://newtab/", "about:newtab"})
 
@@ -107,6 +110,10 @@ def wait_for_login(
     A failed probe is not a failed login: the page is being navigated, the tab is
     being replaced, the identity provider is redirecting. Only a browser that has
     stopped answering its debug port ends the wait early.
+
+    The wait keeps its own budget: the last sleep is shortened to whatever is
+    left, so a `timeout_s` shorter than `poll_s` is honoured to the second rather
+    than rounded up to the next probe.
     """
     deadline = time.monotonic() + timeout_s
     while True:
@@ -119,9 +126,14 @@ def wait_for_login(
             state = None
         if state is not None and state.logged_in:
             return state
-        if time.monotonic() >= deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             return None
-        time.sleep(poll_s)
+        # Never past the deadline. Sleeping a whole `poll_s` here overshoots a
+        # timeout by up to two seconds — an operator who asked to wait one minute
+        # is told at sixty-two that their minute is up — and the last stretch of
+        # a wait is the one somebody is watching.
+        time.sleep(min(poll_s, remaining))
 
 
 def signed_in(session: BrowserSession, url: str = NEW_CHAT_URL) -> bool:

@@ -148,5 +148,12 @@ make check-all    # everything, with the coverage gate — what CI runs on main
 make fmt
 ```
 
+`make check` is about four seconds and `make check-all` about twenty-five; the second one
+runs the suite across every core. The `check`/`check-all` line is the `slow` marker —
+anything that spawns a subprocess, binds a socket or launches a browser — so a pull
+request is never gated on a browser. The tests that drive a *real* one are skipped unless
+there is one to drive: `DATAPORTER_TEST_BROWSER=/path/to/chrome uv run pytest -m live`
+runs those eighteen against whatever Chrome or Chromium you point it at.
+
 [`specs/README.md`](specs/README.md) is the map: what each slice is, what is `Done`, and
 which brief section it satisfies. Start there rather than here.

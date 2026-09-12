@@ -36,7 +36,8 @@ from dataporter.config import (
     Settings,
     TimeoutSettings,
 )
-from dataporter.hermes import profile as profiling
+from dataporter.hermes import skill as skilling
+from dataporter.hermes.profile import profile_config
 from dataporter.steps import Step
 from fake_composer import Browser, FakePage
 from fake_hermes import FakeHermes
@@ -186,7 +187,18 @@ def build(
         export=export_dir,
     )
     created.answers(completed())
-    profiling.run_setup(settings)
+    # The end state `setup` would leave, reached without the fifteen subprocesses
+    # `run_setup` reaches it with — `profile list`, `profile create`, twelve
+    # `config set` and a `config show`, per test that asks for a world, which `22`
+    # measured at ~45 s across the suite. What those subprocesses prove (the
+    # environment allowlist, the working directory, the process-group kill) is
+    # `09`'s subject and stays covered in `test_hermes_setup.py` and
+    # `test_hermes_doctor.py`, which call `run_setup` for real; what a world is
+    # for is `Importer`'s decisions, and those read the profile rather than the
+    # making of it. The skill is still installed for real, because it is a file
+    # copy rather than a subprocess and `12`'s preflight checks for it.
+    hermes.with_profile(settings.hermes.profile, **profile_config(settings))
+    skilling.install(settings)
 
     def fake_launch(settings: Settings, url: str) -> launcher.BrowserSession:
         """`07`'s adoption, without a Chrome. `adopted` so nothing tries to

@@ -4,14 +4,16 @@ The content guard runs in strict mode for the whole suite, so a record that coul
 carry conversation content raises here instead of being silently dropped the way it
 is in an operator's terminal.
 
-`22` is where the *cost* of the slow half gets fixed. This file is where the two
-halves are told apart, and it does that twice over:
+`22` is where the *cost* of the slow half got fixed — a teardown that was half a
+second of `select` timeout, and a Hermes profile rebuilt with fifteen subprocesses
+per test — so the split is now a rail rather than a necessity. This file is where
+the two halves are told apart, and it does that twice over:
 
-- **The marker follows the fixture.** A test that asks for `world` spawns a fake
-  Hermes fifteen times before its body runs, so `pytest_collection_modifyitems`
-  marks it `slow` rather than leaving that to whoever writes the next one. The
-  wholly-slow modules carry a module-level `pytestmark` instead, which is one
-  line each and says the same thing.
+- **The marker follows the fixture.** A test that asks for `world` binds two
+  ports and spawns a real `hermes` per conversation, so
+  `pytest_collection_modifyitems` marks it `slow` rather than leaving that to
+  whoever writes the next one. The wholly-slow modules carry a module-level
+  `pytestmark` instead, which is one line each and says the same thing.
 - **And the fast half is held to it.** Marking by hand is a rule that rots
   silently: a test that builds a `FakeChrome` inline has no fixture name to give
   it away, and a fast suite that quietly grows a half-second teardown is a fast
@@ -47,12 +49,16 @@ SLOW_FIXTURES = frozenset({"world"})
 """Fixtures whose cost is a process or a socket, wherever they are asked for.
 
 `world` alone, because it is the only expensive fixture shared across modules —
-it builds a Hermes profile with fifteen subprocess calls and a fake Chrome with a
-threaded HTTP server, per test. The module-local ones (`chrome`, `fake`,
+it writes a `hermes` executable, binds a fake Chrome's two ports, and hands the
+run a real subprocess per conversation. The module-local ones (`chrome`, `fake`,
 `browser`, `new_chat`) are not listed: their names are generic, five modules
 spell them differently, and a list of them would rot on the first rename. Those
 modules carry a module-level `pytestmark` instead, and `no_expensive_fakes` is
 what catches anything either mechanism misses.
+
+Still `slow` after `22`, and not only by inertia: a world costs about 50 ms where
+it cost 500, and the marker is about what a test *does* — spawn, bind, launch —
+rather than about a threshold it currently sits under.
 """
 
 EXPENSIVE = "{name} is expensive; mark the test `slow` (see pyproject.toml markers)"
