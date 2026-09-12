@@ -417,8 +417,9 @@ def test_a_pause_is_a_failed_rehearsal(tmp_path: Path) -> None:
     assert "no pause recorded" in names
 
 
-def test_the_ledger_block_is_21s_block(tmp_path: Path) -> None:
-    """The same columns the mock prints, rebuilt from its numbers."""
+def test_the_ledger_block_is_26s_block(tmp_path: Path) -> None:
+    """The same columns the mock prints, rebuilt from its numbers — `26`'s golden
+    string, which the mock's own tests pin and this one keeps in step with."""
     block = running.ledger_block(
         {
             "sign_ins": 2,

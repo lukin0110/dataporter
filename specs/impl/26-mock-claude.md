@@ -59,14 +59,22 @@ it is no evidence at all about the real site (§27).
   between runs under `~/.cache/claude-mock`, and `pin_of`, the base64 sha-256 of
   its DER SubjectPublicKeyInfo, which is exactly what Chrome's
   `--ignore-certificate-errors-spki-list` hashes.
-- **`ledger.py`** — five counters and §21's block, byte for byte, 32 columns
-  wide.
-- **`cli.py`** — `claude-mock serve` prints §21's reachability block and nothing
-  else on start (plus one advisory line when this machine's environment names a
-  proxy, which Chrome reads and which would resolve the host itself); `ledger`
-  prints the count from a running mock; `rows` prints every UI map row the mock
-  stands on beside what it decided that row meant. A reply delay of zero or
-  fewer than two steps is refused with exit `2`.
+- **`ledger.py`** — five counters and the ledger block: a heading, a blank line,
+  the five labelled counts in §21's order with the numbers right-aligned to 32
+  columns, a blank line. The brief's block is illustrative; this slice's is a
+  golden string, pinned by `mock/tests/test_ledger.py`.
+- **`cli.py`** — `claude-mock serve` prints the reachability block and nothing
+  else on start: `Mock claude.ai listening on https://127.0.0.1:8443`, then
+  `Add to <workspace>/config.toml before running the tool:`, then a `[browser]`
+  table whose `extra_args` are `--host-resolver-rules=MAP claude.ai
+  127.0.0.1:8443` and `--ignore-certificate-errors-spki-list=<pin>`. §21 says
+  what those lines must do and leaves the port, the mechanism and their shape to
+  this slice, and `mock/tests/test_cli.py` pins the shape. One advisory line
+  follows the block when this machine's environment names a proxy, which Chrome
+  reads and which would resolve the host itself. `ledger` prints the count from
+  a running mock; `rows` prints every UI map row the mock stands on beside what
+  it decided that row meant. A reply delay of zero or fewer than two steps is
+  refused with exit `2`.
 - **`uimap.py`** — `ROWS` (the mock's own words → the map's row labels) and
   `WHAT_THE_MOCK_DOES` (a line per row). `mock/tests/test_uimap.py` reads
   `docs/claude-ui-map.md` and fails when the mock cites a row that is not there.
@@ -101,12 +109,18 @@ it is no evidence at all about the real site (§27).
   session, and every command after `login` signed in again — which is not what
   storing a session in the workspace profile means, and would have made §25's
   sign-in reconciliation meaningless.
+- **The printed shapes are this slice's.** Brief `02`'s blocks are illustrative
+  (`specs/README.md`), so the reachability lines and the ledger block are golden
+  strings here and not there: §21 fixes what the lines do and what the ledger
+  counts, and this slice fixes the bytes. The brief's illustrations were kept as
+  the shapes because nothing was gained by differing from them.
 - **Trust is scoped to the key, never to every certificate.**
   `--ignore-certificate-errors` would take the operator's rehearsal browser off
   the internet's trust rules for every host it visits. The SPKI pin is the
   smallest thing that works.
 - **The ledger lives at a path no helper will drive.** `/__mock/ledger` is not a
-  claude.ai path, so §17's wall keeps the tool away from its own witness.
+  claude.ai path, so `08`'s wall — its resolution of §17 — keeps the tool away
+  from its own witness.
 
 ## Acceptance criteria
 
@@ -121,6 +135,10 @@ it is no evidence at all about the real site (§27).
   input is counted and shown by name.
 - `claude-mock rows` names only rows that exist in `docs/claude-ui-map.md`.
 - `uv run --package claude-mock pytest mock` is green.
+
+Every criterion above was met on 2026-09-12, against a real headless Chromium;
+[`docs/rehearsal-01.md`](../../docs/rehearsal-01.md) is the record, which is why
+the status is `Done` rather than `Built`.
 
 ## Risks
 

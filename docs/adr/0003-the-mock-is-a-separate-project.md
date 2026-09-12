@@ -5,8 +5,8 @@ tool, and is meant to become its own repository. We decided that when it is buil
 built as its own project from the first commit — its own project file, dependencies,
 tests and README — living inside this repository for convenience, with no import in
 either direction. The model-free `hermes` that a rehearsal puts on the path is the tool's
-own test double and stays on the tool's side of that line (§23). Nothing of the mock
-exists yet; the first M7 slice creates it in this shape.
+own test double and stays on the tool's side of that line (§23). `26` built it in this
+shape, as a member of this repository's `uv` workspace.
 
 ## Considered
 

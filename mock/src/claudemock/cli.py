@@ -5,10 +5,13 @@ one thing an operator needs in order to reach it — nobody composes a resolver
 rule by hand (§21, *Reachability*) — and `ledger` prints the count the rehearsal
 record reconciles against (§25).
 
-The reachability block's *shape* is specified: the tool is byte-identical to the
-one that will meet claude.ai and has no setting that names the mock, so the only
-way in is configuration an operator may already write. What is printed is that
-configuration, ready to paste.
+What the printed lines must *do* is the brief's (§21): send the `claude.ai` host
+to the mock, and trust the mock's own key and never every certificate. The port,
+the mechanism and the lines themselves are `26`'s to choose, and are chosen here:
+`8443`, Chrome's host-resolver rule, and an SPKI pin. The tool is byte-identical
+to the one that will meet claude.ai and has no setting that names the mock, so
+the only way in is configuration an operator may already write — and what is
+printed is that configuration, ready to paste.
 """
 
 import argparse
@@ -48,7 +51,13 @@ name a real mailbox (§23, *What it never touches*)."""
 
 
 def reachability(*, host: str, port: int, material: certificate.Material) -> str:
-    """§21's block, byte for byte, ending in a blank line."""
+    """The reachability block, byte for byte, ending in a blank line.
+
+    `26`'s golden string, pinned by `mock/tests/test_cli.py`. §21 constrains what
+    it does and leaves what it looks like to the slice; the shape here is the
+    brief's own illustration, kept because an operator has nothing to gain from
+    a different one.
+    """
     return "\n".join(
         [
             f"Mock claude.ai listening on https://{host}:{port}",

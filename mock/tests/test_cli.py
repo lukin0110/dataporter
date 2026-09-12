@@ -9,7 +9,10 @@ from claudemock import certificate, cli
 def test_the_reachability_block_is_the_one_an_operator_pastes(
     material: certificate.Material,
 ) -> None:
-    """§21's block, whose shape is specified even though the mechanism is not."""
+    """`26`'s golden string. §21 says what the lines must do — send the host to
+    the mock, trust its key and never every certificate — and leaves the port,
+    the mechanism and the lines themselves to the slice; this is where they are
+    pinned."""
     block = cli.reachability(host="127.0.0.1", port=8443, material=material)
     assert block == (
         "Mock claude.ai listening on https://127.0.0.1:8443\n"
