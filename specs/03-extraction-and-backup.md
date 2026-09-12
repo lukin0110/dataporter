@@ -12,15 +12,23 @@ can never be overwritten, and from which the account can be rebuilt with the mig
 the first brief describes.
 
 The first brief starts at a file: the export a person has already requested from
-claude.ai and downloaded. This brief starts one step earlier, at the account itself, and
-adds the step the person did by hand. It also stops assuming the account is a Claude one.
-The tool will extract from ChatGPT, Gemini and others, and what it writes is shaped so
-that a second source is another source and not a second tool.
+claude.ai, waited for, and downloaded. This brief starts one step earlier, at the account
+itself, and takes over the steps around the one a person still has to do: the tool asks
+the vendor for the export, the vendor emails the person a link, the person hands the link
+to the tool, and the tool downloads it and files it where it can never be overwritten. It
+also stops assuming the account is a Claude one. The tool will extract from ChatGPT,
+Gemini and others, and what it writes is shaped so that a second source is another source
+and not a second tool.
 
 ```text
 Account A (Claude, ChatGPT, Gemini, …)
       │
-      │ extract
+      │ extract: ask the vendor
+      ▼
+   an email ──── the person ──── a link
+                                   │
+      ┌────────────────────────────┘
+      │ extract: fetch and file
       ▼
   Snapshot ──────────► Store  (disk today, cloud later)
       │
@@ -38,8 +46,9 @@ Nothing happens "in one go".
 ## 30. Two concerns, kept apart
 
 **Extraction** answers: *what is in this account right now?* It signs in to an account,
-reads everything it can, and writes it down. It changes nothing in the account. It knows
-nothing about migration, seeds, or a destination.
+asks the vendor for the account's export, and files what comes back. It changes nothing
+in the account beyond that one request. It knows nothing about migration, seeds, or a
+destination.
 
 **Import** answers: *how does this get into that account?* It is what the first brief
 describes, unchanged. It reads a snapshot the way it reads an export today, and it does
@@ -56,48 +65,88 @@ encrypt. Each of those is a later decision (§40), not a missing feature.
 
 ## 31. Extract
 
+The vendor's own data export is the mechanism. It is the artefact the vendor stands
+behind, the one `import` already reads, and the one whose shape a second source also
+has: ChatGPT and Gemini each email a link to an archive too. The tool does not read the
+account through its pages or call a backend of its own; §2 applies to extraction as it
+applies to import.
+
+The export arrives in two moves with a person between them, because the vendor puts an
+inbox there. The tool automates the two moves and not the inbox.
+
+### The ask
+
 ```bash
 dataporter extract --source claude --account old-personal
 
 ```
 
-Extraction signs in to the source account and reads it through the browser, as a
-signed-in user would see it: the list of conversations, each conversation in full, the
-projects, the memories, the files, the profile. It reads what the site delivers to that
-browser and does not call a backend on its own (§2 applies to extraction as it applies to
-import). The vendor's official data export — the emailed archive — is not the mechanism:
-a link that arrives in an inbox some time later is a step a person takes, not one the
-tool can make reliable or repeat on a schedule.
+The tool signs in to the source account (§35), goes to where the vendor lets a user ask
+for their data, and asks. That is the only thing it does in the account. It then says
+what it did and what happens next:
 
-An official export is still welcome. It is filed into the store as a snapshot, unchanged,
-with the moment it was requested as its stamp if that is known and the moment it was filed
-if not:
+```text
+Claude extraction — old-personal
+
+Export requested 2026-09-12 20:51 UTC.
+Claude will email a download link to the account's address.
+When it arrives:
+
+  dataporter extract --source claude --account old-personal --link <url>
+
+```
+
+This works in both modes. Interactively the window is open and the person may watch or
+help; unattended (`24`) the tool does it alone, with the source account's credentials
+held as §8 holds the destination's. Whether the tool's own helpers press the vendor's
+button or the agent does is the slice's to decide, as it is for every page (§5).
+
+The tool remembers that it asked, and when, so that the link that comes back is filed
+under the moment the account was as the export describes it. One ask is open per account
+at a time; asking again while one is open is refused, and the open ask says how to
+abandon it.
+
+### The fetch
+
+```bash
+dataporter extract --source claude --account old-personal --link 'https://…'
+
+```
+
+The person reads the vendor's email and hands the link to the tool. The tool downloads
+the archive, checks that it is an export of this source and not something else, and
+files it as a snapshot (§32) into the store (§33), unchanged. A link that has expired,
+or that does not lead to an archive this source recognises, is refused with the reason,
+and the ask stays open so the person can try again.
+
+```text
+Claude extraction — old-personal
+
+Downloaded 41.3 MB.
+Conversations: 127     Projects: 4     Memories: 1
+Gaps: 38 files the export does not carry
+
+Snapshot: ~/.dataporter/store/claude/old-personal/2026-09-12T20-51-07Z
+
+```
+
+An archive the person already has — asked for by hand, or downloaded before the tool
+existed — is filed the same way, with no ask behind it:
 
 ```bash
 dataporter extract --source claude --account old-personal --from ./data-2026-09-12.zip
 
 ```
 
-Extraction is **complete or it says so**. A conversation it cannot read, a file it cannot
-download, a section of the account it does not know how to reach, is written into the
-snapshot as a gap with a reason. A snapshot with gaps is a valid snapshot; a snapshot
-that is silent about what it lacks is not. The one thing extraction never does is
-overwrite: a snapshot in progress is visibly incomplete until it is finished, and a
-finished snapshot is never touched again (§33).
+### Complete or it says so
 
-Example output:
+An export carries what the vendor chose to put in it and not what the account holds.
+Everything the account has that the archive does not — the bytes of the files, today —
+is written into the snapshot as a gap with a reason. A snapshot with gaps is a valid
+snapshot; a snapshot that is silent about what it lacks is not.
 
-```text
-Claude extraction — old-personal
-
-Conversations:  127 found, 127 read
-Projects:         4 found,   4 read
-Memories:         1 found,   1 read
-Files:           38 found,  36 read, 2 not downloadable
-
-Snapshot: ~/.dataporter/store/claude/old-personal/2026-09-12T20-51-07Z
-
-```
+The one thing extraction never does is overwrite: a snapshot in progress is visibly
+incomplete until it is finished, and a finished snapshot is never touched again (§33).
 
 Do not print conversation contents during normal operation.
 
@@ -112,8 +161,8 @@ reading of each vendor's shape. Anything of ours — the stamp, the gaps, the co
 was found — sits beside the vendor's data, never inside it. A normalised view may be
 derived from a native snapshot later; the reverse is impossible.
 
-**It is complete on its own.** Every snapshot holds the whole account. None refers to an
-earlier one to be read. A store may one day share bytes between snapshots (§40); that is
+**It is complete on its own.** Every snapshot holds everything its export carried, and
+names what it did not. None refers to an earlier one to be read. A store may one day share bytes between snapshots (§40); that is
 invisible to the snapshot and to whoever reads it.
 
 **It is written once.** From the moment it is finished, nothing changes it. A second
@@ -121,8 +170,9 @@ extraction is a second snapshot with a later stamp. There is no "latest" that mo
 update, no merge.
 
 **It carries its provenance.** The source, the account label, the stamp, the version of
-the tool that wrote it, whether it came from a live extraction or a filed export, and
-every gap with its reason.
+the tool that wrote it, whether the tool asked for the export or a person handed it over,
+when it was asked for and when it was fetched, and every gap with its reason. The link
+itself is not kept: it expires, and it is a credential to the archive while it lasts.
 
 **It has no secrets in it.** No credential, no session cookie, no token — nothing the
 source session held (§35).
@@ -146,8 +196,10 @@ A snapshot is addressed by source, account and moment:
 - **Source** is the vendor: `claude`, `chatgpt`, `gemini`.
 - **Account** is a label the operator chooses, not the login. Emails change and ids are
   the vendor's; a label is the operator's and stays put.
-- **Stamp** is the moment extraction began, in UTC, to the second, and it is the only
-  ordering the store has.
+- **Stamp** is the moment the export was asked for, in UTC, to the second, because that
+  is the moment the account was as the archive describes it. An archive with no ask
+  behind it is stamped with the moment it was filed. The stamp is the only ordering the
+  store has.
 
 The store **never overwrites**. A stamp that already exists is an error; the tool does
 not merge into it, replace it, or pick a new stamp on its own. A store that lost a
@@ -184,8 +236,9 @@ snapshot's provenance and the commands do not change when one lands:
 
 - a source is named for the vendor, never for the program
   ([ADR 0004](../docs/adr/0004-the-command-is-dataporter.md));
-- a source knows how to sign in, what the account holds, and how to read each part of it
-  through the browser;
+- a source knows how to sign in, where the vendor lets a user ask for their data, what
+  the archive that comes back looks like, and what the account holds that the archive
+  does not;
 - a source's snapshot is in that vendor's shape, and the importer for that vendor — when
   there is one — reads that shape.
 
@@ -193,10 +246,11 @@ Extraction from a source the tool does not have is refused, not attempted.
 
 ## 35. The source session
 
-Extraction signs in to the **source** account. The first brief's session (§8) is the
+The ask signs in to the **source** account. The first brief's session (§8) is the
 **destination's**, and one browser profile holds one signed-in identity per site, so the
 source gets its own session: its own profile, its own `login`, its own `logout`, named by
-the account label it serves.
+the account label it serves. The fetch needs no session: the link is the vendor's leave
+to download, and the tool downloads without a browser.
 
 ```bash
 dataporter login --account old-personal
@@ -212,24 +266,30 @@ them in memory only, writes them nowhere, and never puts them in a snapshot.
 
 ## 36. Safety boundaries
 
-Extraction is **read-only**. Signed in to the source account, the tool:
+Extraction takes **one action** in the source account: it asks for the export. Signed in
+there, the tool:
 
-- reads conversations, projects, memories, files and the profile;
-- navigates to reach them;
+- navigates to where the vendor lets a user ask for their data;
+- asks;
 
 and never:
 
 - sends a message, creates a chat, or renames one;
 - deletes anything;
-- changes any setting;
+- changes any setting other than by that ask;
 - touches billing or security;
-- leaves the pages it needs for reading.
+- leaves the pages the ask needs.
+
+The ask is an account-level action in §17's sense, and it is the one such action this
+brief permits without stopping for a person: it is what the command exists to do, the
+person asked for it by running the command, and it is not destructive. Anything else on
+that page stops.
 
 The surface (§17, [ADR 0001](../docs/adr/0001-no-door-in-the-wall.md)) grows an
-**extraction surface**: the pages of the source site that show a signed-in user their own
-data, and nothing else. It is a second list beside the migration surface and the login
-surface, refused just as strictly. The destination session never extracts and the source
-session never imports.
+**extraction surface**: the sign-in page and the page where the export is asked for, and
+nothing else. It is a second list beside the migration surface and the login surface,
+refused just as strictly. The destination session never extracts and the source session
+never imports. The fetch downloads from the link the vendor sent and from nowhere else.
 
 ## 37. Import from a snapshot
 
@@ -239,9 +299,9 @@ dataporter import ~/.dataporter/store/claude/old-personal/2026-09-12T20-51-07Z
 ```
 
 `import` accepts a snapshot wherever it accepts an export, and a snapshot of a Claude
-account migrates as an export of that account does: the same classification, the same
-seeds, the same report. Where a snapshot holds more than an export does — the files an
-export never carried (§14) — import uses it. The snapshot is read and never written.
+account migrates exactly as the export inside it does: the same classification, the same
+seeds, the same report. The snapshot is read and never written. Should a snapshot one
+day hold more than the export does (§40), import uses it.
 
 A snapshot with gaps is migrated as far as it goes, and the report says what was not
 there to migrate, distinct from what was there and failed.
@@ -256,17 +316,18 @@ labels only.
 
 ## 39. First run
 
-Before the whole account, extract one that is small and known, and answer with numbers:
+Before an account that matters, extract one that is small and known, and answer with
+numbers:
 
-1. Does every conversation the site lists appear in the snapshot, with every turn?
-2. Do the files come down, and do their bytes match what the site serves?
-3. Does an import of the snapshot produce the same dry run (§9) as an import of the
-   official export of the same account, taken the same day, allowing for what the export
-   never carried?
-4. What does the site hold that the tool could not reach, and is every such thing a gap
+1. Does the ask work, in each mode, and does an email arrive?
+2. Does the archive the tool fetches match, byte for byte, the one a person downloads
+   from the same link?
+3. Does an import of the snapshot produce the same dry run (§9) as an import of that
+   archive given to it directly?
+4. What does the account hold that the archive does not, and is every such thing a gap
    in the snapshot?
-5. Does a second extraction, minutes later, produce a second snapshot and leave the first
-   byte-identical?
+5. How long does the link live, and what does the tool say when it has died?
+6. Does a second extraction produce a second snapshot and leave the first byte-identical?
 
 Only after these are answered does extraction run against an account that matters, and
 only after 3 is answered does a snapshot stand in for an export anywhere.
@@ -275,6 +336,10 @@ only after 3 is answered does a snapshot stand in for an export anywhere.
 
 Named so that a later brief or slice can claim them:
 
+- the inbox: reading the vendor's email and taking the link from it, so that an
+  extraction needs no person at all;
+- reading the account through its pages, for what the export does not carry — the
+  files — and for a snapshot that does not wait on an email;
 - a cloud store: the same snapshot, written to a bucket, with the disk layout as its
   contract;
 - sharing bytes between snapshots in a store, invisible to the snapshot;
@@ -282,7 +347,7 @@ Named so that a later brief or slice can claim them:
 - encryption at rest, and who holds the key;
 - scheduling inside the tool, if a cron ever proves insufficient;
 - ChatGPT, Gemini and Copilot as sources, each its own brief or slice;
-- a mock source — the mock claude.ai (§21) showing a signed-in user their own data — so
-  extraction can be rehearsed with no account;
+- a mock source — the mock claude.ai (§21) with a page to ask for an export, and a link
+  it prints instead of an email — so extraction can be rehearsed with no account;
 - verifying a snapshot by importing it into a throwaway account and comparing;
 - a normalised view derived from a native snapshot, for tools that are not importers.

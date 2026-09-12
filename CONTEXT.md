@@ -87,9 +87,19 @@ reads one and files one; it never produces one.
 _Avoid_: archive, dump, takeout
 
 **Extraction**:
-Reading a source account through the browser, as a signed-in user sees it, and writing
-what was read. Changes nothing in the account.
-_Avoid_: scrape, crawl, pull, sync
+Asking a source for an account's export, fetching it from the link the vendor sends, and
+filing it as a snapshot. Changes nothing in the account beyond the ask.
+_Avoid_: scrape, crawl, pull, sync, download
+
+**Ask**:
+The request the tool makes of a vendor for an account's export, remembered until the link
+comes back. One is open per account at a time.
+_Avoid_: export request, job, ticket
+
+**Link**:
+The download address the vendor emails after an ask, which a person hands to the tool.
+Never kept.
+_Avoid_: URL, token, download link
 
 **Snapshot**:
 The data of one account, from one source, as it stood at one moment, in the vendor's own
@@ -97,8 +107,8 @@ shape. Written once, complete on its own, never changed afterwards.
 _Avoid_: backup, dump, copy, version
 
 **Gap**:
-Something a snapshot records that it could not hold, with the reason. A snapshot with
-gaps is complete about its gaps.
+Something the account holds that the snapshot does not, recorded in the snapshot with the
+reason. A snapshot with gaps is complete about its gaps.
 _Avoid_: missing item, error, skip
 
 **Stamp**:
@@ -133,8 +143,8 @@ _Avoid_: snapshot, inspect
 **Surface**:
 The set of URLs a helper will drive. The migration surface is a new chat and a
 conversation on claude.ai; the login surface adds the sign-in page, for the sign-in alone;
-the extraction surface is the pages of a source site that show a signed-in user their own
-data, for reading alone.
+the extraction surface is a source site's sign-in page and the page where its export is
+asked for, for the ask alone.
 _Avoid_: allowlist, whitelist, scope
 
 **Scripted agent**:
