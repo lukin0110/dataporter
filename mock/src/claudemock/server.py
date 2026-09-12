@@ -328,28 +328,45 @@ class MockServer:
                 lifespan="off",
             )
         )
-        self._thread = threading.Thread(
-            target=self._server.run, kwargs={"sockets": [sock]}, daemon=True
-        )
+        self._failure: BaseException | None = None
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self) -> None:
+        """The thread's body: uvicorn, and whatever stopped it, kept for
+        `start` to report rather than printed by the thread on its way out."""
+        try:
+            self._server.run(sockets=[self._socket])
+        except BaseException as failure:
+            self._failure = failure
 
     @property
     def port(self) -> int:
         return int(self._socket.getsockname()[1])
 
     def start(self, timeout_s: float = STARTUP_TIMEOUT_S) -> None:
+        """Start the thread and wait until uvicorn is accepting connections.
+        A start that fails closes what it opened: the port is released rather
+        than held by a thread nobody will join."""
         self._thread.start()
         deadline = time.monotonic() + timeout_s
-        while not self._server.started:
-            if not self._thread.is_alive():
-                raise RuntimeError("the mock's server stopped before it started")
-            if time.monotonic() > deadline:
-                raise RuntimeError("the mock's server did not start in time")
-            time.sleep(0.005)
+        try:
+            while not self._server.started:
+                if not self._thread.is_alive():
+                    raise RuntimeError(
+                        "the mock's server stopped before it started"
+                    ) from self._failure
+                if time.monotonic() > deadline:
+                    raise RuntimeError("the mock's server did not start in time")
+                time.sleep(0.005)
+        except BaseException:
+            self.close()
+            raise
 
     def close(self) -> None:
         """Stop accepting, finish what is in flight, and release the port."""
         self._server.should_exit = True
-        self._thread.join()
+        if self._thread.is_alive():
+            self._thread.join()
         self._socket.close()
 
 
@@ -376,6 +393,11 @@ def serve(
     material: certificate.Material,
 ) -> MockServer:
     """A started server, listening. The caller closes it."""
-    server = MockServer(create_app(site), listen(host, port), material)
+    sock = listen(host, port)
+    try:
+        server = MockServer(create_app(site), sock, material)
+    except BaseException:
+        sock.close()
+        raise
     server.start()
     return server

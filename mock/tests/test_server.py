@@ -6,8 +6,12 @@ a rehearsal is.
 """
 
 import json
+import socket
+from pathlib import Path
 from urllib.parse import urlencode
 
+import pytest
+from claudemock import certificate, server
 from claudemock.site import Site
 
 from conftest import EMAIL, PASSWORD, Client
@@ -166,3 +170,25 @@ def test_the_ledger_is_served_as_a_block_and_as_json(running: Client) -> None:
     assert block.startswith("Mock claude.ai — ledger\n\nSign-ins:")
     _, payload, _ = running.request("/__mock/ledger.json")
     assert json.loads(payload)["sign_ins"] == 1
+
+
+def test_a_server_that_cannot_start_releases_its_port(
+    site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A key that is not there: uvicorn fails to start, and the socket `serve`
+    bound before handing it over is closed rather than left holding the port."""
+    bound: list[socket.socket] = []
+    listen = server.listen
+
+    def listen_and_remember(host: str, port: int) -> socket.socket:
+        bound.append(listen(host, port))
+        return bound[-1]
+
+    monkeypatch.setattr(server, "listen", listen_and_remember)
+    missing = certificate.Material(
+        cert_path=tmp_path / "cert.pem", key_path=tmp_path / "key.pem", spki_sha256=""
+    )
+    with pytest.raises(RuntimeError, match="stopped before it started") as caught:
+        server.serve(site, port=0, material=missing)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert [sock.fileno() for sock in bound] == [-1]
