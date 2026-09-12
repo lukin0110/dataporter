@@ -162,8 +162,9 @@ was found — sits beside the vendor's data, never inside it. A normalised view 
 derived from a native snapshot later; the reverse is impossible.
 
 **It is complete on its own.** Every snapshot holds everything its export carried, and
-names what it did not. None refers to an earlier one to be read. A store may one day share bytes between snapshots (§40); that is
-invisible to the snapshot and to whoever reads it.
+names what it did not. None refers to an earlier one to be read. A store may one day
+share bytes between snapshots (§40); that is invisible to the snapshot and to whoever
+reads it.
 
 **It is written once.** From the moment it is finished, nothing changes it. A second
 extraction is a second snapshot with a later stamp. There is no "latest" that moves, no
