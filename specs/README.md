@@ -86,7 +86,7 @@ M6 — Operability
   24  Non-interactive mode: credentials, an agentic sign-in, headless Chrome, never a keypress
 
 M7 — Rehearsal (brief 02, §20–§28) — outside the gates: it needs no account, and §27
-     makes a passed rehearsal the precondition for 10's live run, not its successor
+     makes a passed rehearsal the precondition for slice 10's live run, not its successor
   slices not yet carved
 ```
 
