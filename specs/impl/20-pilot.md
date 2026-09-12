@@ -128,6 +128,17 @@ Resolved while building:
   moment it can be answered, and what comes back is validated through `FidelityVerdict`
   rather than trusted. A missing extra and a missing `ANTHROPIC_API_KEY` are both exit
   `6`, the environment row, and each says what to do.
+- **A probe records a reply only from the chat it asked in.** The agent is told
+  which chat to ask in and reports which chat it asked in, and those two disagreeing
+  is the one way this command can produce evidence about the wrong conversation —
+  which is worse than no evidence, because nothing downstream could tell. The reply
+  is dropped and the probe recorded as `failed` with the chat it names, rather than
+  filed under a conversation it is not about. A result that names no chat at all is
+  left alone: that is an agent that did not say, not one that went somewhere else.
+  (Raised by Copilot in review on #29, with `judge`'s lock — taken before
+  `probes.json` is read, not only around the writes, so a `followup` filling the
+  file cannot make the judge report "nothing to grade" — and `probes.json`'s
+  trailing newline, which the workspace's other JSON files all have.)
 - **The write-up exists before the experiment does, and is marked.** `10`'s spike
   documents set the pattern: a question nobody answered has to look different from one
   answered badly, so every number in `experiment-01.md` carries `*not yet run*` or

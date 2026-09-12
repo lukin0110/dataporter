@@ -19,7 +19,7 @@ from typing import Literal
 import pytest
 from typer.testing import CliRunner
 
-from dataporter import cli
+from dataporter import cli, state
 from dataporter import followup as following
 from dataporter import judge as judging
 from dataporter.config import JudgeSettings, Settings
@@ -29,6 +29,7 @@ from dataporter.state import now
 
 FIRST = "aa000001-1111-4111-8111-111111111111"
 CHAT = "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91"
+OTHER = "bb000002-2222-4222-8222-222222222222"
 REPLY = "We talked about listing files in a directory from Python."
 
 Score = Literal["pass", "weak", "fail"]
@@ -236,6 +237,27 @@ def test_judge_with_no_probes_exits_4(runner: CliRunner, workspace: Path) -> Non
     assert result.exit_code == ExitCode.NOTHING_TO_DO
 
 
+def test_judge_does_not_report_nothing_to_grade_while_the_workspace_is_locked(
+    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lock is taken before `probes.json` is read, not only around the
+    writes: a `followup` filling the file in the middle of this would have the
+    judge report "nothing to grade" about replies that were arriving as it
+    looked. A busy workspace is exit `2`. (Raised by Copilot in review on
+    #29.)"""
+    settings = Settings(workspace=workspace / "migration")
+    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
+    lock = state.WorkspaceLock(settings.workspace)
+    lock.acquire()
+    try:
+        result = runner.invoke(cli.app, ["judge"], catch_exceptions=False)
+    finally:
+        lock.release()
+
+    assert result.exit_code == ExitCode.USAGE
+    assert "locked" in result.stderr
+
+
 def test_judge_without_the_extra_exits_6(
     runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -252,6 +274,28 @@ def test_judge_without_the_extra_exits_6(
 
     assert result.exit_code == ExitCode.ENVIRONMENT
     assert result.stderr == f"error: {judging.NO_EXTRA}\n"
+
+
+def test_judge_only_grades_the_conversation_it_names(
+    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(workspace=workspace / "migration")
+    seeded(settings, "User: how do I list files?")
+    other = probe(conversation_uuid=OTHER, short_id="bb000002")
+    following.write(settings, ProbeFile(probes=[probe(), other]))
+    grade, _ = grading()
+    monkeypatch.setattr(judging, "grader", lambda settings: grade)
+    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
+
+    result = runner.invoke(
+        cli.app, ["judge", "--only", "aa000001"], catch_exceptions=False
+    )
+
+    assert result.stdout == "aa000001  pass\n"
+    graded = following.read(settings).probes
+    assert graded[0].verdict is not None
+    # The one it was not asked about is left exactly as it was.
+    assert graded[1] == other
 
 
 def test_judge_writes_a_verdict_beside_every_reply(

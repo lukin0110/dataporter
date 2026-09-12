@@ -31,7 +31,7 @@ from dataporter.state import (
     MigrationState,
     Status,
 )
-from world import CHAT, CONTENT, FIRST, World, cli_env
+from world import CHAT, CONTENT, FIRST, OTHER_CHAT, World, cli_env
 
 REPLY = "We talked about listing files in a directory from Python."
 """What a chat might answer. Content, and treated as such below."""
@@ -244,6 +244,35 @@ def test_the_last_result_object_wins_over_a_helpers_own(tmp_path: Path) -> None:
     assert prober(tmp_path, stub).ask(FIRST, entry()).reply == REPLY
 
 
+def test_a_reply_from_another_chat_is_not_recorded_as_this_ones(
+    tmp_path: Path,
+) -> None:
+    """The agent is told which chat to ask in and reports which chat it asked
+    in; those disagreeing is the one way a probe produces evidence about the
+    wrong conversation, which is worse than none because nothing downstream
+    could tell. (Raised by Copilot in review on #29.)"""
+    stub = StubRunner(answer(conversation_id=OTHER_CHAT))
+
+    found = prober(tmp_path, stub).ask(FIRST, entry())
+
+    assert found.outcome == "failed"
+    assert found.reply == ""
+    assert found.error == following.WRONG_CHAT.format(reported=OTHER_CHAT)
+    # The record still describes the chat this conversation was migrated into,
+    # which is the one the row is about.
+    assert found.conversation_id == CHAT
+
+
+def test_a_reply_that_names_no_chat_at_all_is_still_a_reply(tmp_path: Path) -> None:
+    """Not evidence of a wrong chat — only of an agent that did not say."""
+    stub = StubRunner(answer(conversation_id=None))
+
+    found = prober(tmp_path, stub).ask(FIRST, entry())
+
+    assert found.answered
+    assert found.reply == REPLY
+
+
 def test_a_probe_line_is_a_count_and_never_the_reply(tmp_path: Path) -> None:
     stub = StubRunner(answer())
 
@@ -268,6 +297,17 @@ def test_probes_round_trip_through_the_file(tmp_path: Path) -> None:
     read_back = following.read(settings)
     assert read_back.question == following.QUESTION
     assert read_back.probes == [found]
+
+
+def test_the_file_is_newline_terminated(tmp_path: Path) -> None:
+    """`state._dump` and `19`'s `report.json` end in one; one convention for the
+    workspace's JSON keeps its diffs quiet. (Raised by Copilot in review on
+    #29.)"""
+    settings = settings_for(tmp_path)
+
+    path = following.write(settings, following.ProbeFile())
+
+    assert path.read_text(encoding="utf-8").endswith("}\n")
 
 
 def test_a_missing_file_reads_as_no_probes(tmp_path: Path) -> None:
@@ -366,6 +406,75 @@ def test_followup_asks_every_migrated_chat_and_keeps_the_replies(
     assert outcome.stdout == f"aa000001  answered  chars={len(REPLY)}\n"
     probes = following.read(world.settings).probes
     assert [item.reply for item in probes] == [REPLY]
+
+
+MIGRATED = json.dumps(
+    {
+        "outcome": "completed",
+        "conversation_id": CHAT,
+        "last_step": "done",
+        "chunks_acked": 1,
+    }
+)
+"""What the fake Hermes answers for a conversation that migrated."""
+
+
+def test_followup_spaces_the_probes_out_as_a_migration_spaces_conversations(
+    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§13's gap, for §13's reason: each probe is one more message into a real
+    account, sent by the same browser."""
+    cli_env(world, monkeypatch)
+    world.answers(MIGRATED, MIGRATED, answer(), answer())
+    runner.invoke(
+        cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False
+    )
+    world.pauses.clear()
+
+    outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
+
+    assert outcome.stdout.count("answered") == 2
+    # One gap, between the two, and none after the last: there is nothing after
+    # it to space it from.
+    assert world.pauses == [world.settings.pacing.delay_between_conversations_s]
+
+
+def test_followup_only_asks_the_conversation_it_names(
+    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli_env(world, monkeypatch)
+    world.answers(MIGRATED, MIGRATED, answer())
+    runner.invoke(
+        cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False
+    )
+
+    outcome = runner.invoke(
+        cli.app, ["followup", "--only", "aa000001"], catch_exceptions=False
+    )
+
+    assert outcome.exit_code == ExitCode.OK
+    assert outcome.stdout.startswith("aa000001  answered")
+    assert [item.short_id for item in following.read(world.settings).probes] == [
+        "aa000001"
+    ]
+
+
+def test_followup_on_a_signed_out_session_exits_3(
+    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every probe would fail the same way, and `login` is the fix — the rule
+    `12` and `17` both follow."""
+    cli_env(world, monkeypatch)
+    world.answers(MIGRATED, answer())
+    runner.invoke(
+        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
+    )
+    world.page.composer = None
+
+    outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
+
+    assert outcome.exit_code == ExitCode.NOT_AUTHENTICATED
+    assert outcome.stdout == ""
 
 
 def test_a_probe_that_went_nowhere_exits_1(

@@ -961,27 +961,34 @@ def judge(ctx: typer.Context, only: Only = None) -> None:
     """Grade the follow-up replies with a model (the `judge` extra)."""
     settings = app_context(ctx).settings
     log.enable_run_log(settings.workspace)
-    file = following.read(settings)
-    wanted = list(file.probes)
-    if only:
-        chosen = set(
-            state.resolve_only([item.conversation_uuid for item in wanted], only)
-        )
-        wanted = [item for item in wanted if item.conversation_uuid in chosen]
-    if not wanted:
-        # No probe file, or nothing selected in it. Exit `4` rather than `0`:
-        # `followup` is what produces the replies, and grading none of them is
-        # not a graded experiment.
-        raise typer.Exit(ExitCode.NOTHING_TO_DO)
-    try:
-        grade = judging.grader(settings)
-    except judging.JudgeError as exc:
-        # Exit `6`, the environment row: the extra is not installed, or the key
-        # the judge would authenticate with is not in the environment.
-        fail(str(exc), ExitCode.ENVIRONMENT)
+    # The lock is taken before `probes.json` is read, and not only around the
+    # writes: this command reads the file, decides there is nothing to do, and
+    # writes back into it, and a `followup` filling it in the middle of that
+    # would be a judge reporting "nothing to grade" about replies that were
+    # arriving as it looked. A busy workspace is exit `2` and says who holds it,
+    # which is the honest answer to "grade these". (Raised by Copilot in review
+    # on #29.)
     lock = state.WorkspaceLock(settings.workspace)
     lock.acquire()
     try:
+        file = following.read(settings)
+        wanted = list(file.probes)
+        if only:
+            chosen = set(
+                state.resolve_only([item.conversation_uuid for item in wanted], only)
+            )
+            wanted = [item for item in wanted if item.conversation_uuid in chosen]
+        if not wanted:
+            # No probe file, or nothing selected in it. Exit `4` rather than `0`:
+            # `followup` is what produces the replies, and grading none of them
+            # is not a graded experiment.
+            raise typer.Exit(ExitCode.NOTHING_TO_DO)
+        try:
+            grade = judging.grader(settings)
+        except judging.JudgeError as exc:
+            # Exit `6`, the environment row: the extra is not installed, or the
+            # key the judge would authenticate with is not in the environment.
+            fail(str(exc), ExitCode.ENVIRONMENT)
         for item in wanted:
             verdict = judging.verdict_for(settings, item, grade=grade)
             file = file.replace(item.model_copy(update={"verdict": verdict}))
