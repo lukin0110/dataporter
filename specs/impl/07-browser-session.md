@@ -143,6 +143,15 @@ stores a password.
   the package and checks the code rather than the prose. (Before `24` this read "finds
   two sentences promising not to ask for one".)
 
+## What `29` changed
+
+The first rehearsal (`docs/rehearsal-01.md`) found that `current_state`'s single
+probe reads a tab that has not rendered yet — which is what a browser this tool
+has just launched has — and that a page with no composer on it reads as a session
+that has expired. `settled` now waits for the document (`SETTLE_S`, bounded by
+whatever budget the caller has left) before the probe. It is the difference
+between an unattended run signing in for no reason and one that does not.
+
 ## Risks
 
 - claude.ai may present a bot check on a fresh profile. Headed Chrome with a persistent

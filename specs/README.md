@@ -40,6 +40,11 @@ specs/
     └── …
 ```
 
+Two directories outside `src/` belong to the second brief and to no release:
+`mock/` is `26`'s stand-in for claude.ai, a workspace member with its own project
+file and README, and `rehearsal/` is `28`'s export and `29`'s protocol. Neither is
+in the wheel or the sdist, and `dataporter` imports neither.
+
 ## Sequence
 
 Every slice is sized to be built, tested and reviewed in one sitting. Milestones are gates:
@@ -87,7 +92,10 @@ M6 — Operability
 
 M7 — Rehearsal (brief 02, §20–§28) — outside the gates: it needs no account, and §27
      makes a passed rehearsal the precondition for slice 10's live run, not its successor
-  slices not yet carved
+  26  The mock claude.ai: a served, stateful stand-in, governed by the UI map
+  27  The scripted agent as a `hermes`: the model-free procedure, on the path
+  28  The rehearsal export: the five kinds and the selection categories
+  29  The rehearsal: the protocol, the pass criteria and the record
 ```
 
 ## Dependencies
@@ -106,6 +114,18 @@ M7 — Rehearsal (brief 02, §20–§28) — outside the gates: it needs no acco
 ```
 
 Parallelisable once `01` lands: `02→05`, `06`, `07→08` and `09` share nothing.
+
+M7 is a chain of three and a join: `26` is the site, `27` is what stands where
+Hermes stands, `28` is what gets migrated, and `29` is the protocol that runs the
+three of them against the shipped tool. `26` depends on the UI map rather than on
+any slice's code — it imports nothing from the tool and the tool imports nothing
+from it — and `27` depends on `09`, `11` and `24`, whose procedures it packages.
+
+```text
+10 (the UI map) ─> 26 ─┐
+09, 11, 24 ─────> 27 ──┼─> 29
+                  28 ──┘
+```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
 own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
@@ -160,6 +180,10 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [23](impl/23-library-operations.md) | Library operations | — tooling | Done |
 | [24](impl/24-non-interactive.md) | Non-interactive mode | §8 (amended), §12 | Done |
 | [25](impl/25-distribution.md) | Distribution | — tooling | Done |
+| [26](impl/26-mock-claude.md) | The mock claude.ai | §21 | Done |
+| [27](impl/27-scripted-hermes.md) | The scripted agent as a `hermes` | §23 | Done |
+| [28](impl/28-rehearsal-export.md) | The rehearsal export | §24 | Done |
+| [29](impl/29-rehearsal.md) | The rehearsal | §22, §23, §25, §26, §27 | Done |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -174,10 +198,12 @@ unrun, and a column that said otherwise would be the one claim the experiment ex
 make honestly. `docs/experiment-02.md` holds the section the sweep is recorded in.
 
 Every section §2–§19 of the first brief is claimed by at least one slice. §1 is the goal
-and is claimed by all of them. Sections §20–§28 of the second brief are claimed by none
-yet; M7 exists to change that. `22`, `23` and `25` claim none: they are the slices that
-exist because of how the repo is worked on and how it is consumed rather than because of
-what the brief asks for, and they are outside the milestone gates for the same reason.
+and is claimed by all of them. Of the second brief, §21–§27 are claimed by `26`–`29`;
+§20 is that brief's goal and is claimed by all four, and §28 is its list of what is
+deliberately left — a section no slice should claim until one of its items is built.
+`22`, `23` and `25` claim none: they are the slices that exist because of how the repo is
+worked on and how it is consumed rather than because of what the brief asks for, and they
+are outside the milestone gates for the same reason.
 
 ## Working rules
 
@@ -263,6 +289,13 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   it — the whole suite is ~20 seconds across four cores where it was five minutes — so the
   split is now a rail (a pull request is never gated on a browser) rather than the thing
   that makes the loop bearable.
+- **The mock and the rehearsal:** the mock is a `uv` workspace member (`mock/`,
+  package `claudemock`, command `claude-mock`) with one dependency of its own, and
+  the rehearsal is a top-level `rehearsal/` package that is linted, type-checked and
+  in neither the wheel nor the sdist. Neither is imported by `dataporter`; `26`'s
+  mock imports nothing from it either, and `29`'s runner drives the installed
+  command as a subprocess. The scripted agent's *procedures* stay in
+  `tests/fake_agent.py`, which is where the tool's own suite drives them.
 - **Repo tooling:** [Graft](https://github.com/trailhq/Graft) indexes the repo into a code
   graph that coding agents query instead of re-reading the source. Development tooling only —
   no slice depends on it, `make check` never runs it, and the graph itself is git-ignored.

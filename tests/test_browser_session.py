@@ -164,7 +164,11 @@ def test_wait_for_login_returns_once_a_composer_appears(
 ) -> None:
     seen = {"probes": 0}
 
-    def evaluate(call: Call) -> dict[str, object]:
+    def evaluate(call: Call) -> dict[str, object] | str:
+        # The settle check is not a probe: it is `07` waiting for the tab to
+        # hold a page at all, and this tab already does.
+        if str(call.params.get("expression", "")) == browser_session.READY_JS:
+            return "https://claude.ai/new"
         seen["probes"] += 1
         return LOGGED_OUT if seen["probes"] < 3 else page_state()
 

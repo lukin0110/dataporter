@@ -134,6 +134,15 @@ And give the chat its source title through the UI, as a verified step.
   after reload, and `verify` passes. *Outstanding: needs a destination account and a real
   Chrome, like every other real-run criterion in `10`–`16`. `20` is where it is met.*
 
+## What `29` changed
+
+The first rehearsal (`docs/rehearsal-01.md`) found that `_read`'s settle test —
+"this chat, and at least one turn" — fires a poll too early on a large
+transcript: a two-part conversation whose first message is 47,000 characters
+renders progressively, and one turn was on the page before the second. It now
+waits for as many human turns as the conversation has parts, and a chat that
+really is short is waited out and then reported. `verify_s` is what that costs.
+
 ## Risks
 
 - The rename UI may not exist or may be unreliable; `10` question 7 decides whether
