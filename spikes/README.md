@@ -1,13 +1,21 @@
 # Spike scripts
 
-Throwaway. [`10`](../specs/impl/10-attach-spike.md) is a time-boxed spike, and this is the
-tree it is allowed to leave behind: prompts that are not skills, and scripts that are not
-product code. `pyproject.toml` excludes `spikes/` from the sdist and the wheel packages
-only `src/dataporter`, so nothing here is installed with the tool. `make check` does lint
-and type-check it, because a script nobody can run after the next refactor cannot repeat
-the spike, and repeating the spike after a claude.ai change is the reason to keep it.
+Scripts that are not product code. [`10`](../specs/impl/10-attach-spike.md) is a
+time-boxed spike and this is the tree it was allowed to leave behind — prompts that are
+not skills, and scripts that drive a page by hand — and
+[`21`](../specs/impl/21-scale-up.md) added one more, for the same reason rather than the
+same purpose: `sign_off.py` reads a finished workspace and prints the gate, the §19
+metrics, the drill check and the §17 audit, and a migration needs none of it.
+`pyproject.toml` excludes `spikes/` from the sdist and the wheel packages only
+`src/dataporter`, so nothing here is installed with the tool. `make check` does lint and
+type-check it, because a script nobody can run after the next refactor cannot repeat the
+spike, and repeating the spike after a claude.ai change is the reason to keep it.
 
 What the spike *concludes* goes in [`docs/`](../docs/). This file is how to conduct it.
+
+`21`'s script is documented where it is used: [`docs/runbook.md`](../docs/runbook.md) for
+the operator, [`docs/experiment-02.md`](../docs/experiment-02.md) for the numbers it
+produced. Everything below is `10`'s.
 
 ## Before anything
 

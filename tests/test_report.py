@@ -567,14 +567,18 @@ def test_a_report_with_no_limitations_has_no_limitations_section(
 def test_every_limitation_name_is_written_down(tmp_path: Path) -> None:
     """The spec's rule: each name the code can produce has an entry in
     `docs/LIMITATIONS.md`, so a slug in a report is a slug an operator can look
-    up."""
+    up.
+
+    An entry is a heading of its own since `21` gave each name a count and a
+    kind; `tests/test_scale_up_doc.py` is what checks the rest of that shape.
+    """
     names = [field.name for field in fields(render.Limitations)] + [
         verifying.TIMESTAMPS_NOT_PRESERVED,
         verifying.TITLE_NOT_SET,
     ]
     written = LIMITATIONS.read_text(encoding="utf-8")
     for name in names:
-        assert f"**`{name}`**" in written, name
+        assert f"### `{name}`" in written, name
 
 
 # --------------------------------------------------------------------------- #
