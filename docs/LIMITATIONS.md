@@ -88,20 +88,82 @@ stand for (`thinking_omitted:3`); the last two are `17`'s, written against a cha
 read back. `19` counts conversations rather than occurrences, so the per-conversation
 number stays in `state.json` where the conversation it belongs to is.
 
-- **`branches_dropped`** — the export's off-path messages, left out of the seed. A
-  conversation that was edited and re-answered is migrated as the path the export marks
-  current; the other branches are counted and not rendered. *by construction*
-- **`thinking_omitted`** — extended-thinking blocks. They are not part of what the person
-  saw, and nothing in the composer can produce one. *by construction*
-- **`tool_calls_summarised`** — a tool call the seed renders as `[Tool call: name]`. The
-  call itself cannot be replayed into a new chat. *by construction*
-- **`unknown_blocks`** — a content block this build has no rendering for, kept as
-  `[Unsupported content: type]` so that a reader of the migrated chat knows something was
-  there. *by construction*
-- **`timestamps_not_preserved`** — *Original message timestamps*, above, recorded against
-  every chat that lands. *by construction*
-- **`title_not_set`** — *Titles*, above: the chat kept the destination's own title because
-  the rename did not take, or because `fidelity.rename_title` is off. *unknown*
+[`21`](../specs/impl/21-scale-up.md) gives each one a heading of its own, a count from the
+full run and a kind:
+
+- **UI limit** — the Claude web interface offers no way to do it. A different tool driving
+  the same UI would hit the same wall.
+- **export limit** — the export does not carry what would be needed. A richer export could
+  lift it.
+- **tool choice** — this build decided not to. A later slice could decide otherwise, and
+  the entry says what that would cost.
+
+A count is a measurement, so it carries the experiment marks — `*not yet run*` until the
+full run produces it, `*measured on <date>*` after — rather than the three marks the
+observations above use. `tests/test_scale_up_doc.py` checks that every name the code can
+print has a heading here, and that each heading carries a count and a kind.
+
+### `branches_dropped`
+
+The export's off-path messages, left out of the seed. A conversation that was edited and
+re-answered is migrated as the path the export marks current; the other branches are
+counted and not rendered. Replaying them would mean editing a message in the destination
+chat and answering it again, which is a second migration of the same conversation.
+
+| Conversations in the full run | Kind | Mark |
+| --- | --- | --- |
+| — | tool choice | *not yet run* |
+
+### `thinking_omitted`
+
+Extended-thinking blocks. They are not part of what the person saw, and nothing in the
+composer can produce one.
+
+| Conversations in the full run | Kind | Mark |
+| --- | --- | --- |
+| — | UI limit | *not yet run* |
+
+### `tool_calls_summarised`
+
+A tool call the seed renders as `[Tool call: name]`. The call itself cannot be replayed
+into a new chat: the destination would have to run the tool, which is a different action
+in a different account.
+
+| Conversations in the full run | Kind | Mark |
+| --- | --- | --- |
+| — | UI limit | *not yet run* |
+
+### `unknown_blocks`
+
+A content block this build has no rendering for, kept as `[Unsupported content: type]` so
+that a reader of the migrated chat knows something was there. What the block held is in
+the export; what to do with it is `02`'s to decide, one block type at a time.
+
+| Conversations in the full run | Kind | Mark |
+| --- | --- | --- |
+| — | tool choice | *not yet run* |
+
+### `timestamps_not_preserved`
+
+*Original message timestamps*, above, recorded against every chat that lands. The composer
+offers no way to set a send time, so every migrated message is stamped when it was pasted.
+Expected against every completed conversation; a count below that is a finding about `17`
+rather than about the UI.
+
+| Conversations in the full run | Kind | Mark |
+| --- | --- | --- |
+| — | UI limit | *not yet run* |
+
+### `title_not_set`
+
+*Titles*, above: the chat kept the destination's own title because the rename did not take,
+or because `fidelity.rename_title` is off. A UI limit in the first case and a tool choice
+in the second, and the count does not distinguish them — the configuration that produced
+the run does.
+
+| Conversations in the full run | Kind | Mark |
+| --- | --- | --- |
+| — | UI limit | *not yet run* |
 
 ## Semantic fidelity (§15)
 
@@ -113,3 +175,8 @@ here.
 
 One bullet, one mark, and the slice that found it. A limitation discovered without a mark
 is an impression; `tests/test_spike_docs.py` fails the build for an unmarked entry.
+
+A limitation the *report* can print is not a bullet but a heading of its own under
+*The names `19` prints*, with a count and a kind, because `21`'s sign-off quotes it by
+name: add the slug to the code and `tests/test_scale_up_doc.py` fails until the heading
+exists.

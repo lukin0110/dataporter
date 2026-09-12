@@ -134,8 +134,13 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [18](impl/18-progress-output.md) | Progress output | §10 | Done |
 | [19](impl/19-report.md) | Report | §16 | Done |
 | [20](impl/20-pilot.md) | Pilot experiment | §18 | In progress |
-| [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | Not started |
+| [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | In progress |
 | [22](impl/22-test-performance.md) | Test performance | — tooling | Not started |
+
+`21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
+still reporting what is true rather than what the plan hoped: `20` and `21` are built and
+unrun, and a column that said otherwise would be the one claim the experiment exists to
+make honestly. `docs/experiment-02.md` holds the section the sweep is recorded in.
 
 Every brief section §2–§19 is claimed by at least one slice. §1 is the goal and is claimed
 by all of them. `22` claims none: it is the one slice that exists because of how the repo
