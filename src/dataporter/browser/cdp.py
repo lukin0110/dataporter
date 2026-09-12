@@ -37,6 +37,7 @@ from types import TracebackType
 from typing import Any, Self
 from urllib.parse import urlparse
 
+from orval import deep_get
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import ClientConnection, connect
 
@@ -327,9 +328,19 @@ class Page(Connection):
         self.send("Input.insertText", {"text": text})
 
     def set_file_input_files(self, selector: str, paths: Sequence[Path]) -> None:
-        """Put files into the first `input[type=file]` matching `selector`."""
+        """Put files into the first `input[type=file]` matching `selector`.
+
+        The document node is checked before it is used. `deep_get` returns `None`
+        for a reply that has no readable `root.nodeId`, and `nodeId=None` is a
+        `DOM.querySelector` the browser refuses — which `send` reports as
+        `DOM.querySelector failed: …`, naming the call that could not have
+        worked rather than the document that was never read. Neither that nor
+        `no element matches` is true when the page has no root, so say so here.
+        """
         root = self.send("DOM.getDocument", {"depth": 0})
-        root_id = root.get("root", {}).get("nodeId")
+        root_id = deep_get(root, "root.nodeId")
+        if root_id is None:
+            raise BrowserError(detail="DOM.getDocument returned no document node")
         node_id = self.send(
             "DOM.querySelector", {"nodeId": root_id, "selector": selector}
         ).get("nodeId")

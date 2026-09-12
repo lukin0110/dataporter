@@ -30,9 +30,10 @@ log counts, uuids under `conversation_id`, and block *type* tokens.
 """
 
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
+from orval import to_utc
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -68,11 +69,16 @@ def _utc(value: datetime) -> datetime:
     literal text `UTC` beside it. A naive value is assumed UTC rather than
     rejected — the assumption is written down in `docs/export-format.md` and
     logged, which beats failing a whole export over a missing suffix.
+
+    `orval.to_utc` does the normalising; the warning stays here because orval has
+    no hook for one. Its naive test is broader than `tzinfo is None` — a `tzinfo`
+    whose `utcoffset` returns `None` is naive too, and `astimezone` would have
+    read that as *system-local* time. Nothing in an export produces such a value,
+    so this is a narrowing of a hole rather than a bug fixed.
     """
     if value.tzinfo is None:
         _logger.warning("export naive timestamp")
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
+    return to_utc(value)
 
 
 UtcDatetime = Annotated[datetime, AfterValidator(_utc)]

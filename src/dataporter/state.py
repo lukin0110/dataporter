@@ -31,6 +31,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Annotated, Any, Literal, Self
 
+from orval import to_utc
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -117,9 +118,7 @@ class IllegalUpdate(ValueError):
 def _to_utc(value: datetime) -> datetime:
     """UTC, whole seconds. A naive value is read as UTC rather than as local time:
     every timestamp this tool writes is UTC, so that is what a naive one is."""
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).replace(microsecond=0)
+    return to_utc(value).replace(microsecond=0)
 
 
 def _format_instant(value: datetime) -> str:

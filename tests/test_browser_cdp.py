@@ -222,6 +222,30 @@ def test_set_file_input_files_without_a_match(client: cdp.CdpClient) -> None:
             page.set_file_input_files("input.missing", [])
 
 
+def test_set_file_input_files_without_a_document_node(chrome: FakeChrome) -> None:
+    """A `DOM.getDocument` reply with no readable root names *that*.
+
+    Without the guard `nodeId=None` reaches `DOM.querySelector`, and what happens
+    next depends on who is answering: this fake ignores the `nodeId` and reports
+    a match, so the upload silently targets the wrong thing, while a real Chrome
+    refuses and `send` blames `DOM.querySelector` — a call that never could have
+    worked. The real fault is one step earlier in both cases, and neither says
+    so. Chrome does not send this reply; the message is for whoever reads the
+    log if it ever does.
+    """
+
+    def responder(fake: FakeChrome, call: Call) -> dict[str, object] | None:
+        if call.method != "DOM.getDocument":
+            return None
+        return {"result": {"root": None}}
+
+    chrome.responder = responder
+    client = cdp.CdpClient(port=chrome.port, timeout=5.0)
+    with client.attach("page-1") as page:
+        with pytest.raises(BrowserError, match="no document node"):
+            page.set_file_input_files('input[type="file"]', [])
+
+
 def test_url_is_read_from_the_page(chrome: FakeChrome) -> None:
     """`/json/list` is a snapshot; a redirect to /login between then and now is
     exactly what `probe` exists to notice."""
