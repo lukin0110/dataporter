@@ -152,6 +152,15 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
 - The real-Chromium test fills `login-form.html` through both steps and lands on `/new`.
 - `report.block` is byte-identical at `auto_signins == 0`.
 
+## What `29` changed
+
+The first rehearsal (`docs/rehearsal-01.md`) ran this code against a sign-in form
+that submits by navigating, and found one defect: `_await_change` read the fields
+of a page that was mid-navigation — blank, for a few milliseconds — and reported
+`code_or_challenge`, which is the one answer that stops an unattended run for a
+person. A page that has not settled is now "not yet" rather than an answer
+(`SETTLED_JS`), and the `LoginForm` fake grew a `loading_for` to model it.
+
 ## Risks
 
 - `10`'s Q1 — whether `hermes -z` attaches to our Chrome at all — is still *unknown*. The

@@ -1,0 +1,31 @@
+[project]
+name = "claude-mock"
+version = "0.1.0"
+description = "A served stand-in for claude.ai, for rehearsing a migration against."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "lukin0110" }]
+# One dependency, and it is here for one reason: Chrome will not speak TLS to a
+# host it cannot verify, and nothing in the standard library can mint a
+# certificate. Everything else — the server, the pages, the state — is stdlib,
+# because a stand-in that needed a framework would be a second thing to keep
+# working.
+dependencies = ["cryptography>=42"]
+
+[project.scripts]
+claude-mock = "claudemock.cli:main"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claudemock"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--strict-config"]

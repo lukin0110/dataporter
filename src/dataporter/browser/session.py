@@ -82,7 +82,52 @@ def open_claude_tab(session: BrowserSession, url: str = NEW_CHAT_URL) -> Page:
     return session.client.attach(target_id)
 
 
-def current_state(session: BrowserSession, url: str = NEW_CHAT_URL) -> PageState:
+SETTLE_S = 10.0
+"""How long a probe waits for a tab that is still loading.
+
+A browser this tool has just launched has a tab that has not rendered yet, and a
+page with no composer on it reads as a session that has expired — which sends an
+unattended run into a sign-in it does not need and an attended one to `error: not
+logged in`. So the probe waits for the document rather than describing a moment
+before it existed. (Found by `29`'s first rehearsal, on the preflight of the
+first `import` after a `login`.)
+"""
+
+SETTLE_POLL_S = 0.2
+
+READY_JS = "document.readyState === 'complete' && location.href"
+"""The URL once the document has finished loading, and `false` before then.
+
+One expression rather than two, because both halves have to be true of the same
+moment: `about:blank` is `complete` the instant it is asked, so a tab that is
+loading its first page answers `complete` for a document that is not the one
+being waited for.
+"""
+
+
+def settled(page: Page, *, timeout_s: float = SETTLE_S) -> bool:
+    """Wait until the tab holds a page that is not blank. `False` on the deadline.
+
+    Never raises: a tab that cannot be read is a tab the caller's own probe will
+    report on, and turning that into an exception here would change what every
+    caller of `current_state` has to handle.
+    """
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            answer = page.evaluate(READY_JS)
+        except BrowserError:
+            return False
+        if isinstance(answer, str) and answer not in BLANK_URLS:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(SETTLE_POLL_S)
+
+
+def current_state(
+    session: BrowserSession, url: str = NEW_CHAT_URL, *, settle_s: float = SETTLE_S
+) -> PageState:
     """Probe the claude.ai tab, opening one if there is not one yet.
 
     The connection is closed again on the way out. That costs a WebSocket
@@ -98,6 +143,7 @@ def current_state(session: BrowserSession, url: str = NEW_CHAT_URL) -> PageState
     """
     page = open_claude_tab(session, url)
     try:
+        settled(page, timeout_s=settle_s)
         return probe(page, tab_count=max(len(claude_tabs(session.client)), 1))
     finally:
         page.close()
@@ -124,7 +170,14 @@ def wait_for_login(
     deadline = time.monotonic() + timeout_s
     while True:
         try:
-            state = current_state(session, url)
+            # Never longer than the wait itself has left: this poll already has
+            # a budget, and a tab that has not rendered is what it is waiting
+            # for rather than a reason to overshoot the operator's timeout.
+            state = current_state(
+                session,
+                url,
+                settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())),
+            )
         except BrowserError:
             if not session.client.responding():
                 raise

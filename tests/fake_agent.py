@@ -623,3 +623,84 @@ class ScriptedSignIn:
         if blocking is not None:
             return {"outcome": "needs_human", "needs_human_reason": blocking}
         return {"outcome": "failed", "error": "no sign-in form on the page"}
+
+
+# --------------------------------------------------------------------------- #
+# `20`'s follow-up probe, performed without an agent
+# --------------------------------------------------------------------------- #
+
+
+class ProbeBrowser(Protocol):
+    """What the probe task asks an agent, rather than a helper, to do."""
+
+    def navigate(self, url: str) -> None: ...
+
+    def submit(self, expected_ack: str) -> None: ...
+
+    def last_assistant_message(self) -> str:
+        """The snapshot the probe prompt asks for, reduced to the one message it
+        is allowed to quote (`20`: the single exception to `11`'s rule that no
+        message reaches an agent's output tokens)."""
+        ...
+
+
+PROBE_SCALARS = ("short_id", "conversation_id", "chat url", "question file", "helper")
+
+
+@dataclass
+class ScriptedProbe:
+    """`20`'s probe prompt, performed to the letter.
+
+    Proves the prompt carries the chat, the question file and the helper prefix;
+    that the question reaches the composer through `paste --seed` and never
+    through anything that types; and that the reply is read once, from the chat
+    the prompt named. Proves nothing about grading it — against a stand-in site
+    a grade is `not applicable`, never `passed`.
+    """
+
+    helper: Helper
+    browser: ProbeBrowser
+    actions: int = 0
+
+    def run(self, prompt: str) -> dict[str, Any]:
+        fields: dict[str, str] = {}
+        for line in prompt.splitlines():
+            key, separator, value = line.partition(": ")
+            if separator and key in PROBE_SCALARS:
+                fields[key] = value.strip()
+        if set(fields) != set(PROBE_SCALARS):
+            return {"outcome": "failed", "error": "the prompt does not add up"}
+        prefix = tuple(item for item in shlex.split(fields["helper"]) if item != "…")
+        conversation_id = fields["conversation_id"]
+
+        self.browser.navigate(fields["chat url"])
+        self.actions += 1
+        state = self.call(prefix, "probe")
+        if not state.get("composer_present"):
+            return self.stopped("no composer in the chat")
+        if state.get("conversation_id") != conversation_id:
+            return self.stopped("the tab is not in the chat the prompt named")
+
+        pasted = self.call(prefix, "paste", "--seed", fields["question file"])
+        if pasted.get("ok") is not True:
+            return self.stopped(f"paste answered {pasted.get('error')}")
+        self.browser.submit("")
+        self.actions += 1
+        answered = self.call(prefix, "await-response")
+        if answered.get("ok") is not True:
+            return self.stopped(f"await-response answered {answered.get('error')}")
+        return {
+            "outcome": "answered",
+            "conversation_id": conversation_id,
+            "reply": self.browser.last_assistant_message(),
+        }
+
+    def call(self, prefix: Sequence[str], *args: str) -> dict[str, Any]:
+        self.actions += 1
+        _, printed = self.helper([*prefix, *args])
+        return printed
+
+    @staticmethod
+    def stopped(detail: str) -> dict[str, Any]:
+        """Anything but `answered` carries `error`, and no message in it."""
+        return {"outcome": "failed", "error": detail}

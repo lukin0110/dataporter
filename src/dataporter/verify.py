@@ -422,10 +422,15 @@ class Verifier:
         Three cases, because `Page.navigate` returns before the page it asked
         for is the page the tab shows:
 
-        - **This chat.** Wait for a turn to render. A chat that is still drawing
-          is at the right URL with an empty transcript, and reading that moment
-          would report `history missing` — the failure of a migration rather
-          than of a page load.
+        - **This chat.** Wait for the *whole* transcript to render. A chat that
+          is still drawing is at the right URL with a transcript that is empty or
+          half there, and reading that moment would report `history missing` —
+          the failure of a migration rather than of a page load. Counting turns
+          rather than waiting for the first one is `29`'s finding: a two-part
+          conversation whose first message is 47,000 characters renders
+          progressively, and one turn was on the page a poll before the second.
+          A chat that really is short is waited out and then reported, which is
+          `verify_s` spent to tell a slow page from a missing message.
         - **Another chat.** Settled, and settled somewhere wrong. Nothing about
           it will change by waiting, so the wait ends here and `checks` reports
           `chat missing` in a second rather than in thirty. (Raised by Copilot
@@ -440,7 +445,7 @@ class Verifier:
           rather than towards calling a conversation missing.
         """
         if report.state.conversation_id == expected.conversation_id:
-            return bool(report.messages)
+            return len(report.with_role("human")) >= expected.parts
         return report.state.kind is probing.PageKind.CHAT
 
 

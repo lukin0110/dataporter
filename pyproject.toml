@@ -105,6 +105,14 @@ exclude = [
     "graft",
 ]
 
+[tool.uv.workspace]
+# `26`'s mock is a member rather than a directory: it has its own dependencies
+# (one, and it exists to mint a TLS certificate), its own tests and its own
+# README, and it imports nothing from `dataporter`. Moving it to its own
+# repository is a directory move — ADR 0003 — and this line is the only thing
+# that would have to go with it.
+members = ["mock"]
+
 [tool.ruff]
 line-length = 88
 src = ["src", "tests"]
@@ -124,7 +132,7 @@ python-version = "3.12"
 # `./spikes` is not shipped (see the sdist exclude above) but is checked: `10`'s
 # scripts import `dataporter`, and a throwaway script that no longer imports is a
 # throwaway script nobody can re-run after the next UI change.
-root = ["./src", "./spikes"]
+root = ["./src", "./spikes", "./mock/src", "./tests", "."]
 
 [tool.ty.terminal]
 output-format = "github"
@@ -134,6 +142,11 @@ unused-ignore-comment = "warn"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repository root, so that `rehearsal` imports. `29`'s package is not part of
+# the wheel and is not on the installed path; `tests/` is already importable
+# because pytest inserts it (there is no `__init__.py` there), and this is the
+# same courtesy for the one other directory the suite reads.
+pythonpath = ["."]
 # The fast half, by default. Anything that spawns a subprocess, binds a socket or
 # launches a browser is marked `slow` and deselected here, which is what makes a
 # bare `pytest` the inner-loop command: ~870 tests in about 3 seconds against
@@ -174,7 +187,11 @@ source = ["src/dataporter"]
 # and the sign-off script it does add lives in `spikes/`, which is not measured.
 # `23`: 5571/5599, 99.5%. `24`: 5897/5925, 99.5%. `25`: 5901/5929, 99.5% — the
 # only code it adds is `__main__.py`, whose `if __name__` guard is excluded below
-# because it runs in a subprocess.
+# because it runs in a subprocess. `26`-`29`: 5951/5984, 99.45% — M7 adds no
+# module to this package at all, only the three fixes its first rehearsal found
+# (`browser/session.py`, `browser/login_form.py`, `verify.py`). `mock/` and
+# `rehearsal/` are not measured here and are not meant to be: the mock has its
+# own suite (`make test-mock`) and the rehearsal is measured by running it.
 fail_under = 99
 show_missing = true
 # `python -m dataporter`'s guard runs in a subprocess, where coverage does not

@@ -61,6 +61,18 @@ class FakeTarget:
     evaluate: Any = field(default_factory=dict)
 
 
+SETTLE_EXPRESSION = "document.readyState === 'complete'"
+"""The start of both settle checks (`browser.session` and `browser.login_form`).
+
+Matched as a prefix rather than imported, because `FakeChrome` is the layer below
+the page model and knows about CDP rather than about what this tool asks a page.
+"""
+
+
+def _is_settle_check(call: "Call") -> bool:
+    return str(call.params.get("expression", "")).startswith(SETTLE_EXPRESSION)
+
+
 @dataclass
 class Call:
     """One CDP command, as received."""
@@ -282,6 +294,14 @@ class FakeChrome:
             value = target.evaluate if target is not None else None
             if callable(value):
                 value = value(call)
+            elif target is not None and _is_settle_check(call):
+                # A tab that has rendered, which is what a fake target is unless
+                # a test says otherwise: `07`'s probe waits for the document
+                # before reading it, and a target whose `evaluate` is a fixed
+                # answer would otherwise wait the whole of that budget for a
+                # page it is already showing. A test that wants a tab still
+                # loading uses `fake_composer.FakePage.loading_for`.
+                value = target.url
             return {"result": {"result": {"value": value}}}
         if call.method == "Page.navigate":
             if target is not None:

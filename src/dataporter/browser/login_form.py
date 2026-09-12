@@ -92,6 +92,17 @@ def focus_field_js(selector: str) -> str:
     )
 
 
+SETTLED_JS = "document.readyState === 'complete'"
+"""Whether the page has finished loading.
+
+A form step that submits by navigating — which is what a plain `<form>` does —
+leaves a moment in which the document is blank and neither field is visible.
+Reading the fields in that moment says "this page is asking for something I do
+not have", which is the one answer that stops an unattended run for a person.
+So a page that has not settled is "not yet", not an answer. (Found by `29`'s
+first rehearsal, against a mock whose sign-in steps are two POSTs.)
+"""
+
 MAX_ROUNDS = 3
 """Email, then password, then one more look: a form that still wants something
 after that wants something this module does not have."""
@@ -170,16 +181,18 @@ def _await_change(
     while True:
         target = _login_tab(session, surface)
         if target is not None:
+            settled = True
             try:
                 with helpers.driving(session.client, target, surface) as page:
                     if probe.probe(page).logged_in:
                         return True, Fields()
+                    settled = page.evaluate(SETTLED_JS) is True
                     now = _fields(page)
             except BrowserError:
                 if not session.client.responding():
                     raise
                 now = before
-            if now != before:
+            if settled and now != before:
                 return False, now
         remaining = deadline - time.monotonic()
         if remaining <= 0:

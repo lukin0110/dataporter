@@ -9,7 +9,12 @@
 
 This is the file that
 [`browser/probe.py`](../src/dataporter/browser/probe.py) and
-[`11`](../specs/impl/11-skill.md)'s skill are corrected against. Every selector and label
+[`11`](../specs/impl/11-skill.md)'s skill are corrected against — and, since
+[`26`](../specs/impl/26-mock-claude.md), the file the mock claude.ai is built
+out of: every state the mock can show is a row below, cited in its `uimap.py`,
+and a behaviour it needs that has no row here is added here first, marked
+*unknown*. **A mock run never turns an *unknown* into an *observed***. Only a
+person watching claude.ai does that. Every selector and label
 below is either something a human watched the page do — `*observed on <date>*` — or the
 informed guess `08` shipped with, which is `*unknown*` until somebody looks. Nothing here
 is a design decision; when the map and the code disagree, the map wins and the code
@@ -89,7 +94,7 @@ when someone watched that exact signal appear.
 | `generation failed` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
 | `every message` | `[data-testid="user-message"], [data-testid="assistant-message"]`, visible, in document order — `17`'s `probe --messages` reads the whole transcript this way and reports a role, a length and which of the caller's own strings each turn contains | not yet looked at | *unknown* |
 | `chat title` | the first visible match of `[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], header h1, header h2`, else `document.title`; whitespace squashed, compared in the page against the caller's `--expect-title` | not yet looked at | *unknown* |
-| `rename affordance` | nothing in the code: `17` asks Hermes to find "the chat's own menu" and its rename control by looking, because this document has no label to quote. What the tool checks is the row above — whether the title changed — never how it was changed | not yet looked at | *unknown* |
+| `rename affordance` | nothing in the code: `17` asks Hermes to find "the chat's own menu" and its rename control by looking, because this document has no label to quote. What the tool checks is the row above — whether the title changed — never how it was changed. `26`'s mock serves the simplest shape that description admits — a menu that opens from the title trigger, a rename control in it, and a text field that takes a new name — and `27`'s scripted agent, which cannot look, drives that shape by id | not yet looked at | *unknown* |
 
 Every selector in the middle column has exactly one spelling in the source, in
 `probe.py`'s `_SELECTORS` and the two expression bodies beside it, so correcting a row here

@@ -1,9 +1,9 @@
-.PHONY: lint check check-all fmt test test-all install
+.PHONY: lint check check-all fmt test test-all test-mock install
 
 lint:
-	uv run ruff check src tests spikes
-	uv run ruff format --check src tests spikes
-	uv run ty check --error-on-warning src spikes
+	uv run ruff check src tests spikes rehearsal mock
+	uv run ruff format --check src tests spikes rehearsal mock
+	uv run ty check --error-on-warning src spikes rehearsal mock/src
 
 # What a developer runs, and what CI runs on a pull request: lint, types, and the
 # fast half of the suite. The slow half — anything that spawns a subprocess,
@@ -11,7 +11,7 @@ lint:
 # pyproject.toml. `15` is what made four minutes worth splitting; `22` is what
 # made the other half quick, and the split stays as a safety rail rather than a
 # necessity.
-check: lint test
+check: lint test test-mock
 
 # Everything, plus the coverage gate. CI runs this on `main` after a merge, and
 # it is the only command that measures coverage: `fail_under = 99` is checked
@@ -21,6 +21,14 @@ check-all: lint test-all
 
 test:
 	uv run pytest
+
+# `26`'s mock is a separate project with its own dependency, its own tests and
+# its own pytest configuration, so it is a second invocation rather than another
+# testpath. A second is what it costs; it binds a socket and speaks TLS for every
+# test in it, and `make check` runs it because a mock that has stopped behaving
+# like claude.ai is a rehearsal that proves nothing.
+test-mock:
+	uv run --package claude-mock pytest mock
 
 # `-m "slow or not slow"` rather than `-m ""`: both clear the default selection,
 # but only this one relies on the documented expression grammar, and it reads as
@@ -35,10 +43,11 @@ test:
 # A one-off can always ask: `uv run pytest -m "slow or not slow" -n auto`.
 test-all:
 	uv run pytest -m "slow or not slow" --cov --cov-report=term-missing -n auto
+	uv run --package claude-mock pytest mock
 
 fmt:
-	uv run ruff format src tests spikes
-	uv run ruff check --fix src tests spikes
+	uv run ruff format src tests spikes rehearsal mock
+	uv run ruff check --fix src tests spikes rehearsal mock
 
 install:
-	uv sync
+	uv sync --all-packages

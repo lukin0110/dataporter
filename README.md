@@ -251,12 +251,33 @@ make fmt
 where the shape came from: `cli.py` parses flags and exits, and every command's body is a
 function in the module that owns the domain.
 
-`make check` is about four seconds and `make check-all` about twenty-five; the second one
+`make check` also runs the mock's own tests, which are a second on top of its four;
+`make check-all` is about twenty-five; the second one
 runs the suite across every core. The `check`/`check-all` line is the `slow` marker —
 anything that spawns a subprocess, binds a socket or launches a browser — so a pull
 request is never gated on a browser. The tests that drive a *real* one are skipped unless
 there is one to drive: `DATAPORTER_TEST_BROWSER=/path/to/chrome uv run pytest -m live`
 runs those eighteen against whatever Chrome or Chromium you point it at.
+
+### Rehearsing it
+
+You do not need a Claude account to run the whole tool end to end. `mock/` is a served
+stand-in for claude.ai — its own project, one dependency, no model behind it — and
+`rehearsal/` runs the full run's protocol against it with a model-free agent standing
+where Hermes stands:
+
+```sh
+uv run --package claude-mock claude-mock serve        # in one terminal
+uv run python -m rehearsal.run --root /tmp/rehearsal  # in another
+```
+
+The mock prints the two Chrome arguments that point a browser at it; the tool itself has
+no setting that names it, so a rehearsal proves the code that ships or it proves nothing.
+What comes out is §25's pass criteria, reconciled against the mock's own count of what it
+was asked to do, and — with `--record docs/rehearsal-NN.md` — a record like
+[`docs/rehearsal-01.md`](docs/rehearsal-01.md). It is **not** evidence about claude.ai:
+see [`specs/02-claude-mock.md`](specs/02-claude-mock.md) §27 and
+[`mock/README.md`](mock/README.md).
 
 [`specs/README.md`](specs/README.md) is the map: what each slice is, what is `Done`, and
 which brief section it satisfies. Start there rather than here.

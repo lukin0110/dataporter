@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from dataporter.browser import helpers, probe
+from dataporter.browser import helpers, login_form, probe, session
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from fake_chrome import Call, FakeChrome, FakeTarget
@@ -83,6 +83,16 @@ class FakePage:
     title: str | None = None
     """The chat's displayed title. `None` is the same stand-in: a chat called
     whatever the caller expected it to be called."""
+
+    loading_for: int = 0
+    """How many looks the page spends still loading (`07`'s `settled`).
+
+    A tab a browser has just been launched with has not rendered yet, and a page
+    with no composer on it reads as a session that has expired — so `session`
+    waits for the document. `0` is a page that is already there; a number is a
+    page that answers `document.readyState === 'complete'` only after that many
+    asks.
+    """
 
     follows_navigation: bool = True
     """Whether a `Page.navigate` moves this page. `False` is a chat that is not
@@ -165,6 +175,14 @@ class FakePage:
     def evaluate(self, expression: str) -> Any:
         if expression == "location.href":
             return self.url
+        if expression in (session.READY_JS, login_form.SETTLED_JS):
+            # The two settle checks: `07`'s, which answers the URL once the
+            # document has finished loading, and `24`'s, which answers whether
+            # it has. A page mid-navigation says no to both.
+            if self.loading_for > 0:
+                self.loading_for -= 1
+                return False
+            return self.url if expression == session.READY_JS else True
         if probe.PAGE_REPORT_TAG in expression:
             expect = js_const(expression, "expect")
             return {
