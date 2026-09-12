@@ -260,6 +260,11 @@ dataporter session logout --account old-personal
 
 ```
 
+`login`, `session status` and `session logout` do not take an account today: they mean
+the destination, and they go on meaning it when the option is absent. Naming an account
+is what this brief adds to them; how the option is spelled and where the source
+profile lives are the slice's to decide.
+
 The rules of §8 hold for the source exactly as for the destination: interactively the
 person signs in themselves in the window the tool opens; non-interactively the operator
 may hand the tool the source account's credentials for one invocation, and the tool keeps
