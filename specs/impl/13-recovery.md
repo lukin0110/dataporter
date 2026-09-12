@@ -108,6 +108,19 @@ Resolved while building:
   So a conversation that has already had three goes gets one more per invocation rather
   than three more — an operator asking for it again is never silently refused, and a
   conversation nobody asked about is never tried a fourth time on its own.
+- **The loop is tenacity's; the numbers are ours.** `_migrate` builds one `Retrying`
+  per conversation: `retry` is `Attempt.retryable`, `stop` and `wait` read `tried` —
+  §7's cumulative `attempts` less the deferrals `14` and `15` spared this run — and
+  `before_sleep` is `_announce_retry`, so the library owns the order retry → stop →
+  wait → announce → sleep and none of the arithmetic. Its own `attempt_number` starts
+  at one on every call and is never read, because the budget is measured across runs.
+  `14`'s asks and `15`'s waits live in `_settle`, *inside* the function tenacity
+  retries, so a deferral never reaches the predicate and never spends an attempt.
+  `retry_error_callback` is `_exhausted`, so exhaustion is a record and not an
+  exception; a raised outcome never satisfies `retry_if_result`, so anything about the
+  run comes back out unchanged. Inside the library the wait is computed before the stop
+  is checked, one pure call of `backoff_for` more than the loop it replaced; nothing
+  shows. `sleep=pause` keeps every wait behind the seam `tests/world.py` records.
 - **Every `failed` row is really `failed` *or* `partial`, and the skill now says so.**
   The table this slice inherited wrote `failed` flat for the click, composer,
   network, navigation and surface rows, but `12` already resolved the question

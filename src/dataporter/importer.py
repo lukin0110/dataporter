@@ -63,10 +63,12 @@ take the screen, a run stopping — and reading the counts it hands over from
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
+
+from tenacity import RetryCallState, Retrying, retry_if_result
 
 from dataporter import PROGRAM_NAME, log, render, signin, state, summary
 from dataporter import intervention as intervening
@@ -582,6 +584,19 @@ def backoff_for(retries: RetrySettings, attempt: int) -> float:
     return schedule[min(max(attempt, 1), len(schedule)) - 1]
 
 
+def settled(retry_state: RetryCallState) -> Attempt:
+    """The attempt tenacity is deciding about, as the type it is.
+
+    `RetryCallState.outcome` is `None` before the first attempt and a `Future`
+    of `Any` after it; every callback `_migrate` registers runs after, and none
+    of them should have to say so twice.
+    """
+    outcome = retry_state.outcome
+    if outcome is None:  # pragma: no cover - tenacity sets it before any callback
+        raise RuntimeError("no attempt has been made yet")
+    return outcome.result()
+
+
 @dataclass
 class FailureStreak:
     """`13`'s circuit breaker: how many conversations in a row failed alike.
@@ -656,6 +671,27 @@ class RateLimitWaits:
     def reset(self) -> None:
         """The count has been spent on an ask, and starts again from there."""
         self.waits = 0
+
+
+@dataclass
+class Deferrals:
+    """What one conversation was waited for that was not a failure: `15`'s
+    waits and `14`'s asks, this run, and how many of them there were.
+
+    `spared` is the discount `13`'s budget applies. Every attempt increments
+    §7's `attempts`, which is what `max_attempts` is measured against, so
+    without it a conversation a person unblocked twice — or one the account
+    made wait twice — would have spent its retries on being helped, and
+    `_exhausted` would then write `retry_recommended: false` about a failure
+    that is nothing of the kind. `13` counts attempts a failure caused; the
+    ones a person did and the ones a clock did are discounted here. Only this
+    run's: §7's count is cumulative and records no reason, so a deferral in an
+    earlier run is still counted against the budget in this one, which errs
+    towards trying less rather than more.
+    """
+
+    waits: RateLimitWaits = field(default_factory=RateLimitWaits)
+    spared: int = 0
 
 
 def _why_asking(seconds: float | None, count: int, *, too_long: bool) -> str:
@@ -1230,43 +1266,99 @@ class Importer:
         `14` because both are the same shape — an attempt nobody failed, followed
         by another attempt at the same conversation.
 
-        `spared` is what keeps the budgets apart. Every attempt increments §7's
-        `attempts`, which is what `13` measures `max_attempts` against, so
-        without it a conversation a person unblocked twice — or one the account
-        made wait twice — would have spent its retries on being helped, and
-        `_exhausted` would then write `retry_recommended: false` about a failure
-        that is nothing of the kind. `13` counts attempts a failure caused; the
-        ones a person did and the ones a clock did are discounted here. Only this
-        run's: §7's count is cumulative and records no reason, so a deferral in
-        an earlier run is still counted against the budget in this one, which
-        errs towards trying less rather than more.
+        tenacity owns the shape of the loop and none of its numbers. `_settle`
+        is what it retries, so it only ever sees an attempt nobody deferred:
+        `14`'s and `15`'s doors are inside that function, and `Deferrals` is
+        how many times they were walked through. Its `retry` is `retryable`,
+        and its `stop`, `wait` and announcement all read `tried` — §7's
+        cumulative `attempts` less what was spared — rather than its own
+        per-call `attempt_number`, because `13` measures the budget across
+        runs and tenacity's counter starts at one every time. Inside the
+        library the wait is computed before the stop is checked, so
+        `backoff_for` is asked once more on the exhausted path than the old
+        loop asked it; it is pure, and nothing shows. `retry_error_callback`
+        is `_exhausted`, so a spent budget is a record and not a `RetryError`;
+        anything `_settle` raises is about the run and comes back out
+        unchanged, since a raised outcome never satisfies `retry_if_result`.
+        `sleep=pause` is the seam the tests record, bound here and not at
+        import so that the seam they patch is the one that is called.
         """
         budget = self.settings.retries
-        spared = 0
-        waits = RateLimitWaits()
-        # Whether the attempt about to be made would count as a retry in
-        # `run.json`. True to begin with, because an entry that already has an
-        # attempt behind it is being tried again — `--retry-partial` over an
-        # earlier run's chat is a retry and always was. It goes false only for
-        # the attempt that follows a wait or an ask, which are `15`'s and `14`'s
-        # counters rather than `13`'s, and `19` reports the three apart.
+        uuid = conversation.uuid
+        deferrals = Deferrals()
+
+        def tried(retry_state: RetryCallState) -> int:
+            # What `13` counts: attempts this conversation spent on a failure.
+            # It is the budget, the backoff's index and the number the waiting
+            # line prints, all three, because all three mean "which retry".
+            return settled(retry_state).attempts - deferrals.spared
+
+        def announce(retry_state: RetryCallState) -> None:
+            self._announce_retry(
+                uuid,
+                settled(retry_state),
+                retry_state.upcoming_sleep,
+                budget.max_attempts,
+                tried(retry_state),
+            )
+
+        retrying = Retrying(
+            sleep=pause,
+            retry=retry_if_result(lambda attempt: attempt.retryable),
+            stop=lambda retry_state: tried(retry_state) >= budget.max_attempts,
+            wait=lambda retry_state: backoff_for(budget, tried(retry_state)),
+            before_sleep=announce,
+            retry_error_callback=lambda retry_state: self._exhausted(
+                uuid, settled(retry_state)
+            ),
+        )
+        return retrying(
+            self._settle, conversation, deferrals, position=position, total=total
+        )
+
+    def _settle(
+        self,
+        conversation: Conversation,
+        deferrals: Deferrals,
+        *,
+        position: int,
+        total: int,
+    ) -> Attempt:
+        """Attempt, and attempt again through `14`'s and `15`'s doors, until a
+        try ends in an outcome that is this conversation's own.
+
+        What tenacity is handed. It sees a conversation only once nobody has
+        deferred it, so a `rate_limited` result or a `needs_human` ask never
+        reaches its `retry` predicate and never touches `13`'s budget. Both
+        doors are the same shape — an attempt nobody failed, followed by
+        another attempt at the same conversation — and every pass through one
+        is written into `deferrals.spared`, which is the budget's discount.
+
+        `counted` is whether the attempt about to be made would count as a
+        retry in `run.json`. True on entry, because tenacity calls this again
+        only after a failure, and an entry that already has an attempt behind
+        it is being tried again — `--retry-partial` over an earlier run's chat
+        is a retry and always was. It goes false only for the attempt that
+        follows a wait or an ask, which are `15`'s and `14`'s counters rather
+        than `13`'s, and `19` reports the three apart.
+        """
         counted = True
         while True:
             attempt = self._attempt(
                 conversation, position=position, total=total, counted=counted
             )
-            counted = True
             if attempt.rate_limited:
                 # A wait, or — too long, or too often — an ask.
                 request = self._rate_limited(
-                    conversation.uuid, attempt, waits, position=position, total=total
+                    conversation.uuid,
+                    attempt,
+                    deferrals.waits,
+                    position=position,
+                    total=total,
                 )
                 if request is not None:
                     self._intervene(request)
-                spared += 1
-                counted = False
-                continue
-            if attempt.request is not None:
+            elif attempt.request is not None:
                 # `24` first: a login expiry in an unattended run is the tool's
                 # to clear, and only when it cannot does the ask go any further.
                 # Then `14`: raises to end the run if there is nobody to ask, or
@@ -1275,22 +1367,10 @@ class Importer:
                 # successful step.
                 if not (self._machine_can_clear(attempt.request) and self._sign_in()):
                     self._intervene(attempt.request)
-                spared += 1
-                counted = False
-                continue
-            if not attempt.retryable:
+            else:
                 return attempt
-            # What `13` counts: attempts this conversation spent on a failure.
-            # It is the budget, the backoff's index and the number the waiting
-            # line prints, all three, because all three mean "which retry".
-            tried = attempt.attempts - spared
-            if tried >= budget.max_attempts:
-                return self._exhausted(conversation.uuid, attempt)
-            wait = backoff_for(budget, tried)
-            self._announce_retry(
-                conversation.uuid, attempt, wait, budget.max_attempts, tried
-            )
-            pause(wait)
+            deferrals.spared += 1
+            counted = False
 
     def _attempt(
         self,

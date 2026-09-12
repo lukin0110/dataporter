@@ -230,7 +230,9 @@ Assumptions, not brief requirements. Change them here and the slices follow.
 - **Language / runtime:** Python ≥ 3.12, managed with `uv`. `pydantic` v2 for every model
   that crosses a boundary (export, plan, seeds, state, Hermes results, config).
   `pydantic-settings` for configuration. `typer` for the CLI with plain `print` output —
-  no `rich`, no colour, because the output formats are golden strings.
+  no `rich`, no colour, because the output formats are golden strings. `tenacity` for
+  `13`'s retry loop, and only its loop — the budget, the backoff and the deferral
+  discount are the tool's own arithmetic.
 - **`pydantic-ai`:** not a runtime dependency. Hermes is the agent; a second agent loop is
   not needed. It is used once, optionally, in `20` as a semantic-fidelity judge behind the
   `judge` extra. If that stays useful it gets its own slice; if not, it is removed. `20`
