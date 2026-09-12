@@ -9,9 +9,15 @@ Two kinds of document live here, and they are not interchangeable.
 | **Audience** | Anyone deciding whether this is the right experiment | Whoever is building the next slice |
 | **Voice** | Requirements and outcomes | Commands, flags, files, types, schemas, golden outputs |
 | **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands, marked `Done` when shipped |
-| **Numbering** | Section numbers are permanent identifiers, cited as §N | Slice numbers, cited as `NN` |
+| **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
 | **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are treated as golden strings | Normative |
+
+There are two briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19) and
+[`02-claude-mock.md`](02-claude-mock.md) (§20–§28). Section numbers continue across them,
+so `§N` names one section anywhere in the repository
+([ADR 0002](../docs/adr/0002-section-numbers-continue-across-briefs.md)). The words the
+briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
 
 The rule that keeps them apart: **if it could change without changing what we are trying to
 achieve, it belongs in `impl/`.** A retry budget, a JSON field, a package name, a CSS
@@ -27,6 +33,7 @@ requirement with no slice pointing at it is visibly unbuilt.
 ```text
 specs/
 ├── 01-initial-brief.md   the briefing — intent, stable
+├── 02-claude-mock.md     the rehearsal brief — intent, stable
 ├── README.md             this file — index, sequence, shared decisions
 └── impl/
     ├── _template.md      the shape every implementation spec follows
@@ -78,6 +85,9 @@ Tooling — no milestone, may land at any time
 
 M6 — Operability
   24  Non-interactive mode: credentials, an agentic sign-in, headless Chrome, never a keypress
+
+M7 — Rehearsal (brief 02, §20–§28)
+  slices not yet carved
 ```
 
 ## Dependencies
@@ -156,10 +166,11 @@ still reporting what is true rather than what the plan hoped: `20` and `21` are 
 unrun, and a column that said otherwise would be the one claim the experiment exists to
 make honestly. `docs/experiment-02.md` holds the section the sweep is recorded in.
 
-Every brief section §2–§19 is claimed by at least one slice. §1 is the goal and is claimed
-by all of them. `22`, `23` and `25` claim none: they are the slices that exist because of
-how the repo is worked on and how it is consumed rather than because of what the brief
-asks for, and they are outside the milestone gates for the same reason.
+Every section §2–§19 of the first brief is claimed by at least one slice. §1 is the goal
+and is claimed by all of them. Sections §20–§28 of the second brief are claimed by none
+yet; M7 exists to change that. `22`, `23` and `25` claim none: they are the slices that
+exist because of how the repo is worked on and how it is consumed rather than because of
+what the brief asks for, and they are outside the milestone gates for the same reason.
 
 ## Working rules
 
@@ -173,6 +184,8 @@ asks for, and they are outside the milestone gates for the same reason.
   that reproduces it and a test compares bytes.
 - **Copy the template.** `impl/_template.md` is the shape; keeping it uniform is what makes
   the set skimmable.
+- **Words come from `CONTEXT.md`.** A term a document needs and the glossary lacks is
+  added there first.
 
 ## Shared decisions
 
