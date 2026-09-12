@@ -11,6 +11,9 @@ are tested where they live, against a fake page, in `test_skill_dry_run.py`,
 """
 
 import json
+import subprocess
+import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -448,6 +451,58 @@ def test_the_two_arguments_the_mock_printed_are_the_whole_of_the_way_in() -> Non
     # Never the blanket one: a rehearsal browser that trusted every certificate
     # would be a much larger thing to switch off.
     assert "--ignore-certificate-errors" not in arguments
+
+
+def test_the_config_names_a_browser_only_when_one_was_named(tmp_path: Path) -> None:
+    """Left out, the tool runs its own discovery; written empty, it would be read
+    as `Path(".")` and refused. (Raised by Copilot in review on #36.)"""
+    settings = running.Settings(root=tmp_path, mode="non-interactive", cdp_port=9333)
+    without = running.config_text(settings, pin="PIN=", attachments=tmp_path / "a")
+    assert "executable" not in without
+    assert "cdp_port = 9333" in without
+    named = running.Settings(
+        root=tmp_path, mode="non-interactive", chrome="/opt/chromium", cdp_port=9333
+    )
+    with_chrome = running.config_text(named, pin="PIN=", attachments=tmp_path / "a")
+    assert 'executable = "/opt/chromium"' in with_chrome
+    # Either way, the two lines the mock printed are there and no blanket trust is.
+    for text in (without, with_chrome):
+        assert "--host-resolver-rules=MAP claude.ai 127.0.0.1:8443" in text
+        assert "--ignore-certificate-errors-spki-list=PIN=" in text
+        assert '--ignore-certificate-errors"' not in text
+
+
+@pytest.mark.slow
+def test_a_run_the_drill_could_not_kill_is_still_bounded() -> None:
+    """`finish` never waits past its bound: a tool that hung would otherwise take
+    the whole rehearsal down with it. (Raised by Copilot in review on #36.)"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    started = time.monotonic()
+    _, _, timed_out = running.finish(process, timeout_s=0.3)
+    assert timed_out
+    assert process.returncode is not None
+    assert time.monotonic() - started < 5.0
+
+
+@pytest.mark.slow
+def test_a_run_that_ends_in_time_is_not_reported_as_timed_out() -> None:
+    """Marked `slow` for what it does — spawn a process — not for how long it
+    takes (`tests/conftest.py`)."""
+    process = subprocess.Popen(
+        [sys.executable, "-c", "print('done')"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    stdout, _, timed_out = running.finish(process, timeout_s=30.0)
+    assert (stdout.strip(), timed_out) == ("done", False)
 
 
 def test_the_record_carries_a_mark_on_every_number(tmp_path: Path) -> None:

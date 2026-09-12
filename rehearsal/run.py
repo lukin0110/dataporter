@@ -123,8 +123,7 @@ CONFIG = """\
 # write: the tool has no setting that names the mock (§22).
 
 [browser]
-executable = {executable}
-headless = {headless}
+{executable}headless = {headless}
 cdp_port = {cdp_port}
 extra_args = [
 {extra_args}
@@ -230,28 +229,42 @@ def prepare(settings: Settings) -> dict[str, Any]:
     export, attachments = exporting.build(settings.root)
     settings.workspace.mkdir(parents=True, exist_ok=True)
     pin = spki_pin(settings.host, settings.port)
-    executable = settings.chrome or shutil.which("google-chrome") or ""
-    arguments = chrome_args(settings, pin)
     (settings.workspace / "config.toml").write_text(
-        CONFIG.format(
-            executable=json.dumps(executable),
-            headless=json.dumps(settings.headless),
-            cdp_port=settings.cdp_port or free_port(),
-            extra_args="".join(f"  {json.dumps(item)},\n" for item in arguments).rstrip(
-                "\n"
-            ),
-            hermes_home=json.dumps(str(settings.root / "hermes-home")),
-            attachments=json.dumps(str(attachments)),
-            delay=settings.delay_s,
-            parts_delay=settings.parts_delay_s,
-            response_s=settings.response_s,
-        ),
-        encoding="utf-8",
+        config_text(settings, pin=pin, attachments=attachments), encoding="utf-8"
     )
     write_executable(
         settings.bin, repo=repo_root(), state=settings.bin / "profile.json"
     )
     return {"export": export, "attachments": attachments, "pin": pin}
+
+
+def config_text(settings: Settings, *, pin: str, attachments: Path) -> str:
+    """The `config.toml` an operator could have written.
+
+    `browser.executable` is written only when `--chrome` named one. Left out, the
+    tool runs its own discovery over the browsers it knows; written empty, it
+    would be read as `Path(".")` and refused as "configured browser executable
+    not found: ." — a confusing failure for a rehearsal on a machine whose
+    Chrome is on the path under a name this runner never had to know. (Raised by
+    Copilot in review on #36.)
+    """
+    executable = (
+        f"executable = {json.dumps(settings.chrome)}\n" if settings.chrome else ""
+    )
+    arguments = chrome_args(settings, pin)
+    return CONFIG.format(
+        executable=executable,
+        headless=json.dumps(settings.headless),
+        cdp_port=settings.cdp_port or free_port(),
+        extra_args="".join(f"  {json.dumps(item)},\n" for item in arguments).rstrip(
+            "\n"
+        ),
+        hermes_home=json.dumps(str(settings.root / "hermes-home")),
+        attachments=json.dumps(str(attachments)),
+        delay=settings.delay_s,
+        parts_delay=settings.parts_delay_s,
+        response_s=settings.response_s,
+    )
 
 
 def environment(settings: Settings) -> dict[str, str]:
@@ -395,7 +408,16 @@ class Runner:
                 killed = True
                 break
             time.sleep(DRILL_POLL_S)
-        stdout, stderr = process.communicate()
+        stdout, stderr, timed_out = finish(process, timeout_s=STEP_TIMEOUT_S)
+        if killed:
+            note = "SIGKILL mid-conversation"
+        elif timed_out:
+            note = (
+                f"no message reached the mock in {DRILL_TIMEOUT_S:g}s and the run "
+                f"did not end in {STEP_TIMEOUT_S:g}s: killed"
+            )
+        else:
+            note = "was not killed in time"
         outcome = Outcome(
             name=name,
             argv=tuple(argv),
@@ -403,7 +425,7 @@ class Runner:
             seconds=round(time.monotonic() - started, 1),
             stdout=stdout,
             stderr=stderr,
-            note="SIGKILL mid-conversation" if killed else "was not killed in time",
+            note=note,
             deliberate=killed,
         )
         self.steps.append(outcome)
@@ -415,6 +437,26 @@ class Runner:
             f"  — the killed run: {_counts(self.drill)}"
         )
         return outcome
+
+
+def finish(
+    process: subprocess.Popen[str], *, timeout_s: float
+) -> tuple[str, str, bool]:
+    """Collect a process's output, and never wait longer than `timeout_s`.
+
+    A run the drill did not get to kill — nothing reached the mock inside the
+    kill window — still has to end inside the same bound every other step has,
+    or a tool that has hung takes the whole rehearsal down with it. Past the
+    bound the process group is killed, as the drill would have killed it, and
+    the third value says so. (Raised by Copilot in review on #36.)
+    """
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        stdout, stderr = process.communicate()
+        return stdout, stderr, True
+    return stdout, stderr, False
 
 
 def _counts(counted: Mapping[str, int]) -> str:
