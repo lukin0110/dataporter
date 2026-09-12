@@ -13,8 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dataporter import PROGRAM_NAME, log
+from dataporter.browser import launcher
 from dataporter.browser.cdp import CdpClient, Page, Target
-from dataporter.browser.launcher import BrowserSession, PortInUse, adopt, launch
+from dataporter.browser.launcher import BrowserSession, PortInUse
 from dataporter.browser.probe import CLAUDE_HOST, NEW_CHAT_URL, PageState, probe
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
@@ -219,10 +220,21 @@ def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
     instruction to the person at the keyboard, and it is the only thing this
     command asks of them. A wait that runs out is `AuthError`, exit `3`.
     """
+    from dataporter import signin
+
+    if settings.non_interactive:
+        signin.require_credentials(settings)
     log.enable_run_log(settings.workspace)
-    browser = launch(settings, NEW_CHAT_URL)
+    # Through the module, not a bound name: the test suite substitutes
+    # `launcher.launch` to hand a command a fake Chrome.
+    browser = launcher.launch(settings, NEW_CHAT_URL)
     try:
-        if not signed_in(browser):
+        if settings.non_interactive:
+            # `24`: the tool signs in, or says what a person would have to do.
+            # No prompt, because nobody is reading one; the same last line,
+            # because a CI log is read the way a terminal is.
+            signin.ensure_signed_in(settings, browser)
+        elif not signed_in(browser):
             sink.line(LOGIN_PROMPT)
             arrived = wait_for_login(browser, timeout_s=settings.timeouts.login_s)
             if arrived is None:
@@ -249,14 +261,14 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
     )
     # Raises `PortInUse` when the port answers and the browser on it is not
     # ours, which is the right answer to "what is my session doing" as well.
-    running = adopt(client, settings.browser_profile_dir)
+    running = launcher.adopt(client, settings.browser_profile_dir)
     if running is None and not settings.browser_profile_dir.exists():
         # No profile and no browser: there is nothing that could be signed in,
         # and starting Chrome to be told so would cost ten seconds and a window.
         sink.line(SIGNED_OUT)
         return StatusOutcome(signed_in=False, exit_code=ExitCode.NOT_AUTHENTICATED)
 
-    browser = running or launch(settings, NEW_CHAT_URL)
+    browser = running or launcher.launch(settings, NEW_CHAT_URL)
     try:
         answer = signed_in(browser)
     finally:

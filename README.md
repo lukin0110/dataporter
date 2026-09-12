@@ -45,8 +45,12 @@ drives will not:
 It also never deletes anything at the destination. A conversation migrated twice leaves
 two chats, and the old one's id is kept in `run.json` rather than tidied away.
 
-The tool never sees your Claude password (§8): you sign in yourself, in a browser window
-it opens. It never reads the API key Hermes uses; that is Hermes's own `.env`.
+Interactively the tool never sees your Claude password (§8): you sign in yourself, in a
+browser window it opens. Unattended (`--non-interactive`, `24`) you hand it the
+destination account's email and password for one run, through the environment or a file;
+it keeps them in memory, types them into the sign-in form itself, and never writes them
+to a file, a log, a prompt or the agent. It never reads the API key Hermes uses; that is
+Hermes's own `.env`.
 
 ## Requirements
 
@@ -120,8 +124,26 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 | `followup` / `judge` | The pilot's semantic probe, and the optional model grade for it. |
 
 Global options go before the subcommand: `--workspace PATH`, `--verbose`, `--quiet`,
-`--version`. Configuration is `<workspace>/config.toml`, `HCM_…` environment variables and
-flags, in that order of precedence, ending at the flags.
+`--version`, and `24`'s `--non-interactive`, `--email EMAIL`, `--password-file PATH`.
+Configuration is `<workspace>/config.toml`, `HCM_…` environment variables and flags, in
+that order of precedence, ending at the flags — except the mode and the credentials, which
+`config.toml` may not carry.
+
+## Running unattended
+
+```sh
+export HCM_NON_INTERACTIVE=1 HCM_AUTH__EMAIL=you@example.com HCM_AUTH__PASSWORD=…
+hermes-claude-migrate login                                  # signs in, closes Chrome
+hermes-claude-migrate import <export> --all --limit 50       # signs in again if it must
+```
+
+In this mode Chrome runs without a window, `login` and `import` sign in from the
+credentials — Hermes brings the page to the form, and the tool types into it from its own
+process, so the agent never holds the password — and nothing waits for a keypress: a page
+only a person can clear is recorded as a pause and the run exits `5`, for `resume` to pick
+up. Missing credentials are exit `2` before a browser starts. An account whose sign-in is
+an emailed code, a CAPTCHA or a challenge cannot be signed in unattended; the run says so
+and stops. [`docs/runbook.md`](docs/runbook.md) has the exit codes and the details.
 
 ## Where your conversations end up
 

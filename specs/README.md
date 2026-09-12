@@ -147,7 +147,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | In progress |
 | [22](impl/22-test-performance.md) | Test performance | — tooling | Done |
 | [23](impl/23-library-operations.md) | Library operations | — tooling | Done |
-| [24](impl/24-non-interactive.md) | Non-interactive mode | §8 (amended), §12 | Not started |
+| [24](impl/24-non-interactive.md) | Non-interactive mode | §8 (amended), §12 | Done |
 
 `21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
 still reporting what is true rather than what the plan hoped: `20` and `21` are built and
@@ -195,6 +195,7 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   with a dedicated `--user-data-dir` inside the workspace and a remote-debugging port on
   `127.0.0.1`. Hermes attaches over CDP. The operator's everyday browser profile is never
   touched, so the source account's login can never leak into the destination session.
+  Headed by default; headless under `--non-interactive` or `browser.headless` (`24`).
 - **Division of labour:** Hermes makes the adaptive decisions (find the composer, decide
   the page is in the expected state, recover from surprises). Our helper commands make the
   deterministic moves whose exactness matters (insert a 40 kB seed byte-for-byte, upload a
@@ -213,8 +214,12 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   them. `20` adds one more content-bearing workspace file, `pilot/probes.json`, which holds
   the probe replies a person grades; it is written, never printed and never logged, and it
   is the only place in the tool where a message Claude wrote is recorded.
-- **Secrets:** the tool never sees a Claude password (§8). It also never reads or stores the
-  API key Hermes uses; that is Hermes's `.env`.
+- **Secrets:** interactively the tool never sees a Claude password (§8). Unattended (`24`)
+  it holds the destination account's email and password in memory for one invocation,
+  from the environment or a file and never from `config.toml`, types them into the form
+  from its own process, and never writes, logs, prints or hands them to the agent — the
+  Hermes environment is built without them. It also never reads or stores the API key
+  Hermes uses; that is Hermes's `.env`.
 - **Fast and slow tests:** the suite is split by a `slow` marker — anything that spawns a
   subprocess, binds a socket or launches a browser. `make check` runs lint, types and the
   fast half (~870 tests, about three seconds) and is what CI runs on a pull request;

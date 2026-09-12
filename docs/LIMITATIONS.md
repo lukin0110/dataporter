@@ -171,6 +171,15 @@ Not a limitation list — the target. `20` measures it with the six §18 questio
 optionally, the `judge` extra. Anything it finds that the UI cannot be made to do lands
 here.
 
+## Unattended runs (`24`)
+
+- **Password sign-in only.** An unattended run signs in with an email address and a
+  password. An account whose sign-in is an emailed code, a passkey, Google or Apple, or
+  which meets a CAPTCHA or a security challenge, cannot be signed in without a person: the
+  run records an `auth_required` pause and exits `5` (or `3` before anything started), and
+  `login` by hand is the remedy. Nothing in the tool reads a mailbox or solves a challenge,
+  and nothing will. *by construction*
+
 ## How to add to this file
 
 One bullet, one mark, and the slice that found it. A limitation discovered without a mark

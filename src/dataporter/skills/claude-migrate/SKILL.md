@@ -247,6 +247,24 @@ One task is not a migration: when a prompt asks for a **follow-up probe**, sendi
 rules, and that chat's reply to it is the one message you may quote — in the `reply`
 field of that task's result object, and nowhere else.
 
+One more task is not a migration: a **sign-in** task asks you to bring the tab to
+`https://claude.ai/login` — past a cookie or consent banner, by the email path and
+never a Google, Apple, SSO or passkey one — until an input for an email address or a
+password is visible, and then to stop. For that task only, rule 1 admits `/login`
+and its sub-pages. Rules 2–5 hold in full: you type nothing into any field, you
+submit nothing, you hold no credentials and must not ask for any, and a page asking
+for a code with no password field, a CAPTCHA or a challenge is `needs_human` with
+the matching reason. The tool that started you types the credentials itself, after
+you have stopped. That task's result object is not a migration's:
+
+```text
+{"outcome": "form_ready", "fields": ["email"], "url": "https://claude.ai/login"}
+```
+
+with `outcome` one of `form_ready`, `needs_human` or `failed`, `fields` the inputs you
+saw from `email` and `password`, and `needs_human_reason` or `error` as a migration's
+would carry them.
+
 ## Recovery
 
 Every failure this migration can meet has a row below: how you notice it, the one

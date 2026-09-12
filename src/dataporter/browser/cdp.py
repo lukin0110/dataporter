@@ -327,6 +327,17 @@ class Page(Connection):
         """
         self.send("Input.insertText", {"text": text})
 
+    def press_enter(self) -> None:
+        """Press Enter in the focused element, as a keyboard would (`24`).
+
+        The one key the sign-in form needs: it submits whichever step is
+        showing. `keyDown` carries the `text` so that a field bound to the
+        `keypress` event sees it too; `keyUp` completes the stroke.
+        """
+        key = {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13}
+        self.send("Input.dispatchKeyEvent", {"type": "keyDown", "text": "\r", **key})
+        self.send("Input.dispatchKeyEvent", {"type": "keyUp", **key})
+
     def set_file_input_files(self, selector: str, paths: Sequence[Path]) -> None:
         """Put files into the first `input[type=file]` matching `selector`.
 

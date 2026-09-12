@@ -98,8 +98,10 @@ stores a password.
 - A dedicated profile, not the operator's real one, so the source account's session can
   never be the one Hermes drives (§17) and so Chrome 136+'s refusal to open a debug port
   on the default profile is moot.
-- Headed only. §12 needs a window the human can act in, and reliability beats headless
-  throughput (§13). A `--headless` flag is not offered in this slice.
+- Headed by default. §12 needs a window the human can act in, and reliability beats
+  headless throughput (§13). `24` added the one exception: under `--non-interactive`
+  there is no human to hand a window to, and `browser.headless` overrides either way
+  (`Settings.headless`, `launcher.HEADLESS_FLAG`).
 - Login detection is "a composer is visible on a non-login page". It does not read who is
   logged in; the brief asks to identify the logged-in *state*, not the identity.
 - **Adoption is by marker, not by `userDataDir`.** This spec assumed `/json/version` would
@@ -134,9 +136,12 @@ stores a password.
   to a real Chrome, and asserts every field. It skips where no browser is installed, so
   every line it covers is covered by the fake browser as well.
 - Launching twice with the same port and a foreign profile on it exits `2`.
-- `grep -r password src/` finds two sentences promising not to ask for one, and no name,
-  field, prompt or key — `test_the_tool_never_asks_for_a_password` parses the package and
-  checks the code rather than the prose.
+- Outside the four modules `24` names as the credentials seam (`config.py`, `cli.py`,
+  `signin.py`, `browser/login_form.py`), `grep -r password src/` finds only prose — no
+  name, field, prompt or key — and inside them no string constant is a value and no log
+  call passes a forbidden field: `test_the_secret_stays_in_the_credentials_seam` parses
+  the package and checks the code rather than the prose. (Before `24` this read "finds
+  two sentences promising not to ask for one".)
 
 ## Risks
 

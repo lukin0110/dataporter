@@ -292,3 +292,20 @@ def test_the_failure_line_cannot_forge_a_second_line() -> None:
     )
     assert "\n" not in completed.failure
     assert os.linesep not in completed.failure
+
+
+@pytest.mark.slow
+def test_a_credential_in_the_parent_never_reaches_hermes(
+    tmp_path: Path, fake: FakeHermes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`24`: the environment is built, not filtered, and `HCM_AUTH__*` is not
+    on the list — so the agent cannot `printenv` its way to a password."""
+    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("HCM_AUTH__PASSWORD", "hunter2")
+    settings = make_settings(tmp_path, fake.executable)
+    env = hermes_client.hermes_env(settings)
+    assert not any(key.startswith("HCM_AUTH") for key in env)
+    hermes_client.HermesCli(settings).version()
+    seen = fake.calls[-1].env
+    assert not any(key.startswith("HCM_AUTH") for key in seen)
+    assert "hunter2" not in " ".join(seen.values())

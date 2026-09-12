@@ -101,7 +101,8 @@ Resolved while building:
   `close-extra-tabs`: a Chrome that died may never have written the profile that kept it
   signed in, and one restarted over the same `--user-data-dir` can restore the tabs it had
   open — which is the `ambiguous_tab` `08` exists to clear. A session found signed out
-  ends the run with exit `3` wherever it is noticed, because every conversation left would
+  ends the run with exit `3` wherever it is noticed — after one unattended sign-in when
+  `24`'s `--non-interactive` is on — because every conversation left would
   fail the same way; `14` is where that becomes a pause the operator can resolve without
   losing the run. Raised by Copilot in review on #20.
 - **`browser_actions` counts our own records.** `run.json`'s counter is the number of new

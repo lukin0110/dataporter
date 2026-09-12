@@ -30,6 +30,7 @@ without its expectations fails rather than passes differently."""
 
 ROUTES: dict[str, str] = {
     "/login": "login.html",
+    "/login/form": "login-form.html",
     "/new": "new.html",
     f"/chat/{CHAT_ID}": "chat.html",
     f"/chat/{GENERATING_CHAT_ID}": "generating.html",

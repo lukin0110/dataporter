@@ -68,7 +68,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
-from dataporter import PROGRAM_NAME, log, render, state, summary
+from dataporter import PROGRAM_NAME, log, render, signin, state, summary
 from dataporter import intervention as intervening
 from dataporter import progress as reporting
 from dataporter import seed as seeding
@@ -86,7 +86,6 @@ from dataporter.config import (
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import (
     ERROR_CLASSES,
-    AuthError,
     BrowserError,
     Category,
     HermesError,
@@ -769,11 +768,19 @@ class Importer:
             progress if progress is not None else reporting.Reporter()
         )
         self.intervention: intervening.Intervention = (
-            intervention if intervention is not None else intervening.Console()
+            intervention
+            if intervention is not None
+            else (
+                intervening.Unattended()
+                if settings.non_interactive
+                else intervening.Console()
+            )
         )
         self.force_unlock = force_unlock
         self.store = state.StateStore(settings.workspace)
         self.runner = hermes_running.HermesRunner(settings)
+        self.signer: signin.SignIn | None = None
+        """`24`'s sign-in, made on first use and kept so its attempts number on."""
         self.seeds = seeding.SeedGenerator(settings)
         self.session: launcher.BrowserSession | None = None
         self.plans: dict[str, ConversationPlan] = {}
@@ -965,8 +972,45 @@ class Importer:
         self.session = launcher.launch(self.settings, probe.NEW_CHAT_URL)
 
     def _require_signed_in(self) -> None:
-        if not self._signed_in():
-            raise AuthError(detail=browser_session.SIGNED_OUT)
+        """Signed in, or exit `3` — after one unattended sign-in when `24`'s mode
+        is on, which is counted if it was made."""
+        if signin.ensure_signed_in(
+            self.settings, self._session(), signer=self._signer()
+        ):
+            self.store.bump_counter("auto_signins")
+
+    def _signer(self) -> signin.SignIn:
+        if self.signer is None:
+            self.signer = signin.SignIn(self.settings, runner=self.runner)
+        return self.signer
+
+    def _sign_in(self) -> bool:
+        """`24`: a login expiry the agent reported, cleared by the tool itself.
+
+        `13`-shaped and not `14`-shaped: nothing is asked of anyone, so a
+        sign-in that works is counted as `auto_signins` and leaves
+        `human_interventions` alone — §19's primary metric is conversations
+        migrated without a person. The pause record `_record` wrote is cleared
+        here rather than left for `_begin`, so that a run killed between the two
+        does not offer a `resume` for a page that is no longer blocked.
+        """
+        outcome = self._signer().perform(self._session())
+        if not outcome.signed_in:
+            _logger.warning(
+                "automatic sign-in stopped", extra={"reason": outcome.reason or ""}
+            )
+            return False
+        self.store.set_paused(None)
+        self.store.bump_counter("auto_signins")
+        _logger.info("automatic sign-in", extra={"fields": len(outcome.filled)})
+        return True
+
+    def _machine_can_clear(self, request: intervening.Request) -> bool:
+        """Whether this ask is one `24`'s mode answers without a person."""
+        return (
+            request.reason == intervening.AUTH_REQUIRED
+            and self.settings.non_interactive
+        )
 
     def _signed_in(self) -> bool:
         return browser_session.signed_in(self._session())
@@ -1223,10 +1267,14 @@ class Importer:
                 counted = False
                 continue
             if attempt.request is not None:
-                # Raises to end the run if there is nobody to ask, or if this run
-                # has asked too often; otherwise a person has acted and the same
-                # conversation is tried again from its last successful step.
-                self._intervene(attempt.request)
+                # `24` first: a login expiry in an unattended run is the tool's
+                # to clear, and only when it cannot does the ask go any further.
+                # Then `14`: raises to end the run if there is nobody to ask, or
+                # if this run has asked too often; otherwise a person has acted
+                # and the same conversation is tried again from its last
+                # successful step.
+                if not (self._machine_can_clear(attempt.request) and self._sign_in()):
+                    self._intervene(attempt.request)
                 spared += 1
                 counted = False
                 continue
@@ -1616,8 +1664,6 @@ class Importer:
                 since=state.now(),
             )
         )
-        self.interventions += 1
-        self.store.bump_counter("human_interventions")
         _logger.warning(
             "human intervention required",
             extra={
@@ -1757,6 +1803,10 @@ class Importer:
         and neither is this conversation's own outcome: the conversation is
         exactly as unfinished as it was, and something above has to stop.
         """
+        # Counted here and not in `_pause`, since `24`: a pause the tool clears
+        # itself is written down but never asked, and §19 counts the asks.
+        self.interventions += 1
+        self.store.bump_counter("human_interventions")
         if self.interventions > self.settings.run.max_interventions:
             raise InterventionsExhausted
         if not self._cleared(request):
@@ -1793,6 +1843,10 @@ class Importer:
             while True:
                 if not acted and not self.intervention.ask(request):
                     return False
+                if acted and self._machine_can_clear(request) and self._sign_in():
+                    # `24`'s `resume`: the person the pause asked for is the
+                    # tool itself, once, before the page is looked at.
+                    return True
                 if request.reason != intervening.AUTH_REQUIRED or self._signed_in():
                     return True
                 if deadline is not None and time.monotonic() >= deadline:
@@ -2098,6 +2152,10 @@ def import_command(
         )
 
     if not request.dry_run:
+        if settings.non_interactive:
+            # Exit `2` before a browser or a workspace is touched: a run that
+            # would stop at the first sign-in form should not have started.
+            signin.require_credentials(settings)
         effective = with_pacing(
             with_skip_attachments(
                 with_attachments_dir(settings, request.attachments_dir),
@@ -2151,6 +2209,8 @@ def resume_command(
     no. Exit `4` is the same "nothing to do" the other commands use for an empty
     selection.
     """
+    if settings.non_interactive:
+        signin.require_credentials(settings)
     log.enable_run_log(settings.workspace)
     try:
         outcome = Importer(settings, progress=reporting.Reporter(quiet=quiet)).resume()

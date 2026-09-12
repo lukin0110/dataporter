@@ -85,6 +85,39 @@ started while a pause is outstanding says
 answer that first, rather than letting a fresh run pick the paused conversation up on its
 own terms.
 
+## Running unattended
+
+```sh
+export HCM_NON_INTERACTIVE=1
+export HCM_AUTH__EMAIL=you@example.com
+export HCM_AUTH__PASSWORD=…                               # or: --password-file <path>
+hermes-claude-migrate login                              # once; signs in, closes Chrome
+hermes-claude-migrate import <export> --all --limit 50   # the session loop, as above
+```
+
+`--non-interactive` (`24`) is the mode for a cron job, a CI step or a machine with no
+display: Chrome runs headless, a signed-out session is signed in from the credentials
+rather than handed to you, and nothing ever waits for Enter. The sign-in is in two halves
+— Hermes brings the page to the form, and the tool types into it from its own process —
+so the password is never in the agent's environment, prompt or transcript, and never in a
+workspace file or a log. `config.toml` may not carry the mode or the credentials; the
+environment and the two flags are the only channels, and `--password-file` reads the
+first line of a file rather than taking a value that `ps` would show.
+
+The exit codes in this mode:
+
+- `2` — no credentials, refused before a browser starts.
+- `3` — signed out at the start and the sign-in could not be completed (an emailed code,
+  a CAPTCHA, a challenge, or Hermes failing). Nothing was migrated. Run `login` by hand.
+- `5` — a login expiry mid-run that the sign-in could not clear, or any other ask only a
+  person can answer. The pause is in `run.json`; clear it, then
+  `hermes-claude-migrate resume` — with the same variables set, `resume` tries the sign-in
+  itself before it looks at the page.
+
+The report gains one line, `Automatic sign-ins:`, when there were any. They are not human
+interventions and are not counted as such: §19's number is conversations migrated without
+a person, and the tool signing in is not a person.
+
 ## Retrying failures
 
 Read the report first. Each failure line carries the last successful step, the category,

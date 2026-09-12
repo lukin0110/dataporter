@@ -272,7 +272,8 @@ def checks(settings: Settings) -> Generator[Check, None, None]:
         yield Check(
             CHROME_LAUNCH,
             True,
-            f"port {settings.browser.cdp_port}, {time.monotonic() - started:.1f}s",
+            f"port {settings.browser.cdp_port}, {time.monotonic() - started:.1f}s"
+            + (", headless" if settings.headless else ""),
         )
         # Written out rather than looped, because each of the three is only
         # worth running if the one before it passed — and the two Hermes tasks

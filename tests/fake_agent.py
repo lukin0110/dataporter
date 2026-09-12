@@ -564,3 +564,62 @@ def name_of(path: str) -> str:
 
 def _file_arguments(paths: Sequence[str]) -> list[str]:
     return [item for path in paths for item in ("--file", path)]
+
+
+# --------------------------------------------------------------------------- #
+# `24`'s sign-in task, performed without an agent
+# --------------------------------------------------------------------------- #
+
+
+class SignInBrowser(Protocol):
+    """The two things the sign-in task asks an agent to do: go, and look."""
+
+    def navigate(self, url: str) -> None: ...
+
+    def visible_fields(self) -> Sequence[str]:
+        """Which of `email` and `password` the page is showing, and — for a
+        page that wants something else — `code`, `captcha` or `challenge`."""
+        ...
+
+
+SIGN_IN_SCALARS = ("login url", "helper")
+BLOCKING = {
+    "code": "auth_required",
+    "captcha": "captcha",
+    "challenge": "security_challenge",
+}
+
+
+@dataclass
+class ScriptedSignIn:
+    """The skill's sign-in section, performed to the letter.
+
+    Proves the prompt carries the URL and the helper prefix, that the procedure
+    stops at the first form field, and that what a page shows instead of a form
+    is reported as the `needs_human` reason the skill names for it. Proves
+    nothing about how an agent reads a banner or picks the email path — that is
+    judgement, and this has none.
+    """
+
+    browser: SignInBrowser
+    actions: int = 0
+
+    def run(self, prompt: str) -> dict[str, Any]:
+        fields: dict[str, str] = {}
+        for line in prompt.splitlines():
+            key, sep, value = line.partition(":")
+            if sep and key.strip() in SIGN_IN_SCALARS:
+                fields[key.strip()] = value.strip()
+        if set(fields) != set(SIGN_IN_SCALARS):
+            return {"outcome": "failed", "error": "the prompt does not add up"}
+        url = fields["login url"]
+        self.browser.navigate(url)
+        self.actions += 1
+        seen = list(self.browser.visible_fields())
+        form = [item for item in seen if item in ("email", "password")]
+        if form:
+            return {"outcome": "form_ready", "fields": form, "url": url}
+        blocking = next((BLOCKING[item] for item in seen if item in BLOCKING), None)
+        if blocking is not None:
+            return {"outcome": "needs_human", "needs_human_reason": blocking}
+        return {"outcome": "failed", "error": "no sign-in form on the page"}
