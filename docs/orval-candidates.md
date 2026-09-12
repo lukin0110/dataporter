@@ -109,12 +109,22 @@ it was defending against.
 
 Neither case is reachable from a real browser — Chrome does not answer
 `DOM.getDocument` with `{"root": null}` — so this is a defensive path either
-way. Where they differ the new behaviour degrades better: `set_file_input_files`
-now reaches its own `BrowserError(detail=f"no element matches {selector}")`
-instead of an `AttributeError` that names neither the selector nor the call, and
-`pending_dialogs` still reports that a dialog is open, under the generic label its
-default already exists to supply, rather than failing the enumeration. A safety
-listing that raises is worse than one that says `javascript:dialog`.
+way. `pending_dialogs` degrades better for it: it still reports that a dialog is
+open, under the generic label its default already exists to supply, rather than
+failing the enumeration, and a safety listing that raises is worse than one that
+says `javascript:dialog`.
+
+`set_file_input_files` needed a guard to be an improvement, which Copilot caught
+on the pull request and this file had wrong in its first draft. `deep_get`
+turning a malformed reply into `None` does *not* reach the nearby
+`no element matches {selector}`: `None` goes on to `DOM.querySelector`, which a
+real Chrome refuses and `send` reports as `DOM.querySelector failed: …` — naming
+a call that never could have worked instead of the document that was never read.
+Against a fake that ignores the `nodeId` it is worse still, and does not fail at
+all. So `root_id is None` is now checked where it is read, and
+`test_set_file_input_files_without_a_document_node` pins the message. The lesson
+generalises past this call site: `deep_get` replaces a raise with a default, so
+every site that swaps to it has to answer what the default then *does*.
 
 ## B. Deliberate non-swaps
 
