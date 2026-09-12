@@ -79,7 +79,7 @@ uv add dataporter[judge] --no-sources                # `20`'s optional model jud
 ```
 
 `pip install git+https://github.com/lukin0110/dataporter` does the same thing for a
-project that uses pip. Either way you get the `hermes-claude-migrate` command in that
+project that uses pip. Either way you get the `dataporter` command in that
 project's environment, `python -m dataporter` as the same command under another name, and
 the library described in [From another project](#from-another-project) below.
 
@@ -94,33 +94,33 @@ uv tool install git+https://github.com/lukin0110/dataporter
 ```sh
 git clone <this repository> && cd dataporter
 make install                      # uv sync
-uv run hermes-claude-migrate --version
+uv run dataporter --version
 ```
 
-Everything below is written as `hermes-claude-migrate …`; prefix it with `uv run` when you
+Everything below is written as `dataporter …`; prefix it with `uv run` when you
 have not installed the package into your own environment.
 
 ## Run it
 
 ```sh
 # 1. The Hermes profile and the migration skill. Idempotent; run it again any time.
-hermes-claude-migrate setup
+dataporter setup
 
 # 2. Hermes, Chrome, the profile, the skill, the pacing — every check, in order.
-hermes-claude-migrate doctor
+dataporter doctor
 
 # 3. Sign in to the *destination* account, by hand, in the window this opens.
-hermes-claude-migrate login
+dataporter login
 
 # 4. What would be migrated, and what cannot be. Touches no account.
-hermes-claude-migrate import <export> --dry-run
+dataporter import <export> --dry-run
 
 # 5. The pilot: five to ten conversations chosen by category (20). Start here.
-hermes-claude-migrate import <export> --pilot
-hermes-claude-migrate report
+dataporter import <export> --pilot
+dataporter report
 
 # 6. The full export, in sessions. Resume by running it again.
-hermes-claude-migrate import <export> --all --limit 50
+dataporter import <export> --all --limit 50
 ```
 
 Steps 1–5 are the whole of the first sitting, and step 4 is safe to run on anything: it
@@ -151,16 +151,16 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 
 Global options go before the subcommand: `--workspace PATH`, `--verbose`, `--quiet`,
 `--version`, and `24`'s `--non-interactive`, `--email EMAIL`, `--password-file PATH`.
-Configuration is `<workspace>/config.toml`, `HCM_…` environment variables and flags, in
+Configuration is `<workspace>/config.toml`, `DATAPORTER_…` environment variables and flags, in
 that order of precedence, ending at the flags — except the mode and the credentials, which
 `config.toml` may not carry.
 
 ## Running unattended
 
 ```sh
-export HCM_NON_INTERACTIVE=1 HCM_AUTH__EMAIL=you@example.com HCM_AUTH__PASSWORD=…
-hermes-claude-migrate login                                  # signs in, closes Chrome
-hermes-claude-migrate import <export> --all --limit 50       # signs in again if it must
+export DATAPORTER_NON_INTERACTIVE=1 DATAPORTER_AUTH__EMAIL=you@example.com DATAPORTER_AUTH__PASSWORD=…
+dataporter login                                  # signs in, closes Chrome
+dataporter import <export> --all --limit 50       # signs in again if it must
 ```
 
 In this mode Chrome runs without a window, `login` and `import` sign in from the

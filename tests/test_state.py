@@ -911,7 +911,7 @@ def test_the_default_limit_is_run_max_conversations(
     export_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("HCM_RUN__MAX_CONVERSATIONS", "2")
+    monkeypatch.setenv("DATAPORTER_RUN__MAX_CONVERSATIONS", "2")
     _, out, _ = run(runner, "import", str(export_dir), "--dry-run")
     assert out.startswith("Conversations found:      2\n")
 

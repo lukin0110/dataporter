@@ -14,7 +14,7 @@ unsupported count. Nothing is written anywhere, nothing is contacted.
 
 ## In scope
 
-- `hermes-claude-migrate import <export> --dry-run` prints exactly:
+- `dataporter import <export> --dry-run` prints exactly:
 
   ```text
   Conversations found:    127
@@ -28,7 +28,7 @@ unsupported count. Nothing is written anywhere, nothing is contacted.
   Rule: each line is `label` + spaces + `value`, right-aligned so that the line is
   `max(27, longest label + 1 + longest value)` characters wide; values use `,` thousands
   separators; the blank line separates the two groups. Exit `0`.
-- `hermes-claude-migrate inspect <export>` prints the same block, then a blank line and,
+- `dataporter inspect <export>` prints the same block, then a blank line and,
   when `Unsupported` is non-zero, one line per reason sorted by count descending then name:
 
   ```text

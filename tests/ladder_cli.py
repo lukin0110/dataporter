@@ -1,4 +1,4 @@
-"""A stand-in for `hermes-claude-migrate`, pointed at the fixture server.
+"""A stand-in for `dataporter`, pointed at the fixture server.
 
 `10`'s paste ladder drives our own CLI as a subprocess — the same command Hermes
 runs — so the only way to exercise it without a claude.ai account is to give it a
@@ -25,7 +25,11 @@ import stat
 import sys
 from pathlib import Path
 
-SHIM_NAME = "hermes-claude-migrate"
+from dataporter import PROGRAM_NAME
+
+SHIM_NAME = PROGRAM_NAME
+"""The shim's file name, which is what `prompt.helper_command()` tells the agent
+to run: read from the package so the two cannot disagree."""
 
 _SOURCE = """\
 import argparse

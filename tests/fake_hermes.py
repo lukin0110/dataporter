@@ -126,8 +126,8 @@ if "-z" in rest:
         )
     if spec.get("append_probe"):
         # What our own `browser probe` would have written. The workspace comes
-        # from HCM_WORKSPACE, so a test that breaks the allowlist breaks here.
-        actions = Path(os.environ["HCM_WORKSPACE"]) / "logs" / "actions.jsonl"
+        # from DATAPORTER_WORKSPACE, so a test that breaks the allowlist breaks here.
+        actions = Path(os.environ["DATAPORTER_WORKSPACE"]) / "logs" / "actions.jsonl"
         actions.parent.mkdir(parents=True, exist_ok=True)
         with actions.open("a", encoding="utf-8") as handle:
             handle.write(
@@ -150,7 +150,7 @@ if "-z" in rest:
             return fallback
         return values[min(done - 1, len(values) - 1)]
 
-    found = re.search(r"HCM-[0-9A-F]+", prompt)
+    found = re.search(r"DATAPORTER-[0-9A-F]+", prompt)
     answer = nth(spec.get("answers"), spec.get("answer", ""))
     answer = answer.replace("__NONCE__", found.group() if found else "NO-NONCE")
     sys.stdout.write(answer)

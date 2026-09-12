@@ -6,7 +6,7 @@ in the returned tuple wins.
 
 The workspace is the one setting that has to be resolved twice, because
 `config.toml` lives *inside* the workspace. A bootstrap pass picks the workspace
-from the CLI flag, then `HCM_WORKSPACE`, then the default, and the config file is
+from the CLI flag, then `DATAPORTER_WORKSPACE`, then the default, and the config file is
 read from there. A `workspace` key inside `config.toml` therefore still sets the
 workspace — it just does not relocate config discovery, so there is no fixed-point
 to iterate and no possible cycle.
@@ -14,8 +14,8 @@ to iterate and no possible cycle.
 `01` defined the mechanism and the `workspace` field. Later slices add their own
 sections (`browser`, `hermes`, `pacing`, `retries`, `timeouts`, `fidelity`) as
 nested models; nothing here needs to change for them. `03` is the first to do it,
-adding `seed` and `attachments` — plain `BaseModel`s, so `HCM_SEED__MAX_CHARS` and
-a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
+adding `seed` and `attachments` — plain `BaseModel`s, so `DATAPORTER_SEED__MAX_CHARS`
+and a `[attachments]` table in `config.toml` work with no new machinery. `06` adds
 `run`; `07` adds `browser` and `timeouts`; `08` adds two fields to `timeouts`;
 `09` adds `hermes` and three more `timeouts` fields; `13` adds `retries` and one
 more `run` field; `14` adds another `run` field; `15` adds `pacing` and the three
@@ -41,7 +41,7 @@ from pydantic_settings import (
 
 DEFAULT_WORKSPACE = Path("migration")
 CONFIG_FILENAME = "config.toml"
-WORKSPACE_ENV_VAR = "HCM_WORKSPACE"
+WORKSPACE_ENV_VAR = "DATAPORTER_WORKSPACE"
 ATTACHMENTS_DIRNAME = "attachments"
 SEEDS_DIRNAME = "seeds"
 PILOT_DIRNAME = "pilot"
@@ -440,7 +440,7 @@ class RunSettings(BaseModel):
 class AuthSettings(BaseModel):
     """The destination account's credentials, for a non-interactive run (`24`).
 
-    From the environment (`HCM_AUTH__EMAIL`, `HCM_AUTH__PASSWORD`) or the
+    From the environment (`DATAPORTER_AUTH__EMAIL`, `DATAPORTER_AUTH__PASSWORD`) or the
     command line (`--email`, `--password-file`) and never from `config.toml` —
     `_TomlWithoutSecrets` refuses a file that carries them. `SecretStr` keeps
     the value out of `repr`, `model_dump` and every log record; nothing but
@@ -463,9 +463,10 @@ class Settings(BaseSettings):
     """Effective settings for one invocation."""
 
     model_config = SettingsConfigDict(
-        env_prefix="HCM_",
+        env_prefix="DATAPORTER_",
         env_nested_delimiter="__",
-        # An empty HCM_WORKSPACE= in a shell script should mean "unset", not "cwd".
+        # An empty DATAPORTER_WORKSPACE= in a shell script should mean "unset",
+        # not "cwd".
         env_ignore_empty=True,
     )
 
@@ -478,7 +479,8 @@ class Settings(BaseSettings):
     `browser.headless` says otherwise, a signed-out session is signed in from
     `auth` rather than handed to an operator, and a page only a person can clear
     is recorded as a pause and exited on. `--non-interactive` or
-    `HCM_NON_INTERACTIVE=1`; never `config.toml`, for the reason `auth` is not."""
+    `DATAPORTER_NON_INTERACTIVE=1`; never `config.toml`, for the reason `auth` is
+    not."""
 
     auth: AuthSettings = AuthSettings()
     seed: SeedSettings = SeedSettings()
@@ -638,7 +640,7 @@ class _TomlWithoutSecrets(TomlConfigSettingsSource):
 
 
 def _workspace_from_env() -> Path | None:
-    """`HCM_WORKSPACE`, or `None` when it is unset or blank.
+    """`DATAPORTER_WORKSPACE`, or `None` when it is unset or blank.
 
     Blank is `None` rather than `Path("")`, which is `Path(".")` — an empty
     variable means the operator said nothing, not that the workspace is the
@@ -730,7 +732,7 @@ def with_pacing(
     and a conversation with no attempts has its first failure recorded
     `retry_recommended: false` — a statement about a retry nothing made. The
     constraint lives on the field rather than on the flag so that
-    `HCM_RETRIES__MAX_ATTEMPTS=-1` and a hand-edited `config.toml` are refused
+    `DATAPORTER_RETRIES__MAX_ATTEMPTS=-1` and a hand-edited `config.toml` are refused
     by the same rule, in one place. (Raised by Copilot in review on #24.)
     """
     changes: dict[str, Any] = {}
@@ -800,7 +802,7 @@ def load_settings(
         # `auth` table, so the half the flags did not set is read from the
         # environment here and carried along.
         for key in ("email", "password"):
-            from_env = os.environ.get(f"HCM_AUTH__{key.upper()}", "")
+            from_env = os.environ.get(f"DATAPORTER_AUTH__{key.upper()}", "")
             if key not in auth and from_env:
                 auth[key] = from_env
         overrides["auth"] = auth

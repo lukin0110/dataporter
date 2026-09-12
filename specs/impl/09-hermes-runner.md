@@ -14,7 +14,7 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
 
 ## In scope
 
-- `hermes-claude-migrate setup` (idempotent), shelling out to the `hermes` on `PATH`:
+- `dataporter setup` (idempotent), shelling out to the `hermes` on `PATH`:
   1. `hermes profile create dataporter` if `hermes profile list` lacks it;
   2. `hermes -p dataporter config set <key> <value>` for each of:
 
@@ -47,10 +47,10 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
   skill            claude-migrate 0.1.0 -> ~/.hermes/profiles/dataporter/skills/dataporter/claude-migrate
   hermes model     anthropic/claude-sonnet-5
   Hermes session transcripts contain page snapshots, and therefore conversation content. They live under …/profiles/dataporter/ — delete that directory to purge them.
-  Next: hermes-claude-migrate doctor
+  Next: dataporter doctor
   ```
 
-- `hermes-claude-migrate doctor` prints one line per check, `ok` or `FAIL <reason>`, and
+- `dataporter doctor` prints one line per check, `ok` or `FAIL <reason>`, and
   exits `6` on the first failure:
 
   ```text
@@ -82,7 +82,7 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
   ```
 
   Invokes, with `cwd=<workspace>` and a minimal environment (`PATH`, `HOME`, `LANG`
-  forwarded when set, `HCM_WORKSPACE` set, never `HERMES_YOLO_MODE`):
+  forwarded when set, `DATAPORTER_WORKSPACE` set, never `HERMES_YOLO_MODE`):
 
   ```text
   hermes -p dataporter -z <prompt> --toolsets browser,terminal --usage-file <workspace>/hermes/<run_id>.usage.json
@@ -139,14 +139,14 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
 - Browser Use CLI mode is turned off because its single `browser_exec` tool writes
   arbitrary Python against the page; the ref-based tools plus `browser_cdp` are narrower and
   every action is visible in the transcript.
-- **The environment is built, not filtered.** (`24` leans on this: `HCM_AUTH__EMAIL` and
-  `HCM_AUTH__PASSWORD` are deliberately not on the list, so a credential in the parent's
+- **The environment is built, not filtered.** (`24` leans on this: `DATAPORTER_AUTH__EMAIL` and
+  `DATAPORTER_AUTH__PASSWORD` are deliberately not on the list, so a credential in the parent's
   environment never reaches the agent, and no helper the agent runs can read it either.)
   `client.hermes_env` starts from nothing and
   forwards `PATH`, `HOME` and `LANG` when the parent has them, so `HERMES_YOLO_MODE`
   cannot be set by an operator's shell — a structural guarantee rather than a check
-  somebody has to remember. `HCM_WORKSPACE` is *set*, which `09` adds to the spec: with
-  `cwd=<workspace>`, a helper Hermes runs as `hermes-claude-migrate browser probe` with no
+  somebody has to remember. `DATAPORTER_WORKSPACE` is *set*, which `09` adds to the spec: with
+  `cwd=<workspace>`, a helper Hermes runs as `dataporter browser probe` with no
   `--workspace` would resolve the default `./migration` *inside* the workspace — a second
   workspace, one level down, with its own config and actions log. `11`'s prompt passes the
   flag too; this makes forgetting it harmless rather than silently wrong.

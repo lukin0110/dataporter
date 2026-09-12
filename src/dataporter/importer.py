@@ -186,7 +186,7 @@ came from. The file name must match the export exactly.
 
 The uuids and the file names are in plan.json, and
 
-    hermes-claude-migrate inspect <export>
+    dataporter inspect <export>
 
 lists every attachment and what would become of it.
 

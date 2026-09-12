@@ -132,8 +132,7 @@ def test_every_needs_human_reason_has_a_phrase() -> None:
 
 def test_the_offer_names_the_command_an_operator_types() -> None:
     assert (
-        intervening.offer("aa000001")
-        == "paused at aa000001 — run: hermes-claude-migrate resume"
+        intervening.offer("aa000001") == "paused at aa000001 — run: dataporter resume"
     )
 
 

@@ -38,9 +38,9 @@ UNATTENDED_BLOCK = (
     "Conversation: aa000001 (1 of 1)\n"
     "Last step:    open\n"
     "Browser:      no window — non-interactive run; clear it, then run: "
-    "hermes-claude-migrate resume\n"
+    "dataporter resume\n"
     "\n"
-    "Paused for a person (non-interactive); run: hermes-claude-migrate resume\n"
+    "Paused for a person (non-interactive); run: dataporter resume\n"
 )
 
 
@@ -70,10 +70,10 @@ def unattended(world: World, *, credentials: bool = True) -> None:
 def unattended_env(
     monkeypatch: pytest.MonkeyPatch, *, credentials: bool = True
 ) -> None:
-    monkeypatch.setenv("HCM_NON_INTERACTIVE", "1")
+    monkeypatch.setenv("DATAPORTER_NON_INTERACTIVE", "1")
     if credentials:
-        monkeypatch.setenv("HCM_AUTH__EMAIL", EMAIL)
-        monkeypatch.setenv("HCM_AUTH__PASSWORD", SECRET)
+        monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", EMAIL)
+        monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", SECRET)
 
 
 # --------------------------------------------------------------------------- #
@@ -240,15 +240,14 @@ def test_a_signed_out_session_the_tool_cannot_sign_in_is_exit_3(
     with pytest.raises(AuthError) as raised:
         world.run(limit=1)
     assert raised.value.detail == (
-        "automatic sign-in stopped: authentication required — run: "
-        "hermes-claude-migrate login"
+        "automatic sign-in stopped: authentication required — run: dataporter login"
     )
     assert world.hermes.one_shots and len(world.hermes.one_shots) == 1
 
 
 def test_without_credentials_the_mode_stops_before_a_browser(world: World) -> None:
     unattended(world, credentials=False)
-    with pytest.raises(UsageError, match="HCM_AUTH__EMAIL"):
+    with pytest.raises(UsageError, match="DATAPORTER_AUTH__EMAIL"):
         importing.import_command(
             world.settings, importing.ImportRequest(export=str(world.export))
         )
@@ -331,7 +330,7 @@ def test_login_in_the_mode_that_stops_is_exit_3(
 
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
     assert result.stderr == (
-        "error: automatic sign-in stopped: CAPTCHA — run: hermes-claude-migrate login\n"
+        "error: automatic sign-in stopped: CAPTCHA — run: dataporter login\n"
     )
 
 

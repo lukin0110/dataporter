@@ -898,11 +898,11 @@ def adoptable(
 ) -> Settings:
     """Point the CLI at the fake browser, as `07`'s command tests do."""
     settings = browser.settings(tmp_path)
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(browser.chrome.port))
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "2")
-    monkeypatch.setenv("HCM_TIMEOUTS__RESPONSE_S", "0.2")
-    monkeypatch.setenv("HCM_TIMEOUTS__ATTACH_S", "0.2")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(browser.chrome.port))
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__RESPONSE_S", "0.2")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__ATTACH_S", "0.2")
     return settings
 
 

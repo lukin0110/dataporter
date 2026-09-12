@@ -79,11 +79,11 @@ item 5 were taken.
    `test_hermes_setup.py` and `test_hermes_doctor.py`; `hermes/profile.py` is still at
    100%.
    The shared-state worry did not materialise, but it is worth naming: `conftest`'s
-   `clean_environment` clears `HCM_*` and nothing else, and what keeps one world out of
+   `clean_environment` clears `DATAPORTER_*` and nothing else, and what keeps one world out of
    another's profile is that `hermes.home` is under `tmp_path`, per test.
 3. **Make `wait_for_login`'s poll reachable under test. ~2 s. Done, as a production fix.**
    `test_browser_session.py::test_login_asks_the_operator_and_gives_up` sets
-   `HCM_TIMEOUTS__LOGIN_S=0.05` but could not shorten the poll: `LOGIN_POLL_S` is 2.0 in
+   `DATAPORTER_TIMEOUTS__LOGIN_S=0.05` but could not shorten the poll: `LOGIN_POLL_S` is 2.0 in
    `browser/session.py`, and the loop slept a whole poll interval after the deadline check.
    The fix is the one that was worth making anyway — `time.sleep(min(poll_s, remaining))`,
    so the wait never runs past its own budget. An operator who asks for a one-minute login

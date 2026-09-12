@@ -15,7 +15,7 @@ surface.
 
 ## In scope
 
-- All helpers live under `hermes-claude-migrate browser …` in
+- All helpers live under `dataporter browser …` in
   `dataporter/browser/helpers.py`, connect to `browser.cdp_port`, pick the target and
   print exactly one JSON object on stdout (exit `0` when `ok` is true, `1` otherwise,
   `2` for usage). Nothing else goes to stdout.
@@ -130,7 +130,7 @@ surface.
   and `--verbose` still puts diagnostics on stderr. Writing it is best effort: the helper
   has already acted on the page by then, and losing the result to a read-only workspace
   would be the worse trade.
-- Each page expression carries its name in a leading comment (`/* hcm:composer_text */`). It costs
+- Each page expression carries its name in a leading comment (`/* dataporter:composer_text */`). It costs
   nothing in the page, names the expression in a CDP trace, and is how the test suite's
   fake browser answers an expression it cannot execute — which is what keeps every line of
   this module covered on a machine with no browser installed.

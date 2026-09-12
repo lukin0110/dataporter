@@ -14,7 +14,7 @@ reproducible from the workspace alone.
 
 ## In scope
 
-- Golden block, printed at the end of `import` and by `hermes-claude-migrate report`:
+- Golden block, printed at the end of `import` and by `dataporter report`:
 
   ```text
   Claude migration complete
@@ -95,7 +95,7 @@ reproducible from the workspace alone.
   ```
 
   Rendered text is derived from this model; `report --json` prints it.
-- `hermes-claude-migrate report` reads only `state.json`, `run.json`, `plan.json` and
+- `dataporter report` reads only `state.json`, `run.json`, `plan.json` and
   `logs/actions.jsonl`. No browser, no Hermes, and no writes: `import` is what writes
   `report.json`, at the end of a run and under the lock, and prints the same block last —
   `--quiet` included, for the reason `18`'s final block survives it. A workspace with no

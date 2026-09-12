@@ -316,8 +316,8 @@ def test_session_logout_reports_a_locked_profile_as_exit_2(
         raise PermissionError(13, "Permission denied")
 
     monkeypatch.setattr(browser_session.shutil, "rmtree", refuse)
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
     result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr.startswith("error: cannot remove ")
@@ -358,9 +358,9 @@ def adoptable(
             port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"
         ),
     )
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(chrome.port))
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "2")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(chrome.port))
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
     return settings
 
 
@@ -388,7 +388,7 @@ def test_login_asks_the_operator_and_gives_up(
 ) -> None:
     chrome.targets[0].evaluate = LOGGED_OUT
     adoptable(chrome, tmp_path, monkeypatch)
-    monkeypatch.setenv("HCM_TIMEOUTS__LOGIN_S", "0.05")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__LOGIN_S", "0.05")
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
     assert result.stdout == f"{browser_session.LOGIN_PROMPT}\n"
@@ -404,7 +404,7 @@ def test_login_without_a_browser_is_exit_6(
         raise BrowserError(detail="no browser found — install Google Chrome")
 
     monkeypatch.setattr(launcher, "find_executable", no_browser)
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(free_port()))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(free_port()))
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
     assert result.exit_code == ExitCode.ENVIRONMENT
     assert result.stderr.startswith("error: no browser found")
@@ -417,10 +417,10 @@ def test_session_status_without_a_profile_starts_nothing(
         raise AssertionError("no browser should be started")
 
     monkeypatch.setattr(launcher, "launch", never)
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(free_port()))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(free_port()))
     result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stdout == "not logged in — run: hermes-claude-migrate login\n"
+    assert result.stdout == "not logged in — run: dataporter login\n"
 
 
 def test_session_status_reports_a_signed_in_session(
@@ -447,7 +447,7 @@ def test_session_status_reports_a_signed_out_session(
     adoptable(chrome, tmp_path, monkeypatch)
     result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stdout == "not logged in — run: hermes-claude-migrate login\n"
+    assert result.stdout == "not logged in — run: dataporter login\n"
 
 
 def test_a_foreign_browser_on_the_port_is_exit_2(
@@ -471,8 +471,8 @@ def test_session_logout_removes_the_profile(
 ) -> None:
     settings = make_settings(tmp_path, free_port())
     launcher.ensure_profile(settings)
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
     result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
     assert result.stdout == f"Removed {settings.browser_profile_dir}/.\n"
@@ -483,8 +483,8 @@ def test_session_logout_with_nothing_to_remove(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     settings = make_settings(tmp_path, free_port())
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
     result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
     assert result.stdout == (
@@ -515,10 +515,10 @@ def test_session_status_starts_and_stops_a_browser_of_its_own(
         return _NeverExits()
 
     monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
-    monkeypatch.setenv("HCM_BROWSER__EXECUTABLE", sys.executable)
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "2")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
+    monkeypatch.setenv("DATAPORTER_BROWSER__EXECUTABLE", sys.executable)
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
     try:
         result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
         assert result.exit_code == ExitCode.OK

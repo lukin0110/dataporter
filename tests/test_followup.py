@@ -369,8 +369,10 @@ def test_followup_without_a_hermes_exits_6(
     store.update(
         FIRST, status=Status.COMPLETED, destination=Destination(conversation_id=CHAT)
     )
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_HERMES__EXECUTABLE", str(workspace / "no-hermes-here"))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv(
+        "DATAPORTER_HERMES__EXECUTABLE", str(workspace / "no-hermes-here")
+    )
 
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 

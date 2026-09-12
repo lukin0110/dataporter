@@ -295,7 +295,7 @@ def test_the_selectors_are_named_once() -> None:
     assert f'const COMPOSER_SELECTOR = "{COMPOSER_SELECTOR}"' in PAGE_STATE_JS.replace(
         '\\"', '"'
     )
-    assert "/* hcm:page_state */" in PAGE_STATE_JS
+    assert "/* dataporter:page_state */" in PAGE_STATE_JS
 
 
 def test_page_state_carries_no_content_fields() -> None:

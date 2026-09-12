@@ -12,7 +12,7 @@ agent and gives everything else to a helper:
 - **submit** — put the caret in the composer and press Enter;
 - **rename** — open the chat's own menu, type a name into it, and check it took.
 
-Everything else a rehearsal does goes through the real `hermes-claude-migrate
+Everything else a rehearsal does goes through the real `dataporter
 browser …` commands, invoked as a subprocess exactly as Hermes's terminal tool
 would invoke them. A seed is never typed here and never passes through this
 module at all.
@@ -322,7 +322,7 @@ class CdpSignInBrowser:
 
 @dataclass
 class HelperRunner:
-    """`hermes-claude-migrate browser …`, as a subprocess.
+    """`dataporter browser …`, as a subprocess.
 
     Exactly how Hermes runs them — its terminal tool, our CLI, one JSON object
     on stdout — so that a helper whose output shape changed breaks a rehearsal

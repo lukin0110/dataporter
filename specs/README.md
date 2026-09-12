@@ -251,8 +251,10 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   the page is in the expected state, recover from surprises). Our helper commands make the
   deterministic moves whose exactness matters (insert a 40 kB seed byte-for-byte, upload a
   file, wait for generation to finish). A seed never passes through an LLM's output tokens.
-- **Package and command:** package `dataporter`, CLI `hermes-claude-migrate` exactly as the
-  brief writes it in §8–§10.
+- **Package and command:** package `dataporter`, CLI `dataporter`. The brief writes
+  `hermes-claude-migrate` in §8–§10; ADR [0004](../docs/adr/0004-the-command-is-dataporter.md)
+  renamed the command, the `DATAPORTER_` environment prefix and the tool's internal markers
+  after the package, and left the brief as written.
 - **Distribution (`25`):** an installable package, not only a checkout. A host project adds
   it from a git URL or a path — there is no PyPI release, because publishing is
   deliberately a later slice — and gets the command, `python -m dataporter`, and the `23`

@@ -227,9 +227,11 @@ def cli_env(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     Here rather than in one test module for the reason `World` is: `12` runs
     `import` through the CLI and `14` runs `import` and then `resume`.
     """
-    monkeypatch.setenv("HCM_WORKSPACE", str(world.settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(world.browser.chrome.port))
-    monkeypatch.setenv("HCM_HERMES__EXECUTABLE", str(world.settings.hermes.executable))
-    monkeypatch.setenv("HCM_HERMES__HOME", str(world.settings.hermes_home))
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "2")
-    monkeypatch.setenv("HCM_TIMEOUTS__HERMES_TASK_S", "60")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(world.settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(world.browser.chrome.port))
+    monkeypatch.setenv(
+        "DATAPORTER_HERMES__EXECUTABLE", str(world.settings.hermes.executable)
+    )
+    monkeypatch.setenv("DATAPORTER_HERMES__HOME", str(world.settings.hermes_home))
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__HERMES_TASK_S", "60")

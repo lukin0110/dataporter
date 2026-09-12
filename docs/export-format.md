@@ -116,7 +116,7 @@ this rule wins.
 Run the parser against a real export with the run log on, and read one record:
 
 ```bash
-hermes-claude-migrate --verbose inspect /path/to/export.zip
+dataporter --verbose inspect /path/to/export.zip
 ```
 
 The `export shape` record reports the file list, `with_index`, `with_leaf`,

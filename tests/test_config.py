@@ -29,14 +29,14 @@ def test_default_is_migration_beside_the_cwd(workspace: Path) -> None:
 def test_environment_sets_the_workspace(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HCM_WORKSPACE", "/tmp/x")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", "/tmp/x")
     assert load_settings().workspace == Path("/tmp/x")
 
 
 def test_flag_beats_the_environment(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HCM_WORKSPACE", "/tmp/x")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", "/tmp/x")
     assert load_settings(workspace=Path("/tmp/y")).workspace == Path("/tmp/y")
 
 
@@ -46,7 +46,7 @@ def test_config_file_loses_to_both(
     write_config(workspace / DEFAULT_WORKSPACE, 'workspace = "/tmp/z"\n')
 
     # ...to the environment,
-    monkeypatch.setenv("HCM_WORKSPACE", "/tmp/x")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", "/tmp/x")
     assert load_settings().workspace == Path("/tmp/x")
 
     # ...and to the flag.
@@ -65,7 +65,7 @@ def test_config_is_read_from_the_bootstrap_workspace(
     config discovery — otherwise resolution would be a fixed-point iteration."""
     elsewhere = workspace / "elsewhere"
     write_config(elsewhere, 'workspace = "/tmp/z"\n')
-    monkeypatch.setenv("HCM_WORKSPACE", str(elsewhere))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(elsewhere))
 
     assert config_file_for() == elsewhere / "config.toml"
     # The environment wins over the file's own workspace key.
@@ -75,8 +75,9 @@ def test_config_is_read_from_the_bootstrap_workspace(
 def test_empty_environment_value_is_ignored(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`HCM_WORKSPACE=` in a shell script means unset, not "the current directory"."""
-    monkeypatch.setenv("HCM_WORKSPACE", "")
+    """`DATAPORTER_WORKSPACE=` in a shell script means unset, not the current
+    directory."""
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", "")
     assert load_settings().workspace == workspace / DEFAULT_WORKSPACE
 
 
@@ -126,7 +127,7 @@ def test_nested_sections_follow_the_same_ladder(
     token = config._config_file.set(config.config_file_for())
     try:
         assert NestedSettings().pacing.delay_between_conversations_s == 5
-        monkeypatch.setenv("HCM_PACING__DELAY_BETWEEN_CONVERSATIONS_S", "7")
+        monkeypatch.setenv("DATAPORTER_PACING__DELAY_BETWEEN_CONVERSATIONS_S", "7")
         assert NestedSettings().pacing.delay_between_conversations_s == 7
         override = NestedSettings(pacing={"delay_between_conversations_s": 9})
         assert override.pacing.delay_between_conversations_s == 9
@@ -153,7 +154,7 @@ def test_a_real_section_takes_an_environment_override(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The mechanism `01` built, on the first sections to actually use it."""
-    monkeypatch.setenv("HCM_SEED__MAX_CHARS", "1234")
+    monkeypatch.setenv("DATAPORTER_SEED__MAX_CHARS", "1234")
     assert load_settings().seed.max_chars == 1234
 
 
@@ -173,7 +174,7 @@ def test_the_attachments_directory_defaults_to_the_workspace(workspace: Path) ->
 def test_an_explicit_attachments_directory_wins_and_is_absolute(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HCM_ATTACHMENTS__DIR", "elsewhere")
+    monkeypatch.setenv("DATAPORTER_ATTACHMENTS__DIR", "elsewhere")
     assert load_settings().attachments_dir == workspace / "elsewhere"
 
 
@@ -208,7 +209,7 @@ def test_timeouts_have_defaults_and_can_be_overridden(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert load_settings().timeouts.login_s == 600.0
-    monkeypatch.setenv("HCM_TIMEOUTS__LOGIN_S", "30")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__LOGIN_S", "30")
     settings = load_settings()
     assert settings.timeouts.login_s == 30.0
     assert settings.timeouts.browser_start_s == 30.0
@@ -241,8 +242,8 @@ def test_the_retry_budget_follows_the_ladder(
     assert settings.retries.backoff_s == (1.0, 2.0)
     assert settings.run.stop_after_consecutive_failures == 9
 
-    monkeypatch.setenv("HCM_RETRIES__MAX_ATTEMPTS", "2")
-    monkeypatch.setenv("HCM_RUN__STOP_AFTER_CONSECUTIVE_FAILURES", "0")
+    monkeypatch.setenv("DATAPORTER_RETRIES__MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("DATAPORTER_RUN__STOP_AFTER_CONSECUTIVE_FAILURES", "0")
     overridden = load_settings()
     assert overridden.retries.max_attempts == 2
     assert overridden.run.stop_after_consecutive_failures == 0
@@ -264,7 +265,7 @@ def test_the_flag_and_the_environment_both_switch_the_mode_on(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert load_settings(non_interactive=True).non_interactive is True
-    monkeypatch.setenv("HCM_NON_INTERACTIVE", "1")
+    monkeypatch.setenv("DATAPORTER_NON_INTERACTIVE", "1")
     assert load_settings().non_interactive is True
     assert load_settings().headless is True
 
@@ -272,19 +273,19 @@ def test_the_flag_and_the_environment_both_switch_the_mode_on(
 def test_headless_follows_the_mode_unless_configured(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HCM_NON_INTERACTIVE", "1")
-    monkeypatch.setenv("HCM_BROWSER__HEADLESS", "false")
+    monkeypatch.setenv("DATAPORTER_NON_INTERACTIVE", "1")
+    monkeypatch.setenv("DATAPORTER_BROWSER__HEADLESS", "false")
     assert load_settings().headless is False
-    monkeypatch.delenv("HCM_NON_INTERACTIVE")
-    monkeypatch.setenv("HCM_BROWSER__HEADLESS", "true")
+    monkeypatch.delenv("DATAPORTER_NON_INTERACTIVE")
+    monkeypatch.setenv("DATAPORTER_BROWSER__HEADLESS", "true")
     assert load_settings().headless is True
 
 
 def test_credentials_come_from_the_environment(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
-    monkeypatch.setenv("HCM_AUTH__PASSWORD", "hunter2")
+    monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", "hunter2")
     found = load_settings().credentials
     assert found is not None
     assert found.email == "someone@example.test"
@@ -294,15 +295,15 @@ def test_credentials_come_from_the_environment(
 def test_half_a_credential_is_no_credential(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
     assert load_settings().credentials is None
 
 
 def test_the_flags_set_the_half_they_name_and_keep_the_other(
     workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("HCM_AUTH__EMAIL", "env@example.test")
-    monkeypatch.setenv("HCM_AUTH__PASSWORD", "from-env")
+    monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "env@example.test")
+    monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", "from-env")
     secret = tmp_path / "secret.txt"
     secret.write_text("from-file\nsecond line ignored\n", encoding="utf-8")
 
@@ -331,8 +332,8 @@ def test_an_unreadable_secret_file_is_a_configuration_error(
 def test_the_secret_never_appears_in_a_dump(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
-    monkeypatch.setenv("HCM_AUTH__PASSWORD", "hunter2")
+    monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", "hunter2")
     settings = load_settings()
     for rendering in (repr(settings), str(settings), settings.model_dump_json()):
         assert "hunter2" not in rendering
@@ -358,15 +359,15 @@ def test_a_blank_half_is_no_credential(
 ) -> None:
     """Whitespace arrives as a string where an empty variable would not; a run
     must not start a browser on it. (Raised by Copilot in review on #33.)"""
-    monkeypatch.setenv("HCM_AUTH__EMAIL", email)
-    monkeypatch.setenv("HCM_AUTH__PASSWORD", secret)
+    monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", email)
+    monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", secret)
     assert load_settings().credentials is None
 
 
 def test_a_blank_first_line_in_the_secret_file_is_no_credential(
     workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
     secret = tmp_path / "secret.txt"
     secret.write_text("\nhunter2\n", encoding="utf-8")
     assert load_settings(password_file=secret).credentials is None

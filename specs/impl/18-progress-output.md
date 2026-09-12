@@ -54,7 +54,7 @@ when piped — with no conversation content, ever.
   Status is padded to 10 characters; the detail column appears only for `partial` and
   `failed`. No ANSI sequences are emitted when stdout is not a TTY or when `--quiet` is
   given; `--quiet` suppresses the event lines but not the final block.
-- `hermes-claude-migrate status` prints the four counter lines from state alone. `06`
+- `dataporter status` prints the four counter lines from state alone. `06`
   shipped it without the bar — one that is drawn once is a picture of a number the line
   under it already gives — and owns `summary.counters_lines`; whether `status` grows a
   bar here is this slice's call, and the header and redraw are this slice's either way.

@@ -43,11 +43,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from dataporter import PROGRAM_NAME
 from rehearsal import export as exporting
 from rehearsal.hermes import VERSION as AGENT_VERSION
 from rehearsal.hermes import write_executable
 
-PROGRAM = "hermes-claude-migrate"
+PROGRAM = PROGRAM_NAME
+"""The command a rehearsal looks for on `PATH`: the tool's own name, so a rename
+of the console script cannot leave this file looking for a binary that is gone."""
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8443
@@ -275,8 +278,8 @@ def environment(settings: Settings) -> dict[str, str]:
     """
     env = dict(os.environ)
     env["PATH"] = f"{settings.bin}{os.pathsep}{env.get('PATH', '')}"
-    env["HCM_AUTH__EMAIL"] = settings.email
-    env["HCM_AUTH__PASSWORD"] = settings.password
+    env["DATAPORTER_AUTH__EMAIL"] = settings.email
+    env["DATAPORTER_AUTH__PASSWORD"] = settings.password
     return env
 
 

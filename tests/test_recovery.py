@@ -232,9 +232,9 @@ def page() -> FakePage:
 def browser(page: FakePage, monkeypatch: pytest.MonkeyPatch) -> Iterator[Browser]:
     opened = Browser(page)
     opened.__enter__()
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(opened.chrome.port))
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "5")
-    monkeypatch.setenv("HCM_TIMEOUTS__RESPONSE_S", "0.2")
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(opened.chrome.port))
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "5")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__RESPONSE_S", "0.2")
     try:
         yield opened
     finally:

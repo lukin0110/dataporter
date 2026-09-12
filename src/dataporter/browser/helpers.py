@@ -285,12 +285,12 @@ class Emission:
 # The expressions that touch content
 # --------------------------------------------------------------------------- #
 
-COMPOSER_TEXT_TAG = "hcm:composer_text"
-FOCUS_TAG = "hcm:focus"
-EXEC_COMMAND_TAG = "hcm:exec_command"
-FILE_INPUT_TAG = "hcm:file_input"
-CHIP_TAG = "hcm:chip"
-CHIPS_TAG = "hcm:chips"
+COMPOSER_TEXT_TAG = "dataporter:composer_text"
+FOCUS_TAG = "dataporter:focus"
+EXEC_COMMAND_TAG = "dataporter:exec_command"
+FILE_INPUT_TAG = "dataporter:file_input"
+CHIP_TAG = "dataporter:chip"
+CHIPS_TAG = "dataporter:chips"
 
 COMPOSER_TEXT_JS = probing.expression(
     COMPOSER_TEXT_TAG,

@@ -9,7 +9,7 @@ and this slice leaves every command, flag and golden string where they were.
 
 ## Goal
 
-Make `hermes-claude-migrate` a Python library with a command-line interface on top, rather
+Make `dataporter` a Python library with a command-line interface on top, rather
 than a command-line tool whose behaviour lives in its argument parser. Every command becomes
 one shape — parse the flags, take the settings the root callback resolved, call the one
 library function that owns the command, hand it somewhere to put its lines, exit with the

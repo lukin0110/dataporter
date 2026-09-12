@@ -141,7 +141,7 @@ class Check:
 
 def nonce() -> str:
     """A token Hermes cannot have seen before and cannot guess."""
-    return f"HCM-{secrets.token_hex(5).upper()}"
+    return f"DATAPORTER-{secrets.token_hex(5).upper()}"
 
 
 def pacing_check(settings: Settings) -> Check:

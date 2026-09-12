@@ -294,7 +294,7 @@ def ladder_on_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One empty composer, and a `hermes-claude-migrate` that can reach it."""
+    """One empty composer, and a `dataporter` that can reach it."""
     session, server = live
     visit(session, server.url("/new"))
     directory = tmp_path / "bin"

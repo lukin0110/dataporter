@@ -47,10 +47,10 @@ the step name that `state.json` and the report use.
   | --- | --- | --- |
   | `open` | `browser_navigate` to `https://claude.ai/new`, or to `/chat/<existing conversation_id>` when the prompt gives one | `browser probe`: `logged_in` and `composer_present`; if not → result `needs_human` / `auth_required` |
   | `new_chat` | only on a first attempt: if the URL is `/chat/…`, navigate to `/new` again | URL is `/new` and the composer is empty (`browser probe` → `composer_chars == 0`) |
-  | `attach` (per file, `16`) | `terminal: hermes-claude-migrate browser attach --file …` | helper `ok: true` |
-  | `paste` (per part) | `terminal: hermes-claude-migrate browser paste --seed …` | helper `ok: true` (hash match) |
+  | `attach` (per file, `16`) | `terminal: dataporter browser attach --file …` | helper `ok: true` |
+  | `paste` (per part) | `terminal: dataporter browser paste --seed …` | helper `ok: true` (hash match) |
   | `submit` (per part) | `browser_press("Enter")` on the composer ref, or `browser_click` on the Send button ref | `browser probe`: composer empty **and** last message role `human` |
-  | `await` (per part) | `terminal: hermes-claude-migrate browser await-response --expect "MIGRATION-ACK …"` | helper `ok: true` |
+  | `await` (per part) | `terminal: dataporter browser await-response --expect "MIGRATION-ACK …"` | helper `ok: true` |
   | `ack` (per part) | read `last_message.contains` | contains the expected ack line; if not, `browser_snapshot` and classify (`13`) |
   | `identify` | `browser probe` | `conversation_id` is a uuid; URL is `/chat/<uuid>` |
   | `rename` (`17`) | only when the prompt gives a `title`: the chat's own menu, its rename affordance, the title typed through `browser_type` | `browser probe --expect-title "<title>"` → `title.matches` is `true`; a rename that does not take leaves `last_step` at `identify` and stops nothing (`17`) |
@@ -78,7 +78,7 @@ the step name that `state.json` and the report use.
   resume_from: {step or "open"}
   existing conversation_id: {uuid or "none"}
   parts already acknowledged: {k, or 0}
-  helper: hermes-claude-migrate --workspace {workspace} browser …
+  helper: dataporter --workspace {workspace} browser …
 
   Follow the skill's procedure. After every action verify it as the skill says. Never type
   the seed yourself; only the helper inserts it. When finished, or when you cannot safely

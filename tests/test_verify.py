@@ -438,7 +438,7 @@ def chat(
     page = FakePage(url=NEW_URL, composer="", transcript=transcript(), title=TITLE)
     browser = Browser(page)
     browser.__enter__()
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(browser.chrome.port))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(browser.chrome.port))
     try:
         yield browser, page
     finally:
@@ -607,10 +607,10 @@ def workspace_with(
             started="now",
         ),
     )
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(browser.chrome.port))
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "2")
-    monkeypatch.setenv("HCM_TIMEOUTS__VERIFY_S", "1")
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(browser.chrome.port))
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__VERIFY_S", "1")
     store = state.StateStore(settings.workspace)
     store.update(SOURCE, **{**entry().model_dump(), **fields})
     return store

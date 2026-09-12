@@ -167,10 +167,10 @@ def test_the_doctor_helper_task_runs_the_command_and_reports_its_ok(
         "Use the terminal tool to run exactly this command, once:\n\n"
         f"  python {helper}\n\n"
         "It prints one JSON object. Then reply with two lines: the word "
-        'HCM-ABC123, then the value of that object\'s "ok" field.\n'
+        'DATAPORTER-ABC123, then the value of that object\'s "ok" field.\n'
     )
     answer = scripted.helper_task(prompt)
-    assert answer.splitlines() == ["HCM-ABC123", "true"]
+    assert answer.splitlines() == ["DATAPORTER-ABC123", "true"]
 
 
 def test_a_prompt_with_no_nonce_cannot_be_answered(profile: Path) -> None:
@@ -200,7 +200,7 @@ short_id: a1000001
 conversation_id: 11111111-2222-4333-8444-555555555555
 chat url: https://claude.ai/chat/11111111-2222-4333-8444-555555555555
 question file: /w/pilot/question.txt
-helper: hermes-claude-migrate --workspace /w browser …
+helper: dataporter --workspace /w browser …
 
 Procedure.
 """
@@ -520,7 +520,7 @@ def test_the_record_carries_a_mark_on_every_number(tmp_path: Path) -> None:
         ledger_block=running.ledger_block(LEDGER),
         findings=running.findings_of([ok("setup")], checks),
         versions={
-            "tool": "hermes-claude-migrate 0.1.0",
+            "tool": "dataporter 0.1.0",
             "agent": "scripted agent 1.0.0",
             "chrome": "Chromium 141",
             "mock": "0.1.0",

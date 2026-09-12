@@ -246,7 +246,7 @@ def test_judge_does_not_report_nothing_to_grade_while_the_workspace_is_locked(
     looked. A busy workspace is exit `2`. (Raised by Copilot in review on
     #29.)"""
     settings = Settings(workspace=workspace / "migration")
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
     lock = state.WorkspaceLock(settings.workspace)
     lock.acquire()
     try:
@@ -268,7 +268,7 @@ def test_judge_without_the_extra_exits_6(
         raise ImportError(name)
 
     monkeypatch.setattr(judging.importlib, "import_module", missing)
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
 
     result = runner.invoke(cli.app, ["judge"], catch_exceptions=False)
 
@@ -285,7 +285,7 @@ def test_judge_only_grades_the_conversation_it_names(
     following.write(settings, ProbeFile(probes=[probe(), other]))
     grade, _ = grading()
     monkeypatch.setattr(judging, "grader", lambda settings: grade)
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
 
     result = runner.invoke(
         cli.app, ["judge", "--only", "aa000001"], catch_exceptions=False
@@ -306,7 +306,7 @@ def test_judge_writes_a_verdict_beside_every_reply(
     following.write(settings, ProbeFile(probes=[probe()]))
     grade, _ = grading("pass", "names the subject")
     monkeypatch.setattr(judging, "grader", lambda settings: grade)
-    monkeypatch.setenv("HCM_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
 
     result = runner.invoke(cli.app, ["judge"], catch_exceptions=False)
 

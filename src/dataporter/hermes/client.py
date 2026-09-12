@@ -15,16 +15,16 @@ the workspace instead of through a pipe into this process.
 ## The environment
 
 Every Hermes process starts from `hermes_env()`: `PATH`, `HOME` and `LANG`
-forwarded when the parent has them, `HCM_WORKSPACE` set to the absolute
+forwarded when the parent has them, `DATAPORTER_WORKSPACE` set to the absolute
 workspace, and nothing else. Two reasons, and they point the same way:
 
 - `HERMES_YOLO_MODE` cannot be set, by construction rather than by a check,
   because the variable never reaches the child. `09` says the approval layer
   denies what it flags; an inherited variable that turns approvals off would
   make that promise depend on the operator's shell.
-- `HCM_WORKSPACE` has to be set, not merely allowed. The runner uses
+- `DATAPORTER_WORKSPACE` has to be set, not merely allowed. The runner uses
   `cwd=<workspace>`, so a helper Hermes invokes as
-  `hermes-claude-migrate browser probe` with no `--workspace` would resolve the
+  `dataporter browser probe` with no `--workspace` would resolve the
   default `./migration` *inside* the workspace — a second workspace, with its own
   config and its own actions log, one level down. `11`'s prompt passes the flag
   as well; this makes forgetting it harmless rather than silently wrong.
@@ -53,7 +53,7 @@ PASSED_THROUGH_ENV: tuple[str, ...] = ("PATH", "HOME", "LANG")
 interpreter and our helper commands, `HOME` so it can find its profile and its
 `.env`, `LANG` so its output is UTF-8 on a system whose default is not."""
 
-WORKSPACE_ENV_VAR = "HCM_WORKSPACE"
+WORKSPACE_ENV_VAR = "DATAPORTER_WORKSPACE"
 """Set, not forwarded. See the module docstring."""
 
 INSTALL_HINT = (

@@ -44,8 +44,8 @@ from dataporter.hermes import runner as hermes_running
 _logger = log.get_logger(__name__)
 
 MISSING_CREDENTIALS = (
-    "--non-interactive needs credentials: set HCM_AUTH__EMAIL and "
-    "HCM_AUTH__PASSWORD, or pass --email and --password-file"
+    "--non-interactive needs credentials: set DATAPORTER_AUTH__EMAIL and "
+    "DATAPORTER_AUTH__PASSWORD, or pass --email and --password-file"
 )
 """Exit `2`, before any browser starts: a run that would stop at the first
 sign-in form is a run that should not have started."""

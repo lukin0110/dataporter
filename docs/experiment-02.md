@@ -64,7 +64,7 @@ to `run.json`. Interruptions are expected and recorded rather than avoided.
 | Conversations in a terminal status | — | *not yet run* |
 | Report reconciles (`Created + Partial + Failed + Pending == Source`) | — | *not yet run* |
 
-The §16 block of the last session goes here verbatim, from `hermes-claude-migrate report`.
+The §16 block of the last session goes here verbatim, from `dataporter report`.
 
 *not yet run*
 

@@ -119,9 +119,9 @@ def strict_content_guard(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No HCM_* variable from the developer's shell leaks into a test."""
+    """No DATAPORTER_* variable from the developer's shell leaks into a test."""
     for name in list(os.environ):
-        if name.startswith("HCM_"):
+        if name.startswith("DATAPORTER_"):
             monkeypatch.delenv(name, raising=False)
 
 

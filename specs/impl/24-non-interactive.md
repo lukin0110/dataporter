@@ -25,8 +25,8 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
 - **The brief's §8 amended**, explicitly, with the original sentence quoted and the five
   slices it touched named; §12 gains the sentence about running off a terminal.
 - **Configuration** (`config.py`): `non_interactive: bool` (`--non-interactive`,
-  `HCM_NON_INTERACTIVE=1`); `[auth]` with `email` and `password: SecretStr`
-  (`HCM_AUTH__EMAIL`, `HCM_AUTH__PASSWORD`; `--email`, `--password-file` on the root
+  `DATAPORTER_NON_INTERACTIVE=1`); `[auth]` with `email` and `password: SecretStr`
+  (`DATAPORTER_AUTH__EMAIL`, `DATAPORTER_AUTH__PASSWORD`; `--email`, `--password-file` on the root
   callback — a file's first line, never a value on argv); `browser.headless: bool | None`
   (`None` follows the mode; `Settings.headless` is the one answer); `timeouts.signin_s`
   (`120`). `config.toml` may carry neither `auth` nor `non_interactive`: `_TomlWithoutSecrets`
@@ -44,8 +44,8 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
   login-expiry row stay verbatim.
 - **This process's half** (`browser/login_form.py`): `fill_and_submit(session,
   credentials, *, timeout_s)` — up to three rounds of: read which field is showing
-  (`LOGIN_FIELDS_JS`, tag `hcm:login_fields`), focus it and select what it holds
-  (`focus_field_js`, tag `hcm:focus_field`, the selector a `const` on its own line), insert
+  (`LOGIN_FIELDS_JS`, tag `dataporter:login_fields`), focus it and select what it holds
+  (`focus_field_js`, tag `dataporter:focus_field`, the selector a `const` on its own line), insert
   the value through `Input.insertText`, `Page.press_enter()` (the one CDP primitive added:
   `Input.dispatchKeyEvent` keyDown/keyUp), and wait for the page to become signed in or a
   different form. The email goes in once. `FillResult(signed_in, filled, rounds, blocked)`
@@ -58,9 +58,9 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
   filled)`, `reason` in `intervention.REASON_PHRASES`' words or `hermes failed`.
   `ensure_signed_in(settings, session)` is the guard every run makes: interactively `12`'s
   `AuthError(SIGNED_OUT)`; unattended one `perform`, then `AuthError("automatic sign-in
-  stopped: <reason> — run: hermes-claude-migrate login")`. `require_credentials` raises
-  `UsageError` with `--non-interactive needs credentials: set HCM_AUTH__EMAIL and
-  HCM_AUTH__PASSWORD, or pass --email and --password-file`, before any browser, from
+  stopped: <reason> — run: dataporter login")`. `require_credentials` raises
+  `UsageError` with `--non-interactive needs credentials: set DATAPORTER_AUTH__EMAIL and
+  DATAPORTER_AUTH__PASSWORD, or pass --email and --password-file`, before any browser, from
   `login`, `import` (not `--dry-run`), `resume`, `verify` and `followup`.
 - **The importer**: `_require_signed_in` → `ensure_signed_in` (preflight and the mid-run
   relaunch), counting a sign-in it made as `auto_signins`; in `_migrate`, an
@@ -72,8 +72,8 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
 - **`intervention.Unattended`**: `ask` prints the block and returns `False` without
   touching stdin; `retry` likewise; `note` to stderr. `block(request, unattended=True)`
   swaps two lines: `Browser:      no window — non-interactive run; clear it, then run:
-  hermes-claude-migrate resume` and `Paused for a person (non-interactive); run:
-  hermes-claude-migrate resume`. `Importer` picks it when the mode is on and nothing was
+  dataporter resume` and `Paused for a person (non-interactive); run:
+  dataporter resume`. `Importer` picks it when the mode is on and nothing was
   passed.
 - **`login`** in the mode: `ensure_signed_in` instead of the prompt and the wait, the
   same `Logged in. …` line, Chrome closed so the cookie jar flushes. **`launcher.launch`**
@@ -89,7 +89,7 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
   stdin, the mid-run expiry cleared and counted, the pause at exit `5`, `resume` signing
   in itself, the preflight sign-in, exit `2` without credentials, the CLI variants of
   `login`, and a walk of every workspace file, transcript and printed byte after a run
-  that signed in twice); `test_hermes_client.py` (`HCM_AUTH__*` in the parent, absent
+  that signed in twice); `test_hermes_client.py` (`DATAPORTER_AUTH__*` in the parent, absent
   from the child); the tripwire rescoped to the four-module seam.
 
 ## Out of scope
@@ -133,7 +133,7 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
 
 ## Acceptance criteria
 
-- `HCM_NON_INTERACTIVE=1 HCM_AUTH__EMAIL=… HCM_AUTH__PASSWORD=… hermes-claude-migrate
+- `DATAPORTER_NON_INTERACTIVE=1 DATAPORTER_AUTH__EMAIL=… DATAPORTER_AUTH__PASSWORD=… dataporter
   import <export> --limit 1` in the fake world, with the page a sign-in form and the fake
   Hermes answering `form_ready`, exits `0` with `auto_signins == 1` and
   `human_interventions == 0`; with the agent answering `needs_human` it exits `5` with an
@@ -141,7 +141,7 @@ a CAPTCHA or a challenge is reported and paused on, never guessed at.
   credentials it exits `2` before `launcher.launch` is called.
 - `login --non-interactive` prints `Logged in. …` and closes Chrome; when the sign-in
   stops it exits `3` with `error: automatic sign-in stopped: <reason> — run:
-  hermes-claude-migrate login`.
+  dataporter login`.
 - After any of those runs, no file under the workspace, no Hermes transcript, no log
   record and nothing printed contains the email or the password; every Hermes call's
   argv and environment are free of both; the secret appears in the CDP trace only as
