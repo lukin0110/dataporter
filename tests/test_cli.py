@@ -1,5 +1,6 @@
 """The command surface, and the exit codes it promises."""
 
+import ast
 import inspect
 from pathlib import Path
 
@@ -7,7 +8,10 @@ import pytest
 from typer.testing import CliRunner
 
 from dataporter import cli
-from dataporter.errors import ExportError
+from dataporter import judge as judging
+from dataporter import pilot as piloting
+from dataporter import selection as selecting
+from dataporter.errors import ExportError, UsageError
 from dataporter.exit_codes import ExitCode
 
 # Every command in `specs/impl/01-foundation.md`, written out rather than derived
@@ -144,7 +148,7 @@ def test_unhandled_exception_becomes_exit_70(
     def explode(*args: object, **kwargs: object) -> None:
         raise ZeroDivisionError("boom")
 
-    monkeypatch.setattr(cli.piloting, "choose", explode)
+    monkeypatch.setattr(piloting, "choose", explode)
     result = runner.invoke(
         cli.app,
         ["import", str(export_dir), "--dry-run", "--pilot"],
@@ -178,10 +182,97 @@ def test_a_malformed_export_is_exit_2_not_an_internal_error(
     def explode(export: str) -> Path:
         raise ExportError(detail="conversations.json is not a JSON array: ./export.zip")
 
-    monkeypatch.setattr(cli, "require_export", explode)
+    monkeypatch.setattr(selecting, "export_path", explode)
     result = runner.invoke(cli.app, ["inspect", "."], catch_exceptions=False)
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr == (
         "error: conversations.json is not a JSON array: ./export.zip\n"
     )
     assert "Traceback" not in result.output
+
+
+# --------------------------------------------------------------------------- #
+# `23`: the CLI is an interface
+# --------------------------------------------------------------------------- #
+
+COMMAND_APPS = ("app", "session_app", "browser_app")
+LOGIC = (ast.For, ast.While, ast.Try, ast.With, ast.If, ast.AsyncFor, ast.AsyncWith)
+FORBIDDEN_IMPORTS = ("state", "launcher", "probe", "summary", "load_export")
+
+
+def command_functions(tree: ast.Module) -> list[ast.FunctionDef]:
+    """Every function registered on one of the three Typer apps."""
+    found: list[ast.FunctionDef] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for decorator in node.decorator_list:
+            call = decorator if isinstance(decorator, ast.Call) else None
+            target = call.func if call is not None else decorator
+            if (
+                isinstance(target, ast.Attribute)
+                and target.attr == "command"
+                and isinstance(target.value, ast.Name)
+                and target.value.id in COMMAND_APPS
+            ):
+                found.append(node)
+    return found
+
+
+def test_every_command_is_an_interface() -> None:
+    """`23`'s acceptance criterion, made checkable: a command parses, calls one
+    library function, and exits. No loop, no branch, no lock, no browser."""
+    tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+    commands = command_functions(tree)
+    assert {item.name for item in commands} >= {
+        "import_cmd",
+        "login",
+        "verify",
+        "followup",
+        "judge",
+        "doctor",
+        "session_status",
+        "browser_probe",
+    }
+    offenders = [
+        f"{function.name}:{node.lineno}"
+        for function in commands
+        for node in ast.walk(function)
+        if isinstance(node, LOGIC)
+    ]
+    assert offenders == []
+
+
+def test_the_cli_opens_no_workspace_and_no_browser_itself() -> None:
+    tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+    imported = {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.col_offset == 0
+        for alias in node.names
+    }
+    assert not imported & set(FORBIDDEN_IMPORTS)
+
+
+def test_a_usage_error_from_the_library_is_exit_2(
+    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(export: str) -> Path:
+        raise UsageError("two flags that cannot both be honoured")
+
+    monkeypatch.setattr(selecting, "export_path", refuse)
+    result = runner.invoke(cli.app, ["inspect", "."], catch_exceptions=False)
+    assert result.exit_code == ExitCode.USAGE
+    assert result.stderr == "error: two flags that cannot both be honoured\n"
+
+
+def test_a_judge_error_is_exit_6(
+    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise judging.JudgeError("the judge extra is not installed")
+
+    monkeypatch.setattr(judging, "judge_all", refuse)
+    result = runner.invoke(cli.app, ["judge"], catch_exceptions=False)
+    assert result.exit_code == ExitCode.ENVIRONMENT
+    assert result.stderr == "error: the judge extra is not installed\n"

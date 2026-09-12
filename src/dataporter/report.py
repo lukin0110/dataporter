@@ -29,15 +29,20 @@ status, a step name, a category and `ErrorRecord.detail` — which is `13`'s own
 operator-facing words, and never content.
 """
 
+import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import state, summary
 from dataporter.browser import helpers as browser_helpers
+from dataporter.config import Settings
+from dataporter.console import DISCARD, Sink
 from dataporter.errors import Category
+from dataporter.exit_codes import ExitCode
 from dataporter.plan import PLAN_FILENAME, SKIPPED_BY_FLAG, MigrationPlan
 from dataporter.render import short_id
 from dataporter.state import (
@@ -574,3 +579,73 @@ def render(report: Report) -> str:
     renders to are the same bytes by construction.
     """
     return "".join(f"{line}\n" for line in lines(report))
+
+
+# --------------------------------------------------------------------------- #
+# The `status` and `report` commands (`23`)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class StatusOutcome:
+    """`status`: the state file and the counters beside it. Always exit `0`."""
+
+    migration: MigrationState
+    counters: Mapping[str, int]
+    exit_code: ExitCode = ExitCode.OK
+
+
+@dataclass(frozen=True)
+class ReportOutcome:
+    """`report`: §16's account of the workspace. Always exit `0`."""
+
+    report: Report
+    exit_code: ExitCode = ExitCode.OK
+
+
+def status(
+    settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD
+) -> StatusOutcome:
+    """Show migration progress recorded in the workspace.
+
+    Both files are read before anything is printed: this is where a workspace
+    written by a build with a different state schema stops the command instead
+    of being reported with half its numbers missing. A workspace nothing has run
+    in yet is an empty object and four zeros, not an error: `status` answers a
+    question, and "nothing has happened here" is an answer.
+
+    Printed even under `--quiet`: `-q` suppresses progress, and this is the
+    command's whole result. No bar: `18` draws one while a run moves, and a
+    picture that is redrawn once says nothing the numbers under it do not.
+    """
+    store = state.StateStore(settings.workspace)
+    run = store.run()
+    migration = store.load()
+    counters = {**state.status_counts(migration), **run.counters()}
+    if json_output:
+        payload = {"state": migration.model_dump(mode="json"), "counters": counters}
+        sink.line(json.dumps(payload, indent=2))
+    else:
+        sink.block(summary.status_report(migration))
+    return StatusOutcome(migration=migration, counters=counters)
+
+
+def show(
+    settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD
+) -> ReportOutcome:
+    """Print the end-of-migration report.
+
+    Reads `state.json`, `run.json`, `plan.json` and `logs/actions.jsonl`, and
+    writes nothing: no lock, no browser, no Hermes. A report is a question about
+    a workspace, and one that rewrote what it was asked to read could not be run
+    beside a migration that is still going — `import` is what writes
+    `report.json`, at the end of a run and under the lock.
+    """
+    built = build(settings.workspace)
+    if json_output:
+        sink.line(built.model_dump_json(indent=2))
+    else:
+        # Printed even under `--quiet`, like `status`: `-q` suppresses progress,
+        # and this block is the command's whole result.
+        sink.block(render(built))
+    return ReportOutcome(report=built)

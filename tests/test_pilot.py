@@ -266,7 +266,7 @@ def test_a_selection_flag_beside_pilot_is_a_usage_error(
     )
 
     assert result.exit_code == ExitCode.USAGE
-    assert result.stderr == f"error: {cli.PILOT_CHOOSES}\n"
+    assert result.stderr == f"error: {pilot.PILOT_CHOOSES}\n"
 
 
 def test_a_pilot_of_an_export_with_nothing_migratable_exits_4(

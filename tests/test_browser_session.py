@@ -387,7 +387,7 @@ def test_login_asks_the_operator_and_gives_up(
     monkeypatch.setenv("HCM_TIMEOUTS__LOGIN_S", "0.05")
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stdout == f"{cli.LOGIN_PROMPT}\n"
+    assert result.stdout == f"{browser_session.LOGIN_PROMPT}\n"
     assert result.stderr == "error: timed out after 0.05s waiting for login\n"
     # No password was asked for, here or anywhere (§8).
     assert "password" not in result.output.lower()

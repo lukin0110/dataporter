@@ -45,6 +45,18 @@ class Category(StrEnum):
     SAFETY = "safety"
 
 
+class UsageError(Exception):
+    """An operator-fixable contradiction in what was asked. Exit `2`.
+
+    Not a `MigrationError`: nothing failed, and no category in the table names
+    it. `23` added it so that the library can refuse two flags that cannot both
+    be honoured — `--limit` above the ceiling without `--all`, a selection flag
+    beside `--pilot`, an export path that is not there — from wherever the
+    refusal is decided, and the CLI prints `error: <text>` and exits `2` for it
+    exactly as it does for a `ConfigError`. The message is the whole of it.
+    """
+
+
 class MigrationError(Exception):
     """Base class. Abstract — raise one of the subclasses below."""
 

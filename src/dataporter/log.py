@@ -287,13 +287,22 @@ def configure_logging(*, verbose: bool = False, strict: bool | None = None) -> N
 def enable_run_log(workspace: Path, *, strict: bool | None = None) -> Path:
     """Install the JSON-lines file sink and return its path.
 
-    Only commands that already write to the workspace call this.
+    Only operations that already write to the workspace call this (`23` moved
+    the calls out of `cli` and into them), which means one process can call it
+    twice — a Python caller running `verify` after `import`. The sink it
+    installs replaces the one before it rather than joining it: two file sinks
+    on one logger would write every record twice, into two files.
     """
     path = run_log_path(workspace)
+    logger = package_logger()
+    for existing in list(logger.handlers):
+        if isinstance(existing, _JsonlFileHandler):
+            logger.removeHandler(existing)
+            existing.close()
     handler = _JsonlFileHandler(path, mode="a", encoding="utf-8", delay=True)
     handler.setFormatter(JsonlFormatter())
     guard_strict = _strict_default if strict is None else strict
-    package_logger().addHandler(_guarded(handler, strict=guard_strict))
+    logger.addHandler(_guarded(handler, strict=guard_strict))
     return path
 
 

@@ -27,15 +27,19 @@ operator's terminal is a short id and one of three words.
 
 import importlib
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from dataporter import log
+from dataporter import followup as following
+from dataporter import log, state
 from dataporter import seed as seeding
 from dataporter.config import Settings
+from dataporter.console import DISCARD, Sink
+from dataporter.exit_codes import ExitCode
 from dataporter.followup import Probe, Verdict
 
 _logger = log.get_logger(__name__)
@@ -205,3 +209,59 @@ def line(probe: Probe, verdict: Verdict | None) -> str:
         return f"{probe.short_id}  {verdict.score}"
     reason = NO_SOURCE if probe.answered else (probe.error or probe.outcome)
     return f"{probe.short_id}  not graded  {reason}"
+
+
+# --------------------------------------------------------------------------- #
+# The `judge` command (`23`)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class JudgeOutcome:
+    """Every probe graded, with its verdict; exit `4` when there were none."""
+
+    verdicts: tuple[tuple[Probe, Verdict | None], ...]
+    exit_code: ExitCode
+
+
+def judge_all(
+    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD
+) -> JudgeOutcome:
+    """Grade the follow-up replies with a model (the `judge` extra).
+
+    The lock is taken before `probes.json` is read, and not only around the
+    writes: this command reads the file, decides there is nothing to do, and
+    writes back into it, and a `followup` filling it in the middle of that would
+    be a judge reporting "nothing to grade" about replies that were arriving as
+    it looked. A busy workspace is exit `2` and says who holds it, which is the
+    honest answer to "grade these". (Raised by Copilot in review on #29.)
+
+    No probe file, or nothing selected in it, is exit `4` rather than `0`:
+    `followup` is what produces the replies, and grading none of them is not a
+    graded experiment. A missing extra or key is `JudgeError`, exit `6`.
+    """
+    log.enable_run_log(settings.workspace)
+    lock = state.WorkspaceLock(settings.workspace)
+    lock.acquire()
+    graded: list[tuple[Probe, Verdict | None]] = []
+    try:
+        file = following.read(settings)
+        wanted = list(file.probes)
+        if only:
+            chosen = set(
+                state.resolve_only([item.conversation_uuid for item in wanted], only)
+            )
+            wanted = [item for item in wanted if item.conversation_uuid in chosen]
+        if not wanted:
+            return JudgeOutcome(verdicts=(), exit_code=ExitCode.NOTHING_TO_DO)
+        grade = grader(settings)
+        for item in wanted:
+            verdict = verdict_for(settings, item, grade=grade)
+            file = file.replace(item.model_copy(update={"verdict": verdict}))
+            following.write(settings, file)
+            graded.append((item, verdict))
+            # The score, never the reason (§10). Even under `--quiet`.
+            sink.line(line(item, verdict))
+    finally:
+        lock.release()
+    return JudgeOutcome(verdicts=tuple(graded), exit_code=ExitCode.OK)

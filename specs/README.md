@@ -73,6 +73,10 @@ M5 — Experiment
 
 Tooling — no milestone, may land at any time
   22  Test performance: the fast/slow split, and the cost underneath it (both landed)
+  23  Library operations: every command's body in the module that owns it, the CLI an interface
+
+M6 — Operability
+  24  Non-interactive mode: credentials, an agentic sign-in, headless Chrome, never a keypress
 ```
 
 ## Dependencies
@@ -105,6 +109,12 @@ the conversation attempted again, which is `13`'s shape without `13`'s budget, a
 wait too long to make becomes `14`'s ask. It is drawn parallel to both because it
 needs neither, but it landed last and merged into the loop rather than beside it.
 
+`23` depends on everything that is `Done` and changes none of it: it moves each command's
+body out of `cli` into the module that owns the domain, and the golden CLI tests are what
+prove nothing moved but the code. `24` depends on `23`, because an unattended run is the
+same operations called with a different sink and a different intervention, and on `07`,
+`09`, `11`, `12` and `14`, each of which it amends.
+
 `10` is deliberately a spike. The brief names the mechanism (Hermes driving the Claude web
 UI) but leaves open everything that only observation can settle: whether Hermes attaches to
 our Chrome in one-shot mode, how large a seed the composer accepts, how generation
@@ -136,6 +146,8 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [20](impl/20-pilot.md) | Pilot experiment | §18 | In progress |
 | [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | In progress |
 | [22](impl/22-test-performance.md) | Test performance | — tooling | Done |
+| [23](impl/23-library-operations.md) | Library operations | — tooling | Done |
+| [24](impl/24-non-interactive.md) | Non-interactive mode | §8 (amended), §12 | Not started |
 
 `21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
 still reporting what is true rather than what the plan hoped: `20` and `21` are built and
@@ -143,9 +155,9 @@ unrun, and a column that said otherwise would be the one claim the experiment ex
 make honestly. `docs/experiment-02.md` holds the section the sweep is recorded in.
 
 Every brief section §2–§19 is claimed by at least one slice. §1 is the goal and is claimed
-by all of them. `22` claims none: it is the one slice that exists because of how the repo
-is worked on rather than because of what the brief asks for, and it is outside the
-milestone gates for the same reason.
+by all of them. `22` and `23` claim none: they are the two slices that exist because of how
+the repo is worked on rather than because of what the brief asks for, and they are outside
+the milestone gates for the same reason.
 
 ## Working rules
 

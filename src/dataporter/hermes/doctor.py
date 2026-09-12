@@ -45,7 +45,9 @@ from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
 from dataporter.browser.probe import NEW_CHAT_URL
 from dataporter.config import Settings
+from dataporter.console import DISCARD, Sink
 from dataporter.errors import BrowserError, HermesError
+from dataporter.exit_codes import ExitCode
 from dataporter.hermes import profile as profiling
 from dataporter.hermes import skill as skilling
 from dataporter.hermes import version as versioning
@@ -461,3 +463,46 @@ def _probe_records(settings: Settings) -> int:
         if isinstance(record, dict) and record.get("helper") == "probe":
             total += 1
     return total
+
+
+# --------------------------------------------------------------------------- #
+# The `doctor` command (`23`)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class DoctorOutcome:
+    """Every check that ran, and exit `6` if the last one failed."""
+
+    checks: tuple[Check, ...]
+    exit_code: ExitCode
+
+
+def run_doctor(settings: Settings, *, sink: Sink = DISCARD) -> DoctorOutcome:
+    """Check that Hermes and Chrome are present and configured, stopping at the
+    first failure (`09`).
+
+    The pacing line comes first and unconditionally: §13's numbers are what this
+    invocation would run with, and an operator whose chain is broken still wants
+    to see them. The rest are printed one at a time as they are produced — the
+    two Hermes checks take a minute each, and ten lines at the end reads like a
+    hang. `closing` rather than a plain `for`: the generator launches a browser
+    and closes it in a `finally`, and leaving that to garbage collection would
+    leave a Chrome holding the debug port for as long as the interpreter felt
+    like it.
+    """
+    log.enable_run_log(settings.workspace)
+    sink.line(pacing_check(settings).render())
+    ran: list[Check] = []
+    failed = False
+    with closing(checks(settings)) as stream:
+        for check in stream:
+            ran.append(check)
+            sink.line(check.render())
+            if not check.ok:
+                failed = True
+                break
+    return DoctorOutcome(
+        checks=tuple(ran),
+        exit_code=ExitCode.ENVIRONMENT if failed else ExitCode.OK,
+    )
