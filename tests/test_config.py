@@ -347,3 +347,26 @@ def test_the_config_file_may_not_carry_the_mode_or_a_credential(
     write_config(workspace / "migration", table)
     with pytest.raises(ConfigError, match="not in config.toml"):
         load_settings()
+
+
+@pytest.mark.parametrize(
+    ("email", "secret"),
+    [("someone@example.test", "   "), ("   ", "hunter2"), ("someone@example.test", "")],
+)
+def test_a_blank_half_is_no_credential(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, email: str, secret: str
+) -> None:
+    """Whitespace arrives as a string where an empty variable would not; a run
+    must not start a browser on it. (Raised by Copilot in review on #33.)"""
+    monkeypatch.setenv("HCM_AUTH__EMAIL", email)
+    monkeypatch.setenv("HCM_AUTH__PASSWORD", secret)
+    assert load_settings().credentials is None
+
+
+def test_a_blank_first_line_in_the_secret_file_is_no_credential(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("\nhunter2\n", encoding="utf-8")
+    assert load_settings(password_file=secret).credentials is None

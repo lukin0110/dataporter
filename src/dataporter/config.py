@@ -500,9 +500,19 @@ class Settings(BaseSettings):
 
     @property
     def credentials(self) -> Credentials | None:
-        """Both halves of `auth`, or nothing: half a credential is no credential."""
-        if self.auth.email and self.auth.password is not None:
-            return Credentials(email=self.auth.email, password=self.auth.password)
+        """Both halves of `auth`, or nothing: half a credential is no credential.
+
+        Blank counts as absent on both sides. `env_ignore_empty` already drops
+        an empty variable, but a whitespace value and a `--password-file` whose
+        first line is blank arrive here as strings, and a run that started a
+        browser on one would stop at the first form — the opposite of the
+        "exit `2` before any browser" promise. (Raised by Copilot in review on
+        #33.)
+        """
+        email = (self.auth.email or "").strip()
+        secret = self.auth.password
+        if email and secret is not None and secret.get_secret_value().strip():
+            return Credentials(email=email, password=secret)
         return None
 
     @property
