@@ -26,7 +26,7 @@ And give the chat its source title through the UI, as a verified step.
   title it is asking about. Both fields are absent from the printed object unless they
   were asked for, so `08`'s poll loop still gets the object it had.
 - Tool-side verification, `dataporter/verify.py`, run by `Importer` after a `completed`
-  or `partial` result with a `conversation_id`, and by `hermes-claude-migrate verify`:
+  or `partial` result with a `conversation_id`, and by `dataporter verify`:
   1. navigate the tab to `https://claude.ai/chat/<id>` via CDP (allowed by the safety
      gate; it is this run's id);
   2. `probe --messages --expect "MIGRATION-ACK {short_id} 1/{N}" …
@@ -53,7 +53,7 @@ And give the chat its source title through the UI, as a verified step.
   Run after a `completed` or `partial` *result*: `failed`, `needs_human` and
   `rate_limited` are runs that already said where they got to, or that somebody else
   still owns.
-- `hermes-claude-migrate verify [--only UUID]...`: re-verifies every `completed` and
+- `dataporter verify [--only UUID]...`: re-verifies every `completed` and
   `partial` entry with an id, without Hermes, and prints one line per conversation:
   `{short_id}  verified` or `{short_id}  FAILED  {check}`; exit `0` if all verified, `1`
   otherwise. Never repairs anything.

@@ -89,7 +89,7 @@ def test_the_seed_and_the_prompt_reached_hermes(world: World) -> None:
     assert seed_part.is_file()
     # `09`'s environment and working directory, unchanged by the loop.
     assert one_shots[0].cwd == str(world.settings.workspace)
-    assert one_shots[0].env["HCM_WORKSPACE"] == str(world.settings.workspace)
+    assert one_shots[0].env["DATAPORTER_WORKSPACE"] == str(world.settings.workspace)
     # The run's three files are named after the conversation and the attempt.
     assert (world.settings.hermes_dir / "aa000001-1.stdout.txt").is_file()
 
@@ -334,7 +334,7 @@ def test_a_signed_out_session_is_refused_before_anything_is_written(
     with pytest.raises(AuthError) as raised:
         world.run(limit=1)
 
-    assert raised.value.detail == "not logged in — run: hermes-claude-migrate login"
+    assert raised.value.detail == "not logged in — run: dataporter login"
     assert world.hermes.one_shots == []
     assert not (world.settings.workspace / state.STATE_FILENAME).exists()
 
@@ -828,9 +828,7 @@ def test_import_exits_3_when_the_session_is_signed_out(
     )
 
     assert outcome.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert outcome.stderr == (
-        "error: not logged in — run: hermes-claude-migrate login\n"
-    )
+    assert outcome.stderr == ("error: not logged in — run: dataporter login\n")
 
 
 def test_import_exits_4_when_there_is_nothing_to_do(

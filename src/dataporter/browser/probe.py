@@ -152,9 +152,9 @@ whose `innerText` is therefore `"\\n"`, reads here as the empty string it looks
 like. `10` checks it against the real composer.
 """
 
-PAGE_STATE_TAG = "hcm:page_state"
-PAGE_VIEW_TAG = "hcm:page_view"
-PAGE_REPORT_TAG = "hcm:page_report"
+PAGE_STATE_TAG = "dataporter:page_state"
+PAGE_VIEW_TAG = "dataporter:page_view"
+PAGE_REPORT_TAG = "dataporter:page_report"
 
 
 def expression(tag: str, body: str) -> str:

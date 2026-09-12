@@ -165,7 +165,7 @@ def test_setup_prints_what_it_did(
     assert lines[3] == f"hermes model     {MODEL}"
     # The transcripts are content, and `setup` is where an operator is told so.
     assert "session transcripts" in result.stdout
-    assert "hermes-claude-migrate doctor" in result.stdout
+    assert "dataporter doctor" in result.stdout
 
 
 def test_setup_with_no_model_exits_6_with_09s_words(

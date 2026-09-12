@@ -68,7 +68,7 @@ STATE_ENV_VAR = "REHEARSAL_HERMES_STATE"
 because the tool builds the whole command line, and a flag it does not pass
 would never arrive."""
 
-NONCE = re.compile(r"HCM-[0-9A-F]+")
+NONCE = re.compile(r"DATAPORTER-[0-9A-F]+")
 CDP_URL = re.compile(r"https?://127\.0\.0\.1:(\d+)")
 
 BLANK_URL = "about:blank"

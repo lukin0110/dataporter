@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from dataporter import PROGRAM_NAME
 from dataporter.browser import helpers
 from dataporter.config import HermesSettings, Settings
 from dataporter.errors import Category, HermesUsageError
@@ -106,6 +107,18 @@ def test_the_packaged_skill_identifies_itself_as_11_specifies() -> None:
     assert fields["version"] == "0.1.0"
     for key in FRONTMATTER_KEYS:
         assert key in fields, f"{key} is missing from the skill frontmatter"
+
+
+def test_the_helper_prefix_is_the_program_name() -> None:
+    """The `helper` row is a literal the agent is told to use verbatim, and it is
+    the one copy of the command name that `PROGRAM_NAME` does not produce. ADR
+    0004's rename is what made that worth a test: a skill still spelling the old
+    command fails at run time, in the agent, and nowhere in the suite."""
+    assert (
+        f"`{PROGRAM_NAME} --workspace <workspace> browser …`. Use it verbatim"
+        in SKILL_TEXT
+    )
+    assert "hermes-claude-migrate" not in SKILL_TEXT
 
 
 def test_the_body_is_a_procedure_and_no_longer_a_placeholder() -> None:

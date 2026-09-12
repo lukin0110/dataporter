@@ -62,7 +62,7 @@ work from outside this checkout.
   `__main__.py`.
 
 - **A second CI job, `install`** — build, `uv venv --python 3.12 /tmp/consumer`,
-  `uv pip install dist/*.whl`, then from `/tmp` run `hermes-claude-migrate --version`,
+  `uv pip install dist/*.whl`, then from `/tmp` run `dataporter --version`,
   `python -m dataporter --version`, and a `python -c` that imports the package, builds an
   `ImportRequest`, a `Collected` sink, and calls `hermes.skill.packaged_dir()`.
 
@@ -133,13 +133,13 @@ work from outside this checkout.
 ## Acceptance criteria
 
 - `uv build` produces a wheel containing `dataporter/py.typed`,
-  `dataporter/skills/claude-migrate/SKILL.md`, the `hermes-claude-migrate` entry point and
+  `dataporter/skills/claude-migrate/SKILL.md`, the `dataporter` entry point and
   nothing outside `dataporter/` and its `dist-info`; `tests/test_packaging.py` asserts each.
 - The wheel's metadata `Version` equals `dataporter.__version__`, and `pyproject.toml`
   contains no version literal.
 - `uv pip install` of that wheel into a venv elsewhere, run from `/tmp`:
-  `hermes-claude-migrate --version` and `python -m dataporter --version` both print
-  `hermes-claude-migrate <version>`, and `hermes.skill.packaged_dir()` returns a path under
+  `dataporter --version` and `python -m dataporter --version` both print
+  `dataporter <version>`, and `hermes.skill.packaged_dir()` returns a path under
   that venv's `site-packages`. CI's `install` job is this, on every push and pull request.
 - A host project that has the package installed and runs `ty check` over
   `from dataporter import importer` resolves real signatures, not `Any`.

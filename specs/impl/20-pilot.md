@@ -16,7 +16,7 @@ numbers and transcript evidence. Nothing scales up until this is written up.
 
 ## In scope
 
-- `hermes-claude-migrate import <export> --pilot`: selects from the migratable plan, in
+- `dataporter import <export> --pilot`: selects from the migratable plan, in
   this order, skipping duplicates, until ten are chosen or the categories run out:
   1. the shortest conversation (fewest active-path messages, ≥ 2);
   2. the longest by seed characters that fits in one part;
@@ -48,7 +48,7 @@ numbers and transcript evidence. Nothing scales up until this is written up.
   reply. The reply is graded:
   - by hand, recorded as `pass` / `weak` / `fail` with a one-line reason in
     `experiment-01.md`; and, optionally,
-  - by `hermes-claude-migrate judge` (the `judge` extra, `pydantic-ai`): an `Agent` with
+  - by `dataporter judge` (the `judge` extra, `pydantic-ai`): an `Agent` with
     `output_type=FidelityVerdict(score: Literal["pass","weak","fail"], reason: str)` given
     the source seed and the reply, using the same Anthropic key Hermes uses via
     `ANTHROPIC_API_KEY`. Its verdicts are recorded next to the hand grades; disagreement
@@ -56,7 +56,7 @@ numbers and transcript evidence. Nothing scales up until this is written up.
   Sending this one extra message to a chat this run created is inside the §17 boundary;
   the skill's rules are extended by one sentence saying so.
 
-  The probe is a command of its own, `hermes-claude-migrate followup [--only UUID]...`,
+  The probe is a command of its own, `dataporter followup [--only UUID]...`,
   because it runs after the migration and over a different population (§7's `completed`
   entries, not a selection of the export). It writes `<workspace>/pilot/question.txt` —
   the question, pasted by `08`'s helper byte for byte — and

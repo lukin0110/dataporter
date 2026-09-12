@@ -60,8 +60,8 @@ PASSWORD_SELECTOR = 'input[type="password"], input[autocomplete="current-passwor
 """Semantic selectors, as §5 prefers. Guesses until `docs/claude-ui-map.md`'s
 `sign-in form` row is observed, like every other selector in this package."""
 
-LOGIN_FIELDS_TAG = "hcm:login_fields"
-FOCUS_FIELD_TAG = "hcm:focus_field"
+LOGIN_FIELDS_TAG = "dataporter:login_fields"
+FOCUS_FIELD_TAG = "dataporter:focus_field"
 
 LOGIN_FIELDS_JS = probe.expression(
     LOGIN_FIELDS_TAG,

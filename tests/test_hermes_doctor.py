@@ -122,7 +122,7 @@ def test_the_two_hermes_checks_really_ran_hermes(
     # Each task carries its own nonce, and neither is a nonce we wrote down.
     nonces = {hermes_doctor.nonce() for _ in range(2)}
     for call in one_shots:
-        assert "HCM-" in call.prompt
+        assert "DATAPORTER-" in call.prompt
         assert call.prompt not in nonces
     # The helper task names our command, our workspace and nothing else to run.
     assert "browser probe" in one_shots[1].prompt
@@ -212,7 +212,7 @@ def test_a_missing_profile_points_at_setup(
         hermes_doctor.HERMES_ON_PATH,
         hermes_doctor.HERMES_PROFILE,
     ]
-    assert "run: hermes-claude-migrate setup" in results[-1].detail
+    assert "run: dataporter setup" in results[-1].detail
 
 
 def test_a_profile_list_that_fails_is_reported_as_the_profile_check(
@@ -297,7 +297,7 @@ def test_a_missing_skill_points_at_setup(
     ).unlink()
     results = run_checks(settings)
     assert labels(results)[-1] == hermes_doctor.SKILL_INSTALLED
-    assert "run: hermes-claude-migrate setup" in results[-1].detail
+    assert "run: dataporter setup" in results[-1].detail
 
 
 def test_no_browser_stops_at_the_executable(
@@ -467,7 +467,7 @@ def test_a_signed_out_session_is_the_last_failure(
         results = run_checks(settings)
         assert labels(results) == list(hermes_doctor.LABELS)
         assert not results[-1].ok
-        assert results[-1].detail == "not logged in — run: hermes-claude-migrate login"
+        assert results[-1].detail == "not logged in — run: dataporter login"
 
 
 def test_a_browser_that_goes_away_fails_the_session_check(

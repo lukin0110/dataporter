@@ -149,9 +149,9 @@ def browser_with(page: FakePage, monkeypatch: pytest.MonkeyPatch) -> Browser:
     """A fake browser the CLI can find on the port the environment names."""
     browser = Browser(page)
     browser.__enter__()
-    monkeypatch.setenv("HCM_BROWSER__CDP_PORT", str(browser.chrome.port))
-    monkeypatch.setenv("HCM_TIMEOUTS__CDP_CALL_S", "5")
-    monkeypatch.setenv("HCM_TIMEOUTS__RESPONSE_S", "5")
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(browser.chrome.port))
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "5")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__RESPONSE_S", "5")
     return browser
 
 

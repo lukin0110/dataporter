@@ -123,7 +123,7 @@ verifier can check for.
   `(continued)` on its own line. `Seed.chunks[*].total` is `N`.
 - Determinism: the same `Conversation` and settings produce byte-identical chunks. No
   timestamps of generation, no random ids.
-- `hermes-claude-migrate seeds <export> [--only UUID]... [--out DIR]` writes
+- `dataporter seeds <export> [--only UUID]... [--out DIR]` writes
   `<out>/<uuid>/part-{i:02d}.txt` (default `<workspace>/seeds/`) and prints one line per
   conversation: `{short_id}  parts={N}  chars={total}` — no titles. A conversation the
   plan (`03`) will not migrate gets no files and one `skipped {short_id}: {reason}` line

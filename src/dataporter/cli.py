@@ -313,8 +313,9 @@ PasswordFile = Annotated[
         help="A file whose first line is the account password (--non-interactive).",
     ),
 ]
-"""`24`'s three global options. The environment spells them `HCM_NON_INTERACTIVE`,
-`HCM_AUTH__EMAIL` and `HCM_AUTH__PASSWORD`; `config.toml` may carry none of them."""
+"""`24`'s three global options. The environment spells them
+`DATAPORTER_NON_INTERACTIVE`, `DATAPORTER_AUTH__EMAIL` and `DATAPORTER_AUTH__PASSWORD`;
+`config.toml` may carry none of them."""
 
 
 @app.callback()
@@ -425,7 +426,7 @@ so that the error names what the operator typed: `--max-retries` counts retries
 and `retries.max_attempts` counts attempts, and a message about the second is a
 message about a number they did not type. The settings fields carry their own
 constraints as well, which is what refuses the same value arriving through
-`HCM_…` or `config.toml`, and what catches `--timeout 0` — zero is in range for
+`DATAPORTER_…` or `config.toml`, and what catches `--timeout 0` — zero is in range for
 a flag and not for a subprocess deadline. (Raised by Copilot in review on #24.)"""
 
 AttachmentsDir = Annotated[

@@ -23,14 +23,14 @@ on the machine that ran the pilot.
 ## How it is run
 
 ```text
-hermes-claude-migrate setup
-hermes-claude-migrate doctor
-hermes-claude-migrate login
-hermes-claude-migrate import <export> --dry-run --pilot   # the selection, no account touched
-hermes-claude-migrate import <export> --pilot             # the run
-hermes-claude-migrate report                              # §16's block, and the failures
-hermes-claude-migrate followup                            # the semantic probe, question 3
-hermes-claude-migrate judge                               # optional: the `judge` extra
+dataporter setup
+dataporter doctor
+dataporter login
+dataporter import <export> --dry-run --pilot   # the selection, no account touched
+dataporter import <export> --pilot             # the run
+dataporter report                              # §16's block, and the failures
+dataporter followup                            # the semantic probe, question 3
+dataporter judge                               # optional: the `judge` extra
 ```
 
 The destination is the throwaway account and nothing else (§17). `--pilot` chooses the
@@ -78,7 +78,7 @@ export. Copy this from the run's own `Pilot selection:` block, which is also in
 
 **Measure:** semantic probe pass rate — `pass` ÷ graded, over the table below.
 **Evidence:** `<workspace>/pilot/probes.json`, one reply per `completed` conversation,
-graded by hand in the table below and, optionally, by `hermes-claude-migrate judge`.
+graded by hand in the table below and, optionally, by `dataporter judge`.
 **Number:** not yet run. *not yet run*
 
 ### Q4 — How often does the browser agent require recovery?

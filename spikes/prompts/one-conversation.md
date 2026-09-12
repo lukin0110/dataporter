@@ -17,18 +17,18 @@ visit `https://claude.ai/new` and `https://claude.ai/chat/<uuid>`.
 Your job is to put two seed parts into one new conversation, verifying every step rather
 than assuming it worked.
 
-1. Run `hermes-claude-migrate browser close-extra-tabs` and report its JSON.
+1. Run `dataporter browser close-extra-tabs` and report its JSON.
 2. Navigate to `https://claude.ai/new`.
-3. Run `hermes-claude-migrate browser probe`. Continue only if `composer_present` is true,
+3. Run `dataporter browser probe`. Continue only if `composer_present` is true,
    `composer_chars` is `0` and `logged_in` is true. If it is not, stop and print the
    failure object below.
-4. Run `hermes-claude-migrate browser paste --seed SEED_PART_1`. Continue only if the
+4. Run `dataporter browser paste --seed SEED_PART_1`. Continue only if the
    object says `"ok": true`. Do **not** retype the seed yourself under any circumstances —
    the seed must never pass through your own output.
 5. Submit the message the way a person would: press Enter in the composer, or click the
    send control. Then run `browser probe` again and continue only if `composer_chars` is
    back to `0`.
-6. Run `hermes-claude-migrate browser await-response --expect PART_1_TOKEN`, where the
+6. Run `dataporter browser await-response --expect PART_1_TOKEN`, where the
    token is the acknowledgement string at the end of the seed. Continue only if the object
    says the expected string was found.
 7. Run `browser probe` and record the `conversation_id`. If it is `null`, wait five seconds

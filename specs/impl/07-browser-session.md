@@ -69,16 +69,16 @@ stores a password.
   claude.ai tab (an existing one, else a blank one navigated rather than a second window
   opened, else a created one), probe it, wait for a login, delete the profile. `12` asks
   the same questions without going through the CLI.
-- `hermes-claude-migrate login`: launches with `https://claude.ai/new`, prints
+- `dataporter login`: launches with `https://claude.ai/new`, prints
   `Log in to Claude in the browser window that just opened.`, polls `probe` every 2 s
   until `logged_in` or `timeouts.login_s` (default `600`), then prints
   `Logged in. Session stored in <workspace>/browser-profile/.` and closes Chrome so the
   profile flushes to disk. Timeout → exit `3`.
-- `hermes-claude-migrate session status`: if the port answers, probes the browser it
+- `dataporter session status`: if the port answers, probes the browser it
   adopts; else launches, probes, closes. A workspace with no profile *and* no browser on
   the port answers without starting anything. Prints `logged in` (exit `0`) or
-  `not logged in — run: hermes-claude-migrate login` (exit `3`).
-- `hermes-claude-migrate session logout`: deletes `<workspace>/browser-profile/` after
+  `not logged in — run: dataporter login` (exit `3`).
+- `dataporter session logout`: deletes `<workspace>/browser-profile/` after
   confirming Chrome is not running on the port; a browser still on it is exit `2` and the
   profile is left alone. Local only; nothing is sent to claude.ai.
 - `browser-profile/` is created `0700`; the workspace gets a `.gitignore` containing

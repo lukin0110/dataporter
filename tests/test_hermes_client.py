@@ -83,10 +83,10 @@ def test_the_environment_is_the_allowlist_and_nothing_else(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-not-ours")
     settings = make_settings(tmp_path)
     env = hermes_client.hermes_env(settings)
-    assert set(env) <= {*hermes_client.PASSED_THROUGH_ENV, "HCM_WORKSPACE"}
+    assert set(env) <= {*hermes_client.PASSED_THROUGH_ENV, "DATAPORTER_WORKSPACE"}
     assert "HERMES_YOLO_MODE" not in env
     assert "ANTHROPIC_API_KEY" not in env
-    assert env["HCM_WORKSPACE"] == str(settings.workspace)
+    assert env["DATAPORTER_WORKSPACE"] == str(settings.workspace)
 
 
 def test_an_unset_variable_is_not_invented(
@@ -109,7 +109,7 @@ def test_the_child_really_sees_only_that(tmp_path: Path, fake: FakeHermes) -> No
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
     cli.version()
     seen = set(fake.calls[0].env) - COERCED
-    assert seen <= {*hermes_client.PASSED_THROUGH_ENV, "HCM_WORKSPACE"}
+    assert seen <= {*hermes_client.PASSED_THROUGH_ENV, "DATAPORTER_WORKSPACE"}
     assert "HERMES_YOLO_MODE" not in seen
 
 
@@ -267,8 +267,8 @@ def test_a_path_under_home_is_abbreviated(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_a_command_with_a_space_in_it_is_quoted() -> None:
-    quoted = hermes_client.quoted(["hermes-claude-migrate", "--workspace", "/a b/c"])
-    assert quoted == "hermes-claude-migrate --workspace '/a b/c'"
+    quoted = hermes_client.quoted(["dataporter", "--workspace", "/a b/c"])
+    assert quoted == "dataporter --workspace '/a b/c'"
 
 
 def test_the_failure_line_is_the_last_thing_said(tmp_path: Path) -> None:
@@ -298,14 +298,14 @@ def test_the_failure_line_cannot_forge_a_second_line() -> None:
 def test_a_credential_in_the_parent_never_reaches_hermes(
     tmp_path: Path, fake: FakeHermes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`24`: the environment is built, not filtered, and `HCM_AUTH__*` is not
+    """`24`: the environment is built, not filtered, and `DATAPORTER_AUTH__*` is not
     on the list — so the agent cannot `printenv` its way to a password."""
-    monkeypatch.setenv("HCM_AUTH__EMAIL", "someone@example.test")
-    monkeypatch.setenv("HCM_AUTH__PASSWORD", "hunter2")
+    monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
+    monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", "hunter2")
     settings = make_settings(tmp_path, fake.executable)
     env = hermes_client.hermes_env(settings)
-    assert not any(key.startswith("HCM_AUTH") for key in env)
+    assert not any(key.startswith("DATAPORTER_AUTH") for key in env)
     hermes_client.HermesCli(settings).version()
     seen = fake.calls[-1].env
-    assert not any(key.startswith("HCM_AUTH") for key in seen)
+    assert not any(key.startswith("DATAPORTER_AUTH") for key in seen)
     assert "hunter2" not in " ".join(seen.values())

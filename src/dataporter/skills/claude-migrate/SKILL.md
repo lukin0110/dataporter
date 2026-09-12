@@ -56,7 +56,7 @@ value is a path you may guess at.
 | `parts already acknowledged` | How many parts are already in that chat, acknowledged. `0` on a first attempt. |
 | `title` | What to rename the chat to, or `none`. Type it exactly; never a word of your own. |
 | `delay between parts` | Seconds to wait between one part's acknowledgement and the next part's paste. |
-| `helper` | The command prefix for every helper call: `hermes-claude-migrate --workspace <workspace> browser …`. Use it verbatim, with the subcommand appended. |
+| `helper` | The command prefix for every helper call: `dataporter --workspace <workspace> browser …`. Use it verbatim, with the subcommand appended. |
 
 A prompt that is missing a field, or whose `parts` and list lengths disagree, is
 not a prompt to guess at: stop and return `failed` with `error.category`

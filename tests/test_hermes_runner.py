@@ -59,10 +59,10 @@ def test_the_command_line_is_the_one_the_spec_names(
     assert call.argv[:4] == ["-p", "dataporter", "-z", "do the thing"]
     assert call.flag("--toolsets") == "browser,terminal"
     assert call.flag("--usage-file") == str(runner.usage_path("c0ffee01"))
-    # cwd=<workspace>, which is also why HCM_WORKSPACE has to be set: `./migration`
-    # resolved from here would be a second workspace one level down.
+    # cwd=<workspace>, which is also why DATAPORTER_WORKSPACE has to be set:
+    # `./migration` resolved from here would be a second workspace one level down.
     assert call.cwd == str(tmp_path / "migration")
-    assert call.env["HCM_WORKSPACE"] == str(tmp_path / "migration")
+    assert call.env["DATAPORTER_WORKSPACE"] == str(tmp_path / "migration")
 
 
 def test_stdout_and_stderr_land_in_the_workspace(

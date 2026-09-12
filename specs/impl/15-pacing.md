@@ -16,7 +16,7 @@ itself before it can do damage at scale.
 
 ## In scope
 
-- Configuration, `config.toml` section names and defaults, all overridable by `HCM_…`
+- Configuration, `config.toml` section names and defaults, all overridable by `DATAPORTER_…`
   environment variables and, where noted, CLI flags:
 
   ```toml
@@ -43,7 +43,7 @@ itself before it can do damage at scale.
   max_interventions = 5
   ```
 
-  `hermes-claude-migrate doctor` prints the effective values as its first line, before
+  `dataporter doctor` prints the effective values as its first line, before
   the ten checks, so the numbers in force are visible before a run — and visible even
   when the chain below them is broken:
 

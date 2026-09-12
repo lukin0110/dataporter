@@ -21,9 +21,9 @@ produced. Everything below is `10`'s.
 
 - **A throwaway destination account.** Never the source account, never the operator's own.
   Everything below writes to it.
-- `hermes-claude-migrate setup` has run and `hermes-claude-migrate doctor` reports every
+- `dataporter setup` has run and `dataporter doctor` reports every
   line, or has told you exactly which one it stops at.
-- `hermes-claude-migrate login` has left a headed Chrome signed in to the throwaway
+- `dataporter login` has left a headed Chrome signed in to the throwaway
   account, on one claude.ai tab.
 - `uv run python spikes/spike.py context` prints a Hermes version and a Chrome version
   rather than `unknown` for both. If it does not, fix that first: an observation without
@@ -36,7 +36,7 @@ quota or risk a challenge last.
 
 | Step | Questions | How | Answers go to |
 | ---- | --------- | --- | ------------- |
-| 1 | Q1 rung a | `hermes-claude-migrate doctor` | `docs/hermes-attach.md` |
+| 1 | Q1 rung a | `dataporter doctor` | `docs/hermes-attach.md` |
 | 2 | Q1 rungs b, c | `prompts/attach-probe.md`, invoked as below | `docs/hermes-attach.md` |
 | 3 | Q2 | the same prompt, on whichever rung worked | `docs/hermes-attach.md` |
 | 4 | Q3 | `uv run python spikes/paste_ladder.py` | `docs/seed-limits.md` |
@@ -58,7 +58,7 @@ that works, because the ladder is ordered by how much of `07` survives it.
 ```sh
 # rung a — one-shot, our Chrome, `browser.cdp_url` from the profile.
 # `doctor` already does exactly this and checks the answer names our tab.
-hermes-claude-migrate doctor
+dataporter doctor
 
 # rung b — a long-lived session, `/browser connect` issued once by hand.
 hermes -p dataporter serve            # then, in the session:
@@ -85,16 +85,16 @@ claim.
 accept this" from "does the agent do the right thing". No Hermes at all:
 
 ```sh
-hermes-claude-migrate seeds --export <export> --only <id> --out /tmp/spike-seeds
-hermes-claude-migrate browser close-extra-tabs
-hermes-claude-migrate browser probe
-hermes-claude-migrate browser paste --seed /tmp/spike-seeds/<id>/part-01.txt
+dataporter seeds --export <export> --only <id> --out /tmp/spike-seeds
+dataporter browser close-extra-tabs
+dataporter browser probe
+dataporter browser paste --seed /tmp/spike-seeds/<id>/part-01.txt
 #   press Enter in the window yourself, then:
-hermes-claude-migrate browser probe
-hermes-claude-migrate browser await-response --expect <the part-01 token>
-hermes-claude-migrate browser paste --seed /tmp/spike-seeds/<id>/part-02.txt
+dataporter browser probe
+dataporter browser await-response --expect <the part-01 token>
+dataporter browser paste --seed /tmp/spike-seeds/<id>/part-02.txt
 #   press Enter again, then:
-hermes-claude-migrate browser await-response --expect <the part-02 token>
+dataporter browser await-response --expect <the part-02 token>
 ```
 
 Then reload `/chat/<uuid>` and check both parts and both acknowledgements are there. While

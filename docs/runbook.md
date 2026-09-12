@@ -13,8 +13,8 @@ an unexpected state — all of it is the normal shape of the run.
 ## The session loop
 
 ```sh
-hermes-claude-migrate import <export> --all --limit 50     # one session
-hermes-claude-migrate report                               # read it before the next
+dataporter import <export> --all --limit 50     # one session
+dataporter report                               # read it before the next
 ```
 
 `--limit 50` is `run.max_conversations × 5`, the session size [`21`](../specs/impl/21-scale-up.md)
@@ -43,7 +43,7 @@ created a second time.
 If the killed process held the workspace lock and is gone:
 
 ```sh
-hermes-claude-migrate import <export> --all --limit 50 --force-unlock
+dataporter import <export> --all --limit 50 --force-unlock
 ```
 
 `--force-unlock` removes a lock whose owner is not running. It refuses to remove one whose
@@ -75,24 +75,24 @@ Off a terminal (a cron job, a CI step, a detached session) there is nobody to as
 run writes the pause to `run.json` and exits `5`. Clear whatever it was asking about, then:
 
 ```sh
-hermes-claude-migrate resume
+dataporter resume
 ```
 
 `resume` continues the paused run's own selection with the paused conversation first. It
 takes no arguments: the export it was migrating is recorded in `run.json`. An `import`
 started while a pause is outstanding says
-`paused at 8a02c7d1 — run: hermes-claude-migrate resume` before it does anything else:
+`paused at 8a02c7d1 — run: dataporter resume` before it does anything else:
 answer that first, rather than letting a fresh run pick the paused conversation up on its
 own terms.
 
 ## Running unattended
 
 ```sh
-export HCM_NON_INTERACTIVE=1
-export HCM_AUTH__EMAIL=you@example.com
-export HCM_AUTH__PASSWORD=…                               # or: --password-file <path>
-hermes-claude-migrate login                              # once; signs in, closes Chrome
-hermes-claude-migrate import <export> --all --limit 50   # the session loop, as above
+export DATAPORTER_NON_INTERACTIVE=1
+export DATAPORTER_AUTH__EMAIL=you@example.com
+export DATAPORTER_AUTH__PASSWORD=…                               # or: --password-file <path>
+dataporter login                              # once; signs in, closes Chrome
+dataporter import <export> --all --limit 50   # the session loop, as above
 ```
 
 `--non-interactive` (`24`) is the mode for a cron job, a CI step or a machine with no
@@ -111,7 +111,7 @@ The exit codes in this mode:
   a CAPTCHA, a challenge, or Hermes failing). Nothing was migrated. Run `login` by hand.
 - `5` — a login expiry mid-run that the sign-in could not clear, or any other ask only a
   person can answer. The pause is in `run.json`; clear it, then
-  `hermes-claude-migrate resume` — with the same variables set, `resume` tries the sign-in
+  `dataporter resume` — with the same variables set, `resume` tries the sign-in
   itself before it looks at the page.
 
 The report gains one line, `Automatic sign-ins:`, when there were any. They are not human
@@ -134,8 +134,8 @@ Failures and partial migrations:
 the tool declining to guess — look at the conversation before deciding.
 
 ```sh
-hermes-claude-migrate import <export> --retry-failed --retry-partial --limit 50
-hermes-claude-migrate import <export> --only 3f9c2a1e                  # just this one
+dataporter import <export> --retry-failed --retry-partial --limit 50
+dataporter import <export> --only 3f9c2a1e                  # just this one
 ```
 
 `--only` names conversations whatever their status, so it needs none of the retry flags —
@@ -157,7 +157,7 @@ Once inside the full run, on purpose ([`21`](../specs/impl/21-scale-up.md)):
 
 ```sh
 kill -9 <pid of the import>           # mid-conversation
-hermes-claude-migrate import <export> --all --limit 50 --force-unlock
+dataporter import <export> --all --limit 50 --force-unlock
 uv run python spikes/sign_off.py drill --workspace migration
 ```
 
@@ -168,9 +168,9 @@ script checks exactly that, and says which ids collided if any did.
 ## Reading the report
 
 ```sh
-hermes-claude-migrate report            # the §16 block, the failures, the limitations
-hermes-claude-migrate report --json     # the same numbers, for a script
-hermes-claude-migrate status            # per conversation, from state.json
+dataporter report            # the §16 block, the failures, the limitations
+dataporter report --json     # the same numbers, for a script
+dataporter status            # per conversation, from state.json
 ```
 
 The report reconciles: `Created + Partial + Failed + Pending == Source conversations`, and
@@ -180,8 +180,8 @@ occurrences, and every name in it is described in [`LIMITATIONS.md`](LIMITATIONS
 To check the account itself rather than what the run believes about it:
 
 ```sh
-hermes-claude-migrate verify                       # every migrated chat, re-read
-hermes-claude-migrate verify --only 8a02c7d1
+dataporter verify                       # every migrated chat, re-read
+dataporter verify --only 8a02c7d1
 ```
 
 `verify` opens the browser and no Hermes at all: it is the second opinion, so it asks the
@@ -205,7 +205,7 @@ after it finishes.
 The tool deletes nothing at the destination, ever, so clearing the throwaway account is a
 manual job:
 
-1. `hermes-claude-migrate status --json` lists every source conversation with the
+1. `dataporter status --json` lists every source conversation with the
    destination chat id it landed in; `run.json`'s `previous_destinations` holds the chats
    superseded by a `--force` re-run.
 2. Delete those chats in the Claude UI yourself, or delete the throwaway account.
@@ -215,5 +215,5 @@ manual job:
    contain page snapshots and therefore conversation content. `setup` prints this path on
    every run for exactly this moment.
 
-`hermes-claude-migrate session logout` removes the browser profile alone, which is the
+`dataporter session logout` removes the browser profile alone, which is the
 local half of step 3. It ends no session anywhere else and touches nothing in the account.

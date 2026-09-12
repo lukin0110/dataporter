@@ -92,7 +92,7 @@ restarts.
 - Export fingerprint mismatch between `run.json` and the export given → exit `2`
   `workspace belongs to a different export`; `--new-workspace` is not offered, the
   operator picks another `--workspace`.
-- `hermes-claude-migrate status` prints the counters block from `18` (no bar) from state
+- `dataporter status` prints the counters block from `18` (no bar) from state
   alone; `--json` dumps `state.json` merged with `run.json` counters.
 
 ## Out of scope

@@ -2,7 +2,7 @@
 
 Not a skill and not a migration; `11`'s `SKILL.md` is the real thing.
 
-**Rung a of Q1 does not need this prompt.** `hermes-claude-migrate doctor` already runs a
+**Rung a of Q1 does not need this prompt.** `dataporter doctor` already runs a
 `-z` task that must come back having listed *our* claude.ai tab, and refuses to pass when
 Hermes answered from a browser of its own — so `doctor`'s `hermes attaches to our Chrome`
 line passing *is* rung a answered. This prompt is for the two rungs below it, and for Q2,
@@ -29,7 +29,7 @@ Do exactly this, in order, and do not skip a step because you expect its answer:
 4. Run this shell command and report its output verbatim:
 
    ```
-   hermes-claude-migrate browser probe
+   dataporter browser probe
    ```
 
 5. Take one snapshot of the page and report, in one sentence each and with no page text

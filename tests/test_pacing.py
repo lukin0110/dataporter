@@ -110,43 +110,43 @@ def test_the_defaults_are_the_ones_15_specifies(workspace: Path) -> None:
         (
             "pacing",
             "delay_between_conversations_s",
-            "HCM_PACING__DELAY_BETWEEN_CONVERSATIONS_S",
+            "DATAPORTER_PACING__DELAY_BETWEEN_CONVERSATIONS_S",
             lambda s: s.pacing.delay_between_conversations_s,
         ),
         (
             "pacing",
             "delay_between_parts_s",
-            "HCM_PACING__DELAY_BETWEEN_PARTS_S",
+            "DATAPORTER_PACING__DELAY_BETWEEN_PARTS_S",
             lambda s: s.pacing.delay_between_parts_s,
         ),
         (
             "pacing",
             "max_rate_limit_wait_s",
-            "HCM_PACING__MAX_RATE_LIMIT_WAIT_S",
+            "DATAPORTER_PACING__MAX_RATE_LIMIT_WAIT_S",
             lambda s: s.pacing.max_rate_limit_wait_s,
         ),
         (
             "retries",
             "max_attempts",
-            "HCM_RETRIES__MAX_ATTEMPTS",
+            "DATAPORTER_RETRIES__MAX_ATTEMPTS",
             lambda s: s.retries.max_attempts,
         ),
         (
             "timeouts",
             "hermes_task_s",
-            "HCM_TIMEOUTS__HERMES_TASK_S",
+            "DATAPORTER_TIMEOUTS__HERMES_TASK_S",
             lambda s: s.timeouts.hermes_task_s,
         ),
         (
             "timeouts",
             "response_s",
-            "HCM_TIMEOUTS__RESPONSE_S",
+            "DATAPORTER_TIMEOUTS__RESPONSE_S",
             lambda s: s.timeouts.response_s,
         ),
         (
             "run",
             "max_conversations",
-            "HCM_RUN__MAX_CONVERSATIONS",
+            "DATAPORTER_RUN__MAX_CONVERSATIONS",
             lambda s: s.run.max_conversations,
         ),
     ],
@@ -176,9 +176,9 @@ def test_the_three_flags_outrank_the_environment(
     has to arrive as a `5`: an operator asking for four more goes is asking for
     five in total.
     """
-    monkeypatch.setenv("HCM_PACING__DELAY_BETWEEN_CONVERSATIONS_S", "12")
-    monkeypatch.setenv("HCM_RETRIES__MAX_ATTEMPTS", "12")
-    monkeypatch.setenv("HCM_TIMEOUTS__HERMES_TASK_S", "12")
+    monkeypatch.setenv("DATAPORTER_PACING__DELAY_BETWEEN_CONVERSATIONS_S", "12")
+    monkeypatch.setenv("DATAPORTER_RETRIES__MAX_ATTEMPTS", "12")
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__HERMES_TASK_S", "12")
 
     flagged = with_pacing(load_settings(), delay=1.0, max_retries=4, timeout=90.0)
 
@@ -238,11 +238,11 @@ def test_a_nonsensical_pacing_value_is_refused(
         (
             "pacing",
             "delay_between_conversations_s",
-            "HCM_PACING__DELAY_BETWEEN_CONVERSATIONS_S",
+            "DATAPORTER_PACING__DELAY_BETWEEN_CONVERSATIONS_S",
             "-1",
         ),
-        ("retries", "max_attempts", "HCM_RETRIES__MAX_ATTEMPTS", "0"),
-        ("timeouts", "hermes_task_s", "HCM_TIMEOUTS__HERMES_TASK_S", "0"),
+        ("retries", "max_attempts", "DATAPORTER_RETRIES__MAX_ATTEMPTS", "0"),
+        ("timeouts", "hermes_task_s", "DATAPORTER_TIMEOUTS__HERMES_TASK_S", "0"),
     ],
 )
 def test_the_same_value_is_refused_from_the_environment(

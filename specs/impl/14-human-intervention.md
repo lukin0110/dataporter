@@ -50,13 +50,13 @@ never restarts.
   and waits again. Then it re-runs the same conversation with `resume_from = last_step`
   and the recorded `conversation_id`, clears `paused`, and continues the selection.
 - Non-TTY: prints the block, keeps `paused`, releases the lock, exits `5`.
-  `hermes-claude-migrate resume` re-locks, re-probes, and continues exactly as the TTY
+  `dataporter resume` re-locks, re-probes, and continues exactly as the TTY
   path does; with no `paused` record it exits `4` `nothing to resume`.
 - `--non-interactive` (`24`): `intervention.Unattended` answers every ask with no and never
   touches stdin — a terminal the run was started from is not a person. The block keeps
   its shape with two lines swapped: `Browser:      no window — non-interactive run;
-  clear it, then run: hermes-claude-migrate resume` and, in place of the prompt, `Paused
-  for a person (non-interactive); run: hermes-claude-migrate resume`. An `auth_required`
+  clear it, then run: dataporter resume` and, in place of the prompt, `Paused
+  for a person (non-interactive); run: dataporter resume`. An `auth_required`
   ask in that mode is first put to the tool itself — a sign-in from the credentials,
   `13`-shaped, counted as `auto_signins` and never as an intervention — and only when
   that fails does it become this pause; `resume --non-interactive` tries the sign-in
@@ -122,7 +122,7 @@ Resolved while building:
 - **`recover()` takes a `keep`, and `resume` passes it.** See `06`. `import` does not, so
   the third acceptance criterion below holds: a pause a human walked away from is
   converted per `06` by the next `import`, which also prints
-  `paused at <short id> — run: hermes-claude-migrate resume` on stderr so the record is
+  `paused at <short id> — run: dataporter resume` on stderr so the record is
   not silently overtaken.
 - **The pause is cleared by starting the conversation again, not by `resume` itself.**
   Either command can be the one that picks it up; the question the record asks is

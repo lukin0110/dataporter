@@ -1,6 +1,6 @@
 """Q3's ladder: what the real composer does with 5 k to 200 k characters.
 
-Not product code. It drives `hermes-claude-migrate browser paste` — the same
+Not product code. It drives `dataporter browser paste` — the same
 command Hermes runs — at five sizes against both paste methods, reads the
 composer back with `browser probe`, and writes the table `docs/seed-limits.md`
 is waiting for.
@@ -14,7 +14,7 @@ answered before the riskier questions are.
     uv run python spikes/paste_ladder.py --workspace migration
 
 Preconditions, all of them from `spikes/README.md`: a Chrome launched by
-`hermes-claude-migrate login`, signed in to the **throwaway** destination
+`dataporter login`, signed in to the **throwaway** destination
 account, sitting on exactly one claude.ai tab at `/new`.
 """
 
@@ -32,7 +32,7 @@ import spike
 DEFAULT_SIZES = (5_000, 20_000, 50_000, 100_000, 200_000)
 DEFAULT_METHODS = ("insert_text", "exec_command")
 
-CLI = "hermes-claude-migrate"
+CLI = "dataporter"
 HELPER_TIMEOUT_S = 300.0
 
 TEXT_MISMATCH = "text_mismatch"

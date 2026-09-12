@@ -29,7 +29,7 @@ about whether a model can follow the skill (§27).
   banner, and report which of `email`, `password`, `code` and `captcha` is
   showing — the first two by `login_form`'s own selectors, so there is one
   spelling of them. `HelperRunner` invokes
-  `hermes-claude-migrate browser …` as a subprocess and reads back the one JSON
+  `dataporter browser …` as a subprocess and reads back the one JSON
   object it prints, which is exactly what Hermes's terminal tool does.
 - **`rehearsal/hermes.py`** — the executable. `--version` (`hermes 1.0.0`),
   `profile list`, `profile create`, `config set`, `config show`, and

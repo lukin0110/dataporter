@@ -8,7 +8,7 @@
 
 ## Goal
 
-An installable `hermes-claude-migrate` CLI with the cross-cutting machinery every later
+An installable `dataporter` CLI with the cross-cutting machinery every later
 slice depends on: command surface, configuration, logging that cannot leak content, a typed
 error taxonomy and an exit-code convention. No migration behaviour.
 
@@ -18,7 +18,7 @@ error taxonomy and an exit-code convention. No migration behaviour.
   - `requires-python = ">=3.12"`;
   - runtime deps: `pydantic>=2`, `pydantic-settings`, `typer`, `websockets>=12`;
   - dev deps: `ruff`, `ty`, `pytest`, `pytest-cov` (`22` adds `pytest-xdist`);
-  - `[project.scripts] hermes-claude-migrate = "dataporter.cli:app"`;
+  - `[project.scripts] dataporter = "dataporter.cli:app"`;
   - optional extra `judge = ["pydantic-ai"]` declared now, empty of use until `20`.
 - `make check` = `ruff check`, `ruff format --check`, `ty check --error-on-warning`,
   `pytest`, over `src`, `tests` and (from `10`) `spikes`. CI runs the same command.
@@ -31,20 +31,20 @@ error taxonomy and an exit-code convention. No migration behaviour.
   `not implemented in this build: <command>`:
 
   ```text
-  hermes-claude-migrate login
-  hermes-claude-migrate import <export> [--dry-run] [--limit N] [--only UUID]... [--retry-failed] [--retry-partial] [--force] [--skip-attachments] [--attachments-dir DIR] [--pilot]
-  hermes-claude-migrate inspect <export> [--json]
-  hermes-claude-migrate seeds <export> [--only UUID]... [--out DIR]
-  hermes-claude-migrate status [--json]
-  hermes-claude-migrate resume
-  hermes-claude-migrate verify [--only UUID]...
-  hermes-claude-migrate report [--json]
-  hermes-claude-migrate followup [--only UUID]...
-  hermes-claude-migrate judge [--only UUID]...
-  hermes-claude-migrate setup
-  hermes-claude-migrate doctor
-  hermes-claude-migrate session status | logout
-  hermes-claude-migrate browser probe | paste | attach | await-response | close-extra-tabs
+  dataporter login
+  dataporter import <export> [--dry-run] [--limit N] [--only UUID]... [--retry-failed] [--retry-partial] [--force] [--skip-attachments] [--attachments-dir DIR] [--pilot]
+  dataporter inspect <export> [--json]
+  dataporter seeds <export> [--only UUID]... [--out DIR]
+  dataporter status [--json]
+  dataporter resume
+  dataporter verify [--only UUID]...
+  dataporter report [--json]
+  dataporter followup [--only UUID]...
+  dataporter judge [--only UUID]...
+  dataporter setup
+  dataporter doctor
+  dataporter session status | logout
+  dataporter browser probe | paste | attach | await-response | close-extra-tabs
   ```
 
   Global options, before the subcommand: `--workspace PATH`, `--verbose` / `-v`,
@@ -56,7 +56,7 @@ error taxonomy and an exit-code convention. No migration behaviour.
   `test_cli.py` cannot check for. Both are the experiment's instruments rather than the
   migration's: `followup` asks one question in each migrated chat, `judge` grades the
   replies behind the `judge` extra, and neither is needed to migrate anything.
-- `dataporter/config.py`: `Settings(BaseSettings)` with `env_prefix="HCM_"`,
+- `dataporter/config.py`: `Settings(BaseSettings)` with `env_prefix="DATAPORTER_"`,
   `env_nested_delimiter="__"`, loaded from `<workspace>/config.toml` when present.
   Precedence: CLI flag > environment > `config.toml` > defaults. This slice defines the
   mechanism and the `workspace` field; later slices add their sections (`browser`, `hermes`,
@@ -109,7 +109,7 @@ error taxonomy and an exit-code convention. No migration behaviour.
   durations, categories and details. A `ContentGuard` filter rejects (raises in tests, drops
   in production) any record whose fields are named `text`, `seed`, `title`, `content`,
   `snapshot` or `stdout`, so content cannot be logged by accident.
-- `--version` prints `hermes-claude-migrate <semver>` from package metadata.
+- `--version` prints `dataporter <semver>` from package metadata.
 
 ## Out of scope
 
@@ -154,7 +154,7 @@ Resolved while building:
   the root callback. `05` requires `import --dry-run` to leave no workspace directory behind;
   making the file sink explicit turns that from "nobody logs on this path" into an invariant.
   The handler also opens lazily, so `logs/` appears only when a record is really written.
-- **`config.toml` is always read from the bootstrap workspace** (`--workspace` > `HCM_WORKSPACE`
+- **`config.toml` is always read from the bootstrap workspace** (`--workspace` > `DATAPORTER_WORKSPACE`
   > `./migration`). A `workspace` key inside it still sets the workspace, but does not
   relocate config discovery — otherwise resolution would be a fixed-point iteration with a
   possible cycle.
@@ -175,11 +175,11 @@ Resolved while building:
 
 ## Acceptance criteria
 
-- `uv sync && uv run hermes-claude-migrate --version` prints `hermes-claude-migrate 0.1.0`.
-- `hermes-claude-migrate import ./nowhere --dry-run` exits `2` with
+- `uv sync && uv run dataporter --version` prints `dataporter 0.1.0`.
+- `dataporter import ./nowhere --dry-run` exits `2` with
   `error: export not found: ./nowhere` and no traceback.
 - Every unimplemented command exits `69` with the message above.
-- `HCM_WORKSPACE=/tmp/x hermes-claude-migrate status` resolves the workspace to `/tmp/x`;
+- `DATAPORTER_WORKSPACE=/tmp/x dataporter status` resolves the workspace to `/tmp/x`;
   `--workspace /tmp/y` wins over it; a `config.toml` value loses to both — one test each.
 - A test logs a record with a `text` field at `--verbose` and asserts it never reaches the
   log file or stderr.

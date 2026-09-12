@@ -75,7 +75,7 @@ jobs:
       - name: Run it as a host project would
         working-directory: /tmp
         run: |
-          /tmp/consumer/bin/hermes-claude-migrate --version
+          /tmp/consumer/bin/dataporter --version
           /tmp/consumer/bin/python -m dataporter --version
           /tmp/consumer/bin/python -c '
           import dataporter

@@ -8,7 +8,7 @@
 
 ## Goal
 
-`hermes-claude-migrate import <export>` migrates conversations one at a time: plan, seed,
+`dataporter import <export>` migrates conversations one at a time: plan, seed,
 hand to Hermes, map the result to a §7 status, record it, move on. The first version does
 one conversation correctly; `--limit` keeps a first real run small on purpose.
 
@@ -17,7 +17,7 @@ one conversation correctly; `--limit` keeps a first real run small on purpose.
 - `dataporter/importer.py` — `Importer.run(export_path, selection) -> RunSummary`:
   1. **preflight**: lock the workspace (`06`); Hermes present and profile configured
      (`09`, else exit `6`); launch or adopt Chrome (`07`); `probe.logged_in` (else exit
-     `3` with `run: hermes-claude-migrate login`); `close-extra-tabs`.
+     `3` with `run: dataporter login`); `close-extra-tabs`.
   2. **plan**: `Planner.plan` (`03`), written to `<workspace>/plan.json`; `state.json`
      entries created as `pending` for every conversation in the plan (unsupported ones are
      created as `failed` with `error.category = unsupported` and `retry_recommended =

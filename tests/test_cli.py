@@ -68,7 +68,7 @@ GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"
 def test_version_is_the_golden_string(runner: CliRunner) -> None:
     result = runner.invoke(cli.app, ["--version"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
-    assert result.stdout == "hermes-claude-migrate 0.1.0\n"
+    assert result.stdout == "dataporter 0.1.0\n"
 
 
 def test_missing_export_exits_usage_with_no_traceback(

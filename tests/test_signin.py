@@ -86,7 +86,7 @@ def test_the_prompt_names_the_url_and_the_helper_and_nothing_secret(
 ) -> None:
     text = signin.prompt(workspace=tmp_path / "ws")
     assert f"login url: {login_form.LOGIN_URL}" in text
-    assert "helper: hermes-claude-migrate --workspace" in text
+    assert "helper: dataporter --workspace" in text
     assert "You hold no credentials" in text
     assert "form_ready" in text
 
@@ -94,7 +94,7 @@ def test_the_prompt_names_the_url_and_the_helper_and_nothing_secret(
 def test_credentials_are_required_before_anything_starts(tmp_path: Path) -> None:
     with Browser(LoginForm()) as browser:
         settings = settings_for(tmp_path, None, browser, credentials=False)
-        with pytest.raises(UsageError, match="HCM_AUTH__EMAIL"):
+        with pytest.raises(UsageError, match="DATAPORTER_AUTH__EMAIL"):
             signin.require_credentials(settings)
         assert (
             signin.require_credentials(settings_for(tmp_path, None, browser)).email
@@ -239,8 +239,7 @@ def test_unattended_a_sign_in_that_stopped_names_the_reason_and_the_remedy(
         with pytest.raises(AuthError) as raised:
             signin.ensure_signed_in(settings, session_of(browser, settings))
     assert raised.value.detail == (
-        "automatic sign-in stopped: authentication required — run: "
-        "hermes-claude-migrate login"
+        "automatic sign-in stopped: authentication required — run: dataporter login"
     )
 
 
