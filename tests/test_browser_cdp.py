@@ -270,7 +270,11 @@ def test_drain_collects_an_event_that_arrives_between_commands(
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
     with client.attach("page-1") as page:
         chrome.push(dialog_event("beforeunload"))
-        events = page.drain(2.0)
+        # `drain` waits its whole budget out — it returns when the socket times
+        # out, not when an event arrives — so this number is wall-clock the suite
+        # pays every run. The event is already on the wire when `push` returns,
+        # and the sibling test above reads one back in 0.05 s.
+        events = page.drain(0.25)
     assert [item["params"]["type"] for item in events] == ["beforeunload"]
 
 

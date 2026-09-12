@@ -22,9 +22,8 @@ from dataporter.state import StateError
 from fake_chrome import Call, FakeChrome, FakeTarget, free_port, page_state
 
 pytestmark = pytest.mark.slow
-"""Slow all the way through: a fake Chrome per test, and two login waits that really
-wait.
-"""
+"""Slow all the way through: a fake Chrome per test, binding two ports, and three
+login waits that really wait — for a twentieth of a second each, since `22`."""
 
 
 def make_settings(tmp_path: Path, port: int) -> Settings:
@@ -181,6 +180,29 @@ def test_wait_for_login_gives_up(chrome: FakeChrome, tmp_path: Path) -> None:
     chrome.targets[0].evaluate = LOGGED_OUT
     session = session_for(chrome, tmp_path)
     assert browser_session.wait_for_login(session, timeout_s=0.05, poll_s=0.01) is None
+
+
+def test_a_wait_never_sleeps_past_its_own_deadline(
+    chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last poll is cut to whatever is left of the budget.
+
+    Sleeping a whole `poll_s` at the end overshoots the timeout by up to two
+    seconds — `login` with a five-second budget giving up at seven — and the end
+    of a wait is the part somebody is watching.
+
+    Judged by what the wait asks `sleep` for rather than by a stopwatch: the
+    quantity under test is the argument, and a machine under load would make a
+    wall-clock assertion about it flaky.
+    """
+    slept: list[float] = []
+    monkeypatch.setattr(browser_session.time, "sleep", slept.append)
+    chrome.targets[0].evaluate = LOGGED_OUT
+    session = session_for(chrome, tmp_path)
+
+    assert browser_session.wait_for_login(session, timeout_s=0.05, poll_s=10.0) is None
+    assert slept, "a wait that gave up without polling proves nothing"
+    assert max(slept) <= 0.05
 
 
 def test_a_failed_probe_is_not_a_failed_login(

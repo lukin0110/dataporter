@@ -17,7 +17,7 @@ error taxonomy and an exit-code convention. No migration behaviour.
 - Package `dataporter`, `src/` layout, `pyproject.toml` managed by `uv`:
   - `requires-python = ">=3.12"`;
   - runtime deps: `pydantic>=2`, `pydantic-settings`, `typer`, `websockets>=12`;
-  - dev deps: `ruff`, `ty`, `pytest`, `pytest-cov`;
+  - dev deps: `ruff`, `ty`, `pytest`, `pytest-cov` (`22` adds `pytest-xdist`);
   - `[project.scripts] hermes-claude-migrate = "dataporter.cli:app"`;
   - optional extra `judge = ["pydantic-ai"]` declared now, empty of use until `20`.
 - `make check` = `ruff check`, `ruff format --check`, `ty check --error-on-warning`,

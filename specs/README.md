@@ -72,7 +72,7 @@ M5 — Experiment
   21  Scale-up and sign-off: full export, §19 metrics, LIMITATIONS, README, runbook
 
 Tooling — no milestone, may land at any time
-  22  Test performance: the fast/slow split, and the cost underneath it
+  22  Test performance: the fast/slow split, and the cost underneath it (both landed)
 ```
 
 ## Dependencies
@@ -135,7 +135,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [19](impl/19-report.md) | Report | §16 | Done |
 | [20](impl/20-pilot.md) | Pilot experiment | §18 | In progress |
 | [21](impl/21-scale-up.md) | Scale-up and sign-off | §19 | In progress |
-| [22](impl/22-test-performance.md) | Test performance | — tooling | Not started |
+| [22](impl/22-test-performance.md) | Test performance | — tooling | Done |
 
 `21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
 still reporting what is true rather than what the plan hoped: `20` and `21` are built and
@@ -205,11 +205,13 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   API key Hermes uses; that is Hermes's `.env`.
 - **Fast and slow tests:** the suite is split by a `slow` marker — anything that spawns a
   subprocess, binds a socket or launches a browser. `make check` runs lint, types and the
-  fast half (~640 tests, about three seconds) and is what CI runs on a pull request;
+  fast half (~870 tests, about three seconds) and is what CI runs on a pull request;
   `make check-all` runs everything with coverage and is what CI runs on `main` after a
   merge, so the `fail_under` gate lives there. `tests/conftest.py` holds the two
-  mechanisms that keep the marking honest, and `22` is the slice that removes the cost
-  rather than containing it.
+  mechanisms that keep the marking honest. `22` removed the cost rather than containing
+  it — the whole suite is ~20 seconds across four cores where it was five minutes — so the
+  split is now a rail (a pull request is never gated on a browser) rather than the thing
+  that makes the loop bearable.
 - **Repo tooling:** [Graft](https://github.com/trailhq/Graft) indexes the repo into a code
   graph that coding agents query instead of re-reading the source. Development tooling only —
   no slice depends on it, `make check` never runs it, and the graph itself is git-ignored.

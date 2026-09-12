@@ -319,6 +319,15 @@ def test_a_run_past_its_deadline_is_killed(tmp_path: Path, fake: FakeHermes) -> 
 CHILD_DELAY_S = 3.0
 """How long the fake's grandchild waits before writing its marker."""
 
+SURVIVAL_MARGIN = 1.2
+"""How far past that delay the test waits before calling the marker absent.
+
+A margin, because the grandchild starts a moment after the run does and the
+machine may be busy; 1.2 rather than the 2.0 this was written with, because the
+whole of it is wall-clock the suite pays on every run and a fifth of the delay is
+already longer than the one-second deadline that kills it.
+"""
+
 
 def test_the_whole_process_group_goes_not_just_the_leader(
     tmp_path: Path, fake: FakeHermes
@@ -335,7 +344,7 @@ def test_the_whole_process_group_goes_not_just_the_leader(
     with pytest.raises(HermesError, match="timeout"):
         runner_for(tmp_path, fake).run("go", run_id="r", timeout_s=1)
 
-    time.sleep(CHILD_DELAY_S * 2)
+    time.sleep(CHILD_DELAY_S * SURVIVAL_MARGIN)
     assert not marker.exists(), "a process the run started outlived the kill"
 
 

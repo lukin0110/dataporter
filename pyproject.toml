@@ -34,6 +34,10 @@ dev = [
     "ty",
     "pytest",
     "pytest-cov",
+    # `22`'s last item, spent by `make test-all` as `-n auto`. The full suite is
+    # subprocess- and socket-bound, so it divides by the core count; nothing else
+    # in the lock needs it, and `make check` does not use it.
+    "pytest-xdist",
 ]
 
 [build-system]
@@ -78,10 +82,15 @@ unused-ignore-comment = "warn"
 testpaths = ["tests"]
 # The fast half, by default. Anything that spawns a subprocess, binds a socket or
 # launches a browser is marked `slow` and deselected here, which is what makes a
-# bare `pytest` the inner-loop command: ~640 tests in about 3 seconds against
-# ~1100 in about 310. `make check-all` runs everything and is the only command
-# that measures coverage — a percentage over half the suite is a number no gate
-# could use. `22` is the slice that makes the other half quick.
+# bare `pytest` the inner-loop command: ~870 tests in about 3 seconds against
+# ~1350 in about 64 — and in about 22 as `make test-all` runs them, across four
+# cores. `make check-all` runs everything and is the only command that measures
+# coverage — a percentage over half the suite is a number no gate could use.
+#
+# The two halves were four minutes apart when `15` split them and are one minute
+# apart now: `22` took the fixed tax out of the slow half rather than leaving it
+# hidden behind the marker, so the split is a safety rail (a pull request is
+# never gated on a browser) rather than the thing that makes the loop bearable.
 #
 # The list form rather than a string: pytest `shlex.split`s a string, so the
 # quoting in `-m 'not slow'` is a question the list form does not raise.
