@@ -182,27 +182,48 @@ def test_wait_for_login_gives_up(chrome: FakeChrome, tmp_path: Path) -> None:
     assert browser_session.wait_for_login(session, timeout_s=0.05, poll_s=0.01) is None
 
 
+class StopWaiting(Exception):
+    """Raised out of a patched `sleep`, to end a wait at its first poll."""
+
+
 def test_a_wait_never_sleeps_past_its_own_deadline(
     chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The last poll is cut to whatever is left of the budget.
+    """A poll longer than what is left of the budget is cut to what is left.
 
     Sleeping a whole `poll_s` at the end overshoots the timeout by up to two
     seconds — `login` with a five-second budget giving up at seven — and the end
     of a wait is the part somebody is watching.
 
-    Judged by what the wait asks `sleep` for rather than by a stopwatch: the
-    quantity under test is the argument, and a machine under load would make a
-    wall-clock assertion about it flaky.
+    Judged by what the wait asks `sleep` for, and arranged so that no real
+    duration decides the outcome. A budget of `0.05` would have done neither: a
+    probe is a WebSocket handshake, a busy machine can spend longer than that
+    inside the first one, and the wait would then give up having slept nothing —
+    a test that flaps rather than one that fails. So the budget is 30 s, which
+    no probe against a fake reaches, the poll is ten times it, and `sleep` ends
+    the wait the moment it is called. Nothing sleeps and nothing is timed: what
+    is asserted is the *argument*, which the fix clamps to the budget and the
+    bug leaves at `poll_s`.
+
+    Faking `monotonic` too — the other way to make this deterministic — would
+    reach further than the code under test: `browser_session.time` is the `time`
+    module itself, and `websockets` is timing this connection by the same clock.
     """
     slept: list[float] = []
-    monkeypatch.setattr(browser_session.time, "sleep", slept.append)
+
+    def record(seconds: float) -> None:
+        slept.append(seconds)
+        raise StopWaiting
+
+    monkeypatch.setattr(browser_session.time, "sleep", record)
     chrome.targets[0].evaluate = LOGGED_OUT
     session = session_for(chrome, tmp_path)
 
-    assert browser_session.wait_for_login(session, timeout_s=0.05, poll_s=10.0) is None
-    assert slept, "a wait that gave up without polling proves nothing"
-    assert max(slept) <= 0.05
+    with pytest.raises(StopWaiting):
+        browser_session.wait_for_login(session, timeout_s=30.0, poll_s=300.0)
+
+    assert len(slept) == 1
+    assert 0 < slept[0] <= 30.0
 
 
 def test_a_failed_probe_is_not_a_failed_login(
