@@ -99,6 +99,10 @@ M7 — Rehearsal (brief 02, §20–§28) — outside the gates: it needs no acco
   27  The scripted agent as a `hermes`: the model-free procedure, on the path
   28  The rehearsal export: the five kinds and the selection categories
   29  The rehearsal: the protocol, the pass criteria and the record
+
+M8 — Extraction and backup (brief 03, §29–§40)
+  30  The store and the snapshot: filing, fetching, listing, import from a snapshot
+  31  The source session and the ask: a second profile, the extraction surface, one click
 ```
 
 ## Dependencies
@@ -128,6 +132,18 @@ from it — and `27` depends on `09`, `11` and `24`, whose procedures it package
 10 (the UI map) ─> 26 ─┐
 09, 11, 24 ─────> 27 ──┼─> 29
                   28 ──┘
+```
+
+M8 is a chain of two: `30` is everything of brief 03 that needs no browser — the store,
+the snapshot, the fetch, `snapshots`, and `import` reading a snapshot — and depends on
+`02`'s export source and `23`'s operation shape; `31` is the source session and the ask,
+which need `07`'s browser session and `24`'s unattended sign-in as well as `30`'s store to
+write the ask into. The split falls on the repository's own gate: nothing that touches an
+account is built before the browser half is proven.
+
+```text
+02, 23 ─> 30 ─┐
+07, 24 ───────┴─> 31
 ```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
@@ -187,6 +203,8 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [27](impl/27-scripted-hermes.md) | The scripted agent as a `hermes` | §23 | Done |
 | [28](impl/28-rehearsal-export.md) | The rehearsal export | §24 | Done |
 | [29](impl/29-rehearsal.md) | The rehearsal | §22, §23, §25, §26, §27 | Done |
+| [30](impl/30-store-and-snapshot.md) | The store and the snapshot | §30, §31, §32, §33, §37, §38 | Not started |
+| [31](impl/31-source-session-and-ask.md) | The source session and the ask | §31, §35, §36, §38, §39 | Not started |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -208,9 +226,11 @@ deliberately left — a section no slice should claim until one of its items is 
 worked on and how it is consumed rather than because of what the brief asks for, and they
 are outside the milestone gates for the same reason.
 
-The third brief, §29–§40, is claimed by no slice yet. Its sections are visibly unbuilt
-until the slices that build extraction, the snapshot, the store and the source session
-are written and take them; §29 is its goal and §40 its list of what is deliberately left.
+Of the third brief, §30–§39 are claimed by `30` and `31`: `30` takes the store, the
+snapshot, the fetch and import from a snapshot, `31` takes the ask, the source session
+and the safety boundaries, and §31 and §38 are split between them along the same line.
+§29 is that brief's goal and is claimed by both; §40 is its list of what is deliberately
+left, which no slice claims until one of its items is built. Neither slice is started.
 
 ## Working rules
 
