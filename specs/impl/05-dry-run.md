@@ -69,12 +69,12 @@ unsupported count. Nothing is written anywhere, nothing is contacted.
 
 ## Design notes
 
-- The brief's §9 example is hand-aligned and internally inconsistent by one to three
-  spaces (`Conversations found: 127` is 24 wide, `Messages:             4,821` is 27).
+- The brief's §9 example was hand-aligned and internally inconsistent by one to three
+  spaces (`Conversations found: 127` was 24 wide, `Messages:             4,821` is 27).
   One rule cannot reproduce both. The rule above reproduces the `Messages` and
   `Attachments` lines byte-for-byte and is the only rule that can be tested, so it is the
-  golden rule; the three deviating lines in the brief (`Conversations found`,
-  `Migratable`, `Unsupported`, off by one to three spaces) are treated as typos.
+  golden rule, and §9 was amended to the rule's bytes — the amendment note sits under the
+  block. `tests/test_summary.py` compares the rendered block against the brief itself.
 - Counting from the plan, not the export, keeps the dry run, progress and report numbers
   identical by construction.
 

@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §2 (Hermes agent component), §4 (Hermes capabilities), §17 (Hermes permitted only the migration)
 **Depends on:** [01](01-foundation.md)
 **Enables:** [10](10-attach-spike.md), [11](11-skill.md), [12](12-import-loop.md)
-**Status:** Done
+**Status:** Built
 
 ## Goal
 

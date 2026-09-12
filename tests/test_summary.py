@@ -58,11 +58,7 @@ BRIEF_BLOCK = (
     "Migratable:             124\n"
     "Unsupported:              3\n"
 )
-"""§9 under the one rule that reproduces `Messages` and `Attachments`.
-
-The other three lines of the brief's hand-aligned example are one to three spaces
-narrower than any single rule can make them; `05`'s design notes settle it.
-"""
+"""§9, as the brief writes it since `05` amended it to the rule's bytes."""
 
 
 def settings_for(attachments_dir: Path) -> Settings:
@@ -90,27 +86,14 @@ def test_the_brief_s_numbers_render_to_the_golden_block() -> None:
     assert summary.dry_run_report(BRIEF_TOTALS) == BRIEF_BLOCK
 
 
-def test_the_rule_reproduces_the_well_formed_lines_of_the_brief() -> None:
+def test_the_block_is_the_brief_s_own() -> None:
     """§9 is a golden string, so the rule is checked against the brief itself.
 
-    `Messages` and `Attachments` come back byte-for-byte. The other three lines
-    are hand-aligned one to three columns narrower than any single rule can make
-    them, and `05`'s design notes treat them as typos — this test is where that
-    decision is visible rather than buried in prose.
+    Every line comes back byte-for-byte: `05` amended the brief's hand-aligned
+    example to the rule's bytes, and this test is what keeps the two from
+    drifting apart again in either direction.
     """
-    brief = BRIEF.read_text(encoding="utf-8").splitlines()
-    rendered = summary.dry_run_report(BRIEF_TOTALS).splitlines()
-    assert [line for line in rendered if line and line in brief] == [
-        "Messages:             4,821",
-        "Attachments:             36",
-    ]
-    # The three that deviate are in the brief, in their own narrower form.
-    for typo in (
-        "Conversations found: 127",
-        "Migratable:           124",
-        "Unsupported:             3",
-    ):
-        assert typo in brief
+    assert BRIEF_BLOCK in BRIEF.read_text(encoding="utf-8")
 
 
 BRIEF_COUNTS = {"total": 127, "completed": 89, "partial": 1, "failed": 1, "pending": 36}
@@ -119,8 +102,8 @@ bar and the header above them."""
 
 
 def test_the_counters_are_the_brief_s_own_lines() -> None:
-    """§10 is a golden string too, and unlike §9 its block is self-consistent:
-    every counter line is 13 columns, so the rule reproduces all four exactly."""
+    """§10 is a golden string too, and its block was self-consistent from the
+    start: every counter line is 13 columns, so the rule reproduces all four."""
     brief = BRIEF.read_text(encoding="utf-8").splitlines()
     rendered = summary.counters_lines(BRIEF_COUNTS)
     assert rendered == [

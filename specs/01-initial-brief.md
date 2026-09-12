@@ -262,16 +262,21 @@ hermes-claude-migrate import ./claude-export --dry-run
 This should parse the export and show:
 
 ```text
-Conversations found: 127
+Conversations found:    127
 Messages:             4,821
 Attachments:             36
 
-Migratable:           124
-Unsupported:             3
+Migratable:             124
+Unsupported:              3
 
 ```
 
 No Claude account should be modified during a dry run.
+
+*Amended by [`05`](impl/05-dry-run.md). The block was hand-aligned: `Conversations
+found`, `Migratable` and `Unsupported` were one to three columns narrower than `Messages`
+and `Attachments`, and no single rule prints both. The block above is the rule's own
+bytes, which `05` pins and `tests/test_summary.py` compares against this file.*
 
 ## 10. Migration execution
 
@@ -413,19 +418,24 @@ At the end of a migration:
 ```text
 Claude migration complete
 
-Source conversations:       127
-Created:                    124
-Partial:                      2
-Failed:                       1
+Source conversations:        127
+Created:                     124
+Partial:                       2
+Failed:                        1
 
 Messages represented:      4,821
 Attachments migrated:         31
 
 Browser actions:           1,842
 Retries:                      17
-Human interventions:          2
+Human interventions:           2
 
 ```
+
+*Amended by [`19`](impl/19-report.md). The block was hand-aligned: five of its lines were
+one column narrower than the other four, and no single rule prints both. The block above
+is the rule's own bytes, which `19` pins and `tests/test_report.py` compares against this
+file.*
 
 For each failure, record:
 

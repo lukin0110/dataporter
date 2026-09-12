@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §2 (verify that the resulting chat exists), §11 (verify response exists), §15 (structural fidelity: titles, history)
 **Depends on:** [12](12-import-loop.md)
 **Enables:** [19](19-report.md)
-**Status:** Done
+**Status:** Built
 
 ## Goal
 

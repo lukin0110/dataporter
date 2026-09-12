@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §8
 **Depends on:** [01](01-foundation.md)
 **Enables:** [08](08-browser-helpers.md), [10](10-attach-spike.md)
-**Status:** Done
+**Status:** Built
 
 ## Goal
 

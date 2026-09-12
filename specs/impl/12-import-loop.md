@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §6 Phase 3, §10 (execution command, no content printed)
 **Depends on:** [04](04-seed-generation.md), [06](06-migration-state.md), [08](08-browser-helpers.md), [09](09-hermes-runner.md), [11](11-skill.md)
 **Enables:** [13](13-recovery.md), [15](15-pacing.md), [16](16-attachments.md), [17](17-verification-and-title.md), [18](18-progress-output.md)
-**Status:** Done
+**Status:** Built
 
 ## Goal
 

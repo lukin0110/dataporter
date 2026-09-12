@@ -117,11 +117,12 @@ reproducible from the workspace alone.
 
 ## Design notes
 
-- The brief's §16 block is hand-aligned with one-space inconsistencies (three-digit values
-  end at column 31, five-character values at 32). Width 32 is the smallest that fits every
-  line; the rule reproduces the `Messages represented`, `Attachments migrated`, `Browser
-  actions` and `Retries` lines exactly and pads the others by one space. Recorded here so
-  nobody "fixes" it back and forth.
+- The brief's §16 block was hand-aligned with one-space inconsistencies (three-digit
+  values ended at column 31, five-character values at 32). Width 32 is the smallest that
+  fits every line; the rule reproduces the `Messages represented`, `Attachments migrated`,
+  `Browser actions` and `Retries` lines exactly and pads the others by one space, and §16
+  was amended to the rule's bytes — the amendment note sits under the block.
+  `tests/test_report.py` compares the rendered block against the brief itself.
 - Failure lines carry a short id, not a title (§10), and never content; the detail is the
   operator-facing `MigrationError.detail`. `18` cuts the same string at 60 characters
   because a redraw depends on the block's height; a report has no such constraint and §16

@@ -4,7 +4,7 @@
 **Implements:** [Brief](../01-initial-brief.md) §N, §N
 **Depends on:** [NN](NN-slug.md), or `nothing`
 **Enables:** [NN](NN-slug.md), or `nothing yet`
-**Status:** Not started | In progress | Done
+**Status:** Not started | In progress | Built | Done
 
 ## Goal
 

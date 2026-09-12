@@ -70,28 +70,7 @@ BRIEF_BLOCK = (
     "Retries:                      17\n"
     "Human interventions:           2\n"
 )
-"""§16 under the one rule that reproduces its four well-formed lines.
-
-The other five of the brief's hand-aligned example are one space narrower than
-any single rule can make them; `19`'s design notes settle it, as `05`'s do for §9.
-"""
-
-WELL_FORMED = [
-    "Messages represented:      4,821",
-    "Attachments migrated:         31",
-    "Browser actions:           1,842",
-    "Retries:                      17",
-]
-"""The lines of §16 that are 32 columns wide in the brief itself."""
-
-HAND_ALIGNED = [
-    "Source conversations:       127",
-    "Created:                    124",
-    "Partial:                      2",
-    "Failed:                       1",
-    "Human interventions:          2",
-]
-"""And the five that are 31, in the brief's own narrower form."""
+"""§16, as the brief writes it since `19` amended it to the rule's bytes."""
 
 FAILED_GENERATION = "3f9c2a1e-0000-4000-8000-000000000001"
 PARTIAL_VERIFY = "8a02c7d1-0000-4000-8000-000000000002"
@@ -250,22 +229,14 @@ def test_the_brief_s_numbers_render_to_the_golden_block() -> None:
     assert report.block(BRIEF_TOTALS) == BRIEF_BLOCK
 
 
-def test_the_rule_reproduces_the_well_formed_lines_of_the_brief() -> None:
+def test_the_block_is_the_brief_s_own() -> None:
     """§16 is a golden string, so the rule is measured against the brief itself.
 
-    Four lines come back byte-for-byte. The other five are hand-aligned one
-    column narrower than any single rule can make them, and `19`'s design notes
-    treat them as typos — this test is where that is visible rather than buried
-    in prose.
+    Every line comes back byte-for-byte: `19` amended the brief's hand-aligned
+    example to the rule's bytes, and this test is what keeps the two from
+    drifting apart again in either direction.
     """
-    brief = BRIEF.read_text(encoding="utf-8").splitlines()
-    rendered = report.block(BRIEF_TOTALS).splitlines()
-    assert [line for line in rendered if line and line in brief] == [
-        "Claude migration complete",
-        *WELL_FORMED,
-    ]
-    for typo in HAND_ALIGNED:
-        assert typo in brief
+    assert BRIEF_BLOCK in BRIEF.read_text(encoding="utf-8")
 
 
 def test_every_line_of_the_block_is_the_same_width() -> None:
