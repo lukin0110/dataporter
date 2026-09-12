@@ -112,10 +112,10 @@ exclude = [
 
 [tool.uv.workspace]
 # `26`'s mock is a member rather than a directory: it has its own dependencies
-# (one, and it exists to mint a TLS certificate), its own tests and its own
-# README, and it imports nothing from `dataporter`. Moving it to its own
-# repository is a directory move — ADR 0003 — and this line is the only thing
-# that would have to go with it.
+# (FastAPI and uvicorn for the wire, `cryptography` to mint a TLS certificate),
+# its own tests and its own README, and it imports nothing from `dataporter`.
+# Moving it to its own repository is a directory move — ADR 0003 — and this line
+# is the only thing that would have to go with it.
 members = ["mock"]
 
 [tool.ruff]

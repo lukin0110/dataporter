@@ -120,6 +120,6 @@ CAPTCHA or security challenge, and a code prompt at sign-in.
 uv run --package claude-mock pytest mock
 ```
 
-They cover the behaviour (`site.py`) without a socket, and the wire (`server.py`)
-over a real TLS connection to a real port. What they cannot cover is a real
-Chrome: that is what a rehearsal is.
+They cover the behaviour (`site.py`) without a socket, and the wire (`server.py`,
+a FastAPI application served by uvicorn) over a real TLS connection to a real
+port. What they cannot cover is a real Chrome: that is what a rehearsal is.

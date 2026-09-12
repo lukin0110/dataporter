@@ -26,9 +26,9 @@ jobs:
 
       - name: Install dependencies
         # --locked fails if uv.lock is stale, which is the point of committing it.
-        # --all-packages because `26` made the mock a workspace member with a
-        # dependency of its own: without it `make check` type-checks and runs a
-        # project whose `cryptography` is not installed.
+        # --all-packages because `26` made the mock a workspace member with
+        # dependencies of its own: without it `make check` type-checks and runs
+        # a project whose `fastapi` and `cryptography` are not installed.
         run: uv sync --locked --all-packages
 
       - name: Check

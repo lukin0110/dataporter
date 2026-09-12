@@ -90,11 +90,7 @@ def test_a_submit_makes_a_chat_that_survives_a_reload(
     running: Client, site: Site
 ) -> None:
     sign_in(running)
-    _, body, _ = running.post(
-        "/api/chats",
-        json.dumps({"text": SEED}).encode(),
-        **{"Content-Type": "application/json"},
-    )
+    _, body, _ = running.post_json("/api/chats", {"text": SEED})
     chat_id = json.loads(body)["id"]
 
     status, page, _ = running.request(f"/chat/{chat_id}")
@@ -117,10 +113,10 @@ def test_a_chat_that_is_not_there_is_not_found(running: Client) -> None:
 
 def test_a_second_message_goes_into_the_same_chat(running: Client, site: Site) -> None:
     sign_in(running)
-    _, body, _ = running.post("/api/chats", json.dumps({"text": SEED}).encode())
+    _, body, _ = running.post_json("/api/chats", {"text": SEED})
     chat_id = json.loads(body)["id"]
     site.chat(chat_id).reply.started -= 10  # ty: ignore[possibly-unbound-attribute]
-    running.post(f"/api/chats/{chat_id}/messages", json.dumps({"text": SEED}).encode())
+    running.post_json(f"/api/chats/{chat_id}/messages", {"text": SEED})
     _, page, _ = running.request(f"/chat/{chat_id}")
     # The style block names the selector too, so the turns are counted as the
     # elements they are.
@@ -130,12 +126,9 @@ def test_a_second_message_goes_into_the_same_chat(running: Client, site: Site) -
 
 def test_a_rename_survives_a_reload(running: Client, site: Site) -> None:
     sign_in(running)
-    _, body, _ = running.post("/api/chats", json.dumps({"text": SEED}).encode())
+    _, body, _ = running.post_json("/api/chats", {"text": SEED})
     chat_id = json.loads(body)["id"]
-    running.post(
-        f"/api/chats/{chat_id}/title",
-        json.dumps({"title": "Notes on pooling"}).encode(),
-    )
+    running.post_json(f"/api/chats/{chat_id}/title", {"title": "Notes on pooling"})
     _, page, _ = running.request(f"/chat/{chat_id}")
     assert '<button id="chat-menu-trigger" data-testid="chat-menu-trigger">Notes on '
     assert "Notes on pooling</button>" in page
@@ -150,7 +143,7 @@ def test_a_file_is_accepted_and_belongs_to_the_next_chat(
         "/api/uploads", b"some bytes", **{"X-File-Name": "q3-chart.png"}
     )
     assert (status, json.loads(body)["ok"]) == (200, True)
-    _, chat, _ = running.post("/api/chats", json.dumps({"text": SEED}).encode())
+    _, chat, _ = running.post_json("/api/chats", {"text": SEED})
     _, page, _ = running.request(f"/chat/{json.loads(chat)['id']}")
     assert '<div class="attachment-chip">q3-chart.png</div>' in page
     assert site.counters()["files_accepted"] == 1
@@ -163,9 +156,7 @@ def test_an_upload_with_no_name_is_refused(running: Client) -> None:
 
 
 def test_the_api_refuses_a_session_that_is_not_signed_in(running: Client) -> None:
-    status, _, location = running.post(
-        "/api/chats", json.dumps({"text": SEED}).encode()
-    )
+    status, _, location = running.post_json("/api/chats", {"text": SEED})
     assert (status, location) == (303, "/login")
 
 

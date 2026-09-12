@@ -1,10 +1,10 @@
 """The mock, as a served site.
 
-One threaded HTTPS server, a handler that is a routing table, and nothing else:
-every decision about what the site *does* is in `site.py`, and everything about
-what it *looks* like is in `pages.py`. What is here is the wire — cookies,
-methods, status codes, JSON in and JSON out — and the reachability block the
-operator is told to paste.
+One FastAPI application, served by uvicorn over TLS on a thread of its own, and
+nothing else: every decision about what the site *does* is in `site.py`, and
+everything about what it *looks* like is in `pages.py`. What is here is the
+wire — cookies, methods, status codes, JSON in and JSON out — and the
+reachability block the operator is told to paste.
 
 Three things about it are worth knowing:
 
@@ -18,20 +18,26 @@ Three things about it are worth knowing:
 - **It counts.** Every request that does something — a sign-in, a chat, a
   message, a file, a rename — goes through the ledger, which is the only witness
   a rehearsal record can reconcile against (§25).
+
+The routes are plain `def`s rather than `async def`s on purpose: `Site` is
+synchronous and guards its state with a lock, so FastAPI runs each route on a
+worker thread and the lock keeps doing its job. The one exception reads an
+upload's body, which is the only thing in the mock worth awaiting.
 """
 
-import json
 import secrets
-import ssl
+import socket
 import threading
-from collections.abc import Mapping
+import time
 from http import HTTPStatus
-from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from socketserver import BaseServer
-from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
+from typing import Annotated, Any
+from urllib.parse import unquote
+
+import uvicorn
+from fastapi import Depends, FastAPI, Form, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import RedirectResponse as _RedirectResponse
+from pydantic import BaseModel
 
 from claudemock import certificate, pages
 from claudemock.site import Chat, Site
@@ -52,288 +58,27 @@ closed and started again, which is what `login` storing a session in the
 workspace profile means: a cookie with no lifetime is discarded when Chrome
 exits, and every later command would sign in again."""
 
-MAX_UPLOAD_BYTES = 32 * 1024 * 1024
-MAX_BODY_BYTES = 8 * 1024 * 1024
-"""A seed is tens of kilobytes and a rehearsal attachment is smaller still.
-A cap because this reads `Content-Length` off the wire."""
+MAX_BODY_BYTES = 32 * 1024 * 1024
+"""A seed is tens of kilobytes and a rehearsal attachment is smaller still. A
+cap because the mock reads whatever `Content-Length` promises into memory."""
 
 REFUSED = "Those details do not match an account here."
 
-POLL_INTERVAL_S = 0.05
-"""How often `serve_forever` looks for a shutdown. The default is half a second,
-and `shutdown()` waits for it — which is half a second of teardown per test that
-starts a mock, and the same half-second `22` took out of the tool's own slow
-half. It costs twenty wake-ups a second in a process that is otherwise idle."""
+STARTUP_TIMEOUT_S = 10.0
+"""How long `serve` waits for uvicorn to report that it is accepting
+connections before giving up. Starting takes milliseconds; the timeout exists
+so a failure to start is an error rather than a hang."""
 
 
-class Handler(BaseHTTPRequestHandler):
-    """Every route the mock answers, in one place.
-
-    `protocol_version` is HTTP/1.1 because Chrome keeps the connection open and
-    a server that answered 1.0 would make every request a new TLS handshake —
-    which shows up as a rehearsal that is slower than the pacing it configured.
-    """
-
-    protocol_version = "HTTP/1.1"
-    site: Site
-
-    # -- plumbing ----------------------------------------------------------- #
-
-    @property
-    def route(self) -> str:
-        return urlparse(self.path).path
-
-    @property
-    def query(self) -> Mapping[str, list[str]]:
-        return parse_qs(urlparse(self.path).query)
-
-    def cookie(self, name: str) -> str | None:
-        jar = SimpleCookie(self.headers.get("Cookie", ""))
-        found = jar.get(name)
-        return found.value if found is not None else None
-
-    def session(self) -> str | None:
-        token = self.cookie(SESSION_COOKIE)
-        return token if self.site.signed_in(token) else None
-
-    def body(self) -> bytes:
-        length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0 or length > MAX_UPLOAD_BYTES:
-            return b""
-        return self.rfile.read(length)
-
-    def payload(self) -> dict[str, Any]:
-        raw = self.body()[:MAX_BODY_BYTES]
-        try:
-            loaded = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
-            return {}
-        return loaded if isinstance(loaded, dict) else {}
-
-    def form(self) -> Mapping[str, list[str]]:
-        return parse_qs(self.body().decode("utf-8", "replace"))
-
-    def reply(
-        self,
-        status: HTTPStatus,
-        content: bytes = b"",
-        *,
-        content_type: str = "text/html; charset=utf-8",
-        cookies: Mapping[str, str] = {},
-        location: str = "",
-    ) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(content)))
-        for name, value in cookies.items():
-            lifetime = (
-                f"; Max-Age={SESSION_MAX_AGE_S}" if name == SESSION_COOKIE else ""
-            )
-            self.send_header("Set-Cookie", f"{name}={value}; Path=/{lifetime}")
-        if location:
-            self.send_header("Location", location)
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(content)
-
-    def send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
-        self.reply(
-            status,
-            json.dumps(payload).encode(),
-            content_type="application/json",
-        )
-
-    def redirect(self, location: str, **cookies: str) -> None:
-        self.reply(HTTPStatus.SEE_OTHER, location=location, cookies=cookies)
-
-    def not_found(self) -> None:
-        self.reply(HTTPStatus.NOT_FOUND, b"not found", content_type="text/plain")
-
-    def log_message(self, format: str, *args: object) -> None:
-        """Silence. A rehearsal's terminal belongs to the tool."""
-
-    # -- GET ---------------------------------------------------------------- #
-
-    def do_GET(self) -> None:  # noqa: N802 - the stdlib spells it this way
-        route = self.route
-        if route == LEDGER_PATH:
-            self.reply(
-                HTTPStatus.OK,
-                self.site.ledger.block().encode(),
-                content_type="text/plain; charset=utf-8",
-            )
-            return
-        if route == LEDGER_JSON_PATH:
-            self.send_json(self.site.counters())
-            return
-        if route == "/login":
-            self.login_page()
-            return
-        if route == "/login/unsupported":
-            self.reply(HTTPStatus.OK, pages.unsupported_page())
-            return
-        if self.session() is None:
-            # `signed out`: everything but the login page redirects to it, and
-            # the login page has no composer — which is how the tool's probe
-            # reads a session that has expired.
-            self.redirect("/login")
-            return
-        if route in ("/", "/new"):
-            self.reply(HTTPStatus.OK, pages.chat_page(None, (), generating=False))
-            return
-        if route.startswith("/chat/"):
-            self.chat_page(route.removeprefix("/chat/").rstrip("/"))
-            return
-        if route.startswith("/api/chats/"):
-            self.chat_json(route.removeprefix("/api/chats/").rstrip("/"))
-            return
-        self.not_found()
-
-    def login_page(self) -> None:
-        if self.session() is not None:
-            self.redirect("/new")
-            return
-        token = self.cookie(LOGIN_COOKIE)
-        cookies: dict[str, str] = {}
-        if not token:
-            token = self.server_state().new_login_token()
-            cookies[LOGIN_COOKIE] = token
-        step = "password" if self.server_state().pending(token) else "email"
-        self.reply(
-            HTTPStatus.OK,
-            pages.login_page(
-                step=step,
-                banner=self.cookie(BANNER_COOKIE) != "dismissed",
-                error=REFUSED if self.query.get("error") else "",
-            ),
-            cookies=cookies,
-        )
-
-    def chat_page(self, chat_id: str) -> None:
-        chat = self.site.chat(chat_id)
-        if chat is None:
-            self.not_found()
-            return
-        now = self.site.now()
-        self.reply(
-            HTTPStatus.OK,
-            pages.chat_page(chat, chat.view(now), generating=chat.generating(now)),
-        )
-
-    def chat_json(self, chat_id: str) -> None:
-        chat = self.site.chat(chat_id)
-        if chat is None:
-            self.not_found()
-            return
-        self.send_json(_chat_json(chat, self.site.now()))
-
-    # -- POST --------------------------------------------------------------- #
-
-    def do_POST(self) -> None:  # noqa: N802 - the stdlib spells it this way
-        route = self.route
-        if route == "/login/email":
-            self.submit_email()
-            return
-        if route == "/login/password":
-            self.submit_password()
-            return
-        session = self.session()
-        if session is None:
-            self.redirect("/login")
-            return
-        if route == "/api/chats":
-            self.create_chat(session)
-            return
-        if route == "/api/uploads":
-            self.upload(session)
-            return
-        if route.startswith("/api/chats/"):
-            rest = route.removeprefix("/api/chats/")
-            chat_id, _, action = rest.partition("/")
-            chat = self.site.chat(chat_id)
-            if chat is None:
-                self.not_found()
-                return
-            if action == "messages":
-                self.site.receive(chat, str(self.payload().get("text", "")))
-                self.send_json(_chat_json(chat, self.site.now()))
-                return
-            if action == "title":
-                self.site.rename(chat, str(self.payload().get("title", "")))
-                self.send_json(_chat_json(chat, self.site.now()))
-                return
-        self.not_found()
-
-    def submit_email(self) -> None:
-        """The first step. Exactly one address gets past it (§21)."""
-        token = self.cookie(LOGIN_COOKIE) or self.server_state().new_login_token()
-        email = (self.form().get("email") or [""])[0]
-        if email != self.site.email:
-            self.server_state().forget(token)
-            self.redirect("/login?error=refused", **{LOGIN_COOKIE: token})
-            return
-        self.server_state().remember(token, email)
-        self.redirect("/login", **{LOGIN_COOKIE: token})
-
-    def submit_password(self) -> None:
-        token = self.cookie(LOGIN_COOKIE) or ""
-        email = self.server_state().pending(token)
-        password = (self.form().get("password") or [""])[0]
-        if not email or not self.site.credentials_match(email, password):
-            self.server_state().forget(token)
-            self.redirect("/login?error=refused")
-            return
-        self.server_state().forget(token)
-        self.redirect("/new", **{SESSION_COOKIE: self.site.sign_in()})
-
-    def create_chat(self, session: str) -> None:
-        text = str(self.payload().get("text", ""))
-        chat = self.site.create_chat(text, session=session)
-        self.send_json(_chat_json(chat, self.site.now()))
-
-    def upload(self, session: str) -> None:
-        """A file into the composer. The bytes are read and dropped: what a
-        rehearsal checks is that the site took the file and showed its name."""
-        name = unquote(self.headers.get("X-File-Name", "") or "")
-        payload = self.body()
-        if not name or not payload:
-            self.send_json({"ok": False}, HTTPStatus.BAD_REQUEST)
-            return
-        self.site.accept_file(name, session=session)
-        self.send_json({"ok": True, "file_name": name, "bytes": len(payload)})
-
-    # -- the server this handler belongs to ---------------------------------- #
-
-    def server_state(self) -> "MockServer":
-        server: Any = self.server
-        return server
-
-
-def _chat_json(chat: Chat, now: float) -> dict[str, Any]:
-    return {
-        "id": chat.id,
-        "title": chat.title,
-        "generating": chat.generating(now),
-        "files": list(chat.files),
-        "turns": [{"role": turn.role, "text": turn.text} for turn in chat.view(now)],
-    }
-
-
-class MockServer(ThreadingHTTPServer):
-    """The HTTPS server, plus the half-finished sign-ins it is holding.
+class Pending:
+    """The half-finished sign-ins the site is holding.
 
     A sign-in is two requests, and what joins them is a cookie this server
     minted — so the pending address lives here rather than in `Site`, which is
     about chats and accounts and knows nothing about HTTP.
     """
 
-    daemon_threads = True
-    allow_reuse_address = True
-
-    def __init__(self, address: tuple[str, int], site: Site) -> None:
-        handler = type("BoundHandler", (Handler,), {"site": site})
-        super().__init__(address, handler)
-        self.site = site
+    def __init__(self) -> None:
         self._pending: dict[str, str] = {}
         self._lock = threading.Lock()
 
@@ -353,6 +98,276 @@ class MockServer(ThreadingHTTPServer):
             self._pending.pop(token or "", None)
 
 
+class SignedOut(Exception):
+    """Raised by a route that needs a session and was not given one. The
+    handler turns it into the redirect to `/login`, so that `signed out` —
+    everything but the login page redirects to it, and the login page has no
+    composer — is one line in every route that needs it."""
+
+
+class MessageIn(BaseModel):
+    text: str = ""
+
+
+class TitleIn(BaseModel):
+    title: str = ""
+
+
+# -- responses ---------------------------------------------------------------- #
+
+
+def set_cookie(response: Response, name: str, value: str) -> None:
+    """A cookie for the whole site. Only the session has a lifetime."""
+    response.set_cookie(
+        name,
+        value,
+        path="/",
+        max_age=SESSION_MAX_AGE_S if name == SESSION_COOKIE else None,
+    )
+
+
+def redirect(location: str, **cookies: str) -> Response:
+    response = _RedirectResponse(location, status_code=HTTPStatus.SEE_OTHER)
+    for name, value in cookies.items():
+        set_cookie(response, name, value)
+    return response
+
+
+def not_found() -> Response:
+    return PlainTextResponse("not found", status_code=HTTPStatus.NOT_FOUND)
+
+
+def chat_json(chat: Chat, now: float) -> dict[str, Any]:
+    return {
+        "id": chat.id,
+        "title": chat.title,
+        "generating": chat.generating(now),
+        "files": list(chat.files),
+        "turns": [{"role": turn.role, "text": turn.text} for turn in chat.view(now)],
+    }
+
+
+# -- the application ---------------------------------------------------------- #
+
+
+def create_app(site: Site) -> FastAPI:
+    """The site as an ASGI application: every route the mock answers.
+
+    A factory rather than a module-level `app`, because the site it serves is
+    constructed per process — and per test, which is what keeps the tests of
+    the wire independent of one another.
+    """
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    pending = Pending()
+
+    def session(request: Request) -> str:
+        token = request.cookies.get(SESSION_COOKIE)
+        if not site.signed_in(token):
+            raise SignedOut
+        return str(token)
+
+    Session = Annotated[str, Depends(session)]  # noqa: N806 - it names a type
+
+    @app.exception_handler(SignedOut)
+    def signed_out(_request: Request, _failure: SignedOut) -> Response:
+        return redirect("/login")
+
+    # -- the witness ------------------------------------------------------- #
+
+    @app.get(LEDGER_PATH)
+    def ledger_block() -> Response:
+        return PlainTextResponse(site.ledger.block())
+
+    @app.get(LEDGER_JSON_PATH)
+    def ledger_json() -> dict[str, int]:
+        return site.counters()
+
+    # -- sign-in ----------------------------------------------------------- #
+
+    @app.get("/login")
+    def login_page(request: Request, error: str = "") -> Response:
+        if site.signed_in(request.cookies.get(SESSION_COOKIE)):
+            return redirect("/new")
+        token = request.cookies.get(LOGIN_COOKIE)
+        cookies: dict[str, str] = {}
+        if not token:
+            token = pending.new_login_token()
+            cookies[LOGIN_COOKIE] = token
+        step = "password" if pending.pending(token) else "email"
+        response = HTMLResponse(
+            pages.login_page(
+                step=step,
+                banner=request.cookies.get(BANNER_COOKIE) != "dismissed",
+                error=REFUSED if error else "",
+            )
+        )
+        for name, value in cookies.items():
+            set_cookie(response, name, value)
+        return response
+
+    @app.get("/login/unsupported")
+    def unsupported_page() -> Response:
+        return HTMLResponse(pages.unsupported_page())
+
+    @app.post("/login/email")
+    def submit_email(request: Request, email: Annotated[str, Form()] = "") -> Response:
+        """The first step. Exactly one address gets past it (§21)."""
+        token = request.cookies.get(LOGIN_COOKIE) or pending.new_login_token()
+        if email != site.email:
+            pending.forget(token)
+            return redirect("/login?error=refused", **{LOGIN_COOKIE: token})
+        pending.remember(token, email)
+        return redirect("/login", **{LOGIN_COOKIE: token})
+
+    @app.post("/login/password")
+    def submit_password(
+        request: Request, password: Annotated[str, Form()] = ""
+    ) -> Response:
+        token = request.cookies.get(LOGIN_COOKIE) or ""
+        email = pending.pending(token)
+        if not email or not site.credentials_match(email, password):
+            pending.forget(token)
+            return redirect("/login?error=refused")
+        pending.forget(token)
+        return redirect("/new", **{SESSION_COOKIE: site.sign_in()})
+
+    # -- the site ---------------------------------------------------------- #
+
+    @app.get("/")
+    @app.get("/new")
+    def new_chat_page(_session: Session) -> Response:
+        return HTMLResponse(pages.chat_page(None, (), generating=False))
+
+    @app.get("/chat/{chat_id}")
+    def chat_page(_session: Session, chat_id: str) -> Response:
+        chat = site.chat(chat_id)
+        if chat is None:
+            return not_found()
+        now = site.now()
+        return HTMLResponse(
+            pages.chat_page(chat, chat.view(now), generating=chat.generating(now))
+        )
+
+    @app.get("/api/chats/{chat_id}")
+    def read_chat(_session: Session, chat_id: str) -> Response:
+        chat = site.chat(chat_id)
+        if chat is None:
+            return not_found()
+        return JSONResponse(chat_json(chat, site.now()))
+
+    @app.post("/api/chats")
+    def create_chat(session: Session, message: MessageIn) -> Response:
+        chat = site.create_chat(message.text, session=session)
+        return JSONResponse(chat_json(chat, site.now()))
+
+    @app.post("/api/chats/{chat_id}/messages")
+    def receive(_session: Session, chat_id: str, message: MessageIn) -> Response:
+        chat = site.chat(chat_id)
+        if chat is None:
+            return not_found()
+        site.receive(chat, message.text)
+        return JSONResponse(chat_json(chat, site.now()))
+
+    @app.post("/api/chats/{chat_id}/title")
+    def rename(_session: Session, chat_id: str, title: TitleIn) -> Response:
+        chat = site.chat(chat_id)
+        if chat is None:
+            return not_found()
+        site.rename(chat, title.title)
+        return JSONResponse(chat_json(chat, site.now()))
+
+    @app.post("/api/uploads")
+    async def upload(session: Session, request: Request) -> Response:
+        """A file into the composer. The bytes are read and dropped: what a
+        rehearsal checks is that the site took the file and showed its name.
+
+        The one `async def` here, because the body is the request's to read
+        and reading it is the only thing this route awaits."""
+        name = unquote(request.headers.get("X-File-Name", "") or "")
+        length = int(request.headers.get("Content-Length") or 0)
+        payload = await request.body() if 0 < length <= MAX_BODY_BYTES else b""
+        if not name or not payload:
+            return JSONResponse({"ok": False}, status_code=HTTPStatus.BAD_REQUEST)
+        site.accept_file(name, session=session)
+        return JSONResponse({"ok": True, "file_name": name, "bytes": len(payload)})
+
+    # -- everything else --------------------------------------------------- #
+
+    @app.get("/{_rest:path}")
+    @app.post("/{_rest:path}")
+    def anything_else(_session: Session, _rest: str) -> Response:
+        """Last, so it catches only what no route above did: signed out, it
+        is the login page like everything else; signed in, it is not there."""
+        return not_found()
+
+    return app
+
+
+# -- serving it --------------------------------------------------------------- #
+
+
+class MockServer:
+    """The HTTPS server, running on its own thread until it is closed."""
+
+    def __init__(
+        self, app: FastAPI, sock: socket.socket, material: certificate.Material
+    ) -> None:
+        self.app = app
+        self._socket = sock
+        self._server = uvicorn.Server(
+            uvicorn.Config(
+                app,
+                ssl_certfile=material.cert_path,
+                ssl_keyfile=material.key_path,
+                # Quiet: a rehearsal's terminal belongs to the tool. No access
+                # log and no logging configuration of uvicorn's own, so nothing
+                # below a warning is printed and a warning still is.
+                log_config=None,
+                log_level="warning",
+                access_log=False,
+                lifespan="off",
+            )
+        )
+        self._thread = threading.Thread(
+            target=self._server.run, kwargs={"sockets": [sock]}, daemon=True
+        )
+
+    @property
+    def port(self) -> int:
+        return int(self._socket.getsockname()[1])
+
+    def start(self, timeout_s: float = STARTUP_TIMEOUT_S) -> None:
+        self._thread.start()
+        deadline = time.monotonic() + timeout_s
+        while not self._server.started:
+            if not self._thread.is_alive():
+                raise RuntimeError("the mock's server stopped before it started")
+            if time.monotonic() > deadline:
+                raise RuntimeError("the mock's server did not start in time")
+            time.sleep(0.005)
+
+    def close(self) -> None:
+        """Stop accepting, finish what is in flight, and release the port."""
+        self._server.should_exit = True
+        self._thread.join()
+        self._socket.close()
+
+
+def listen(host: str, port: int) -> socket.socket:
+    """A bound socket, before the server exists. Binding here rather than in
+    uvicorn is what makes `port=0` answerable — the tests ask for any free port
+    and need to know which one they got — and what makes a port already in use
+    an error in the caller's thread rather than in the server's."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind((host, port))
+    except OSError:
+        sock.close()
+        raise
+    return sock
+
+
 def serve(
     site: Site,
     *,
@@ -361,19 +376,6 @@ def serve(
     material: certificate.Material,
 ) -> MockServer:
     """A started server, listening. The caller closes it."""
-    server = MockServer((host, port), site)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(
-        certfile=Path(material.cert_path), keyfile=Path(material.key_path)
-    )
-    server.socket = context.wrap_socket(server.socket, server_side=True)
-    thread = threading.Thread(
-        target=server.serve_forever, args=(POLL_INTERVAL_S,), daemon=True
-    )
-    thread.start()
+    server = MockServer(create_app(site), listen(host, port), material)
+    server.start()
     return server
-
-
-def port_of(server: BaseServer) -> int:
-    address: Any = server.server_address
-    return int(address[1])

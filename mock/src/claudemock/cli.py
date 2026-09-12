@@ -141,9 +141,7 @@ def serve(arguments: argparse.Namespace) -> int:
         site, host=arguments.host, port=arguments.port, material=material
     )
     print(
-        reachability(
-            host=arguments.host, port=server.port_of(running), material=material
-        ),
+        reachability(host=arguments.host, port=running.port, material=material),
         end="",
     )
     proxies = [name for name in PROXY_ENV if os.environ.get(name)]
@@ -163,8 +161,7 @@ def serve(arguments: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         pass
     finally:
-        running.shutdown()
-        running.server_close()
+        running.close()
     # The ledger on the way out, so a rehearsal that forgot to ask still has it.
     print(site.ledger.block(), end="")
     return 0

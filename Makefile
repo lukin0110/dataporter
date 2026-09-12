@@ -22,7 +22,7 @@ check-all: lint test-all
 test:
 	uv run pytest
 
-# `26`'s mock is a separate project with its own dependency, its own tests and
+# `26`'s mock is a separate project with its own dependencies, its own tests and
 # its own pytest configuration, so it is a second invocation rather than another
 # testpath. A second is what it costs; it binds a socket and speaks TLS for every
 # test in it, and `make check` runs it because a mock that has stopped behaving
