@@ -2,7 +2,7 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28 | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
@@ -13,8 +13,10 @@ Two kinds of document live here, and they are not interchangeable.
 | **Written by** | The person who wants the thing | The person building it |
 | **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings; the blocks in brief `02` (§21, §23, §25) are illustrative | Normative |
 
-There are two briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19) and
-[`02-claude-mock.md`](02-claude-mock.md) (§20–§28). Section numbers continue across them,
+There are three briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
+[`02-claude-mock.md`](02-claude-mock.md) (§20–§28) and
+[`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40). Section numbers
+continue across them,
 so `§N` names one section anywhere in the repository (a working rule, below). The words
 the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
 
@@ -33,6 +35,7 @@ requirement with no slice pointing at it is visibly unbuilt.
 specs/
 ├── 01-initial-brief.md   the briefing — intent, stable
 ├── 02-claude-mock.md     the rehearsal brief — intent, stable
+├── 03-extraction-and-backup.md   the extraction brief — intent, stable
 ├── README.md             this file — index, sequence, shared decisions
 └── impl/
     ├── _template.md      the shape every implementation spec follows
@@ -205,6 +208,10 @@ deliberately left — a section no slice should claim until one of its items is 
 worked on and how it is consumed rather than because of what the brief asks for, and they
 are outside the milestone gates for the same reason.
 
+The third brief, §29–§40, is claimed by no slice yet. Its sections are visibly unbuilt
+until the slices that build extraction, the snapshot, the store and the source session
+are written and take them; §29 is its goal and §40 its list of what is deliberately left.
+
 ## Working rules
 
 - **New work starts as a slice, not as an edit to the brief.** If the brief turns out to be
@@ -220,8 +227,8 @@ are outside the milestone gates for the same reason.
 - **Words come from `CONTEXT.md`.** A term a document needs and the glossary lacks is
   added there first.
 - **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
-  `§N` stays one global identifier and every `Implements: §N` line keeps its meaning. A
-  third brief starts where `02` ends. Cite `§N`, never `02§N`.
+  `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
+  `03` starts at §29 where `02` ends, and a fourth starts at §41. Cite `§N`, never `02§N`.
 
 ## Shared decisions
 

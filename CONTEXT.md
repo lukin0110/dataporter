@@ -1,9 +1,10 @@
 # dataporter
 
 A tool that migrates a Claude data export into another Claude account by driving the
-claude.ai web interface, and the experiment that measures whether that works. The words
-below are the ones the briefs, slices and documents use; where two words exist for one
-thing, the first is the one to use.
+claude.ai web interface, the experiment that measures whether that works, and the
+extraction that takes an account's data out and keeps it as a backup. The words below are
+the ones the briefs, slices and documents use; where two words exist for one thing, the
+first is the one to use.
 
 ## Language
 
@@ -72,6 +73,52 @@ _Avoid_: halt, block
 A pause a person cleared, counted in the report.
 _Avoid_: manual step
 
+### Extraction and backup
+
+**Source**:
+The vendor an account belongs to — Claude, ChatGPT, Gemini — and the part of the tool
+that knows how to read one. The **source account** is the account being read; the
+**destination account** is the Claude account being migrated into.
+_Avoid_: provider, platform, origin
+
+**Export**:
+The vendor's own data export, as the vendor ships it and a person downloads it. The tool
+reads one and files one; it never produces one.
+_Avoid_: archive, dump, takeout
+
+**Extraction**:
+Reading a source account through the browser, as a signed-in user sees it, and writing
+what was read. Changes nothing in the account.
+_Avoid_: scrape, crawl, pull, sync
+
+**Snapshot**:
+The data of one account, from one source, as it stood at one moment, in the vendor's own
+shape. Written once, complete on its own, never changed afterwards.
+_Avoid_: backup, dump, copy, version
+
+**Gap**:
+Something a snapshot records that it could not hold, with the reason. A snapshot with
+gaps is complete about its gaps.
+_Avoid_: missing item, error, skip
+
+**Stamp**:
+The moment an extraction began, which names its snapshot and orders it among the others.
+_Avoid_: timestamp, date, version
+
+**Store**:
+Where snapshots are kept: a directory on disk today, a bucket later. Never overwrites.
+Not the workspace.
+_Avoid_: vault, archive, backup directory, repository
+
+**Backup**:
+The practice: extracting on a schedule into a store, and importing to restore. Not a thing
+the tool writes — what it writes is a snapshot.
+_Avoid_: using it for the snapshot itself
+
+**Source session**:
+The browser session signed in to a source account, kept apart from the destination's.
+_Avoid_: extraction session, second profile
+
 ### Browser and agent
 
 **Helper**:
@@ -85,7 +132,9 @@ _Avoid_: snapshot, inspect
 
 **Surface**:
 The set of URLs a helper will drive. The migration surface is a new chat and a
-conversation on claude.ai; the login surface adds the sign-in page, for the sign-in alone.
+conversation on claude.ai; the login surface adds the sign-in page, for the sign-in alone;
+the extraction surface is the pages of a source site that show a signed-in user their own
+data, for reading alone.
 _Avoid_: allowlist, whitelist, scope
 
 **Scripted agent**:
