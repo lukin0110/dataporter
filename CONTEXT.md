@@ -1,10 +1,10 @@
 # dataporter
 
 A tool that migrates a Claude data export into another Claude account by driving the
-claude.ai web interface, the experiment that measures whether that works, and the
-extraction that takes an account's data out as a snapshot and keeps it in a store. The
-words below are the ones the briefs, slices and documents use; where two words exist for
-one thing, the first is the one to use.
+claude.ai web interface, and the experiment that measures whether that works. The same
+tool extracts an account's data as a snapshot and keeps it in a store. The words below
+are the ones the briefs, slices and documents use; where two words exist for one thing,
+the first is the one to use.
 
 ## Language
 

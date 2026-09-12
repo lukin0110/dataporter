@@ -39,8 +39,11 @@ model. The fetch that follows is `30`'s.
   `/login(/.*)?` and the export page's path and nothing else — not `/new`, not
   `/chat/…`. The path is *unknown* until observed; the placeholder is
   `/settings/data-privacy-controls`, spelled once, here. The signed-in probe for the ask
-  uses the export page as its URL through `session.current_state(session, url)` and
-  `wait_for_login(session, url=…)`, so `/new` never enters this surface. The surface is
+  uses the export page as its URL: `browser_session.current_state(session,
+  EXPORT_PAGE_URL)` and `browser_session.wait_for_login(session,
+  timeout_s=settings.timeouts.login_s, url=EXPORT_PAGE_URL)`, the module-level functions
+  `browser/session.py` already has, with their existing `url` keyword. `/new` never
+  enters this surface. The surface is
   passed to `helpers.driving` by this module and nothing else. The page's selectors live
   in this module's own `_SELECTORS`, injected as `probe.py` injects its own, never
   appended to `probe`'s prelude: every migration expression would otherwise carry them.
