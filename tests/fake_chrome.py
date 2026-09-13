@@ -169,8 +169,15 @@ class FakeChrome:
 
     def push(self, event: dict[str, Any]) -> None:
         """Send an event to every open connection, unprompted, as Chrome does."""
+        self.push_raw(json.dumps(event))
+
+    def push_raw(self, text: str) -> None:
+        """Send `text` as a frame to every open connection.
+
+        A frame that is not JSON is what a client sees a broken browser as (`35`).
+        """
         for connection in list(self._ws.connections):
-            connection.send(json.dumps(event))
+            connection.send(text)
 
     @property
     def open_connections(self) -> int:
@@ -324,6 +331,8 @@ class FakeChrome:
         if call.method in {
             "Page.enable",
             "Accessibility.enable",
+            "Network.enable",
+            "Target.setDiscoverTargets",
             "Input.insertText",
             "Input.dispatchKeyEvent",
             "DOM.setFileInputFiles",

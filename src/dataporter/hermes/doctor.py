@@ -39,10 +39,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dataporter import PROGRAM_NAME, log
-from dataporter import trace as tracing
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
+from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient
 from dataporter.browser.probe import MIGRATION_SITE, NEW_CHAT_URL
 from dataporter.config import Settings
@@ -268,9 +268,7 @@ def checks(settings: Settings, flags: Sequence[str] = ()) -> Generator[Check, No
         yield Check(CHROME_LAUNCH, ok=False, detail=exc.detail or type(exc).__name__)
         return
     try:
-        with tracing.opened(
-            settings, command="doctor", flags=flags, site=MIGRATION_SITE, client=browser.client
-        ) as traced:
+        with watching.watched(settings, command="doctor", flags=flags, site=MIGRATION_SITE, browser=browser) as traced:
             yield Check(
                 CHROME_LAUNCH,
                 ok=True,

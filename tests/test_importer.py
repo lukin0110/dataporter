@@ -908,3 +908,13 @@ def test_a_run_that_raised_ends_its_trace_with_70(world: World) -> None:
     end = _only_trace(world.settings.workspace)[-1]
     assert end["what"] == "end"
     assert end["exit"] == 70
+
+
+def test_the_watch_is_on_the_tab_for_the_length_of_a_run(world: World) -> None:
+    """`35`: the run's own session enables the four domains and closes with the browser."""
+    world.run(limit=1)
+    methods = world.browser.chrome.methods()
+    for method in ("Network.enable", "Target.setDiscoverTargets", "Accessibility.enable"):
+        assert method in methods
+    assert "Input.insertText" not in methods[: methods.index("Network.enable")]
+    assert world.browser.chrome.open_connections == 0

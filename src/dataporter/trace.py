@@ -35,6 +35,7 @@ warning in the run log and nothing else.
 import fcntl
 import json
 import os
+import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -215,6 +216,11 @@ class Trace:
     """The sketches this file already holds, by hash (`34`): written in full
     the first time, named by the hash after."""
 
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+    """`flock` keeps two *processes* from tearing a line; this keeps two
+    threads of one process — a helper's move and `35`'s watch — from doing
+    the same on one descriptor, whose lock they would share."""
+
     ended: bool = False
 
     # -- making one --------------------------------------------------------- #
@@ -351,8 +357,9 @@ class Trace:
         leaves one sketch and sixty moves that point at it (§45).
         """
         digest = sketch.hash
-        if digest not in self._hashes and self.append(SKETCH, sketch.fields()):
-            self._hashes.add(digest)
+        with self._lock:
+            if digest not in self._hashes and self.append(SKETCH, sketch.fields()):
+                self._hashes.add(digest)
         return digest
 
     def end(self, exit_code: ExitCode | int) -> None:
@@ -380,7 +387,8 @@ class Trace:
 
     def _write(self, data: bytes) -> bool:
         try:
-            _locked_write(self._fd, data)
+            with self._lock:
+                _locked_write(self._fd, data)
         except OSError as exc:
             _logger.warning("trace not written", extra={"trace_path": str(self.path), "reason": type(exc).__name__})
             return False

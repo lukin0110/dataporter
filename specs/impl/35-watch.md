@@ -5,7 +5,7 @@
 certificate), §50
 **Depends on:** [33](33-trace-and-move.md), [34](34-sketch.md)
 **Enables:** [36](36-rehearsal-traces.md), [37](37-traces-as-evidence.md)
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -17,14 +17,20 @@ sketch where the page moved so that a trace shows not only that it did but what 
 
 ## In scope
 
-- **The watch** (`browser/watch.py`, new): `Watch.start(trace, client, target, site)
-  -> Watch` opens its own `client.attach(target.id)` and, on that connection, sends
-  `Page.enable`, `Network.enable`, `Target.setDiscoverTargets {"discover": true}` and
-  `Accessibility.enable`, then runs a daemon thread that loops `connection.drain(0.25)`
-  and maps each event to a line. `stop()` sets a flag, joins the thread with a five
-  second limit and closes the connection; it is the last thing before the command ends
-  the trace. The watch sends nothing else: no `Input.*`, no `Page.navigate`, and the only
-  `Runtime.evaluate` it ever makes is the sketch's `dataporter:selectors`.
+- **The watch** (`browser/watch.py`, new): `Watch.start(trace, client, site) -> Watch`
+  picks the first page target on `site.host`, attaches its own `Page` (which sends
+  `Page.enable`) and, on that connection, sends `Network.enable`,
+  `Target.setDiscoverTargets {"discover": true}` and `Accessibility.enable` (`ENABLES`),
+  then runs a daemon thread that loops `connection.pull(POLL_S)` — `cdp.Connection.pull`
+  is new: it hands every pending event over once, what a `send` in between put aside
+  included, and keeps nothing, where `drain`'s memory of everything since the connection
+  opened would grow with the run — and maps each event to a line. No trace, no watch.
+  `stop()` sets a flag, closes the connection and joins the thread with a five second
+  limit; it is the last thing before the command ends the trace, and is safe to call
+  twice. The watch sends nothing else: no `Input.*`, no `Page.navigate`, and the only
+  `Runtime.evaluate` it ever makes is the sketch's `dataporter:selectors` — `take`
+  gains `url=` and `dialogs=` for a caller that heard both as events, so the sketch
+  reads neither `location.href` nor `probe`'s dialog list.
 - **The observations**, one line each, keys in this order after `kind`, `ts`, `t_ms`,
   `what`:
 
@@ -35,36 +41,43 @@ sketch where the page moved so that a trace shows not only that it did but what 
   | `Page.javascriptDialogOpening` | `dialog_opened` | `type` (`alert`, `confirm`, `prompt`, `beforeunload`) |
   | `Page.javascriptDialogClosed` | `dialog_closed` | `accepted` (bool) |
   | `Network.requestWillBeSent`, host is `site.host`, `type` in `WATCHED_TYPES` | `request` | `id`, `method`, `path`, `query`, `type` |
-  | `Network.responseReceived` for a watched request | `response` | `id`, `status`, `content_type`, `bytes`, `elapsed_ms` |
+  | `Network.loadingFinished` (or `loadingFailed`: status `0`, no type, no bytes) for a watched request | `response` | `id`, `status`, `content_type`, `bytes`, `elapsed_ms` |
   | first `Network.responseReceived` with `securityDetails` for `site.host` | `certificate` | `host`, `issuer`, `subject` |
   | `Target.targetCreated`, `targetInfo.type == "page"` | `target_created` | `path`, `query` |
   | `Target.targetDestroyed` of a page it saw created or attached to | `target_closed` | — |
   | the loop's connection failing | `watch_lost` | `reason` (the exception's class name) |
 
   `WATCHED_TYPES = ("Document", "XHR", "Fetch", "EventSource", "WebSocket")`; `type` is
-  written lower-cased. `id` is `r<n>`, counted per trace from `r1`, never CDP's own
+  written lower-cased. `id` is `r<n>`, counted per watch from `r1`, never CDP's own
   request id. `bytes` is `Network.loadingFinished.encodedDataLength`, so a `response`
   line is written at `loadingFinished` and not before; `elapsed_ms` is the difference
-  between the two events' `timestamp`s. `content_type` is the response's
-  `mimeType`. `issuer` and `subject` are `securityDetails.issuer` and
-  `securityDetails.subjectName`, through `log.safe_token`. WebSocket frames are never
-  recorded. Every `path`/`query` is `trace.url_fields(url)`.
+  between the two events' `timestamp`s, never negative. `content_type` is the
+  response's `mimeType`. `issuer` and `subject` are `securityDetails.issuer` and
+  `securityDetails.subjectName`, through `log.safe_token`, once per watch. A tab that
+  `Target.setDiscoverTargets` announces as created but that existed when the watch
+  started — its own included — is not `target_created`. WebSocket frames, headers and
+  bodies are never recorded. Every `path`/`query` is `trace.url_fields(url)`.
 - **The sketch where the page moved** (§44): a `navigation` takes its sketch at the next
   `Page.loadEventFired`, attributed by writing the sketch line then and nothing else — a
   reader pairs them by order; a `url_changed` takes its sketch at once. Sketches go
   through `trace.sketch`, so a page the run has already drawn costs no line.
-- **Losing it** (§44): any `OSError`, `websockets` closure or `BrowserError` inside the
-  loop writes `watch_lost`, warns `watch lost` in the run log with the reason, and ends
-  the thread. The run goes on. `Importer._ensure_browser` starts a new watch after a
-  relaunch, and the new certificate and navigation lines are the record of the restart.
-  A watch that cannot start at all — the attach fails — writes `watch_lost` with the
-  reason and returns a stopped `Watch`, and the run goes on.
-- **Wired where the trace is opened** (`33`): `Importer._open_browser` (and
-  `_ensure_browser`), `browser/session.py`'s `login`, `verify.verify_all`,
-  `followup.ask_all`, `hermes/doctor.py::checks`, `extract.ask` — each `Watch.start`
-  right after `Trace.open`, on the tab the command is about to drive, and `stop()` right
-  before `Trace.end`. The site is the command's: `MIGRATION_SITE` for every destination
-  command, `EXTRACTION_SITE` for the ask and a source `login`.
+- **Losing it** (§44): a `BrowserError` inside the loop — a closed socket, a frame that
+  is not JSON — writes `watch_lost`, warns `watch lost` in the run log with the reason,
+  and ends the thread. The run goes on. `Importer._open_browser` starts a new watch with
+  every browser it opens, the relaunch included, and stops the old one first; the new
+  certificate and navigation lines are the record of the restart. A watch that cannot
+  start at all — no tab on the host, a failed attach, a refused enable — writes
+  `watch_lost` with the reason and returns a stopped `Watch`, and the run goes on. A
+  watch whose trace has already ended stops quietly: the last line is written, and
+  nothing after it may be.
+- **Wired where the trace is opened** (`33`): `watch.watched(settings, command=…,
+  flags=…, site=…, browser=…)` wraps `trace.opened` and starts the watch after the
+  header and stops it before the end, and is what `browser/session.py`'s `login`,
+  `verify.verify_all`, `followup.ask_all`, `hermes/doctor.py::checks` and `extract.ask`
+  now enter; `Importer._open_browser` starts one with every browser it opens and
+  `_close_browser` stops it, beside the trace `33` gave it. The site is the command's:
+  `MIGRATION_SITE` for every destination command, `EXTRACTION_SITE` for the ask and a
+  source `login`.
 - **Tests**:
   - `tests/test_watch.py` (`slow`, the fake Chrome) — `fake_chrome.push(event)`
     replays each event of the table and the line written is the one expected, byte for
@@ -72,20 +85,29 @@ sketch where the page moved so that a trace shows not only that it did but what 
     host write nothing; a `response` waits for `loadingFinished` and carries its
     `encodedDataLength`; the certificate is written once for two responses; a
     `beforeunload` dialog is `dialog_opened` with its type and never its message; a
-    `history.replaceState` is `url_changed`; a closed socket writes `watch_lost` and the
-    caller's next line still lands; `stop()` returns within its limit and the fake
-    reports the connection closed; the watch's method list is exactly the four enables
-    and the sketch's evaluate.
-  - `tests/test_importer.py` (the fake world) — a run's trace holds the fake's
-    navigations in order; a relaunch mid-run writes `watch_lost` then a second
-    `certificate`.
+    `history.replaceState` is `url_changed` and sketched at once, with the selector
+    count the watch's only evaluate; a child frame's navigation is not the page's; a
+    `navigation`'s sketch waits for the load and carries no query value; a `Script` and
+    a request's headers, body and CDP id never reach the file; a failed load is a
+    response of nothing; the certificate is not written for another host; the tabs that
+    existed at start are not `target_created`; a frame that is not JSON
+    (`FakeChrome.push_raw`, new) and a browser that goes away write `watch_lost` and
+    the trace goes on; a tree the browser refuses is a warning and the `url_changed`
+    still lands; `stop()` returns within its limit, the fake reports the connection
+    closed, and nothing was written; no trace is no watch and no CDP call; no tab, and a
+    refused enable, are `watch_lost` before the thread exists; a trace that ended stops
+    the watch quietly; `watched` starts after the header and stops before the end; the
+    watch's connection sends exactly the four enables.
+  - `tests/test_importer.py` (the fake world) — a run enables the four domains on the
+    tab before anything is typed and leaves no connection open.
   - Live tier, `tests/test_watch.py`'s `requires_a_browser` cases — against
-    `tests/fixtures/pages/`: `login-form.html`'s redirect to `/new` is a `navigation`
-    with `path` `/new` followed by a sketch; `responding.html` writes no `request` line
-    (a static fixture makes none); a new fixture `replace-state.html` that calls
-    `history.replaceState` to `/chat/<id>` after a click is one `url_changed`; the page
-    server's self-signed certificate is the `certificate` line, issuer and subject as
-    the fixture's certificate names them.
+    `tests/fixtures/pages/`: a new fixture `redirect.html` that sends the browser to
+    `/new` as it loads is two `navigation`s, `/redirect` then `/new`, the second with a
+    sketch that counts one composer, and the page's own two document loads are the only
+    `request` lines; a new fixture `replace-state.html` that calls
+    `history.replaceState` to `/chat/<id>` after a click is one `url_changed` with a
+    sketch of the chat path. The certificate is not a live case here: the fixture
+    server is plain HTTP, and the mock's TLS is what `36`'s rehearsal shows it against.
 - **Docs**: `README.md`'s trace paragraph gains the watch in one sentence; `docs/runbook.md`
   says what `watch_lost` means and that it means nothing for the migration.
 
@@ -149,11 +171,18 @@ sketch where the page moved so that a trace shows not only that it did but what 
   increasing.
 - The watch's connection sends exactly `Page.enable`, `Network.enable`,
   `Target.setDiscoverTargets`, `Accessibility.enable`, `Accessibility.getFullAXTree` and
-  the sketch's evaluate, and nothing else, in a full fake-world run.
-- Killing the fake's WebSocket mid-run leaves `watch_lost` in the trace, the run's exit
-  code unchanged, and `watch lost` in the run log.
-- *(Live: it needs a real Chromium.)* Against the fixture pages, the four live cases
+  the sketch's evaluate, and nothing else.
+- A browser that goes away, or a frame that is not JSON, leaves `watch_lost` in the
+  trace, the trace still writable, and `watch lost` in the run log.
+- *(Live: it needs a real Chromium.)* Against the fixture pages, the two live cases
   above hold.
+
+Every criterion above was met on 2026-09-13: the table row by row against the fake
+Chrome, and the two live cases against a real Google Chrome 152 on macOS — `/redirect`
+then `/new` as two navigations with the second sketched, and a `replaceState` as one
+`url_changed` with its sketch. The certificate line, which needs TLS, waits for `36`'s
+rehearsal against the mock; the fake shows it written once from `securityDetails`. The
+rehearsal's `import --pilot` criterion is `36`'s to run.
 
 ## Risks
 

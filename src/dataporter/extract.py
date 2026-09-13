@@ -57,9 +57,9 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from dataporter import PROGRAM_NAME, log, plan, signin, store
-from dataporter import trace as tracing
 from dataporter.browser import export_page, launcher
 from dataporter.browser import session as browser_session
+from dataporter.browser import watch as watching
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import (
@@ -327,8 +327,8 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
 
     browser = launcher.launch(settings, export_page.EXPORT_PAGE_URL)
     try:
-        with tracing.opened(
-            settings, command="extract", flags=flags, site=export_page.EXTRACTION_SITE, client=browser.client
+        with watching.watched(
+            settings, command="extract", flags=flags, site=export_page.EXTRACTION_SITE, browser=browser
         ) as traced:
             _sign_in_to_source(settings, browser, sink=sink)
             result = export_page.request_export(settings, browser)

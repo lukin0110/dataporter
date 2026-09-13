@@ -1,0 +1,8 @@
+<!doctype html>
+<!-- A page that sends the browser somewhere else the moment it loads, the
+     way a signed-out claude.ai sends a tab to `/login` and a finished sign-in
+     sends it to `/new`. `35`'s watch hears two `Page.frameNavigated`s — this
+     page's and `/new`'s — and sketches the second when its load event fires. -->
+<meta charset="utf-8">
+<title>Redirecting</title>
+<script>location.replace('/new');</script>

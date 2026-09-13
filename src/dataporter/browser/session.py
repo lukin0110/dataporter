@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from dataporter import PROGRAM_NAME, log
-from dataporter import trace as tracing
 from dataporter.browser import launcher
+from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.launcher import BrowserSession, PortInUseError
 from dataporter.browser.probe import CLAUDE_HOST, MIGRATION_SITE, NEW_CHAT_URL, PageState, probe
@@ -301,8 +301,8 @@ def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()
     # `launcher.launch` to hand a command a fake Chrome.
     browser = launcher.launch(settings, NEW_CHAT_URL)
     try:
-        with tracing.opened(
-            settings, command="login", flags=flags, site=site_of(settings), client=browser.client
+        with watching.watched(
+            settings, command="login", flags=flags, site=site_of(settings), browser=browser
         ) as traced:
             if settings.non_interactive:
                 # `24`: the tool signs in, or says what a person would have to do.

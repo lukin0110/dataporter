@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- A page that changes its own URL without a navigation, the way claude.ai
+     does after the first submit creates a chat: `history.replaceState` to
+     `/chat/<uuid>`. `35`'s watch hears it as `Page.navigatedWithinDocument`
+     and writes `url_changed`; a full navigation would be `Page.frameNavigated`
+     and `navigation`. The button is what a test presses. -->
+<meta charset="utf-8">
+<title>New chat</title>
+<main>
+  <div contenteditable="true" role="textbox" aria-label="Write your prompt"><p><br></p></div>
+  <button id="submit" aria-label="Send message">Send</button>
+</main>
+<script>
+  document.getElementById('submit').addEventListener('click', () => {
+    history.replaceState({}, '', '/chat/2b1f7c3e-4d5a-4f6b-8c7d-9e0f1a2b3c4d');
+    document.title = 'A chat';
+  });
+</script>

@@ -237,7 +237,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [32](impl/32-mock-export-page.md) | The mock export page | §40 (a mock source) | Done |
 | [33](impl/33-trace-and-move.md) | The trace file and the move | §42, §43, §46, §47, §50 | Built |
 | [34](impl/34-sketch.md) | The sketch | §45, §46, §50 | Done |
-| [35](impl/35-watch.md) | The watch | §44, §46, §47, §50 | Not started |
+| [35](impl/35-watch.md) | The watch | §44, §46, §47, §50 | Done |
 | [36](impl/36-rehearsal-traces.md) | The rehearsal's traces | §47, §48 | Not started |
 | [37](impl/37-traces-as-evidence.md) | Traces as evidence | §49, §50 | Not started |
 
@@ -293,9 +293,10 @@ lines. §41 is that brief's goal and is claimed by all five; §51 is its list of
 deliberately left and stays unclaimed until one of its items is built. `33` is `Built`:
 its code is in and its tests pass against the fakes, and its one live criterion — a
 rehearsal's traces matching `actions.jsonl` line for line — waits on `36`, which is
-where a rehearsal gathers them. `34` is `Done` for the reason `32` is: its live criteria
-need a real Chromium and no account, and a real Chrome has sketched the leaky fixture
-page and `new.html` under it, with the numbers in the slice. `35`–`37` are
+where a rehearsal gathers them. `34` and `35` are `Done` for the reason `32` is: their
+live criteria need a real Chromium and no account, and a real Chrome has sketched the
+leaky fixture page and `new.html` under `34`, and been watched through a redirect and a
+`replaceState` under `35`, with the numbers in each slice. `36` and `37` are
 `Not started`.
 
 ## Working rules
