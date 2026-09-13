@@ -48,8 +48,8 @@ change to the rehearsal runner, which still runs the migration protocol only.
   behind nothing, `GET /__mock/exports` (one link per line), `GET /__mock/exports.json`
   (`token`, `link`, `requested_at`, `fetched`) and `GET /__mock/exports/<token>.zip`,
   which renders the archive at the moment of the fetch and is `404` for a token nobody
-  minted. The link is `https://<host>:<port>/__mock/exports/<token>.zip`, spelled from
-  the socket `serve` really bound; `create_app` takes the `link_base` and an `announce`
+  minted. The link is `https://<host>:<port>/__mock/exports/<token>.zip`, its host and
+  port spelled from the socket `serve` really bound; `create_app` takes the `link_base` and an `announce`
   callable told each link as it is minted.
 - **The sixth counter** (`ledger.py`): `("exports_requested", "Exports requested:")`,
   after §21's five. The golden row:
@@ -68,8 +68,10 @@ change to the rehearsal runner, which still runs the migration protocol only.
 
   ```
 
-  the proxy note gains `no_proxy=127.0.0.1` for the fetch; `serve` prints, when the
-  confirmation is pressed,
+  the proxy note gains `no_proxy=127.0.0.1` for the fetch; a `--host` other than
+  `127.0.0.1` gets a note that the tool cannot fetch a link from there, because the
+  certificate names the loopback address alone; `serve` prints, when the confirmation is
+  pressed,
 
   ```text
   Export requested — the link, instead of an email:

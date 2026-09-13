@@ -3,7 +3,8 @@
 from pathlib import Path
 
 import pytest
-from claudemock import certificate, cli
+from claudemock import certificate, cli, server
+from claudemock.site import Site
 
 
 def test_the_reachability_block_is_the_one_an_operator_pastes(
@@ -39,6 +40,17 @@ def test_the_proxy_note_tells_the_fetch_too() -> None:
     note = cli.PROXY_NOTE.format(names="https_proxy")
     assert '"--no-proxy-server",' in note
     assert "no_proxy=127.0.0.1" in note
+
+
+def test_the_host_note_is_the_golden_string() -> None:
+    """`--host` is `26`'s; what `32` adds is the warning that a link from elsewhere is unfetchable."""
+    assert cli.HOST_NOTE.format(host="192.0.2.7") == (
+        "The mock is listening on 192.0.2.7, and the tool cannot fetch an export link from\n"
+        "there: its certificate names 127.0.0.1 alone. Chrome is unaffected — it trusts\n"
+        "the key, not the name — so a migration rehearses; an extraction needs the\n"
+        "default host.\n"
+        "\n"
+    )
 
 
 def test_the_link_note_is_the_golden_string() -> None:
@@ -86,6 +98,24 @@ def test_a_ledger_nobody_is_serving_is_an_error(
 ) -> None:
     assert cli.ledger(host="127.0.0.1", port=1) == 1
     assert "claude-mock:" in capsys.readouterr().err
+
+
+def test_exports_prints_the_links_a_running_mock_handed_out(
+    site: Site, material: certificate.Material, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`claude-mock exports` says to another terminal what `serve` printed in its own."""
+    started = server.serve(site, port=0, material=material)
+    port = started.port
+    try:
+        first = site.request_export()
+        second = site.request_export()
+        assert cli.exports(host="127.0.0.1", port=port) == 0
+    finally:
+        started.close()
+    assert capsys.readouterr().out == (
+        f"https://127.0.0.1:{port}/__mock/exports/{first.token}.zip\n"
+        f"https://127.0.0.1:{port}/__mock/exports/{second.token}.zip\n"
+    )
 
 
 def test_exports_nobody_is_serving_is_an_error(

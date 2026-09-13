@@ -73,7 +73,8 @@ uv run --package claude-mock claude-mock exports      # one link per line, oldes
 The link is an address on the mock's own host and port, under `/__mock/`, and it
 is fetched by the tool with Python rather than with Chrome: the two Chrome
 arguments above do not reach it, which is why the block also names the
-certificate to trust. The archive it downloads is the mock's own chats, rendered
+certificate to trust. That certificate names `127.0.0.1` alone, so on any other
+`--host` the tool cannot fetch a link, and `serve` says so when it starts. The archive it downloads is the mock's own chats, rendered
 as a Claude export at the moment of the fetch — so a rehearsal can migrate into
 the mock and then extract what it migrated. A link nobody asked for is `404`,
 which the tool reports as `link refused: HTTP 404` and leaves the ask open on.
