@@ -35,3 +35,8 @@ def test_the_pinned_minimum_accepts_itself() -> None:
 
 def test_format_round_trips() -> None:
     assert versioning.format_version((0, 4, 2)) == "0.4.2"
+
+
+def test_the_scripted_agent_s_suffix_is_ignored() -> None:
+    """`36`: `hermes 1.0.0 (scripted agent)` parses as the version it is."""
+    assert versioning.parse_version("hermes 1.0.0 (scripted agent)") == (1, 0, 0)

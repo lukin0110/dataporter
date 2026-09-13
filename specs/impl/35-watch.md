@@ -167,7 +167,8 @@ sketch where the page moved so that a trace shows not only that it did but what 
   the fake Chrome with byte-for-byte lines.
 - A trace of a rehearsal's `import --pilot` holds, per conversation, a `url_changed` to
   `/chat/<id>` after the first submit, a `request` and `response` pair per poll the
-  mock's page makes, and one `certificate` line naming `claude-mock`, all with `t_ms`
+  mock's page makes, and one `certificate` line whose issuer is its own subject —
+  `claude.ai` twice, the mark of a certificate signed by itself — all with `t_ms`
   increasing.
 - The watch's connection sends exactly `Page.enable`, `Network.enable`,
   `Target.setDiscoverTargets`, `Accessibility.enable`, `Accessibility.getFullAXTree` and

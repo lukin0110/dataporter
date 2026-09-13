@@ -4,7 +4,7 @@
 **Implements:** [Brief 04](../04-trace.md) §47 (the scripted agent's mark), §48
 **Depends on:** [35](35-watch.md), [29](29-rehearsal.md)
 **Enables:** [37](37-traces-as-evidence.md); a comparison of two traces (brief §51)
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -19,11 +19,13 @@ side of the line makes.
 
 - **Gathering** (`rehearsal/run.py`): `Runner.keep(outcome)` already writes
   `<root>/protocol/NN-<slug>.out` and `.err`; it now also moves every
-  `logs/trace-*.jsonl` that appeared since the step began — in the workspace and under
-  the accounts directory the rehearsal configures — to `<root>/traces/NN-<slug>.jsonl`,
-  the same `NN` and slug as the protocol files. A step leaves at most one; a second is
-  a failed rehearsal with `two traces for one step` as the finding. A step that drives no
-  tab leaves none and the table says `—`.
+  `logs/trace-*.jsonl` the workspace holds when the step ends — the protocol drives no
+  source account, so nothing lands in an account home; the day it extracts, the
+  accounts directory is the second place to look — to `<root>/traces/NN-<slug>.jsonl`,
+  the same `NN` and slug as the protocol files, and records the path on the `Outcome`
+  (`trace`) with how many it found (`traces`). A step leaves at most one; a second is
+  filed too, as `NN-<slug>-2.jsonl`, and is a finding, `two traces for one step`. A step
+  that drives no tab leaves none and the table says `—`.
 - **The record** (`RECORD`): a new section after *The protocol*:
 
   ```text
@@ -35,16 +37,19 @@ side of the line makes.
 
   | Step | Trace | Lines | Certificate | Agent |
   | --- | --- | --- | --- | --- |
-  | `login` | `traces/03-login.jsonl` | 41 | `claude-mock` | `hermes 1.0.0 (scripted agent)` |
-  | `import --pilot` | `traces/06-import-pilot.jsonl` | 1204 | `claude-mock` | `hermes 1.0.0 (scripted agent)` |
+  | `login` | `traces/03-login.jsonl` | 19 | `claude.ai` | `hermes 1.0.0 (scripted agent)` |
+  | `import --pilot` | `traces/06-import---pilot.jsonl` | 293 | `claude.ai` | `hermes 1.0.0 (scripted agent)` |
   | `import --dry-run` | — | — | — | — |
   ```
 
   One row per protocol step, in protocol order; `Lines` is the file's line count;
   `Certificate` is the `issuer` of the trace's first `certificate` observation, or `—`
-  when there is none; `Agent` is the header's `agent` value. Rendered from the files,
-  not from prose, as the rest of the record is (`29`). `docs/rehearsal-01.md` is left as
-  it is: a record is what was.
+  when there is none — the mock's is `claude.ai`, its own name, since a browser reports
+  an issuer by its common name and a certificate signed by itself has its subject for
+  an issuer; `Agent` is the header's `agent` value. Rendered from the files, not from
+  prose, as the rest of the record is (`29`): `trace_row(root, step)`. The slug is
+  `keep`'s own, so a step named `import --pilot` files as `06-import---pilot.jsonl`.
+  `docs/rehearsal-01.md` is left as it is: a record is what was.
 - **The mark** (`rehearsal/hermes.py`): `--version` prints `hermes 1.0.0 (scripted
   agent)`. `VERSION` stays `1.0.0`; the suffix is a constant beside it,
   `AGENT_SUFFIX = "(scripted agent)"`, and `versions_of`'s `agent` value is unchanged —
@@ -100,10 +105,22 @@ side of the line makes.
   running mock leaves `/tmp/r/traces/` with one file per browser step of the protocol,
   each named `NN-<slug>.jsonl`, and none in `/tmp/r/workspace/logs/`.
 - `docs/rehearsal-02.md` holds *The traces* with one row per protocol step; every row
-  with a file says `claude-mock` and `hermes 1.0.0 (scripted agent)`; every step without
-  a browser says `—`.
+  with a file says `hermes 1.0.0 (scripted agent)`, and every one that reached the site
+  says `claude.ai` for its certificate, the self-signed mark; every step without a
+  browser says `—`.
 - The scripted `hermes --version` prints `hermes 1.0.0 (scripted agent)` and `doctor`
   against the scripted profile still passes its version check.
+
+Every criterion above was met on 2026-09-13 by rehearsal 02 (`docs/rehearsal-02.md`),
+run against the mock with a real Google Chrome 152 headless: eight of the eighteen steps
+drove a tab and left a trace, filed `02-doctor--before-login.jsonl` through
+`12-followup.jsonl`; every one of the eight says `hermes 1.0.0 (scripted agent)`, and
+the six that reached the site carry one `certificate` line with `claude.ai` for issuer
+and subject alike. The pilot's trace is 293 lines — 47 moves, 40 sketches, 93 request
+and response pairs, 11 navigations, 6 URL changes in place, and `end` — and the run
+the drill killed left 17 with no `end`, as §42 says it should. No trace holds the
+sign-in email, the password or a line of a message. `doctor` passed its version check
+against the suffixed line, and the twelve pass criteria all held.
 
 ## Risks
 
@@ -111,6 +128,9 @@ side of the line makes.
   attaches and then a helper task runs — could leave two traces if `33` wired it as
   two commands. `33`'s rule is one trace per command invocation, and the finding
   `two traces for one step` is what surfaces a wiring mistake.
-- **The mock's certificate is minted per machine.** `issuer` says `claude-mock` because
-  the organisation name is a constant in the mock's `certificate.py`; a mock that
-  changed it would change every record's column. The mock's own tests pin the name.
+- **The certificate column reads as the site's own name.** The mock's certificate is
+  self-signed, and a browser reports an issuer by its common name, so the column says
+  `claude.ai` for the mock — the same string a reader might expect of the real site.
+  The mark is the *equality* of issuer and subject, and the record's intro says so; a
+  reader who skims the column alone could still be misled, which is why `37`'s evidence
+  rule keeps a rehearsal's traces out of the repository.

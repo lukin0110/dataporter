@@ -5,7 +5,7 @@
 **Depends on:** [01](01-foundation.md) (the guard), [08](08-browser-helpers.md),
 [31](31-source-session-and-ask.md) (the account home's logs)
 **Enables:** [34](34-sketch.md), [35](35-watch.md)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -219,8 +219,9 @@ and the move lines byte for byte, the guard on every forbidden name at depth, th
 strict switch both ways, two processes appending 600 lines of 8 KB with none torn,
 and one trace per invocation from `login`, `import`, `verify`, `followup`, `doctor` and
 `extract` in their own suites — 1782 tests, `trace.py` at 100% and the gate at 99.52%.
-The live criterion waits on `36`, which is where a rehearsal gathers its traces; until
-then the status is `Built`.
+The live criterion was met the same day by rehearsal 02 (`docs/rehearsal-02.md`): eight
+steps drove a tab and left one trace each, every header says `hermes 1.0.0 (scripted
+agent)`, and the pilot's 47 moves are its `actions.jsonl` lines, stamp for stamp.
 
 ## Risks
 

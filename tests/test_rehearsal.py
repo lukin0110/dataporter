@@ -617,3 +617,125 @@ def test_the_committed_record_keeps_26s_discipline() -> None:
     # §10: the record names conversations by short id and nothing else.
     for title in ("A short exchange", "A long exchange", "A conversation with"):
         assert title not in text
+
+
+# --------------------------------------------------------------------------- #
+# `36`: the rehearsal's traces
+# --------------------------------------------------------------------------- #
+
+
+def runner_for(tmp_path: Path) -> running.Runner:
+    settings = running.Settings(root=tmp_path, mode="non-interactive")
+    settings.workspace.mkdir(parents=True, exist_ok=True)
+    return running.Runner(settings=settings, env={})
+
+
+def leave_trace(settings: running.Settings, name: str, lines: Sequence[str]) -> Path:
+    logs = settings.workspace / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    path = logs / name
+    path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return path
+
+
+HEADER = '{"trace":1,"kind":"header","ts":"2026-09-13T10:00:00.000Z","command":"login","flags":[],"source":"claude","host":"claude.ai","account":null,"export_fingerprint":null,"tool":"dataporter 0.1.0","chrome":"Chrome/141.0.0.0","agent":"hermes 1.0.0 (scripted agent)","chrome_arguments":[],"root":"/r"}'
+CERTIFICATE = '{"kind":"observation","ts":"2026-09-13T10:00:00.412Z","t_ms":412,"what":"certificate","host":"claude.ai","issuer":"claude.ai","subject":"claude.ai"}'
+END = '{"kind":"observation","ts":"2026-09-13T10:00:02.000Z","t_ms":2000,"what":"end","exit":0}'
+
+
+def test_keep_files_the_step_s_trace_under_traces_named_for_the_step(tmp_path: Path) -> None:
+    runner = runner_for(tmp_path)
+    left = leave_trace(runner.settings, "trace-20260913T100000Z.jsonl", [HEADER, CERTIFICATE, END])
+    outcome = ok("login")
+
+    runner.keep(outcome)
+
+    assert not left.exists()
+    assert outcome.trace == Path("traces/01-login.jsonl")
+    assert outcome.traces == 1
+    assert (tmp_path / "traces" / "01-login.jsonl").read_text(encoding="utf-8").splitlines() == [
+        HEADER,
+        CERTIFICATE,
+        END,
+    ]
+    assert (tmp_path / "protocol" / "01-login.out").exists()
+
+
+def test_a_step_that_drove_no_tab_leaves_no_trace(tmp_path: Path) -> None:
+    runner = runner_for(tmp_path)
+    outcome = ok("import --dry-run")
+    runner.keep(outcome)
+    assert outcome.trace is None
+    assert outcome.traces == 0
+    assert not (tmp_path / "traces").exists()
+
+
+def test_two_traces_for_one_step_are_both_filed_and_a_finding(tmp_path: Path) -> None:
+    runner = runner_for(tmp_path)
+    leave_trace(runner.settings, "trace-20260913T100000Z.jsonl", [HEADER, END])
+    leave_trace(runner.settings, "trace-20260913T100000Z-2.jsonl", [HEADER, END])
+    outcome = ok("doctor (after login)")
+
+    runner.keep(outcome)
+
+    assert outcome.trace == Path("traces/01-doctor--after-login.jsonl")
+    assert outcome.traces == 2
+    assert sorted(path.name for path in (tmp_path / "traces").iterdir()) == [
+        "01-doctor--after-login-2.jsonl",
+        "01-doctor--after-login.jsonl",
+    ]
+    assert "two traces for one step: `doctor (after login)` left 2." in running.findings_of([outcome], [])
+
+
+def test_the_traces_table_is_read_off_the_files(tmp_path: Path) -> None:
+    """Rendered from the files, never from prose (§48): the marks, and the line count."""
+    runner = runner_for(tmp_path)
+    steps = []
+    leave_trace(runner.settings, "trace-1.jsonl", [HEADER, CERTIFICATE, END])
+    steps.append(ok("login"))
+    runner.keep(steps[-1])
+    steps.append(ok("import --dry-run"))
+    runner.keep(steps[-1])
+    leave_trace(
+        runner.settings,
+        "trace-3.jsonl",
+        [HEADER.replace('"agent":"hermes 1.0.0 (scripted agent)"', '"agent":null'), END],
+    )
+    steps.append(ok("verify"))
+    runner.keep(steps[-1])
+
+    rows = [running.trace_row(tmp_path, step) for step in steps]
+
+    assert rows == [
+        "| `login` | `traces/01-login.jsonl` | 3 | `claude.ai` | `hermes 1.0.0 (scripted agent)` |",
+        "| `import --dry-run` | — | — | — | — |",
+        "| `verify` | `traces/03-verify.jsonl` | 2 | — | — |",
+    ]
+
+
+def test_the_record_carries_the_traces_table(tmp_path: Path) -> None:
+    runner = runner_for(tmp_path)
+    leave_trace(runner.settings, "trace-1.jsonl", [HEADER, CERTIFICATE, END])
+    step = ok("login")
+    runner.keep(step)
+    text = running.render(
+        runner.settings,
+        number=2,
+        date=DATE,
+        steps=[step],
+        checks=[],
+        report_block="",
+        ledger_block="",
+        findings=[],
+        versions={},
+        extra_args=[],
+    )
+    assert "## The traces\n" in text
+    assert "| `login` | `traces/01-login.jsonl` | 3 | `claude.ai` | `hermes 1.0.0 (scripted agent)` |" in text
+    assert text.index("## The traces") < text.index("## The report, and the ledger beside it")
+
+
+def test_the_scripted_agent_says_so_in_its_version_line(profile: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """ADR 0006's mark: a trace's header carries the line verbatim, and a reader tells the agent by it."""
+    assert scripted.main(["--version"]) == 0
+    assert capsys.readouterr().out == "hermes 1.0.0 (scripted agent)\n"

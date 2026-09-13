@@ -303,6 +303,11 @@ class Outcome:
     it: the run the drill kills, `doctor` before anybody has signed in, and the
     two instruments whose last rows are for a person to judge. Each is explained
     in `STANDING_FINDINGS`, so reporting it twice would be noise."""
+    trace: Path | None = None
+    """Where `keep` filed the trace this step left (`36`), relative to the
+    root; `None` for a step that drove no tab."""
+    traces: int = 0
+    """How many traces the step left. One is the rule (`33`); more is a finding."""
 
     @property
     def ok(self) -> bool:
@@ -337,6 +342,31 @@ class Runner:
         stem = directory / f"{self.kept:02d}-{slug}"
         stem.with_suffix(".out").write_text(outcome.stdout, encoding="utf-8")
         stem.with_suffix(".err").write_text(outcome.stderr, encoding="utf-8")
+        self._gather_traces(outcome, f"{self.kept:02d}-{slug}")
+
+    def _gather_traces(self, outcome: Outcome, stem: str) -> None:
+        """Move what the step left in `logs/trace-*.jsonl` under `traces/`, named for the step (`36`).
+
+        Moved, not copied: a trace left where it was would be found again by
+        the next step's `keep` and filed twice, and the workspace is the
+        rehearsal's own. Only the workspace is looked in — the protocol drives
+        no source account, so nothing lands in an account home; the day it
+        extracts, the accounts directory is the second place to look. A step
+        that leaves more than one is filed whole (`-2`, `-3`, …) and reported
+        as a finding, since `33` makes one trace per invocation the rule.
+        """
+        found = sorted((self.settings.workspace / "logs").glob("trace-*.jsonl"))
+        if not found:
+            return
+        directory = self.settings.root / "traces"
+        directory.mkdir(parents=True, exist_ok=True)
+        for position, source in enumerate(found, 1):
+            suffix = "" if position == 1 else f"-{position}"
+            target = directory / f"{stem}{suffix}.jsonl"
+            source.replace(target)
+            if position == 1:
+                outcome.trace = target.relative_to(self.settings.root)
+        outcome.traces = len(found)
 
     def command(self, *arguments: str) -> list[str]:
         """Return the installed command, with the workspace and the mode it was asked for.
@@ -813,6 +843,18 @@ no setting that names the mock (§22).
 | --- | --- | --- | --- |
 {protocol}
 
+## The traces
+
+Every step that drove a tab left one (§42); the runner filed them under
+`traces/`, named after the step. A rehearsal's traces are the baseline a real
+run's are compared against (§48). The two marks are what a reader judges a trace
+by (§47): the certificate the browser was shown — the mock's is signed by itself,
+so its issuer is its own name — and what the agent said it was.
+
+| Step | Trace | Lines | Certificate | Agent |
+| --- | --- | --- | --- | --- |
+{traces}
+
 ## The report, and the ledger beside it
 
 The tool's own §16 block, and what the mock counted while it was produced. The
@@ -873,6 +915,7 @@ def render(
 ) -> str:
     mark = MARK.format(date=date)
     rows = "\n".join(f"| `{step.name}` | {step.exit_code} | {step.seconds:g} | {step.note or ''} |" for step in steps)
+    trace_rows = "\n".join(trace_row(settings.root, step) for step in steps)
     criteria_rows = "\n".join(f"| {item.name} | {item.detail} | {item.verdict} | {mark} |" for item in checks)
     passed = all(item.passed for item in checks)
     return RECORD.format(
@@ -888,6 +931,7 @@ def render(
         headless=json.dumps(settings.headless),
         extra_args=", ".join(f"`{item}`" for item in extra_args),
         protocol=rows,
+        traces=trace_rows,
         report_block=report_block.strip("\n"),
         ledger_block=ledger_block.strip("\n"),
         criteria=criteria_rows,
@@ -895,6 +939,31 @@ def render(
         mark=mark,
         findings="\n".join(f"- {item}" for item in findings) or "- Nothing new.",
         gaps=CANNOT_EXERCISE,
+    )
+
+
+NO_TRACE = "—"
+
+
+def trace_row(root: Path, step: Outcome) -> str:
+    """Return one row of the record's traces table, read off the file and never off prose (§48)."""
+    if step.trace is None:
+        return f"| `{step.name}` | {NO_TRACE} | {NO_TRACE} | {NO_TRACE} | {NO_TRACE} |"
+    lines = [line for line in (root / step.trace).read_text(encoding="utf-8").splitlines() if line.strip()]
+    parsed: list[dict[str, Any]] = []
+    for line in lines:
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(item, dict):
+            parsed.append(item)
+    header = parsed[0] if parsed else {}
+    agent = header.get("agent") if header.get("kind") == "header" else None
+    issuer = next((item.get("issuer") for item in parsed if item.get("what") == "certificate"), None)
+    return (
+        f"| `{step.name}` | `{step.trace.as_posix()}` | {len(lines)} "
+        f"| {f'`{issuer}`' if issuer else NO_TRACE} | {f'`{agent}`' if agent else NO_TRACE} |"
     )
 
 
@@ -1082,6 +1151,7 @@ def findings_of(steps: Sequence[Outcome], checks: Sequence[Criterion]) -> list[s
         if not step.ok and not step.deliberate
     ]
     found += [f"{item.name}: {item.detail}." for item in checks if not item.passed]
+    found += [f"two traces for one step: `{step.name}` left {step.traces}." for step in steps if step.traces > 1]
     return [*found, *STANDING_FINDINGS]
 
 
