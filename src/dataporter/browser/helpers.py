@@ -242,15 +242,7 @@ class CloseResult(HelperModel):
     closed: int
 
 
-Result = (
-    ProbeResult
-    | PasteResult
-    | AttachResult
-    | ChipsResult
-    | AwaitResult
-    | CloseResult
-    | Failure
-)
+Result = ProbeResult | PasteResult | AttachResult | ChipsResult | AwaitResult | CloseResult | Failure
 
 
 @dataclass(frozen=True)
@@ -316,19 +308,15 @@ both insert at the selection, and an editable with no selection in it swallows
 the insert. Collapsing to the end is also what makes `--append` mean append.
 """
 
-FOCUS_JS = probing.expression(
-    FOCUS_TAG, _FOCUS_BODY + "  return document.activeElement === composer;"
-)
+FOCUS_JS = probing.expression(FOCUS_TAG, _FOCUS_BODY + "  return document.activeElement === composer;")
 
-FILE_INPUT_JS = probing.expression(
-    FILE_INPUT_TAG, "  return all(FILE_INPUT_SELECTOR).length > 0;"
-)
+FILE_INPUT_JS = probing.expression(FILE_INPUT_TAG, "  return all(FILE_INPUT_SELECTOR).length > 0;")
 """Whether there is somewhere to put a file. Not filtered by visibility: the
 upload input on claude.ai is hidden behind a button, which is normal."""
 
 
 def exec_command_js(text: str) -> str:
-    """The `exec_command` fallback: the same insert, through the DOM API.
+    """Return the `exec_command` fallback: the same insert, through the DOM API.
 
     The text is a `const` on a line of its own so that the test suite's fake
     browser can read back what it was asked to insert without parsing JS.
@@ -399,11 +387,11 @@ NBSP = "\u00a0"
 
 
 def normalise(text: str) -> str:
-    """What is compared, on both sides of the comparison.
+    r"""Return what is compared, on both sides of the comparison.
 
     ProseMirror rewrites a leading space as a non-breaking one and drops the
     trailing whitespace of a line; a `contenteditable` reports line breaks as
-    `\\n` on one platform and `\\r\\n` on another. None of that is the seed
+    `\n` on one platform and `\r\n` on another. None of that is the seed
     changing, so none of it may read as one — and writing the rule down here is
     what makes a mismatch mean something.
     """
@@ -412,7 +400,7 @@ def normalise(text: str) -> str:
 
 
 def normalised_title(value: str | None) -> str | None:
-    """The `--expect-title` string as the page will spell it, or `None`.
+    """Return the `--expect-title` string as the page will spell it, or `None`.
 
     `probe.normalise_title` and nothing else, wrapped only to keep `None`
     meaning "nobody asked": an empty `--expect-title` is a question about an
@@ -445,10 +433,8 @@ def surface_tabs(client: CdpClient, surface: Surface = CLAUDE) -> list[Target]:
     return [item for item in client.pages() if item.host == surface.host]
 
 
-def chosen_tab(
-    client: CdpClient, *, target_id: str | None = None, surface: Surface = CLAUDE
-) -> Target | Failure:
-    """The one tab to drive, or the refusal that says why there isn't one.
+def chosen_tab(client: CdpClient, *, target_id: str | None = None, surface: Surface = CLAUDE) -> Target | Failure:
+    """Return the one tab to drive, or the refusal that says why there isn't one.
 
     `--target` names a tab outright, for the case the operator or `10` has two
     open on purpose. Everything else is: exactly one, or no.
@@ -470,9 +456,7 @@ def chosen_tab(
 
 
 @contextmanager
-def driving(
-    client: CdpClient, target: Target, surface: Surface = CLAUDE
-) -> Iterator[Page]:
+def driving(client: CdpClient, target: Target, surface: Surface = CLAUDE) -> Iterator[Page]:
     """Attach to a tab that is inside the surface, and let go of it afterwards.
 
     The gate is applied twice. First to the URL in the target list, so a tab at
@@ -535,7 +519,7 @@ def probe_page(
     )
 
 
-def paste_seed(
+def paste_seed(  # ruff: ignore[too-many-return-statements] - one return per way a paste can end
     client: CdpClient,
     settings: Settings,
     *,
@@ -649,9 +633,7 @@ def attach_file(
         except BrowserError as exc:
             # The input is there and the browser would not take the file:
             # too large, a type it refuses, a path it cannot read.
-            return Outcome(
-                Failure(error=UPLOAD_REJECTED, detail=exc.detail), conversation_id
-            )
+            return Outcome(Failure(error=UPLOAD_REJECTED, detail=exc.detail), conversation_id)
 
         deadline = time.monotonic() + settings.timeouts.attach_s
         expression = chip_js(name)
@@ -759,9 +741,7 @@ def await_response(
             # the tab from `/new` to `/chat/<uuid>`, and anywhere else is a
             # redirect we must not keep watching.
             guard(view.state.url, surface)
-            settled = (
-                not view.state.generating and view.last_message.role == "assistant"
-            )
+            settled = not view.state.generating and view.last_message.role == "assistant"
             if settled and view.last_message.chars == seen:
                 stable += 1
             elif settled:
@@ -792,9 +772,7 @@ def await_response(
             time.sleep(interval)
 
 
-def close_extra_tabs(
-    client: CdpClient, settings: Settings, *, surface: Surface = CLAUDE
-) -> Outcome:
+def close_extra_tabs(client: CdpClient, settings: Settings, *, surface: Surface = CLAUDE) -> Outcome:
     """`browser close-extra-tabs`: tidy up, and never close a conversation.
 
     The only tabs this closes are blank ones and the second and later new-chat
@@ -830,13 +808,11 @@ def _read_seed(seed: Path) -> str | Failure:
     try:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return Failure(
-            error=SEED_UNREADABLE, detail=f"{log.safe_token(str(seed))}: {exc}"
-        )
+        return Failure(error=SEED_UNREADABLE, detail=f"{log.safe_token(str(seed))}: {exc}")
 
 
 def _composer_text(page: Page) -> str | None:
-    """The composer's text, or `None` if there is no composer any more."""
+    """Return the composer's text, or `None` if there is no composer any more."""
     value = page.evaluate(COMPOSER_TEXT_JS)
     return value if isinstance(value, str) else None
 
@@ -858,18 +834,14 @@ def run(
     that has gone away has to be reportable in the same shape as a composer that
     is not empty. Only a bug in us escapes, and `cli` turns that into exit `70`.
     """
-    client = CdpClient(
-        port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s
-    )
+    client = CdpClient(port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s)
     started = time.monotonic()
     try:
         outcome = work(client, settings)
     except SafetyError as exc:
         # The wall, and the one refusal that is raised rather than returned:
         # nothing after the gate may run, and a `return` can be forgotten.
-        outcome = Outcome(
-            Failure(error=OUTSIDE_MIGRATION_SURFACE, url=exc.detail or "")
-        )
+        outcome = Outcome(Failure(error=OUTSIDE_MIGRATION_SURFACE, url=exc.detail or ""))
     except MigrationError as exc:
         outcome = Outcome(
             Failure(
@@ -904,7 +876,7 @@ def count_actions(workspace: Path) -> int:
     workspace nothing has run in should say rather than an error.
     """
     try:
-        with open(actions_path(workspace), encoding="utf-8") as handle:
+        with Path(actions_path(workspace)).open(encoding="utf-8") as handle:
             return sum(1 for line in handle if line.strip())
     except OSError:
         return 0
@@ -941,13 +913,11 @@ def record_action(
         "elapsed_ms": elapsed_ms,
         "conversation_id": conversation_id,
     }
-    record.update(
-        {key: value for key, value in (("url", url), ("selector", selector)) if value}
-    )
+    record.update({key: value for key, value in (("url", url), ("selector", selector)) if value})
     path = actions_path(workspace)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8", newline="") as handle:
+        with Path(path).open("a", encoding="utf-8", newline="") as handle:
             handle.write(json.dumps(record) + "\n")
     except OSError as exc:
         _logger.warning("actions log not written", extra={"reason": str(exc)})

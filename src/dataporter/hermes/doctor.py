@@ -140,12 +140,12 @@ class Check:
 
 
 def nonce() -> str:
-    """A token Hermes cannot have seen before and cannot guess."""
+    """Return a token Hermes cannot have seen before and cannot guess."""
     return f"DATAPORTER-{secrets.token_hex(5).upper()}"
 
 
 def pacing_check(settings: Settings) -> Check:
-    """The §13 parameters this invocation would run with (`15`).
+    """Return the §13 parameters this invocation would run with (`15`).
 
     A `Check` because it is a line of `doctor` output and that is what one is —
     but not one of `checks`, because it cannot fail and the generator's contract
@@ -165,21 +165,19 @@ def pacing_check(settings: Settings) -> Check:
     pacing, retries = settings.pacing, settings.retries
     return Check(
         PACING,
-        True,
-        ", ".join(
-            (
-                f"delay {pacing.delay_between_conversations_s:g}s",
-                f"parts {pacing.delay_between_parts_s:g}s",
-                f"attempts {retries.max_attempts}",
-                f"timeout {settings.timeouts.hermes_task_s:g}s",
-                f"limit {settings.run.max_conversations}",
-                f"rate-limit cap {pacing.max_rate_limit_wait_s:g}s",
-            )
-        ),
+        ok=True,
+        detail=", ".join((
+            f"delay {pacing.delay_between_conversations_s:g}s",
+            f"parts {pacing.delay_between_parts_s:g}s",
+            f"attempts {retries.max_attempts}",
+            f"timeout {settings.timeouts.hermes_task_s:g}s",
+            f"limit {settings.run.max_conversations}",
+            f"rate-limit cap {pacing.max_rate_limit_wait_s:g}s",
+        )),
     )
 
 
-def checks(settings: Settings) -> Generator[Check, None, None]:
+def checks(settings: Settings) -> Generator[Check, None, None]:  # ruff: ignore[complex-structure, too-many-branches, too-many-return-statements, too-many-statements] - one branch per check, and it stops at the first failure
     """Yield one `Check` per check, ending after the first failure.
 
     A generator so that the CLI prints each line as it is produced — the two
@@ -194,31 +192,31 @@ def checks(settings: Settings) -> Generator[Check, None, None]:
         path = cli.path
         installed = cli.version()
     except HermesError as exc:
-        yield Check(HERMES_ON_PATH, False, exc.detail or type(exc).__name__)
+        yield Check(HERMES_ON_PATH, ok=False, detail=exc.detail or type(exc).__name__)
         return
     if not versioning.at_least(installed):
         yield Check(
             HERMES_ON_PATH,
-            False,
-            f"hermes {versioning.format_version(installed)} is older than the "
+            ok=False,
+            detail=f"hermes {versioning.format_version(installed)} is older than the "
             f"minimum {versioning.format_version(versioning.MINIMUM_VERSION)}",
         )
         return
     yield Check(
         HERMES_ON_PATH,
-        True,
-        f"{versioning.format_version(installed)} at {home_relative(path)}",
+        ok=True,
+        detail=f"{versioning.format_version(installed)} at {home_relative(path)}",
     )
 
     try:
         profiles = cli.profiles()
     except HermesError as exc:
-        yield Check(HERMES_PROFILE, False, exc.detail or type(exc).__name__)
+        yield Check(HERMES_PROFILE, ok=False, detail=exc.detail or type(exc).__name__)
         return
     if cli.profile not in profiles:
-        yield Check(HERMES_PROFILE, False, f"no {cli.profile} profile — {SETUP_HINT}")
+        yield Check(HERMES_PROFILE, ok=False, detail=f"no {cli.profile} profile — {SETUP_HINT}")
         return
-    yield Check(HERMES_PROFILE, True, cli.profile)
+    yield Check(HERMES_PROFILE, ok=True, detail=cli.profile)
 
     try:
         config = cli.config()
@@ -226,53 +224,53 @@ def checks(settings: Settings) -> Generator[Check, None, None]:
         # Reported as the model check rather than as a check of its own: `config
         # show` is how the model is read, and a profile that cannot be read has
         # no model as far as anything downstream is concerned.
-        yield Check(HERMES_MODEL, False, exc.detail or type(exc).__name__)
+        yield Check(HERMES_MODEL, ok=False, detail=exc.detail or type(exc).__name__)
         return
     model = profiling.configured_model(config)
     if not model:
-        yield Check(HERMES_MODEL, False, profiling.NO_MODEL.format(profile=cli.profile))
+        yield Check(HERMES_MODEL, ok=False, detail=profiling.NO_MODEL.format(profile=cli.profile))
         return
-    yield Check(HERMES_MODEL, True, model)
+    yield Check(HERMES_MODEL, ok=True, detail=model)
 
     wrong = mismatches(config, profiling.profile_config(settings))
     if wrong:
-        yield Check(HERMES_CONFIG, False, f"{'; '.join(wrong)} — {SETUP_HINT}")
+        yield Check(HERMES_CONFIG, ok=False, detail=f"{'; '.join(wrong)} — {SETUP_HINT}")
         return
     yield Check(
         HERMES_CONFIG,
-        True,
-        ", ".join(f"{key}={config[key]}" for key in profiling.CHECKED_KEYS),
+        ok=True,
+        detail=", ".join(f"{key}={config[key]}" for key in profiling.CHECKED_KEYS),
     )
 
     meta = skilling.installed(settings)
     if meta is None:
         yield Check(
             SKILL_INSTALLED,
-            False,
-            f"not in {skilling.install_dir(settings)} — {SETUP_HINT}",
+            ok=False,
+            detail=f"not in {skilling.install_dir(settings)} — {SETUP_HINT}",
         )
         return
-    yield Check(SKILL_INSTALLED, True, str(meta))
+    yield Check(SKILL_INSTALLED, ok=True, detail=str(meta))
 
     # -- Chrome, and Hermes reaching it -------------------------------------- #
     try:
         executable = launcher.find_executable(settings.browser.executable)
     except BrowserError as exc:
-        yield Check(CHROME_EXECUTABLE, False, exc.detail or "no browser found")
+        yield Check(CHROME_EXECUTABLE, ok=False, detail=exc.detail or "no browser found")
         return
-    yield Check(CHROME_EXECUTABLE, True, str(executable))
+    yield Check(CHROME_EXECUTABLE, ok=True, detail=str(executable))
 
     started = time.monotonic()
     try:
         browser = launcher.launch(settings, NEW_CHAT_URL)
     except BrowserError as exc:
-        yield Check(CHROME_LAUNCH, False, exc.detail or type(exc).__name__)
+        yield Check(CHROME_LAUNCH, ok=False, detail=exc.detail or type(exc).__name__)
         return
     try:
         yield Check(
             CHROME_LAUNCH,
-            True,
-            f"port {settings.browser.cdp_port}, {time.monotonic() - started:.1f}s"
+            ok=True,
+            detail=f"port {settings.browser.cdp_port}, {time.monotonic() - started:.1f}s"
             + (", headless" if settings.headless else ""),
         )
         # Written out rather than looped, because each of the three is only
@@ -296,7 +294,7 @@ def checks(settings: Settings) -> Generator[Check, None, None]:
 
 
 def local_failure(settings: Settings) -> Check | None:
-    """The first of `LOCAL_LABELS` that fails, or `None` when all five pass.
+    """Return the first of `LOCAL_LABELS` that fails, or `None` when all five pass.
 
     `checks` is a generator, so stopping at the fifth is what keeps this from
     launching a browser: nothing past `skill installed` is ever evaluated, and
@@ -317,7 +315,7 @@ def _hermes_reaches_chrome(settings: Settings, client: CdpClient) -> Check:
     try:
         target_id = _open_blank_tab(client)
     except BrowserError as exc:
-        return Check(HERMES_ATTACHES, False, exc.detail or "cannot open a tab")
+        return Check(HERMES_ATTACHES, ok=False, detail=exc.detail or "cannot open a tab")
     try:
         prompt = ATTACH_PROMPT.format(
             cdp_url=profiling.cdp_url(settings),
@@ -330,8 +328,8 @@ def _hermes_reaches_chrome(settings: Settings, client: CdpClient) -> Check:
         if token not in answered.stdout:
             return Check(
                 HERMES_ATTACHES,
-                False,
-                f"hermes did not answer with the nonce; stdout: {answered.stdout_path}",
+                ok=False,
+                detail=f"hermes did not answer with the nonce; stdout: {answered.stdout_path}",
             )
         if NEW_CHAT_URL not in answered.stdout:
             # The nonce came back but the other tab did not: Hermes answered
@@ -339,14 +337,14 @@ def _hermes_reaches_chrome(settings: Settings, client: CdpClient) -> Check:
             # attaching to a browser of its own looks like. `10` owns the ladder.
             return Check(
                 HERMES_ATTACHES,
-                False,
-                f"hermes did not report our claude.ai tab, so it is not attached "
+                ok=False,
+                detail=f"hermes did not report our claude.ai tab, so it is not attached "
                 f"to our Chrome; stdout: {answered.stdout_path}",
             )
         return Check(
             HERMES_ATTACHES,
-            True,
-            f"{BLANK_URL} snapshotted, our claude.ai tab listed",
+            ok=True,
+            detail=f"{BLANK_URL} snapshotted, our claude.ai tab listed",
         )
     finally:
         _close_quietly(client, target_id)
@@ -355,15 +353,13 @@ def _hermes_reaches_chrome(settings: Settings, client: CdpClient) -> Check:
 def _hermes_runs_helper(settings: Settings) -> Check:
     """Run one `-z` task whose only job is to invoke `browser probe`."""
     token = nonce()
-    command = quoted(
-        [
-            PROGRAM_NAME,
-            "--workspace",
-            str(settings.workspace),
-            "browser",
-            "probe",
-        ]
-    )
+    command = quoted([
+        PROGRAM_NAME,
+        "--workspace",
+        str(settings.workspace),
+        "browser",
+        "probe",
+    ])
     before = _probe_records(settings)
     answered = _ask(
         settings,
@@ -376,27 +372,27 @@ def _hermes_runs_helper(settings: Settings) -> Check:
     if token not in answered.stdout:
         return Check(
             HERMES_HELPER,
-            False,
-            f"hermes did not answer with the nonce; stdout: {answered.stdout_path}",
+            ok=False,
+            detail=f"hermes did not answer with the nonce; stdout: {answered.stdout_path}",
         )
     if _probe_records(settings) <= before:
         # Our own helper appends that record, so this is evidence rather than an
         # agent's account of itself.
         return Check(
             HERMES_HELPER,
-            False,
-            f"no probe recorded in {browser_helpers.actions_path(settings.workspace)}",
+            ok=False,
+            detail=f"no probe recorded in {browser_helpers.actions_path(settings.workspace)}",
         )
-    return Check(HERMES_HELPER, True, "browser probe via terminal tool")
+    return Check(HERMES_HELPER, ok=True, detail="browser probe via terminal tool")
 
 
 def _session_check(browser: launcher.BrowserSession) -> Check:
     try:
         if browser_session.signed_in(browser):
-            return Check(SESSION, True, "logged in")
+            return Check(SESSION, ok=True, detail="logged in")
     except BrowserError as exc:
-        return Check(SESSION, False, exc.detail or type(exc).__name__)
-    return Check(SESSION, False, f"not logged in — {LOGIN_HINT}")
+        return Check(SESSION, ok=False, detail=exc.detail or type(exc).__name__)
+    return Check(SESSION, ok=False, detail=f"not logged in — {LOGIN_HINT}")
 
 
 @dataclass(frozen=True)
@@ -407,22 +403,18 @@ class _Answer:
     stdout_path: Path
 
 
-def _ask(
-    settings: Settings, prompt: str, *, run_id: str, label: str
-) -> "_Answer | Check":
+def _ask(settings: Settings, prompt: str, *, run_id: str, label: str) -> "_Answer | Check":
     """Run a `doctor` task, or the `Check` that says why it could not be run."""
     runner = HermesRunner(settings)
     try:
-        raw = runner.run_raw(
-            prompt, run_id=run_id, timeout_s=settings.timeouts.hermes_check_s
-        )
+        raw = runner.run_raw(prompt, run_id=run_id, timeout_s=settings.timeouts.hermes_check_s)
     except HermesError as exc:
-        return Check(label, False, exc.detail or type(exc).__name__)
+        return Check(label, ok=False, detail=exc.detail or type(exc).__name__)
     if raw.returncode != 0:
         return Check(
             label,
-            False,
-            f"hermes exited {raw.returncode}; stderr: {raw.stderr_path}",
+            ok=False,
+            detail=f"hermes exited {raw.returncode}; stderr: {raw.stderr_path}",
         )
     return _Answer(stdout=raw.stdout, stdout_path=raw.stdout_path)
 
@@ -480,8 +472,7 @@ class DoctorOutcome:
 
 
 def run_doctor(settings: Settings, *, sink: Sink = DISCARD) -> DoctorOutcome:
-    """Check that Hermes and Chrome are present and configured, stopping at the
-    first failure (`09`).
+    """Check that Hermes and Chrome are present and configured, stopping at the first failure (`09`).
 
     The pacing line comes first and unconditionally: §13's numbers are what this
     invocation would run with, and an operator whose chain is broken still wants

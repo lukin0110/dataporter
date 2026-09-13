@@ -44,7 +44,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from dataporter import log
+from dataporter import __version__, log
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import FetchError, StoreError, UsageError
@@ -89,10 +89,7 @@ export is not read into memory to be filed."""
 
 SNAPSHOT_EXISTS = "snapshot already exists: {path}"
 STORE_UNWRITABLE = "cannot write to the store ({reason}): {path}"
-COPY_MISMATCH = (
-    "the copy in the store does not match what was downloaded; "
-    "remove it and try again: {path}"
-)
+COPY_MISMATCH = "the copy in the store does not match what was downloaded; remove it and try again: {path}"
 WORKSPACE_IN_SNAPSHOT = "the workspace cannot be inside a snapshot: {path}"
 NO_SNAPSHOTS = "No snapshots in {store}."
 
@@ -140,7 +137,7 @@ def stamp_of(instant: datetime) -> str:
 
 
 def parse_stamp(stamp: str) -> datetime | None:
-    """A stamp back to the moment it names, or `None` when it is not one.
+    """Read a stamp back to the moment it names, or `None` when it is not one.
 
     `None` rather than an exception: the caller is a listing walking directories
     somebody else may have created, and a directory that is not a stamp is a
@@ -376,15 +373,13 @@ class Store:
         return directory, snapshot
 
     def _make_directory(self, directory: Path) -> None:
-        """The stamp directory, created once. An existing one stops everything."""
+        """Create the stamp directory, once. An existing one stops everything."""
         try:
             directory.mkdir(parents=True)
         except FileExistsError as exc:
             raise StoreError(SNAPSHOT_EXISTS.format(path=directory)) from exc
         except OSError as exc:
-            raise StoreError(
-                STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=self.root)
-            ) from exc
+            raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=self.root)) from exc
 
     def rows(self) -> list[SnapshotRow]:
         """Every snapshot in the store, as `snapshots` prints it.
@@ -424,14 +419,10 @@ class Store:
                 account=account,
                 stamp=directory.name,
                 state=INCOMPLETE,
-                conversations=None
-                if snapshot is None
-                else snapshot.counts.conversations,
+                conversations=None if snapshot is None else snapshot.counts.conversations,
             )
         if snapshot is None:
-            return SnapshotRow(
-                source=source, account=account, stamp=directory.name, state=UNREADABLE
-            )
+            return SnapshotRow(source=source, account=account, stamp=directory.name, state=UNREADABLE)
         return SnapshotRow(
             source=source,
             account=account,
@@ -471,9 +462,7 @@ def _create(path: Path, data: bytes) -> None:
             stream.flush()
             os.fsync(stream.fileno())
     except OSError as exc:
-        raise StoreError(
-            STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)
-        ) from exc
+        raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
 
 
 def _copy(source: Path, target: Path) -> tuple[str, int]:
@@ -483,21 +472,24 @@ def _copy(source: Path, target: Path) -> tuple[str, int]:
     a file already there, and not a hash of the source read a second time: the
     digest returned is of the bytes that landed in the store.
     """
-    digest = hashlib.sha256()
-    written = 0
     handle = _open_exclusive(target)
     try:
-        with open(source, "rb") as reading, os.fdopen(handle, "wb") as writing:
-            while chunk := reading.read(COPY_CHUNK):
-                digest.update(chunk)
-                written += len(chunk)
-                writing.write(chunk)
-            writing.flush()
-            os.fsync(writing.fileno())
+        return _drain(Path(source), handle)
     except OSError as exc:
-        raise StoreError(
-            STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=target)
-        ) from exc
+        raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=target)) from exc
+
+
+def _drain(source: Path, handle: int) -> tuple[str, int]:
+    """Stream `source` into the open descriptor `handle`, hashing the bytes that land."""
+    digest = hashlib.sha256()
+    written = 0
+    with source.open("rb") as reading, os.fdopen(handle, "wb") as writing:
+        while chunk := reading.read(COPY_CHUNK):
+            digest.update(chunk)
+            written += len(chunk)
+            writing.write(chunk)
+        writing.flush()
+        os.fsync(writing.fileno())
     return digest.hexdigest(), written
 
 
@@ -520,9 +512,7 @@ def _open_exclusive(path: Path) -> int:
     except FileExistsError as exc:
         raise StoreError(SNAPSHOT_EXISTS.format(path=path)) from exc
     except OSError as exc:
-        raise StoreError(
-            STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)
-        ) from exc
+        raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -545,15 +535,13 @@ def _fsync_directory(directory: Path) -> None:
 
 
 def tool_version() -> str:
-    """The version that wrote a snapshot (§32's provenance).
+    """Return the version that wrote a snapshot (§32's provenance).
 
     Read off the module rather than out of the installed distribution's
     metadata, for the reason `--version` is: `dataporter.__version__` is the one
     line the wheel's metadata is built from, so a snapshot filed from a checkout
     and one filed from an install say the same thing.
     """
-    from dataporter import __version__
-
     return __version__
 
 
@@ -580,8 +568,8 @@ def refuse_workspace_inside(export: Path, workspace: Path) -> None:
     """
     if not is_snapshot(export):
         return
-    root = Path(os.path.abspath(export))
-    if Path(os.path.abspath(workspace)).is_relative_to(root):
+    root = Path(os.path.abspath(export))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
+    if Path(os.path.abspath(workspace)).is_relative_to(root):  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
         raise UsageError(WORKSPACE_IN_SNAPSHOT.format(path=workspace))
 
 
@@ -601,14 +589,12 @@ def listing(rows: Sequence[SnapshotRow]) -> str:
     stamps = max(len(row.stamp) for row in rows)
     counts = max(len(row.count) for row in rows)
     return "".join(
-        COLUMN_GAP.join(
-            (
-                f"{row.label:<{labels}}",
-                f"{row.stamp:<{stamps}}",
-                f"{row.count:>{counts}} conversations",
-                row.note,
-            )
-        )
+        COLUMN_GAP.join((
+            f"{row.label:<{labels}}",
+            f"{row.stamp:<{stamps}}",
+            f"{row.count:>{counts}} conversations",
+            row.note,
+        ))
         + "\n"
         for row in rows
     )
@@ -621,9 +607,7 @@ class SnapshotsOutcome(BaseModel):
     exit_code: ExitCode = ExitCode.OK
 
 
-def list_command(
-    settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD
-) -> SnapshotsOutcome:
+def list_command(settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD) -> SnapshotsOutcome:
     """List what the store holds (§33).
 
     An empty store prints a line and exits `0`: `snapshots` answers a question

@@ -23,8 +23,9 @@ keeps it out of the log.
 """
 
 import json
+import operator
 import os
-from collections.abc import ItemsView, Mapping, Sequence
+from collections.abc import ItemsView, KeysView, Mapping, Sequence, ValuesView
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -82,15 +83,15 @@ class StateError(Exception):
     """The workspace cannot be used as asked. The CLI reports this as exit `2`."""
 
 
-class WorkspaceLocked(StateError):
+class WorkspaceLockedError(StateError):
     """Another run holds the lock."""
 
 
-class FingerprintMismatch(StateError):
+class FingerprintMismatchError(StateError):
     """The workspace belongs to a different export."""
 
 
-class SchemaMismatch(StateError):
+class SchemaMismatchError(StateError):
     """`run.json` was written by a build with a different state schema."""
 
 
@@ -98,7 +99,7 @@ class SelectionError(StateError):
     """`--only` named something that is not in the export, or is ambiguous."""
 
 
-class IllegalTransition(ValueError):
+class IllegalTransitionError(ValueError):
     """A status moved somewhere the §7 table does not allow.
 
     A `ValueError` rather than a `StateError`: no operator input produces one, so
@@ -106,9 +107,11 @@ class IllegalTransition(ValueError):
     """
 
 
-class IllegalUpdate(ValueError):
-    """An entry was updated with a field it does not have, or a value it cannot
-    hold. Ours too: every caller of `StateStore.update` is our own code."""
+class IllegalUpdateError(ValueError):
+    """An entry was updated with a field it does not have, or a value it cannot hold.
+
+    Ours too: every caller of `StateStore.update` is our own code.
+    """
 
 
 # --------------------------------------------------------------------------- #
@@ -117,8 +120,11 @@ class IllegalUpdate(ValueError):
 
 
 def _to_utc(value: datetime) -> datetime:
-    """UTC, whole seconds. A naive value is read as UTC rather than as local time:
-    every timestamp this tool writes is UTC, so that is what a naive one is."""
+    """UTC, whole seconds.
+
+    A naive value is read as UTC rather than as local time: every timestamp this tool
+    writes is UTC, so that is what a naive one is.
+    """
     return to_utc(value).replace(microsecond=0)
 
 
@@ -157,9 +163,7 @@ class Status(StrEnum):
 TRANSITIONS: dict[Status, frozenset[Status]] = {
     Status.PENDING: frozenset({Status.RUNNING}),
     # `pending` is crash recovery for an entry that never reached a chat.
-    Status.RUNNING: frozenset(
-        {Status.COMPLETED, Status.PARTIAL, Status.FAILED, Status.PENDING}
-    ),
+    Status.RUNNING: frozenset({Status.COMPLETED, Status.PARTIAL, Status.FAILED, Status.PENDING}),
     # `completed` moves only under `--force`; selection is what enforces that,
     # because by the time a status changes the decision has already been made.
     # `partial` is `17`'s edge and nothing else's: a chat the page itself says is
@@ -172,9 +176,7 @@ TRANSITIONS: dict[Status, frozenset[Status]] = {
 """The §7 transition table. Staying put is always allowed — most updates carry a
 step or a count and no status at all."""
 
-TERMINAL: frozenset[Status] = frozenset(
-    {Status.COMPLETED, Status.PARTIAL, Status.FAILED}
-)
+TERMINAL: frozenset[Status] = frozenset({Status.COMPLETED, Status.PARTIAL, Status.FAILED})
 """The three `18` counts as done."""
 
 
@@ -230,8 +232,10 @@ class AttachmentDetail(StateModel):
 
 
 class AttachmentCounts(StateModel):
-    """What became of this conversation's files. §14's three classes, and `16`'s
-    fourth outcome: a class 2 file the upload itself refused.
+    """What became of this conversation's files.
+
+    §14's three classes, and `16`'s fourth outcome: a class 2 file the upload itself
+    refused.
 
     The four counts sum to the number of attachments `plan.json` planned for this
     conversation, which is what lets `19` reconcile the report's totals against
@@ -303,8 +307,14 @@ class MigrationState(RootModel[dict[str, ConversationState]]):
     def items(self) -> ItemsView[str, ConversationState]:
         return self.root.items()
 
+    def keys(self) -> KeysView[str]:
+        return self.root.keys()
+
+    def values(self) -> ValuesView[ConversationState]:
+        return self.root.values()
+
     def status_of(self, uuid: str) -> Status:
-        """The status of an entry, or `pending` for one that does not exist yet.
+        """Return the status of an entry, or `pending` for one that does not exist yet.
 
         A conversation in the export with no entry has not been attempted, which
         is what `pending` means; selection therefore needs no special case for a
@@ -383,8 +393,11 @@ class RunRecord(StateModel):
 
 
 class PauseRecord(StateModel):
-    """`14`'s pause. Here rather than in `state.json` so the §7 file keeps its
-    shape and the conversation's status stays one of the five."""
+    """`14`'s pause.
+
+    Here rather than in `state.json` so the §7 file keeps its shape and the
+    conversation's status stays one of the five.
+    """
 
     conversation_uuid: str
     reason: str
@@ -466,11 +479,11 @@ def write_atomically(path: Path, text: str) -> None:
     tmp = path.with_name(path.name + TMP_SUFFIX)
     # newline="": the JSON is written with `\n` line endings on every platform,
     # so a workspace stays diffable when it moves between them.
-    with open(tmp, "w", encoding="utf-8", newline="") as handle:
+    with tmp.open("w", encoding="utf-8", newline="") as handle:
         handle.write(text)
         handle.flush()
         os.fsync(handle.fileno())
-    os.replace(tmp, path)
+    tmp.replace(path)
     _fsync_directory(path.parent)
 
 
@@ -512,7 +525,7 @@ def _read_json(path: Path) -> Any:
 
 
 def _describe(exc: ValidationError) -> str:
-    """The same one-line rendering `config` gives a validation failure."""
+    """Return the same one-line rendering `config` gives a validation failure."""
     parts = []
     for error in exc.errors():
         location = ".".join(str(item) for item in error["loc"]) or "(root)"
@@ -585,7 +598,7 @@ class WorkspaceLock:
         try:
             handle = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
         except FileExistsError:
-            raise WorkspaceLocked(self._busy_message()) from None
+            raise WorkspaceLockedError(self._busy_message()) from None
         with os.fdopen(handle, "w", encoding="utf-8", newline="") as stream:
             stream.write(payload)
         self._held = True
@@ -606,9 +619,8 @@ class WorkspaceLock:
             self.path.unlink(missing_ok=True)
             return False
         if process_alive(info.pid):
-            raise WorkspaceLocked(
-                f"workspace locked by pid {info.pid}, which is still running — "
-                f"stop it before --force-unlock"
+            raise WorkspaceLockedError(
+                f"workspace locked by pid {info.pid}, which is still running — stop it before --force-unlock"
             )
         self.path.unlink(missing_ok=True)
         _logger.info("stale lock removed", extra={"pid": info.pid})
@@ -627,10 +639,7 @@ class WorkspaceLock:
     def _busy_message(self) -> str:
         info = self.read()
         if info is None:
-            return (
-                f"workspace locked by an unreadable {LOCK_FILENAME} — "
-                f"use --force-unlock if no run is in progress"
-            )
+            return f"workspace locked by an unreadable {LOCK_FILENAME} — use --force-unlock if no run is in progress"
         return (
             f"workspace locked by pid {info.pid} since "
             f"{info.started:%H:%M:%S} — use --force-unlock if that process is gone"
@@ -673,7 +682,7 @@ class StateStore:
     # -- state.json --------------------------------------------------------- #
 
     def load(self) -> MigrationState:
-        """The §7 object. An absent file is an empty migration, not an error."""
+        """Return the §7 object. An absent file is an empty migration, not an error."""
         if self._state is None:
             self._state = self._read_state()
         return self._state
@@ -684,16 +693,13 @@ class StateStore:
         try:
             return MigrationState.model_validate(_read_json(self.state_path))
         except ValidationError as exc:
-            raise StateError(
-                f"invalid {STATE_FILENAME}: {self.state_path}: {_describe(exc)}"
-            ) from exc
+            raise StateError(f"invalid {STATE_FILENAME}: {self.state_path}: {_describe(exc)}") from exc
 
     def _write_state(self) -> None:
         write_atomically(self.state_path, _dump(self.load()))
 
     def ensure(self, uuid: str, **fields: Any) -> ConversationState:
-        """Create an entry if there is not one already, and leave it alone if
-        there is.
+        """Create an entry if there is not one already, and leave it alone if there is.
 
         `12` re-creates every planned conversation as `pending` at the start of
         every run; without this that would reset a finished migration on resume.
@@ -713,21 +719,12 @@ class StateStore:
         previous = self.load().get(uuid)
         base = previous.model_dump() if previous is not None else {}
         try:
-            entry = ConversationState.model_validate(
-                {**base, **fields, "updated_at": now()}
-            )
+            entry = ConversationState.model_validate({**base, **fields, "updated_at": now()})
         except ValidationError as exc:
             # Ours, not the operator's: every caller is our own code.
-            raise IllegalUpdate(
-                f"cannot update {render.short_id(uuid)}: {_describe(exc)}"
-            ) from exc
-        if previous is not None and not transition_allowed(
-            previous.status, entry.status
-        ):
-            raise IllegalTransition(
-                f"{render.short_id(uuid)}: {previous.status} cannot become "
-                f"{entry.status}"
-            )
+            raise IllegalUpdateError(f"cannot update {render.short_id(uuid)}: {_describe(exc)}") from exc
+        if previous is not None and not transition_allowed(previous.status, entry.status):
+            raise IllegalTransitionError(f"{render.short_id(uuid)}: {previous.status} cannot become {entry.status}")
         return self._put(uuid, entry)
 
     def _put(self, uuid: str, entry: ConversationState) -> ConversationState:
@@ -757,13 +754,11 @@ class StateStore:
             if entry.status is not Status.RUNNING or uuid == keep:
                 continue
             landed = entry.destination.conversation_id is not None
-            state.root[uuid] = ConversationState.model_validate(
-                {
-                    **entry.model_dump(),
-                    "status": Status.PARTIAL if landed else Status.PENDING,
-                    "updated_at": now(),
-                }
-            )
+            state.root[uuid] = ConversationState.model_validate({
+                **entry.model_dump(),
+                "status": Status.PARTIAL if landed else Status.PENDING,
+                "updated_at": now(),
+            })
             recovered.append(uuid)
             _logger.warning(
                 "interrupted run recovered",
@@ -795,7 +790,7 @@ class StateStore:
         # pile of unexpected keys.
         version = raw.get("schema_version")
         if version != SCHEMA_VERSION:
-            raise SchemaMismatch(
+            raise SchemaMismatchError(
                 f"workspace was written with state schema {version!r}, this build "
                 f"understands {SCHEMA_VERSION} — migrate the workspace or choose "
                 f"another --workspace"
@@ -803,9 +798,7 @@ class StateStore:
         try:
             return RunFile.model_validate(raw)
         except ValidationError as exc:
-            raise StateError(
-                f"invalid {RUN_FILENAME}: {self.run_path}: {_describe(exc)}"
-            ) from exc
+            raise StateError(f"invalid {RUN_FILENAME}: {self.run_path}: {_describe(exc)}") from exc
 
     def _write_run(self, run: RunFile) -> RunFile:
         self._run = run
@@ -821,7 +814,7 @@ class StateStore:
         """
         recorded = self.run().export_fingerprint
         if recorded and recorded != fingerprint:
-            raise FingerprintMismatch("workspace belongs to a different export")
+            raise FingerprintMismatchError("workspace belongs to a different export")
 
     def bind_export(self, fingerprint: str, path: Path | None = None) -> None:
         """Check, then record, which export this workspace is for and where it is.
@@ -887,9 +880,7 @@ class StateStore:
     def finish_run(self, index: int, exit_code: int) -> None:
         run = self.run()
         records = list(run.runs)
-        records[index] = records[index].model_copy(
-            update={"ended": now(), "exit_code": exit_code}
-        )
+        records[index] = records[index].model_copy(update={"ended": now(), "exit_code": exit_code})
         self._write_run(run.model_copy(update={"runs": records}))
 
     def set_paused(self, paused: PauseRecord | None) -> None:
@@ -903,9 +894,7 @@ class StateStore:
         the id an operator would need to find it has to survive somewhere.
         """
         run = self.run()
-        previous = {
-            key: list(value) for key, value in run.previous_destinations.items()
-        }
+        previous = {key: list(value) for key, value in run.previous_destinations.items()}
         kept = previous.setdefault(uuid, [])
         if conversation_id not in kept:
             kept.append(conversation_id)
@@ -937,7 +926,7 @@ def resolve_only(order: Sequence[str], only: Sequence[str]) -> list[str]:
         if not matches:
             raise SelectionError(f"conversation not in export: {log.safe_token(token)}")
         chosen[matches[0]] = known[matches[0]]
-    return [uuid for uuid, _ in sorted(chosen.items(), key=lambda item: item[1])]
+    return [uuid for uuid, _ in sorted(chosen.items(), key=operator.itemgetter(1))]
 
 
 def selectable_statuses(selection: Selection) -> frozenset[Status]:
@@ -952,9 +941,7 @@ def selectable_statuses(selection: Selection) -> frozenset[Status]:
     return frozenset(statuses)
 
 
-def select(
-    order: Sequence[str], state: MigrationState, selection: Selection
-) -> list[str]:
+def select(order: Sequence[str], state: MigrationState, selection: Selection) -> list[str]:
     """Which conversations this run touches, in export order.
 
     `--only` picks *which*, the status flags widen what counts as unfinished, and
@@ -985,8 +972,8 @@ def status_counts(state: MigrationState) -> dict[str, int]:
     `18`'s rule and also the only way a `running` entry — one this run has not
     finished, or one a crash left behind — is counted at all.
     """
-    tally = {status: 0 for status in Status}
-    for _, entry in state.items():
+    tally = dict.fromkeys(Status, 0)
+    for entry in state.values():
         tally[entry.status] += 1
     total = len(state)
     done = sum(tally[status] for status in TERMINAL)

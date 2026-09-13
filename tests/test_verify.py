@@ -32,6 +32,7 @@ from dataporter.config import FidelitySettings, SeedSettings, Settings
 from dataporter.errors import Category
 from dataporter.exit_codes import ExitCode
 from dataporter.state import ConversationState, ErrorRecord, Status
+from fake_chrome import entered
 from fake_composer import Browser, FakePage, Turn
 from world import LONG, World, cli_env, completed, needs_human
 
@@ -48,7 +49,7 @@ ACK_2 = render.ack_line(SHORT, 2, 2)
 
 
 def expected(**fields: object) -> verifying.Expected:
-    """What a two-part conversation's chat has to hold, unless a test says else."""
+    """Return what a two-part conversation's chat has to hold, unless a test says else."""
     return verifying.Expected(
         **{
             "conversation_uuid": SOURCE,
@@ -91,7 +92,7 @@ def report(
 
 
 def migrated() -> probe.PageReport:
-    """A chat holding both parts and both acknowledgements."""
+    """Return a chat holding both parts and both acknowledgements."""
     return report(
         turn("human", SOURCE_LINE),
         turn("assistant", ACK_1),
@@ -146,9 +147,7 @@ def migrated_at(url: str) -> probe.PageReport:
 
 
 def test_a_page_that_is_not_a_chat_at_all_is_a_missing_chat() -> None:
-    assert verifying.checks(report(url=NEW_URL), expected()).failed == (
-        verifying.CHAT_MISSING
-    )
+    assert verifying.checks(report(url=NEW_URL), expected()).failed == (verifying.CHAT_MISSING)
 
 
 def test_fewer_human_messages_than_parts_is_missing_history() -> None:
@@ -160,8 +159,10 @@ def test_fewer_human_messages_than_parts_is_missing_history() -> None:
 
 
 def test_a_first_message_without_the_source_id_is_somebody_elses_chat() -> None:
-    """Two parts are there and the header line is not: whatever this chat holds,
-    it is not this conversation."""
+    """Two parts are there and the header line is not.
+
+    Whatever this chat holds, it is not this conversation.
+    """
     found = verifying.checks(
         report(
             turn("human"),
@@ -175,8 +176,10 @@ def test_a_first_message_without_the_source_id_is_somebody_elses_chat() -> None:
 
 
 def test_the_source_id_is_looked_for_in_the_first_message_only() -> None:
-    """`04` writes the header into every part, but the first human turn is the
-    one that says this chat *starts* with this conversation."""
+    """`04` writes the header into every part.
+
+    The first human turn is the one that says this chat *starts* with this conversation.
+    """
     found = verifying.checks(
         report(
             turn("human"),
@@ -189,8 +192,10 @@ def test_the_source_id_is_looked_for_in_the_first_message_only() -> None:
 
 
 def test_an_acknowledgement_counts_only_from_an_assistant_turn() -> None:
-    """The ack line is in the seed, so it is in the human message too. A chat
-    where only the human said it is a chat where nobody answered."""
+    """The ack line is in the seed, so it is in the human message too.
+
+    A chat where only the human said it is a chat where nobody answered.
+    """
     found = verifying.checks(
         report(
             turn("human", SOURCE_LINE, ACK_1),
@@ -208,7 +213,7 @@ def test_an_acknowledgement_counts_only_from_an_assistant_turn() -> None:
 
 
 def test_a_title_that_did_not_take_is_recorded_and_not_failed() -> None:
-    found = verifying.checks(migrated_title(False), expected())
+    found = verifying.checks(migrated_title(matches=False), expected())
     assert found.ok
     assert not found.title_set
     assert verifying.TITLE_NOT_SET in found.limitations
@@ -249,8 +254,10 @@ def test_a_chat_that_is_not_this_one_is_never_correctly_titled() -> None:
 
 
 def test_timestamps_are_a_limitation_of_every_chat_that_lands() -> None:
-    """Even one that failed a check: the messages that *are* there were still
-    timestamped when they were pasted."""
+    """Even one that failed a check.
+
+    The messages that *are* there were still timestamped when they were pasted.
+    """
     found = verifying.checks(report(url=NEW_URL), expected())
     assert verifying.TIMESTAMPS_NOT_PRESERVED in found.limitations
 
@@ -261,8 +268,10 @@ def test_timestamps_are_a_limitation_of_every_chat_that_lands() -> None:
 
 
 def test_a_title_is_squashed_before_it_is_compared() -> None:
-    """The rename field takes what it is given; the header renders it with
-    whatever spacing the layout wants."""
+    """The rename field takes what it is given.
+
+    The header renders it with whatever spacing the layout wants.
+    """
     assert verifying.capped_title("  Notes   on\npooling ", 200) == TITLE
 
 
@@ -277,13 +286,11 @@ def test_renaming_can_be_switched_off() -> None:
         workspace=Path("/tmp/nowhere"),
         fidelity=FidelitySettings(rename_title=False),
     )
-    assert verifying.intended_title(settings, TITLE) == ""
+    assert not verifying.intended_title(settings, TITLE)
 
 
 def test_the_cap_is_configurable() -> None:
-    settings = Settings(
-        workspace=Path("/tmp/nowhere"), fidelity=FidelitySettings(title_max_chars=5)
-    )
+    settings = Settings(workspace=Path("/tmp/nowhere"), fidelity=FidelitySettings(title_max_chars=5))
     assert verifying.intended_title(settings, "abcdefgh") == "abcd…"
 
 
@@ -293,15 +300,13 @@ def test_the_cap_is_configurable() -> None:
 
 
 def entry(**fields: object) -> ConversationState:
-    return ConversationState.model_validate(
-        {
-            "title": TITLE,
-            "status": Status.COMPLETED,
-            "destination": {"conversation_id": CHAT},
-            "chunks_total": 2,
-            **fields,
-        }
-    )
+    return ConversationState.model_validate({
+        "title": TITLE,
+        "status": Status.COMPLETED,
+        "destination": {"conversation_id": CHAT},
+        "chunks_total": 2,
+        **fields,
+    })
 
 
 def settings_for(tmp_path: Path) -> Settings:
@@ -309,19 +314,16 @@ def settings_for(tmp_path: Path) -> Settings:
 
 
 def test_an_entry_with_no_chat_has_nothing_to_verify(tmp_path: Path) -> None:
-    assert (
-        verifying.expected_for(settings_for(tmp_path), SOURCE, entry(destination={}))
-        is None
-    )
+    assert verifying.expected_for(settings_for(tmp_path), SOURCE, entry(destination={})) is None
 
 
 def test_an_entry_with_no_parts_has_nothing_to_verify(tmp_path: Path) -> None:
-    """An attempt that never got as far as writing a seed. There is no part to
-    look for, so "every part is there" is not a question about this chat."""
-    assert (
-        verifying.expected_for(settings_for(tmp_path), SOURCE, entry(chunks_total=0))
-        is None
-    )
+    """An attempt that never got as far as writing a seed.
+
+    There is no part to look for, so "every part is there" is not a question about this
+    chat.
+    """
+    assert verifying.expected_for(settings_for(tmp_path), SOURCE, entry(chunks_total=0)) is None
 
 
 def test_only_completed_and_partial_entries_are_verifiable(tmp_path: Path) -> None:
@@ -334,9 +336,7 @@ def test_only_completed_and_partial_entries_are_verifiable(tmp_path: Path) -> No
             "e" + SOURCE[1:]: entry(status=Status.COMPLETED, destination={}),
         }
     )
-    chosen = [
-        uuid for uuid, _ in verifying.verifiable(settings_for(tmp_path), migration)
-    ]
+    chosen = [uuid for uuid, _ in verifying.verifiable(settings_for(tmp_path), migration)]
     assert chosen == ["a" + SOURCE[1:], "b" + SOURCE[1:]]
 
 
@@ -355,9 +355,7 @@ def test_the_expectations_come_off_the_entry(tmp_path: Path) -> None:
 
 
 def verification(**fields: object) -> verifying.Verification:
-    return verifying.Verification.model_validate(
-        {"conversation_uuid": SOURCE, "conversation_id": CHAT, **fields}
-    )
+    return verifying.Verification.model_validate({"conversation_uuid": SOURCE, "conversation_id": CHAT, **fields})
 
 
 def test_a_passed_check_stamps_the_time_and_keeps_the_status(tmp_path: Path) -> None:
@@ -383,9 +381,11 @@ def test_a_failed_check_writes_partial_over_completed(tmp_path: Path) -> None:
 
 
 def test_a_failed_check_never_overwrites_a_reason(tmp_path: Path) -> None:
-    """A run that already said why it stopped keeps that reason — and keeps its
-    `retry_recommended`, so a verification cannot recommend another go at
-    something `01` classified as not worth retrying."""
+    """A run that already said why it stopped keeps that reason.
+
+    Keeps its `retry_recommended`, so a verification cannot recommend another go at
+    something `01` classified as not worth retrying.
+    """
     refused = ErrorRecord(
         category=Category.SAFETY,
         detail="off the migration surface",
@@ -393,24 +393,22 @@ def test_a_failed_check_never_overwrites_a_reason(tmp_path: Path) -> None:
     )
     store = state.StateStore(tmp_path)
     store.update(SOURCE, **entry(status=Status.PARTIAL, error=refused).model_dump())
-    written = verifying.record(
-        store, SOURCE, verification(failed=verifying.CHAT_MISSING)
-    )
+    written = verifying.record(store, SOURCE, verification(failed=verifying.CHAT_MISSING))
     assert written.error == refused
     assert written.status is Status.PARTIAL
 
 
 def test_the_rendering_limitations_keep_their_place(tmp_path: Path) -> None:
-    """`04`'s slugs describe the export, `17`'s describe the account, and both
-    belong to the conversation — in that order, each one once."""
+    """`04`'s slugs describe the export and `17`'s describe the account.
+
+    Both belong to the conversation — in that order, each one once.
+    """
     store = state.StateStore(tmp_path)
     store.update(SOURCE, **entry(limitations=["thinking_omitted:3"]).model_dump())
     written = verifying.record(
         store,
         SOURCE,
-        verification(
-            limitations=("thinking_omitted:3", verifying.TIMESTAMPS_NOT_PRESERVED)
-        ),
+        verification(limitations=("thinking_omitted:3", verifying.TIMESTAMPS_NOT_PRESERVED)),
     )
     assert written.limitations == ["thinking_omitted:3", "timestamps_not_preserved"]
 
@@ -421,7 +419,7 @@ def test_the_rendering_limitations_keep_their_place(tmp_path: Path) -> None:
 
 
 def transcript() -> list[Turn]:
-    """A chat holding both parts, as the modelled page renders them."""
+    """Return a chat holding both parts, as the modelled page renders them."""
     return [
         Turn("human", f"{SOURCE_LINE}\nPart 1 of 2"),
         Turn("assistant", ACK_1),
@@ -431,13 +429,11 @@ def transcript() -> list[Turn]:
 
 
 @pytest.fixture
-def chat(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> Iterator[tuple[Browser, FakePage]]:
+def chat(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[tuple[Browser, FakePage]]:
     """One tab, on a new chat, whose chat URL holds a migrated conversation."""
     page = FakePage(url=NEW_URL, composer="", transcript=transcript(), title=TITLE)
     browser = Browser(page)
-    browser.__enter__()
+    entered(browser)
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(browser.chrome.port))
     try:
         yield browser, page
@@ -450,9 +446,7 @@ def verifier(browser: Browser, tmp_path: Path) -> verifying.Verifier:
 
 
 @pytest.mark.slow
-def test_the_tab_is_navigated_to_the_chat_and_read_back(
-    chat: tuple[Browser, FakePage], tmp_path: Path
-) -> None:
+def test_the_tab_is_navigated_to_the_chat_and_read_back(chat: tuple[Browser, FakePage], tmp_path: Path) -> None:
     browser, page = chat
     found = verifier(browser, tmp_path).verify(expected())
     assert found.ok, found.failed
@@ -469,11 +463,12 @@ def test_a_transcript_without_the_second_ack_fails_the_second_part(
 
 
 @pytest.mark.slow
-def test_a_tab_that_cannot_be_read_is_not_a_verified_chat(
-    chat: tuple[Browser, FakePage], tmp_path: Path
-) -> None:
-    """The browser is gone. A verification that cannot look does not pass, and
-    does not raise into a run that is migrating the next conversation."""
+def test_a_tab_that_cannot_be_read_is_not_a_verified_chat(chat: tuple[Browser, FakePage], tmp_path: Path) -> None:
+    """The browser is gone.
+
+    A verification that cannot look does not pass, and does not raise into a run that is
+    migrating the next conversation.
+    """
     browser, _ = chat
     browser.chrome.stop()
     found = verifier(browser, tmp_path).verify(expected())
@@ -485,11 +480,11 @@ def test_a_tab_that_cannot_be_read_is_not_a_verified_chat(
 
 
 @pytest.mark.slow
-def test_a_transcript_that_has_not_rendered_yet_is_waited_for(
-    chat: tuple[Browser, FakePage], tmp_path: Path
-) -> None:
-    """A reloaded chat is at its URL before its messages are in the DOM, and
-    reading that moment would call a migrated conversation empty."""
+def test_a_transcript_that_has_not_rendered_yet_is_waited_for(chat: tuple[Browser, FakePage], tmp_path: Path) -> None:
+    """A reloaded chat is at its URL before its messages are in the DOM.
+
+    Reading that moment would call a migrated conversation empty.
+    """
     browser, page = chat
     full, page.transcript = transcript(), []
 
@@ -502,9 +497,7 @@ def test_a_transcript_that_has_not_rendered_yet_is_waited_for(
 
 
 @pytest.mark.slow
-def test_a_navigation_still_in_flight_is_not_a_missing_chat(
-    chat: tuple[Browser, FakePage], tmp_path: Path
-) -> None:
+def test_a_navigation_still_in_flight_is_not_a_missing_chat(chat: tuple[Browser, FakePage], tmp_path: Path) -> None:
     """`Page.navigate` returns before the tab shows the page it asked for.
 
     The tab is still on `/new` for the first two reads, which is what a slow
@@ -523,12 +516,12 @@ def test_a_navigation_still_in_flight_is_not_a_missing_chat(
 
 
 @pytest.mark.slow
-def test_landing_in_another_chat_ends_the_wait_at_once(
-    chat: tuple[Browser, FakePage], tmp_path: Path
-) -> None:
-    """A tab that settled in somebody else's chat is settled: waiting out
-    `timeouts.verify_s` would add half a minute to a verification whose answer
-    is already known. (Raised by Copilot in review on #26.)"""
+def test_landing_in_another_chat_ends_the_wait_at_once(chat: tuple[Browser, FakePage], tmp_path: Path) -> None:
+    """A tab that settled in somebody else's chat is settled.
+
+    Waiting out `timeouts.verify_s` would add half a minute to a verification whose
+    answer is already known. (Raised by Copilot in review on #26.)
+    """
     browser, page = chat
     page.url = f"https://claude.ai/chat/{'c7e1b3f5-2d99-4f4b-8b2a-3a1f6e8d9c02'}"
     page.follows_navigation = False
@@ -541,11 +534,11 @@ def test_landing_in_another_chat_ends_the_wait_at_once(
 
 
 @pytest.mark.slow
-def test_a_session_that_expires_mid_verification_stops_the_read(
-    chat: tuple[Browser, FakePage], tmp_path: Path
-) -> None:
-    """The wall is re-checked on every poll, as `08`'s response wait checks it:
-    a tab redirected to a page no helper may read is not read."""
+def test_a_session_that_expires_mid_verification_stops_the_read(chat: tuple[Browser, FakePage], tmp_path: Path) -> None:
+    """The wall is re-checked on every poll, as `08`'s response wait checks it.
+
+    A tab redirected to a page no helper may read is not read.
+    """
     browser, page = chat
     # The chat is reached and is still rendering, so the poll goes round again —
     # and by then the tab is on a sign-in page.
@@ -564,9 +557,7 @@ def test_a_session_that_expires_mid_verification_stops_the_read(
 
 
 @pytest.mark.slow
-def test_a_browser_with_no_claude_tab_cannot_be_read_through(
-    chat: tuple[Browser, FakePage], tmp_path: Path
-) -> None:
+def test_a_browser_with_no_claude_tab_cannot_be_read_through(chat: tuple[Browser, FakePage], tmp_path: Path) -> None:
     """`08`'s tab rules are `17`'s too: there is nothing to navigate."""
     browser, _ = chat
     browser.visit("about:blank")
@@ -578,8 +569,10 @@ def test_a_browser_with_no_claude_tab_cannot_be_read_through(
 def test_it_will_not_read_a_chat_through_a_tab_outside_the_surface(
     chat: tuple[Browser, FakePage], tmp_path: Path
 ) -> None:
-    """§17's wall, which `17` is behind like every other helper: the tab is on a
-    settings page, so nothing navigates it anywhere."""
+    """§17's wall, which `17` is behind like every other helper.
+
+    The tab is on a settings page, so nothing navigates it anywhere.
+    """
     browser, page = chat
     browser.visit("https://claude.ai/settings/profile")
     found = verifier(browser, tmp_path).verify(expected())
@@ -595,7 +588,7 @@ def test_it_will_not_read_a_chat_through_a_tab_outside_the_surface(
 def workspace_with(
     tmp_path: Path, browser: Browser, monkeypatch: pytest.MonkeyPatch, **fields: object
 ) -> state.StateStore:
-    """A workspace holding one migrated conversation, and a browser to read it."""
+    """Return a workspace holding one migrated conversation, and a browser to read it."""
     settings = Settings(workspace=tmp_path / "migration")
     profile = launcher.ensure_profile(settings)
     launcher.write_marker(
@@ -682,13 +675,11 @@ def test_verify_reports_a_chat_that_is_not_there(
     assert state.StateStore(store.workspace).load()[SOURCE].status is Status.PARTIAL
 
 
-def test_verify_has_nothing_to_do_in_an_empty_workspace(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_verify_has_nothing_to_do_in_an_empty_workspace(runner: CliRunner, workspace: Path) -> None:
     """No browser is started for a question with no conversations in it."""
     result = runner.invoke(cli.app, ["verify"], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOTHING_TO_DO
-    assert result.stdout == ""
+    assert not result.stdout
 
 
 @pytest.mark.slow
@@ -698,8 +689,10 @@ def test_verify_refuses_a_signed_out_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every chat would read as missing, so the one fact that matters is said
-    once — with `07`'s words and `01`'s exit code."""
+    """Every chat would read as missing, so the one fact that matters is said once.
+
+    With `07`'s words and `01`'s exit code.
+    """
     browser, page = chat
     page.composer = None
     workspace_with(tmp_path, browser, monkeypatch)
@@ -708,7 +701,7 @@ def test_verify_refuses_a_signed_out_session(
 
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
     assert result.stderr.endswith(f"{SIGNED_OUT}\n")
-    assert result.stdout == ""
+    assert not result.stdout
 
 
 @pytest.mark.slow
@@ -721,9 +714,7 @@ def test_a_browser_verify_started_is_a_browser_verify_closes(
     """The rule `12` follows: what this command opened, it shuts."""
     browser, _ = chat
     workspace_with(tmp_path, browser, monkeypatch)
-    started = launcher.BrowserSession(
-        client=browser.client, profile=tmp_path / "migration" / "browser-profile"
-    )
+    started = launcher.BrowserSession(client=browser.client, profile=tmp_path / "migration" / "browser-profile")
     monkeypatch.setattr(launcher, "launch", lambda settings, url: started)
 
     result = runner.invoke(cli.app, ["verify"], catch_exceptions=False)
@@ -733,9 +724,7 @@ def test_a_browser_verify_started_is_a_browser_verify_closes(
 
 
 @pytest.mark.slow
-def test_verify_runs_without_hermes(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_verify_runs_without_hermes(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     """`17`'s third criterion: `verify --only` never starts an agent.
 
     The world's Hermes is a real executable that records every call, so "no run"
@@ -747,9 +736,7 @@ def test_verify_runs_without_hermes(
     cli_env(world, monkeypatch)
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli.app, ["verify", "--only", LONG[:8]], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["verify", "--only", LONG[:8]], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.OK
     assert result.stdout == f"{LONG[:8]}  verified\n"
@@ -757,9 +744,7 @@ def test_verify_runs_without_hermes(
 
 
 @pytest.mark.slow
-def test_a_hermes_that_claims_too_much_is_recorded_as_partial(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_hermes_that_claims_too_much_is_recorded_as_partial(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     """`17`'s second criterion, and the reason the slice exists.
 
     Hermes says `completed` for a two-part conversation; the page holds part one
@@ -810,8 +795,11 @@ def test_a_verified_conversation_records_what_the_destination_cannot_hold(
 
 @pytest.mark.slow
 def test_a_chat_that_is_not_called_what_the_conversation_was(world: World) -> None:
-    """The rename did not take. The conversation is still migrated, and the
-    limitation says what the operator will not find in the sidebar."""
+    """The rename did not take.
+
+    The conversation is still migrated, and the limitation says what the operator will
+    not find in the sidebar.
+    """
     world.answers(completed())
     world.page.title = "Untitled"
 
@@ -824,8 +812,10 @@ def test_a_chat_that_is_not_called_what_the_conversation_was(world: World) -> No
 
 @pytest.mark.slow
 def test_the_title_reaches_the_agent_through_the_prompt(world: World) -> None:
-    """`17` renames through Hermes, so the title is a field of the task prompt —
-    the one piece of a conversation's metadata that is."""
+    """`17` renames through Hermes, so the title is a field of the task prompt.
+
+    The one piece of a conversation's metadata that is.
+    """
     world.answers(completed())
 
     world.run(only=[LONG], limit=1)
@@ -849,13 +839,10 @@ class Nobody:
 
 @pytest.mark.slow
 def test_a_run_that_needs_a_human_is_not_verified(world: World) -> None:
-    """Somebody else owns what happens next, and a chat that is waiting for them
-    is not a chat that failed a check."""
+    """Somebody else owns what happens next, and a chat that is waiting for them is not a chat that failed a check."""
     world.answers(needs_human(conversation_id=CHAT))
 
-    world.importer(intervention=Nobody()).run(
-        world.export, state.Selection(only=[LONG], limit=1)
-    )
+    world.importer(intervention=Nobody()).run(world.export, state.Selection(only=[LONG], limit=1))
 
     entry_ = world.entry(LONG)
     assert entry_.verified_at is None

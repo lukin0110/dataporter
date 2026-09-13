@@ -1,7 +1,10 @@
 .PHONY: lint check check-all fmt test test-all test-mock install
 
+# `--no-fix` because `[tool.ruff] fix = true` is on: the template turns it on for
+# the editor and pre-commit, and a gate that silently rewrote the tree and then
+# passed would be no gate at all. `make fmt` is where fixing happens.
 lint:
-	uv run ruff check src tests spikes rehearsal mock
+	uv run ruff check --no-fix src tests spikes rehearsal mock
 	uv run ruff format --check src tests spikes rehearsal mock
 	uv run ty check --error-on-warning src spikes rehearsal mock/src
 

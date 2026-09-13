@@ -45,13 +45,11 @@ UNATTENDED_BLOCK = (
 
 
 def form_ready(*fields: str) -> str:
-    return json.dumps(
-        {"outcome": "form_ready", "fields": list(fields), "url": login_form.LOGIN_URL}
-    )
+    return json.dumps({"outcome": "form_ready", "fields": list(fields), "url": login_form.LOGIN_URL})
 
 
 def form_blocked(reason: str) -> str:
-    """The sign-in task stopping: the agent's own object, not a migration's."""
+    """Return the sign-in task stopping: the agent's own object, not a migration's."""
     return json.dumps({"outcome": "needs_human", "needs_human_reason": reason})
 
 
@@ -60,16 +58,12 @@ def unattended(world: World, *, credentials: bool = True) -> None:
     world.settings = world.settings.model_copy(
         update={
             "non_interactive": True,
-            "auth": AuthSettings(email=EMAIL, password=SecretStr(SECRET))
-            if credentials
-            else AuthSettings(),
+            "auth": AuthSettings(email=EMAIL, password=SecretStr(SECRET)) if credentials else AuthSettings(),
         }
     )
 
 
-def unattended_env(
-    monkeypatch: pytest.MonkeyPatch, *, credentials: bool = True
-) -> None:
+def unattended_env(monkeypatch: pytest.MonkeyPatch, *, credentials: bool = True) -> None:
     monkeypatch.setenv("DATAPORTER_NON_INTERACTIVE", "1")
     if credentials:
         monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", EMAIL)
@@ -122,9 +116,7 @@ def test_a_run_in_the_mode_asks_nobody(world: World) -> None:
     unattended(world)
     assert isinstance(world.importer().intervention, intervening.Unattended)
     assert isinstance(
-        importing.Importer(
-            world.settings, intervention=intervening.Console()
-        ).intervention,
+        importing.Importer(world.settings, intervention=intervening.Console()).intervention,
         intervening.Console,
     )
 
@@ -135,8 +127,7 @@ def test_a_run_in_the_mode_asks_nobody(world: World) -> None:
 
 
 def test_a_login_expiry_mid_run_is_cleared_by_the_tool(world: World) -> None:
-    """`13`-shaped: the conversation is tried again, nobody was asked, and the
-    sign-in is counted as its own thing."""
+    """`13`-shaped: the conversation is tried again, nobody was asked, and the sign-in is counted as its own thing."""
     unattended(world)
     world.answers(needs_human(), form_ready("email"), completed())
 
@@ -153,12 +144,11 @@ def test_a_login_expiry_mid_run_is_cleared_by_the_tool(world: World) -> None:
     prompts = [call.prompt for call in world.hermes.one_shots]
     assert len(prompts) == 3
     assert "a sign-in and not a migration" in prompts[1]
-    assert SECRET not in prompts[1] and EMAIL not in prompts[1]
+    assert SECRET not in prompts[1]
+    assert EMAIL not in prompts[1]
 
 
-def test_a_sign_in_the_tool_cannot_make_pauses_the_run(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_sign_in_the_tool_cannot_make_pauses_the_run(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     unattended(world)
     world.answers(needs_human(), form_blocked("captcha"))
 
@@ -174,13 +164,14 @@ def test_a_sign_in_the_tool_cannot_make_pauses_the_run(
 
 
 def test_resume_in_the_mode_signs_in_itself(world: World) -> None:
-    """Four Hermes tasks across two processes: the migration, the sign-in that
-    stopped, then on `resume` the sign-in that worked and the migration again.
-    Listed up front because the fake counts its one-shot runs across both."""
+    """Four Hermes tasks across two processes.
+
+    The migration, the sign-in that stopped, then on `resume` the sign-in that worked
+    and the migration again. Listed up front because the fake counts its one-shot runs
+    across both.
+    """
     unattended(world)
-    world.answers(
-        needs_human(), form_blocked("captcha"), form_ready("email"), completed()
-    )
+    world.answers(needs_human(), form_blocked("captcha"), form_ready("email"), completed())
     world.run(limit=2)
     assert world.store().run().paused is not None
 
@@ -239,18 +230,15 @@ def test_a_signed_out_session_the_tool_cannot_sign_in_is_exit_3(
 
     with pytest.raises(AuthError) as raised:
         world.run(limit=1)
-    assert raised.value.detail == (
-        "automatic sign-in stopped: authentication required — run: dataporter login"
-    )
-    assert world.hermes.one_shots and len(world.hermes.one_shots) == 1
+    assert raised.value.detail == ("automatic sign-in stopped: authentication required — run: dataporter login")
+    assert world.hermes.one_shots
+    assert len(world.hermes.one_shots) == 1
 
 
 def test_without_credentials_the_mode_stops_before_a_browser(world: World) -> None:
     unattended(world, credentials=False)
     with pytest.raises(UsageError, match="DATAPORTER_AUTH__EMAIL"):
-        importing.import_command(
-            world.settings, importing.ImportRequest(export=str(world.export))
-        )
+        importing.import_command(world.settings, importing.ImportRequest(export=str(world.export)))
     with pytest.raises(UsageError):
         importing.resume_command(world.settings)
     assert world.launches == []
@@ -276,9 +264,7 @@ def test_interactively_the_mode_is_off_and_nothing_signs_in(world: World) -> Non
 # --------------------------------------------------------------------------- #
 
 
-def test_login_without_credentials_is_exit_2(
-    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_login_without_credentials_is_exit_2(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     cli_env(world, monkeypatch)
     unattended_env(monkeypatch, credentials=False)
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
@@ -311,9 +297,7 @@ def test_login_in_the_mode_signs_in_and_closes_the_browser(
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.OK
-    assert result.stdout == (
-        f"Logged in. Session stored in {world.settings.browser_profile_dir}/.\n"
-    )
+    assert result.stdout == (f"Logged in. Session stored in {world.settings.browser_profile_dir}/.\n")
     assert form.stage == "done"
     assert SECRET not in result.output
 
@@ -329,9 +313,7 @@ def test_login_in_the_mode_that_stops_is_exit_3(
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stderr == (
-        "error: automatic sign-in stopped: CAPTCHA — run: dataporter login\n"
-    )
+    assert result.stderr == ("error: automatic sign-in stopped: CAPTCHA — run: dataporter login\n")
 
 
 def test_the_flag_and_the_variable_are_the_same_switch(
@@ -368,9 +350,7 @@ def test_import_in_the_mode_prints_the_unattended_block_and_exits_5(
     unattended_env(monkeypatch)
     world.answers(needs_human(), form_blocked("captcha"))
 
-    result = runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.PAUSED
     assert "Paused for a person (non-interactive); run: " in result.stdout
@@ -383,12 +363,13 @@ def test_import_in_the_mode_prints_the_unattended_block_and_exits_5(
 # --------------------------------------------------------------------------- #
 
 
-def test_the_secret_is_in_no_file_the_run_leaves_behind(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """After a run that signed in twice — at the start and after an expiry —
-    every file in the workspace, every Hermes transcript, every log record and
-    everything printed carries neither the email nor the password."""
+def test_the_secret_is_in_no_file_the_run_leaves_behind(world: World, capsys: pytest.CaptureFixture[str]) -> None:
+    """After a run that signed in twice.
+
+    At the start and after an expiry — every file in the workspace, every Hermes
+    transcript, every log record and everything printed carries neither the email nor
+    the password.
+    """
     unattended(world)
     form = LoginForm()
     world.browser.pages["page-1"] = form
@@ -409,8 +390,10 @@ def test_the_secret_is_in_no_file_the_run_leaves_behind(
     assert SECRET not in printed.out + printed.err
     assert EMAIL not in printed.out + printed.err
     for call in world.hermes.calls:
-        assert SECRET not in json.dumps(call.env) and EMAIL not in json.dumps(call.env)
-        assert SECRET not in " ".join(call.argv) and EMAIL not in " ".join(call.argv)
+        assert SECRET not in json.dumps(call.env)
+        assert EMAIL not in json.dumps(call.env)
+        assert SECRET not in " ".join(call.argv)
+        assert EMAIL not in " ".join(call.argv)
     # The one place it went: the form, through `Input.insertText`, twice.
     assert form.typed == {"email": EMAIL, "password": SECRET}
     assert not any(SECRET in item for item in form.expressions)

@@ -11,7 +11,7 @@ import pytest
 from dataporter.browser import launcher
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import BrowserError
-from fake_chrome import FakeChrome, free_port
+from fake_chrome import FakeChrome, entered, free_port
 
 pytestmark = pytest.mark.slow
 """Slow all the way through: launching is the subject, and the fake browser is a real
@@ -75,14 +75,8 @@ def rig(monkeypatch: pytest.MonkeyPatch) -> Iterator[Rig]:
         process = StubProcess(exited=rig.exit_code)
         rig.processes.append(process)
         if not rig.fail_to_start:
-            port = int(
-                next(
-                    item
-                    for item in command
-                    if item.startswith("--remote-debugging-port=")
-                ).split("=")[1]
-            )
-            rig.browsers.append(FakeChrome(port=port).__enter__())
+            port = int(next(item for item in command if item.startswith("--remote-debugging-port=")).split("=")[1])
+            rig.browsers.append(entered(FakeChrome(port=port)))
         return process
 
     monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
@@ -92,16 +86,14 @@ def rig(monkeypatch: pytest.MonkeyPatch) -> Iterator[Rig]:
 
 
 def make_settings(tmp_path: Path, **browser: object) -> Settings:
-    """A workspace with a browser that is really this Python interpreter.
+    """Return a workspace with a browser that is really this Python interpreter.
 
     `find_executable` only has to find something executable; nothing in these
     tests runs it, because `Popen` is the stub above.
     """
     return Settings(
         workspace=tmp_path / "migration",
-        browser=BrowserSettings(
-            executable=Path(sys.executable), cdp_port=free_port(), **browser
-        ),
+        browser=BrowserSettings(executable=Path(sys.executable), cdp_port=free_port(), **browser),
         timeouts=TimeoutSettings(browser_start_s=5.0, cdp_call_s=2.0),
     )
 
@@ -113,9 +105,7 @@ def make_settings(tmp_path: Path, **browser: object) -> Settings:
 
 def test_configured_executable_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(launcher.shutil, "which", lambda name: f"/resolved/{name}")
-    assert launcher.find_executable(Path("brave-browser")) == Path(
-        "/resolved/brave-browser"
-    )
+    assert launcher.find_executable(Path("brave-browser")) == Path("/resolved/brave-browser")
 
 
 def test_a_configured_executable_that_is_not_there_is_an_error(
@@ -131,9 +121,7 @@ def test_candidates_are_tried_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         launcher.shutil,
         "which",
-        lambda name: (
-            "/usr/bin/chromium" if name in ("chromium", "brave-browser") else None
-        ),
+        lambda name: "/usr/bin/chromium" if name in {"chromium", "brave-browser"} else None,
     )
     assert launcher.find_executable() == Path("/usr/bin/chromium")
 
@@ -201,9 +189,7 @@ def test_our_own_browser_is_adopted(tmp_path: Path) -> None:
     with FakeChrome(port=settings.browser.cdp_port) as chrome:
         launcher.write_marker(
             profile,
-            launcher.ProfileMarker(
-                port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"
-            ),
+            launcher.ProfileMarker(port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"),
         )
         client = launcher.CdpClient(port=chrome.port, timeout=2.0)
         session = launcher.adopt(client, profile)
@@ -223,8 +209,11 @@ def test_our_own_browser_is_adopted(tmp_path: Path) -> None:
 def test_a_browser_that_is_not_ours_is_never_adopted(
     tmp_path: Path, marker: dict[str, object] | None, why: str
 ) -> None:
-    """Attaching to the operator's everyday Chrome would put the run inside the
-    profile §17 exists to stay out of — and closing it would shut their windows."""
+    """Never the operator's everyday Chrome.
+
+    Attaching to it would put the run inside the profile §17 exists to stay out of — and
+    closing it would shut their windows.
+    """
     settings = make_settings(tmp_path)
     profile = launcher.ensure_profile(settings)
     with FakeChrome(port=settings.browser.cdp_port) as chrome:
@@ -239,7 +228,7 @@ def test_a_browser_that_is_not_ours_is_never_adopted(
                 ),
             )
         client = launcher.CdpClient(port=chrome.port, timeout=2.0)
-        with pytest.raises(launcher.PortInUse, match="used by another browser"):
+        with pytest.raises(launcher.PortInUseError, match="used by another browser"):
             launcher.adopt(client, profile)
 
 
@@ -309,8 +298,10 @@ def test_launch_records_the_browser_it_started(tmp_path: Path, rig: Rig) -> None
 
 
 def test_a_browser_that_exits_at_once_says_so(tmp_path: Path, rig: Rig) -> None:
-    """A `--user-data-dir` another Chrome already holds fails in milliseconds;
-    reporting it as a thirty-second timeout would waste the operator's time."""
+    """A `--user-data-dir` another Chrome already holds fails in milliseconds.
+
+    Reporting it as a thirty-second timeout would waste the operator's time.
+    """
     rig.fail_to_start = True
     rig.exit_code = 1
     settings = make_settings(tmp_path)
@@ -318,9 +309,7 @@ def test_a_browser_that_exits_at_once_says_so(tmp_path: Path, rig: Rig) -> None:
         launcher.launch(settings, "https://claude.ai/new")
 
 
-def test_a_browser_that_never_opens_the_port_times_out(
-    tmp_path: Path, rig: Rig
-) -> None:
+def test_a_browser_that_never_opens_the_port_times_out(tmp_path: Path, rig: Rig) -> None:
     rig.fail_to_start = True
     settings = make_settings(tmp_path).model_copy(
         update={"timeouts": TimeoutSettings(browser_start_s=0.5, cdp_call_s=0.5)}
@@ -331,9 +320,7 @@ def test_a_browser_that_never_opens_the_port_times_out(
     assert launcher.read_marker(settings.browser_profile_dir) is None
 
 
-def test_a_browser_that_cannot_be_started_at_all(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_browser_that_cannot_be_started_at_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def explode(command: list[str], **kwargs: object) -> StubProcess:
         raise OSError(13, "Permission denied")
 
@@ -348,8 +335,10 @@ def test_a_browser_that_cannot_be_started_at_all(
 
 
 def test_close_asks_the_browser_to_exit(tmp_path: Path, rig: Rig) -> None:
-    """Chrome flushes its cookie jar on exit, so a profile that is never closed
-    cleanly can come back signed out."""
+    """Chrome flushes its cookie jar on exit.
+
+    A profile that is never closed cleanly can come back signed out.
+    """
     settings = make_settings(tmp_path)
     session = launcher.launch(settings, "https://claude.ai/new")
     session.close()
@@ -358,11 +347,12 @@ def test_close_asks_the_browser_to_exit(tmp_path: Path, rig: Rig) -> None:
     assert not session.client.responding()
 
 
-def test_a_browser_whose_port_has_gone_but_whose_process_has_not(
-    tmp_path: Path, rig: Rig
-) -> None:
-    """A dead debug port does not mean a dead Chrome. There is nothing to send
-    `Browser.close` to, so the process is ended rather than left behind."""
+def test_a_browser_whose_port_has_gone_but_whose_process_has_not(tmp_path: Path, rig: Rig) -> None:
+    """A dead debug port does not mean a dead Chrome.
+
+    There is nothing to send `Browser.close` to, so the process is ended rather than
+    left behind.
+    """
     settings = make_settings(tmp_path)
     session = launcher.launch(settings, "https://claude.ai/new")
     rig.browsers[0].stop()
@@ -371,11 +361,11 @@ def test_a_browser_whose_port_has_gone_but_whose_process_has_not(
     assert rig.processes[0].returncode == 0
 
 
-def test_a_browser_that_never_opened_its_port_is_not_orphaned(
-    tmp_path: Path, rig: Rig
-) -> None:
-    """The failure `wait_for_port` reports: Chrome started, hung, and never
-    answered. Leaving it there would hold our profile and the next run's port."""
+def test_a_browser_that_never_opened_its_port_is_not_orphaned(tmp_path: Path, rig: Rig) -> None:
+    """The failure `wait_for_port` reports: Chrome started, hung, and never answered.
+
+    Leaving it there would hold our profile and the next run's port.
+    """
     rig.fail_to_start = True
     settings = make_settings(tmp_path).model_copy(
         update={"timeouts": TimeoutSettings(browser_start_s=0.3, cdp_call_s=0.3)}
@@ -386,11 +376,11 @@ def test_a_browser_that_never_opened_its_port_is_not_orphaned(
     assert rig.processes[0].returncode == 0
 
 
-def test_a_browser_that_is_gone_entirely_is_left_alone(
-    tmp_path: Path, rig: Rig
-) -> None:
-    """Nothing on the port and nothing running: `close` has no work to do, and
-    an adopted session has no process to sign for either."""
+def test_a_browser_that_is_gone_entirely_is_left_alone(tmp_path: Path, rig: Rig) -> None:
+    """Nothing on the port and nothing running.
+
+    `close` has no work to do, and an adopted session has no process to sign for either.
+    """
     settings = make_settings(tmp_path)
     session = launcher.launch(settings, "https://claude.ai/new")
     rig.browsers[0].stop()
@@ -419,9 +409,7 @@ def test_an_adopted_browser_is_waited_on_never_signalled(tmp_path: Path) -> None
     with FakeChrome(port=settings.browser.cdp_port) as chrome:
         launcher.write_marker(
             profile,
-            launcher.ProfileMarker(
-                port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"
-            ),
+            launcher.ProfileMarker(port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"),
         )
         session = launcher.launch(settings, "https://claude.ai/new")
         assert session.adopted
@@ -435,9 +423,7 @@ def test_an_adopted_browser_that_stays_up_is_reported(tmp_path: Path) -> None:
     with FakeChrome(port=settings.browser.cdp_port, responder=_ignore_close) as chrome:
         launcher.write_marker(
             profile,
-            launcher.ProfileMarker(
-                port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"
-            ),
+            launcher.ProfileMarker(port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"),
         )
         session = launcher.launch(settings, "https://claude.ai/new")
         session.close(timeout=0.4)
@@ -445,15 +431,17 @@ def test_an_adopted_browser_that_stays_up_is_reported(tmp_path: Path) -> None:
 
 
 def _ignore_close(fake: FakeChrome, call: object) -> dict[str, object] | None:
-    """A browser that acknowledges `Browser.close` and stays exactly where it is."""
+    """Return a browser that acknowledges `Browser.close` and stays exactly where it is."""
     if getattr(call, "method", "") == "Browser.close":
         return {"result": {}}
     return None
 
 
 def test_headless_follows_the_mode_and_the_setting(tmp_path: Path, rig: Rig) -> None:
-    """`24`: no window under `--non-interactive`, unless `browser.headless` says
-    otherwise, and `browser.headless = true` alone is enough."""
+    """`24`: no window under `--non-interactive`, unless `browser.headless` says otherwise.
+
+    `browser.headless = true` alone is enough.
+    """
     settings = make_settings(tmp_path).model_copy(update={"non_interactive": True})
     session = launcher.launch(settings, "https://claude.ai/new")
     try:
@@ -461,9 +449,7 @@ def test_headless_follows_the_mode_and_the_setting(tmp_path: Path, rig: Rig) -> 
     finally:
         session.close()
 
-    settings = make_settings(tmp_path, headless=False).model_copy(
-        update={"non_interactive": True}
-    )
+    settings = make_settings(tmp_path, headless=False).model_copy(update={"non_interactive": True})
     session = launcher.launch(settings, "https://claude.ai/new")
     try:
         assert launcher.HEADLESS_FLAG not in rig.command

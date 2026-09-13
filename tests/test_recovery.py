@@ -43,7 +43,7 @@ from dataporter.hermes.runner import HermesResult
 from dataporter.state import ErrorRecord, Status
 from dataporter.steps import Step
 from fake_agent import ScriptedAgent
-from fake_chrome import FakeTarget
+from fake_chrome import FakeTarget, entered
 from fake_composer import Browser, FakePage
 from world import FIRST, LONG, THIRD, World, completed, result
 
@@ -231,7 +231,7 @@ def page() -> FakePage:
 @pytest.fixture
 def browser(page: FakePage, monkeypatch: pytest.MonkeyPatch) -> Iterator[Browser]:
     opened = Browser(page)
-    opened.__enter__()
+    entered(opened)
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(opened.chrome.port))
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "5")
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__RESPONSE_S", "0.2")
@@ -273,14 +273,13 @@ Migrate = Callable[..., tuple[HermesResult, ScriptedAgent]]
 
 
 @pytest.mark.slow
-def test_a_failed_click_is_tried_once_more_and_then_reported(
-    migrate: Migrate, page: FakePage
-) -> None:
+def test_a_failed_click_is_tried_once_more_and_then_reported(migrate: Migrate, page: FakePage) -> None:
     """Row 1. The composer still holds the part, so the click did not land."""
     outcome, agent = migrate(DeadClick)
 
     assert outcome.outcome == "failed"
-    assert outcome.error is not None and outcome.error.category == Category.UI
+    assert outcome.error is not None
+    assert outcome.error.category == Category.UI
     assert outcome.chunks_acked == 0
     assert outcome.step is Step.PASTE
     # Once more, and only once: "at most once per step" is the whole budget.
@@ -295,7 +294,8 @@ def test_a_missing_composer_is_reloaded_once_and_then_reported(
     outcome, agent = migrate(MissingComposer)
 
     assert outcome.outcome == "failed"
-    assert outcome.error is not None and outcome.error.category == Category.UI
+    assert outcome.error is not None
+    assert outcome.error.category == Category.UI
     assert outcome.step is Step.OPEN
     assert agent.recoveries == ["missing_composer"]
 
@@ -348,7 +348,8 @@ def test_a_tab_that_cannot_be_read_is_reloaded_once_and_then_reported(
     outcome, agent = migrate(Unplugged)
 
     assert outcome.outcome == "failed"
-    assert outcome.error is not None and outcome.error.category == Category.NETWORK
+    assert outcome.error is not None
+    assert outcome.error.category == Category.NETWORK
     assert outcome.step is Step.OPEN
     assert agent.recoveries == ["network"]
     assert agent.errors == [helpers.NO_CLAUDE_TAB, helpers.NO_CLAUDE_TAB]
@@ -376,8 +377,11 @@ def test_a_tab_that_wandered_into_another_chat_is_brought_back_once(
 
 @pytest.mark.slow
 def test_a_send_that_leaves_no_turn_behind_needs_a_human(migrate: Migrate) -> None:
-    """Row 9. The composer cleared, so it went somewhere; there is no row for
-    where. That is a UI this procedure no longer describes."""
+    """Row 9.
+
+    The composer cleared, so it went somewhere; there is no row for where. That is a UI
+    this procedure no longer describes.
+    """
     outcome, agent = migrate(SilentSend)
 
     assert outcome.outcome == "needs_human"
@@ -388,9 +392,7 @@ def test_a_send_that_leaves_no_turn_behind_needs_a_human(migrate: Migrate) -> No
 
 
 @pytest.mark.slow
-def test_a_second_claude_tab_is_closed_rather_than_guessed_between(
-    migrate: Migrate, browser: Browser
-) -> None:
+def test_a_second_claude_tab_is_closed_rather_than_guessed_between(migrate: Migrate, browser: Browser) -> None:
     """Not a §11 row, but the helper error the table gives its own recovery to.
 
     `08` refuses to choose between two claude.ai tabs; the skill's answer is one
@@ -453,24 +455,19 @@ def test_a_rate_limit_before_any_chat_exists_is_failed() -> None:
         ("security_challenge", Category.SECURITY_CHALLENGE),
     ],
 )
-def test_a_challenge_is_recorded_and_never_retried(
-    reason: str, category: Category
-) -> None:
+def test_a_challenge_is_recorded_and_never_retried(reason: str, category: Category) -> None:
     """Row 10. Neither is something a second identical attempt gets past."""
-    mapped = importing.interpret(
-        reported(outcome="needs_human", needs_human_reason=reason), landed=False
-    )
+    mapped = importing.interpret(reported(outcome="needs_human", needs_human_reason=reason), landed=False)
 
     assert mapped.status is Status.FAILED
-    assert mapped.error is not None and mapped.error.category is category
+    assert mapped.error is not None
+    assert mapped.error.category is category
     assert mapped.deferred is True
     assert not attempt_from(mapped).retryable
 
 
 def attempt_from(mapped: importing.Mapped) -> importing.Attempt:
-    return importing.Attempt(
-        status=mapped.status, error=mapped.error, attempts=1, deferred=mapped.deferred
-    )
+    return importing.Attempt(status=mapped.status, error=mapped.error, attempts=1, deferred=mapped.deferred)
 
 
 # --------------------------------------------------------------------------- #
@@ -540,8 +537,11 @@ def test_an_exhausted_budget_stops_recommending_a_retry(world: World) -> None:
 
 
 def test_an_unknown_transience_is_left_unknown(world: World) -> None:
-    """`ui` is `01`'s "per instance": the skill already spent its one recovery
-    on the page, and not knowing does not become knowing by trying again."""
+    """`ui` is `01`'s "per instance".
+
+    The skill already spent its one recovery on the page, and not knowing does not
+    become knowing by trying again.
+    """
     world.answers(failure("ui"))
 
     world.run(limit=1)
@@ -555,9 +555,7 @@ def test_an_unknown_transience_is_left_unknown(world: World) -> None:
 
 def test_a_needs_human_result_is_not_a_retry(world: World) -> None:
     """`14` owns it, and a person is not made available by waiting 30 seconds."""
-    world.answers(
-        result(outcome="needs_human", needs_human_reason="confirmation_required")
-    )
+    world.answers(result(outcome="needs_human", needs_human_reason="confirmation_required"))
 
     world.run(limit=1)
 
@@ -588,8 +586,11 @@ def test_a_rate_limited_result_is_not_a_retry(world: World) -> None:
 def test_a_partial_retry_resumes_the_chat_rather_than_opening_a_second(
     world: World,
 ) -> None:
-    """§17's rule, under `13`'s budget: the second attempt continues the chat
-    the first one left behind, from the step that last verified."""
+    """§17's rule, under `13`'s budget.
+
+    The second attempt continues the chat the first one left behind, from the step that
+    last verified.
+    """
     world.answers(
         result(
             outcome="partial",
@@ -638,9 +639,7 @@ def test_a_hermes_that_cannot_be_invoked_is_never_retried(world: World) -> None:
     ("attempt", "expected"),
     [(1, 30.0), (2, 120.0), (3, 300.0), (4, 300.0), (9, 300.0)],
 )
-def test_backoff_repeats_its_last_value_rather_than_running_out(
-    attempt: int, expected: float
-) -> None:
+def test_backoff_repeats_its_last_value_rather_than_running_out(attempt: int, expected: float) -> None:
     assert importing.backoff_for(RetrySettings(), attempt) == expected
 
 
@@ -677,9 +676,7 @@ def test_an_attempt_with_no_error_is_never_retryable() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_three_failures_in_a_row_stop_the_run(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_three_failures_in_a_row_stop_the_run(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """`13`'s fourth criterion, with the message byte for byte."""
     world.retries(max_attempts=1)
     world.answers(failure("network"))
@@ -697,21 +694,15 @@ def test_three_failures_in_a_row_stop_the_run(
         Status.FAILED,
         Status.FAILED,
     ]
-    assert world.store().load()["dd000004-4444-4444-8444-444444444444"].status is (
-        Status.PENDING
-    )
+    assert world.store().load()["dd000004-4444-4444-8444-444444444444"].status is (Status.PENDING)
 
 
-def test_the_stop_line_survives_quiet(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_stop_line_survives_quiet(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """`-q` suppresses progress; what became of the run is not progress."""
     world.retries(max_attempts=1)
     world.answers(failure("network"))
 
-    world.importer(progress=reporting.Reporter(quiet=True)).run(
-        world.export, importing.state.Selection(limit=5)
-    )
+    world.importer(progress=reporting.Reporter(quiet=True)).run(world.export, importing.state.Selection(limit=5))
     printed = capsys.readouterr().out
 
     assert "aa000001" not in printed
@@ -719,8 +710,10 @@ def test_the_stop_line_survives_quiet(
 
 
 def test_a_different_category_is_not_the_same_streak(world: World) -> None:
-    """Three failures that are not the same failure are three conversations
-    going wrong, which is what a run of an experiment looks like."""
+    """Three failures that are not the same failure are three conversations going wrong.
+
+    That is what a run of an experiment looks like.
+    """
     world.retries(max_attempts=1)
     world.answers(failure("network"), failure("generation"), failure("network"))
 
@@ -766,9 +759,7 @@ def test_an_unsupported_conversation_does_not_feed_the_breaker(world: World) -> 
 
 def test_the_breaker_can_be_switched_off(world: World) -> None:
     world.retries(max_attempts=1)
-    world.settings.run = RunSettings(
-        max_conversations=10, stop_after_consecutive_failures=0
-    )
+    world.settings.run = RunSettings(max_conversations=10, stop_after_consecutive_failures=0)
     world.answers(failure("network"))
 
     summary = world.run(limit=4)
@@ -783,9 +774,7 @@ def streak_of(*categories: str | None) -> importing.FailureStreak:
         streak.record(
             importing.Attempt(
                 status=Status.COMPLETED if category is None else Status.FAILED,
-                error=None
-                if category is None
-                else ErrorRecord(category=Category(category)),
+                error=None if category is None else ErrorRecord(category=Category(category)),
                 attempts=1,
             )
         )
@@ -798,8 +787,10 @@ def test_a_success_between_failures_breaks_the_streak() -> None:
 
 
 def test_a_failure_with_no_category_breaks_the_streak() -> None:
-    """`12` records one for every stop, but the streak is not the place to
-    assume it: a count without a category names nothing in the stop line."""
+    """`12` records one for every stop, but the streak is not the place to assume it.
+
+    A count without a category names nothing in the stop line.
+    """
     streak = streak_of("network", "network")
     streak.record(importing.Attempt(status=Status.FAILED, error=None, attempts=1))
     assert streak.tripped(1) is None
@@ -814,7 +805,7 @@ def test_the_wait_line_is_suppressed_by_quiet(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     reporting.Reporter(quiet=True).waiting(30.0, "retry 2/3, network")
-    assert capsys.readouterr().out == ""
+    assert not capsys.readouterr().out
 
 
 def test_the_wait_line_has_no_trailing_zeros(
@@ -825,11 +816,11 @@ def test_the_wait_line_has_no_trailing_zeros(
     assert capsys.readouterr().out == "waiting 30s (retry 2/3, network)\n"
 
 
-def test_the_retry_is_logged_with_its_numbers(
-    world: World, caplog: pytest.LogCaptureFixture
-) -> None:
-    """`13`'s record: the conversation, the attempt, the category and the wait —
-    and a short id, because §10 keeps the log reading like the terminal."""
+def test_the_retry_is_logged_with_its_numbers(world: World, caplog: pytest.LogCaptureFixture) -> None:
+    """`13`'s record: the conversation, the attempt, the category and the wait.
+
+    A short id, because §10 keeps the log reading like the terminal.
+    """
     world.answers(failure("network"), completed())
 
     with caplog.at_level("INFO", logger="dataporter.importer"):
@@ -843,9 +834,7 @@ def test_the_retry_is_logged_with_its_numbers(
     assert retries[0].backoff_s == 30.0
 
 
-def test_nothing_a_recovery_prints_is_content(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_nothing_a_recovery_prints_is_content(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """§10 again, on the lines `13` added: a wait and a stop are numbers."""
     world.retries(max_attempts=2)
     world.answers(failure("network"))
@@ -862,6 +851,4 @@ def test_the_stop_line_names_the_category_that_tripped_it(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     reporting.Reporter().stopping(3, Category.GENERATION)
-    assert capsys.readouterr().out == (
-        "stopping: 3 consecutive failures (generation) — see report\n"
-    )
+    assert capsys.readouterr().out == ("stopping: 3 consecutive failures (generation) — see report\n")

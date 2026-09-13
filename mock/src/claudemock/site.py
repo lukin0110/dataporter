@@ -32,9 +32,7 @@ from dataclasses import dataclass, field
 
 from claudemock.ledger import Ledger
 
-ASK = re.compile(
-    r"Reply\s+with\s+exactly\s+one\s+line:[ \t]*\r?\n[ \t]*(?P<line>[^\r\n]+)"
-)
+ASK = re.compile(r"Reply\s+with\s+exactly\s+one\s+line:[ \t]*\r?\n[ \t]*(?P<line>[^\r\n]+)")
 r"""What a seed asks for (`dataporter`'s `render.py` writes it at the end of every
 part).
 
@@ -48,10 +46,7 @@ Two details, both of them found by a rehearsal rather than designed:
   the foot of the message.
 """
 
-CANNED = (
-    "In one sentence: we went back over a conversation you asked me to treat as "
-    "our shared history."
-)
+CANNED = "In one sentence: we went back over a conversation you asked me to treat as our shared history."
 """What a message that asks for no particular line gets. One sentence, the same
 one every time, and about nothing: the follow-up probe grades a *reply*, and
 against the mock that grade is `not applicable` (§27)."""
@@ -89,7 +84,7 @@ class Reply:
         return min(self.steps, int((now - self.started) // self.delay_s))
 
     def visible(self, now: float) -> str:
-        """The part of the reply the page would show. `""` before the first step.
+        """Return the part of the reply the page would show. `""` before the first step.
 
         A prefix, so that a reader watching the message grow sees it grow; and
         never the whole of it before the last step, so that the line the tool is
@@ -117,7 +112,7 @@ class Chat:
     reply: Reply | None = None
 
     def view(self, now: float) -> list[Turn]:
-        """The transcript as the page shows it at `now`."""
+        """Return the transcript as the page shows it at `now`."""
         turns = list(self.turns)
         if self.reply is not None:
             text = self.reply.visible(now)
@@ -130,7 +125,7 @@ class Chat:
 
 
 def asked_line(message: str) -> str | None:
-    """The one line a message asked to be answered with, if it asked for one."""
+    """Return the one line a message asked to be answered with, if it asked for one."""
     found = list(ASK.finditer(message))
     return found[-1].group("line").strip() if found else None
 
@@ -167,7 +162,7 @@ class Site:
     # -- the clock ---------------------------------------------------------- #
 
     def now(self) -> float:
-        """The mock's own clock. Injectable so the tests need no sleeps."""
+        """Return the mock's own clock. Injectable so the tests need no sleeps."""
         return float(self.clock())
 
     # -- sign-in ------------------------------------------------------------ #
@@ -201,7 +196,7 @@ class Site:
             return self.chats.get(chat_id)
 
     def create_chat(self, message: str, *, session: str) -> Chat:
-        """A submit on `/new`: an id, a URL, a first turn, and an answer coming."""
+        """Return a submit on `/new`: an id, a URL, a first turn, and an answer coming."""
         created = Chat(id=str(uuid.uuid4()))
         with self._lock:
             self.chats[created.id] = created
@@ -232,7 +227,7 @@ class Site:
     # -- files -------------------------------------------------------------- #
 
     def accept_file(self, name: str, *, session: str) -> None:
-        """A file into the composer. It belongs to the next message sent."""
+        """Take a file into the composer. It belongs to the next message sent."""
         with self._lock:
             self.pending_files.setdefault(session, []).append(name)
         self.ledger.count("files_accepted")

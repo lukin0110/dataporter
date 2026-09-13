@@ -72,8 +72,10 @@ from tenacity import RetryCallState, Retrying, retry_if_result
 
 from dataporter import PROGRAM_NAME, log, render, signin, state, summary
 from dataporter import intervention as intervening
+from dataporter import pilot as piloting
 from dataporter import progress as reporting
 from dataporter import seed as seeding
+from dataporter import selection as selecting
 from dataporter import store as storing
 from dataporter import verify as verifying
 from dataporter.browser import helpers as browser_helpers
@@ -272,9 +274,7 @@ def pause(seconds: float) -> None:
 
 def until(seconds: float, *, now: datetime | None = None) -> str:
     """When a wait of `seconds` ends, as `15`'s line and ask write it."""
-    return (
-        (now if now is not None else state.now()) + timedelta(seconds=seconds)
-    ).strftime(UNTIL_FORMAT)
+    return ((now if now is not None else state.now()) + timedelta(seconds=seconds)).strftime(UNTIL_FORMAT)
 
 
 # --------------------------------------------------------------------------- #
@@ -333,9 +333,7 @@ def retry_recommended(category: Category) -> bool | None:
 
 
 def _error(category: Category, detail: str) -> ErrorRecord:
-    return ErrorRecord(
-        category=category, detail=detail, retry_recommended=retry_recommended(category)
-    )
+    return ErrorRecord(category=category, detail=detail, retry_recommended=retry_recommended(category))
 
 
 def attachments_of(
@@ -362,9 +360,7 @@ def attachments_of(
     refused: dict[str, str] = {}
     if result is not None:
         uploaded = set(result.attachments_uploaded)
-        refused = {
-            failure.file_name: failure.error for failure in result.attachments_failed
-        }
+        refused = {failure.file_name: failure.error for failure in result.attachments_failed}
 
     counts = {"uploaded": 0, "inline": 0, "unsupported": 0, "failed": 0}
     detail: list[state.AttachmentDetail] = []
@@ -389,7 +385,7 @@ def _became(
     *,
     ran: bool,
 ) -> tuple[Literal["uploaded", "inline", "unsupported", "failed"], str | None]:
-    """What became of one attachment, and why — `attachments_of`'s one decision."""
+    """Return what became of one attachment, and why — `attachments_of`'s one decision."""
     if attachment.klass == "inline":
         # Reproduced in the seed, so there is nothing to explain.
         return "inline", None
@@ -421,9 +417,7 @@ def _attachment_failure(result: hermes_running.HermesResult) -> ErrorRecord | No
     first = result.attachments_failed[0]
     return ErrorRecord(
         category=Category.UNSUPPORTED,
-        detail=ATTACHMENT_UPLOAD_FAILED.format(
-            file_name=log.safe_token(first.file_name)
-        ),
+        detail=ATTACHMENT_UPLOAD_FAILED.format(file_name=log.safe_token(first.file_name)),
         retry_recommended=True,
     )
 
@@ -565,7 +559,7 @@ class Attempt:
         """
         return (
             not self.deferred
-            and self.status in (Status.FAILED, Status.PARTIAL)
+            and self.status in {Status.FAILED, Status.PARTIAL}
             and self.error is not None
             and self.error.retry_recommended is True
         )
@@ -586,7 +580,7 @@ def backoff_for(retries: RetrySettings, attempt: int) -> float:
 
 
 def settled(retry_state: RetryCallState) -> Attempt:
-    """The attempt tenacity is deciding about, as the type it is.
+    """Return the attempt tenacity is deciding about, as the type it is.
 
     `RetryCallState.outcome` is `None` before the first attempt and a `Future`
     of `Any` after it; every callback `_migrate` registers runs after, and none
@@ -622,11 +616,11 @@ class FailureStreak:
         self.category, self.count = category, 1
 
     def reset(self) -> None:
-        """A conversation the loop skipped says nothing either way."""
+        """Forget the streak: a conversation the loop skipped says nothing either way."""
         self.category, self.count = None, 0
 
     def tripped(self, limit: int) -> Category | None:
-        """The category that has failed `limit` times running, or `None`.
+        """Return the category that has failed `limit` times running, or `None`.
 
         Returns the category rather than a boolean so that the caller cannot
         reach for `self.category` and find the `None` that would mean no streak.
@@ -670,14 +664,15 @@ class RateLimitWaits:
         return self.waits
 
     def reset(self) -> None:
-        """The count has been spent on an ask, and starts again from there."""
+        """Start the count again, now that it has been spent on an ask."""
         self.waits = 0
 
 
 @dataclass
 class Deferrals:
-    """What one conversation was waited for that was not a failure: `15`'s
-    waits and `14`'s asks, this run, and how many of them there were.
+    """What one conversation was waited for that was not a failure.
+
+    `15`'s waits and `14`'s asks, this run, and how many of them there were.
 
     `spared` is the discount `13`'s budget applies. Every attempt increments
     §7's `attempts`, which is what `max_attempts` is measured against, so
@@ -696,7 +691,7 @@ class Deferrals:
 
 
 def _why_asking(seconds: float | None, count: int, *, too_long: bool) -> str:
-    """The ask's detail: which edge was reached, and what is known about it.
+    """Return the ask's detail: which edge was reached, and what is known about it.
 
     One wait that is too long to make says only that; a third refusal says how
     many, and then says what it knows about this one — a time, or that there was
@@ -716,7 +711,7 @@ def _why_asking(seconds: float | None, count: int, *, too_long: bool) -> str:
 # --------------------------------------------------------------------------- #
 
 
-class RunPaused(Exception):
+class RunPausedError(Exception):
     """A conversation is waiting for a human and there is nobody to ask.
 
     Not a `MigrationError`: nothing failed. The pause record and the `running`
@@ -725,7 +720,7 @@ class RunPaused(Exception):
     """
 
 
-class InterventionsExhausted(Exception):
+class InterventionsExhaustedError(Exception):
     """`run.max_interventions` asks have been made in one run. Same rules.
 
     `13`'s breaker ends a run that keeps failing; this ends one that keeps
@@ -734,11 +729,11 @@ class InterventionsExhausted(Exception):
     """
 
 
-class NothingToResume(Exception):
+class NothingToResumeError(Exception):
     """`resume` was run over a workspace with no pause to continue (exit `4`)."""
 
 
-class LoginTimedOut(Exception):
+class LoginTimedOutError(Exception):
     """An `auth_required` ask outlived `timeouts.login_s` (`15`, exit `3`).
 
     The third way a run ends early, and the only one that names a cause outside
@@ -801,17 +796,11 @@ class Importer:
         force_unlock: bool = False,
     ) -> None:
         self.settings = settings
-        self.progress: reporting.Progress = (
-            progress if progress is not None else reporting.Reporter()
-        )
+        self.progress: reporting.Progress = progress if progress is not None else reporting.Reporter()
         self.intervention: intervening.Intervention = (
             intervention
             if intervention is not None
-            else (
-                intervening.Unattended()
-                if settings.non_interactive
-                else intervening.Console()
-            )
+            else (intervening.Unattended() if settings.non_interactive else intervening.Console())
         )
         self.force_unlock = force_unlock
         self.store = state.StateStore(settings.workspace)
@@ -853,9 +842,7 @@ class Importer:
         paused = self._pause_to_resume()
         export_path = self._recorded_export()
         parsed = load_export(export_path)
-        return self._under_lock(
-            lambda: self._locked_resume(parsed, export_path, paused)
-        )
+        return self._under_lock(lambda: self._locked_resume(parsed, export_path, paused))
 
     def _under_lock(self, work: Callable[[], RunSummary]) -> RunSummary:
         lock = state.WorkspaceLock(self.settings.workspace)
@@ -870,9 +857,7 @@ class Importer:
             self._close_browser()
             lock.release()
 
-    def _locked(
-        self, parsed: Export, export_path: Path, selection: state.Selection
-    ) -> RunSummary:
+    def _locked(self, parsed: Export, export_path: Path, selection: state.Selection) -> RunSummary:
         self.store.bind_export(parsed.fingerprint, export_path)
         self.store.recover()
         self._offer_resume()
@@ -887,10 +872,8 @@ class Importer:
         self.store.finish_run(index, int(result.exit_code))
         return result
 
-    def _locked_resume(
-        self, parsed: Export, export_path: Path, paused: state.PauseRecord
-    ) -> RunSummary:
-        """`import`'s loop, entered in the middle of somebody else's selection.
+    def _locked_resume(self, parsed: Export, export_path: Path, paused: state.PauseRecord) -> RunSummary:
+        """Return `import`'s loop, entered in the middle of somebody else's selection.
 
         The plan is written before the preflight here, where `_locked` does it the
         other way around. Both are cheap and local, and this order is what lets a
@@ -907,22 +890,18 @@ class Importer:
         index = self.store.start_run(self._resumed_selection(chosen))
         try:
             self._preflight(cleared_by=self._request(paused, offset + 1, total))
-        except RunPaused:
+        except RunPausedError:
             result = self._stopped_before_starting(plan, ExitCode.PAUSED)
-        except LoginTimedOut:
+        except LoginTimedOutError:
             self._note_login_timeout()
             result = self._stopped_before_starting(plan, ExitCode.NOT_AUTHENTICATED)
         else:
-            result = self._migrate_all(
-                chosen, conversations, plan, offset=offset, total=total
-            )
+            result = self._migrate_all(chosen, conversations, plan, offset=offset, total=total)
         self.store.finish_run(index, int(result.exit_code))
         return result
 
-    def _prepare(
-        self, parsed: Export
-    ) -> tuple[MigrationPlan, Mapping[str, Conversation]]:
-        """The plan on disk and an entry per planned conversation, before any run."""
+    def _prepare(self, parsed: Export) -> tuple[MigrationPlan, Mapping[str, Conversation]]:
+        """Return the plan on disk and an entry per planned conversation, before any run."""
         self._attachments_directory()
         plan = self._write_plan(parsed)
         self.plans = {item.uuid: item for item in plan.conversations}
@@ -977,7 +956,7 @@ class Importer:
             return
         self._launch()
         if not self._cleared(cleared_by, acted=True):
-            raise RunPaused
+            raise RunPausedError
         self._require_signed_in()
         browser_helpers.close_extra_tabs(self._session().client, self.settings)
 
@@ -1009,11 +988,12 @@ class Importer:
         self.session = launcher.launch(self.settings, probe.NEW_CHAT_URL)
 
     def _require_signed_in(self) -> None:
-        """Signed in, or exit `3` — after one unattended sign-in when `24`'s mode
-        is on, which is counted if it was made."""
-        if signin.ensure_signed_in(
-            self.settings, self._session(), signer=self._signer()
-        ):
+        """Signed in, or exit `3`.
+
+        After one unattended sign-in when `24`'s mode is on, which is counted if it was
+        made.
+        """
+        if signin.ensure_signed_in(self.settings, self._session(), signer=self._signer()):
             self.store.bump_counter("auto_signins")
 
     def _signer(self) -> signin.SignIn:
@@ -1033,9 +1013,7 @@ class Importer:
         """
         outcome = self._signer().perform(self._session())
         if not outcome.signed_in:
-            _logger.warning(
-                "automatic sign-in stopped", extra={"reason": outcome.reason or ""}
-            )
+            _logger.warning("automatic sign-in stopped", extra={"reason": outcome.reason or ""})
             return False
         self.store.set_paused(None)
         self.store.bump_counter("auto_signins")
@@ -1044,10 +1022,7 @@ class Importer:
 
     def _machine_can_clear(self, request: intervening.Request) -> bool:
         """Whether this ask is one `24`'s mode answers without a person."""
-        return (
-            request.reason == intervening.AUTH_REQUIRED
-            and self.settings.non_interactive
-        )
+        return request.reason == intervening.AUTH_REQUIRED and self.settings.non_interactive
 
     def _signed_in(self) -> bool:
         return browser_session.signed_in(self._session())
@@ -1061,16 +1036,14 @@ class Importer:
     # -- 2. plan ------------------------------------------------------------ #
 
     def _write_plan(self, parsed: Export) -> MigrationPlan:
-        """The whole export's plan, in the workspace, before anything runs.
+        """Return the whole export's plan, in the workspace, before anything runs.
 
         The whole export and not the selection: §10's "conversations found" is
         what the file holds, `19` accounts for every one of them, and a plan that
         changed shape with every `--only` would not be a record of anything.
         """
         plan = build_plan(parsed, self.settings)
-        state.write_atomically(
-            self.settings.workspace / PLAN_FILENAME, plan.model_dump_json(indent=2)
-        )
+        state.write_atomically(self.settings.workspace / PLAN_FILENAME, plan.model_dump_json(indent=2))
         return plan
 
     def _write_report(self) -> Report:
@@ -1085,10 +1058,8 @@ class Importer:
         write_report(self.settings.workspace, report)
         return report
 
-    def _create_entries(
-        self, plan: MigrationPlan, conversations: Mapping[str, Conversation]
-    ) -> None:
-        """An entry per planned conversation, without touching a finished one.
+    def _create_entries(self, plan: MigrationPlan, conversations: Mapping[str, Conversation]) -> None:
+        """Write an entry per planned conversation, without touching a finished one.
 
         Unsupported conversations are written as `failed` rather than left out,
         so that `Created + Partial + Failed = Source conversations` holds in `19`
@@ -1126,7 +1097,7 @@ class Importer:
         offset: int = 0,
         total: int | None = None,
     ) -> RunSummary:
-        """The selection, one conversation at a time, until it ends or stops.
+        """Return the selection, one conversation at a time, until it ends or stops.
 
         `offset` and `total` are `14`'s: a `resume` runs the tail of somebody
         else's selection, and "conversation 12 of 127" has to keep meaning the
@@ -1145,20 +1116,18 @@ class Importer:
         for position, uuid in enumerate(chosen):
             if uuid in migratable:
                 try:
-                    attempt = self._migrate(
-                        conversations[uuid], position=offset + position + 1, total=of
-                    )
-                except RunPaused:
+                    attempt = self._migrate(conversations[uuid], position=offset + position + 1, total=of)
+                except RunPausedError:
                     # The pause is on disk and the conversation is still
                     # `running`: `resume` is what finishes it, and nothing else
                     # was started.
                     exit_code, stopped = ExitCode.PAUSED, True
                     break
-                except InterventionsExhausted:
+                except InterventionsExhaustedError:
                     self.intervention.note(intervening.TOO_MANY_INTERVENTIONS)
                     exit_code, stopped = ExitCode.FAILED, True
                     break
-                except LoginTimedOut:
+                except LoginTimedOutError:
                     # `15`: the ask was `auth_required` and `timeouts.login_s`
                     # ran out. The pause record stays, so this is still a run
                     # `resume` continues — but the code says what is wrong with
@@ -1182,9 +1151,7 @@ class Importer:
             # The entry's own error rather than the attempt's: a `partial` this
             # run wrote and a `failed` `--retry-failed` re-read are the same
             # line, and §7's record is what `19` will report either way.
-            self.progress.conversation(
-                render.short_id(uuid), status, counts, current[uuid].error
-            )
+            self.progress.conversation(render.short_id(uuid), status, counts, current[uuid].error)
             tripped = streak.tripped(self.settings.run.stop_after_consecutive_failures)
             if tripped is not None:
                 self._stop(streak.count, tripped)
@@ -1208,18 +1175,12 @@ class Importer:
             # "every selected conversation completed" would otherwise give it.
             exit_code=exit_code
             if exit_code is not None
-            else (
-                ExitCode.NOTHING_TO_DO
-                if not chosen
-                else (ExitCode.OK if finished else ExitCode.FAILED)
-            ),
+            else (ExitCode.NOTHING_TO_DO if not chosen else (ExitCode.OK if finished else ExitCode.FAILED)),
             stopped=stopped,
         )
 
-    def _stopped_before_starting(
-        self, plan: MigrationPlan, exit_code: ExitCode
-    ) -> RunSummary:
-        """A `resume` that never got past the ask, as a summary (`14`).
+    def _stopped_before_starting(self, plan: MigrationPlan, exit_code: ExitCode) -> RunSummary:
+        """Return a `resume` that never got past the ask, as a summary (`14`).
 
         Two codes reach it: `5` when there was nobody to answer, and `3` when
         somebody answered and the account is still signed out (`15`).
@@ -1234,17 +1195,18 @@ class Importer:
         )
 
     def _stop(self, failures: int, category: Category) -> None:
-        """End the run early, cleanly: the state is written, the lock is released
-        by `run`'s `finally`, and what is left of the selection is untouched."""
+        """End the run early, cleanly.
+
+        The state is written, the lock is released by `run`'s `finally`, and what is
+        left of the selection is untouched.
+        """
         _logger.warning(
             "stopping after consecutive failures",
             extra={"failures": failures, "category": str(category)},
         )
         self.progress.stopping(failures, category)
 
-    def _migrate(
-        self, conversation: Conversation, *, position: int, total: int
-    ) -> Attempt:
+    def _migrate(self, conversation: Conversation, *, position: int, total: int) -> Attempt:
         """One conversation, with `13`'s retry budget and `14`'s pause around it.
 
         The loop is here and not inside `_attempt` because every attempt is a
@@ -1309,13 +1271,9 @@ class Importer:
             stop=lambda retry_state: tried(retry_state) >= budget.max_attempts,
             wait=lambda retry_state: backoff_for(budget, tried(retry_state)),
             before_sleep=announce,
-            retry_error_callback=lambda retry_state: self._exhausted(
-                uuid, settled(retry_state)
-            ),
+            retry_error_callback=lambda retry_state: self._exhausted(uuid, settled(retry_state)),
         )
-        return retrying(
-            self._settle, conversation, deferrals, position=position, total=total
-        )
+        return retrying(self._settle, conversation, deferrals, position=position, total=total)
 
     def _settle(
         self,
@@ -1325,8 +1283,9 @@ class Importer:
         position: int,
         total: int,
     ) -> Attempt:
-        """Attempt, and attempt again through `14`'s and `15`'s doors, until a
-        try ends in an outcome that is this conversation's own.
+        """Attempt, and attempt again through `14`'s and `15`'s doors.
+
+        Until a try ends in an outcome that is this conversation's own.
 
         What tenacity is handed. It sees a conversation only once nobody has
         deferred it, so a `rate_limited` result or a `needs_human` ask never
@@ -1345,9 +1304,7 @@ class Importer:
         """
         counted = True
         while True:
-            attempt = self._attempt(
-                conversation, position=position, total=total, counted=counted
-            )
+            attempt = self._attempt(conversation, position=position, total=total, counted=counted)
             if attempt.rate_limited:
                 # A wait, or — too long, or too often — an ask.
                 request = self._rate_limited(
@@ -1381,8 +1338,10 @@ class Importer:
         total: int,
         counted: bool = True,
     ) -> Attempt:
-        """One try: seed, prompt, Hermes, state. Never raises upward for anything
-        that is about this conversation rather than about the run.
+        """One try: seed, prompt, Hermes, state.
+
+        Never raises upward for anything that is about this conversation rather than
+        about the run.
 
         `counted` is false for the try that follows a wait `15` made or an ask
         `14` put: neither is a failure tried again, and `run.json`'s `retries`
@@ -1406,9 +1365,7 @@ class Importer:
             return self._record_failure(uuid, entry, exc, attempts)
         finally:
             self._count_actions(actions)
-        return self._record(
-            uuid, entry, seed, result, attempts, position=position, total=total
-        )
+        return self._record(uuid, entry, seed, result, attempts, position=position, total=total)
 
     def _announce_retry(
         self,
@@ -1521,9 +1478,7 @@ class Importer:
             raise UnsupportedError(detail=outcome.reason or "no seed")
         seed = outcome.seed
         files = seeding.write_seed(seed, self.settings.seeds_dir)
-        self.store.update(
-            uuid, chunks_total=len(seed.chunks), limitations=list(seed.limitations)
-        )
+        self.store.update(uuid, chunks_total=len(seed.chunks), limitations=list(seed.limitations))
 
         resume = resuming(before)
         if resume is None:
@@ -1559,16 +1514,14 @@ class Importer:
         )
         run_id = run_id_for(seed.short_id, before.attempts + 1)
         try:
-            return seed, self.runner.run(
-                prompt, run_id=run_id, timeout_s=self.settings.timeouts.hermes_task_s
-            )
+            return seed, self.runner.run(prompt, run_id=run_id, timeout_s=self.settings.timeouts.hermes_task_s)
         finally:
             # A run that timed out still spent tokens, so this is read on every
             # path rather than only on the one that produced a result.
             self._record_usage(run_id)
 
     def _uploads(self, uuid: str) -> list[Path]:
-        """The files this conversation's prompt lists, or none.
+        """Return the files this conversation's prompt lists, or none.
 
         A conversation with no plan entry has no uploads rather than an error:
         `_prepare` writes one for every conversation in the export, so the only
@@ -1604,9 +1557,7 @@ class Importer:
             "chunks_acked": acked,
             # The messages in the parts that were acknowledged, and no others: a
             # message split across two parts belongs to neither until both land.
-            "messages_represented": sum(
-                len(chunk.message_uuids) for chunk in seed.chunks[:acked]
-            ),
+            "messages_represented": sum(len(chunk.message_uuids) for chunk in seed.chunks[:acked]),
             "error": error,
         }
         item = self.plans.get(uuid)
@@ -1673,7 +1624,7 @@ class Importer:
         a run that already said what went wrong and where it got to — reading its
         chat back would find exactly the parts it told us were missing.
         """
-        if conversation_id is None or result.outcome not in ("completed", "partial"):
+        if conversation_id is None or result.outcome not in {"completed", "partial"}:
             return None
         expected = verifying.Expected(
             conversation_uuid=uuid,
@@ -1681,14 +1632,10 @@ class Importer:
             parts=len(seed.chunks),
             title=verifying.intended_title(self.settings, before.title),
         )
-        return verifying.Verifier(self.settings, self._session().client).verify(
-            expected
-        )
+        return verifying.Verifier(self.settings, self._session().client).verify(expected)
 
-    def _record_failure(
-        self, uuid: str, before: ConversationState, exc: MigrationError, attempts: int
-    ) -> Attempt:
-        """An exception, as one conversation's entry.
+    def _record_failure(self, uuid: str, before: ConversationState, exc: MigrationError, attempts: int) -> Attempt:
+        """Return an exception, as one conversation's entry.
 
         `partial` when a chat already exists, `failed` otherwise — the same rule
         the result mapping uses, and for the same reason: `failed` means there is
@@ -1804,13 +1751,9 @@ class Importer:
             # `13`'s schedule, indexed by how many times this has happened: the
             # waits grow, so a page that keeps refusing is not asked again
             # immediately.
-            self._wait_out(
-                uuid, backoff_for(self.settings.retries, count), RATE_LIMIT_UNNAMED
-            )
+            self._wait_out(uuid, backoff_for(self.settings.retries, count), RATE_LIMIT_UNNAMED)
             return None
-        self._wait_out(
-            uuid, seconds, intervening.RATE_LIMIT_UNTIL.format(until=until(seconds))
-        )
+        self._wait_out(uuid, seconds, intervening.RATE_LIMIT_UNTIL.format(until=until(seconds)))
         return None
 
     def _wait_out(self, uuid: str, seconds: float, reason: str) -> None:
@@ -1847,19 +1790,14 @@ class Importer:
         limit that is still in force.
         """
         try:
-            return (
-                probe.rate_limited(browser_session.current_state(self._session()))
-                is False
-            )
+            return probe.rate_limited(browser_session.current_state(self._session())) is False
         except BrowserError:
             # `_ensure_browser` is what deals with a browser that has gone; this
             # is only deciding whether to stop waiting early.
             _logger.debug("could not read the page while waiting out a rate limit")
             return False
 
-    def _ask_to_wait(
-        self, uuid: str, detail: str, *, position: int, total: int
-    ) -> intervening.Request:
+    def _ask_to_wait(self, uuid: str, detail: str, *, position: int, total: int) -> intervening.Request:
         """Turn a rate limit into `14`'s ask, from what the entry already says.
 
         The entry is read rather than passed because `_record` has just written
@@ -1889,9 +1827,9 @@ class Importer:
         self.interventions += 1
         self.store.bump_counter("human_interventions")
         if self.interventions > self.settings.run.max_interventions:
-            raise InterventionsExhausted
+            raise InterventionsExhaustedError
         if not self._cleared(request):
-            raise RunPaused
+            raise RunPausedError
 
     def _cleared(self, request: intervening.Request, *, acted: bool = False) -> bool:
         """Wait until the reason for the pause no longer holds. `False` to stop.
@@ -1903,7 +1841,7 @@ class Importer:
 
         `15` put a clock on the one reason that has a check behind it: an
         `auth_required` ask that is still not signed in `timeouts.login_s` after
-        it was first put raises `LoginTimedOut`, and the run ends with exit `3`
+        it was first put raises `LoginTimedOutError`, and the run ends with exit `3`
         rather than trading Enters forever. The deadline is read where the
         human's answer comes back and not while the prompt is waiting for it,
         because the ask is a blocking read on a terminal and nothing here can
@@ -1911,9 +1849,7 @@ class Importer:
         one, and a pipe that cannot answer has already said so.
         """
         deadline = (
-            time.monotonic() + self.settings.timeouts.login_s
-            if request.reason == intervening.AUTH_REQUIRED
-            else None
+            time.monotonic() + self.settings.timeouts.login_s if request.reason == intervening.AUTH_REQUIRED else None
         )
         # The ask is printed where `18`'s block redraws itself, so the block
         # stands aside for it and is drawn again underneath — however this
@@ -1931,7 +1867,7 @@ class Importer:
                 if request.reason != intervening.AUTH_REQUIRED or self._signed_in():
                     return True
                 if deadline is not None and time.monotonic() >= deadline:
-                    raise LoginTimedOut
+                    raise LoginTimedOutError
                 if not self.intervention.retry(intervening.STILL_NOT_LOGGED_IN):
                     return False
                 acted = True
@@ -1940,30 +1876,26 @@ class Importer:
 
     def _note_login_timeout(self) -> None:
         """Say why the run stopped on an ask it had been answering (`15`)."""
-        self.intervention.note(
-            intervening.LOGIN_TIMED_OUT.format(seconds=self.settings.timeouts.login_s)
-        )
+        self.intervention.note(intervening.LOGIN_TIMED_OUT.format(seconds=self.settings.timeouts.login_s))
 
     def _offer_resume(self) -> None:
         """Point an `import` at the pause an earlier run left behind."""
         paused = self.store.run().paused
         if paused is not None:
-            self.intervention.note(
-                intervening.offer(render.short_id(paused.conversation_uuid))
-            )
+            self.intervention.note(intervening.offer(render.short_id(paused.conversation_uuid)))
 
     def _pause_to_resume(self) -> state.PauseRecord:
-        """The pause `resume` continues, or nothing to continue."""
+        """Return the pause `resume` continues, or nothing to continue."""
         paused = self.store.run().paused
         if paused is None:
-            raise NothingToResume
+            raise NothingToResumeError
         entry = self.store.load().get(paused.conversation_uuid)
         if entry is not None and entry.status is Status.COMPLETED:
             # Somebody finished it another way — an `import` that selected it, a
             # second operator. Resuming would open a second chat for a
             # conversation that already has one, which §17 has no way to undo.
             self.store.set_paused(None)
-            raise NothingToResume
+            raise NothingToResumeError
         return paused
 
     def _recorded_export(self) -> Path:
@@ -1979,7 +1911,7 @@ class Importer:
         return path
 
     def _rest_of(self, paused: state.PauseRecord) -> tuple[list[str], int, int]:
-        """What is left of the paused run: its uuids, where they resume, how many.
+        """Return what is left of the paused run: its uuids, where they resume, how many.
 
         The tail of the last run's selection rather than a fresh one, because
         §12 is about continuing *that* run: a selection recomputed now would drop
@@ -1997,15 +1929,13 @@ class Importer:
         return [paused.conversation_uuid], 0, 1
 
     def _resumed_selection(self, chosen: Sequence[str]) -> state.Selection:
-        """The paused run's flags, over what is left of its selection."""
+        """Return the paused run's flags, over what is left of its selection."""
         runs = self.store.run().runs
         previous = runs[-1].selection if runs else state.Selection()
         return previous.model_copy(update={"uuids": list(chosen)})
 
-    def _request(
-        self, paused: state.PauseRecord, position: int, total: int
-    ) -> intervening.Request:
-        """The pause record, as the ask a `resume` re-checks."""
+    def _request(self, paused: state.PauseRecord, position: int, total: int) -> intervening.Request:
+        """Return the pause record, as the ask a `resume` re-checks."""
         return intervening.Request(
             short_id=render.short_id(paused.conversation_uuid),
             reason=paused.reason,
@@ -2018,7 +1948,7 @@ class Importer:
     # -- the run's own housekeeping ----------------------------------------- #
 
     def _ensure_browser(self) -> None:
-        """The browser is still there, or this run is over.
+        """Check the browser is still there, or end this run.
 
         Checked before each conversation rather than after each failure: a dead
         Chrome found here costs one HTTP call, and found later costs a Hermes run
@@ -2035,9 +1965,7 @@ class Importer:
         try:
             self._open_browser()
         except BrowserError as exc:
-            raise BrowserError(
-                detail=f"{NOT_RELAUNCHABLE}: {exc.detail or type(exc).__name__}"
-            ) from exc
+            raise BrowserError(detail=f"{NOT_RELAUNCHABLE}: {exc.detail or type(exc).__name__}") from exc
 
     def _close_browser(self) -> None:
         """Close a browser this run started; leave one it adopted alone."""
@@ -2084,7 +2012,7 @@ left, and it runs before the first conversation does.
 
 
 def resuming(entry: ConversationState) -> str | None:
-    """The chat to continue, or `None` when this attempt starts a new one.
+    """Return the chat to continue, or `None` when this attempt starts a new one.
 
     A `completed` entry re-run under `--force` gets a new chat (§17 keeps the old
     one), and a `failed` one has no chat by definition — `06`'s crash recovery is
@@ -2180,9 +2108,6 @@ def import_command(
     export is the local half of the same promise. Reading `06`'s state is still
     fair — what a run *would* do depends on what earlier runs already did.
     """
-    from dataporter import pilot as piloting
-    from dataporter import selection as selecting
-
     path = selecting.export_path(request.export)
     # Before anything reads the export, and before a dry run too: the guard is
     # about where this invocation *would* write, and an operator who learns
@@ -2258,16 +2183,12 @@ def import_command(
             force_unlock=request.force_unlock,
         ).run(path, selection(effective))
         sink.block(report_text(outcome))
-        return ImportOutcome(
-            exit_code=outcome.exit_code, summary=outcome, choices=choices
-        )
+        return ImportOutcome(exit_code=outcome.exit_code, summary=outcome, choices=choices)
 
     parsed = parsed if parsed is not None else load_export(path)
     store = state.StateStore(settings.workspace)
     store.check_export(parsed.fingerprint)
-    chosen = state.select(
-        [item.uuid for item in parsed.conversations], store.load(), selection(settings)
-    )
+    chosen = state.select([item.uuid for item in parsed.conversations], store.load(), selection(settings))
     if not chosen:
         # `06`'s rule, and the one `seeds` already follows: an empty selection is
         # exit `4`, not a block of zeros that reads like a finished run.
@@ -2285,9 +2206,7 @@ def import_command(
     return ImportOutcome(exit_code=ExitCode.OK, plan=plan, choices=choices)
 
 
-def resume_command(
-    settings: Settings, *, quiet: bool = False, sink: Sink = DISCARD
-) -> ImportOutcome:
+def resume_command(settings: Settings, *, quiet: bool = False, sink: Sink = DISCARD) -> ImportOutcome:
     """Continue a migration that paused for human intervention (`14`).
 
     No pause to continue is not an error, so no `error:` and nothing on stderr:
@@ -2300,7 +2219,7 @@ def resume_command(
     log.enable_run_log(settings.workspace)
     try:
         outcome = Importer(settings, progress=reporting.Reporter(quiet=quiet)).resume()
-    except NothingToResume:
+    except NothingToResumeError:
         sink.line(NOTHING_TO_RESUME)
         return ImportOutcome(exit_code=ExitCode.NOTHING_TO_DO)
     sink.block(report_text(outcome))

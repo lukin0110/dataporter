@@ -53,7 +53,7 @@ class _Handler(BaseHTTPRequestHandler):
     routes: Mapping[str, str] = ROUTES
     directory: Path = FIXTURES
 
-    def do_GET(self) -> None:  # noqa: N802 - the stdlib spells it this way
+    def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         name = self.routes.get(path)
         if name is None:
@@ -66,7 +66,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(self, fmt: str, *args: object) -> None:
         """Silence. The default writes a line to stderr per request."""
 
 

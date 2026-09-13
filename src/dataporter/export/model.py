@@ -29,6 +29,7 @@ the title, so a `model_dump()` in an `extra=` mapping trips `log.ContentGuard`
 log counts, uuids under `conversation_id`, and block *type* tokens.
 """
 
+import operator
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Annotated, Any, Literal
@@ -105,8 +106,11 @@ class ToolUseBlock(ExportModel):
 
 
 class ToolResultBlock(ExportModel):
-    """A tool's output. `04` renders `[Tool result omitted]` and never reads it,
-    so its shape is deliberately unconstrained."""
+    """A tool's output.
+
+    `04` renders `[Tool result omitted]` and never reads it, so its shape is
+    deliberately unconstrained.
+    """
 
     type: Literal["tool_result"] = "tool_result"
     content: Any = None
@@ -141,9 +145,7 @@ KnownContentBlock = Annotated[
     Field(discriminator="type"),
 ]
 
-KNOWN_BLOCK_TYPES: frozenset[str] = frozenset(
-    {"text", "tool_use", "tool_result", "thinking", "token_budget"}
-)
+KNOWN_BLOCK_TYPES: frozenset[str] = frozenset({"text", "tool_use", "tool_result", "thinking", "token_budget"})
 """The tags `KnownContentBlock` dispatches on.
 
 Written out rather than derived from the union so that a member disappearing
@@ -181,12 +183,7 @@ def _coerce_block(value: Any) -> Any:
 
 
 ContentBlock = Annotated[
-    TextBlock
-    | ToolUseBlock
-    | ToolResultBlock
-    | ThinkingBlock
-    | TokenBudgetBlock
-    | UnknownBlock,
+    TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock | TokenBudgetBlock | UnknownBlock,
     BeforeValidator(_coerce_block),
 ]
 
@@ -197,8 +194,10 @@ ContentBlock = Annotated[
 
 
 class Attachment(ExportModel):
-    """A file whose text the export inlined. `03` calls this attachment class 1
-    when `extracted_content` is non-empty."""
+    """A file whose text the export inlined.
+
+    `03` calls this attachment class 1 when `extracted_content` is non-empty.
+    """
 
     file_name: str = ""
     file_size: int | None = None
@@ -256,7 +255,7 @@ class Conversation(ExportModel):
     current_leaf_message_uuid: str | None = None
 
     def active_path(self) -> list[ChatMessage]:
-        """The messages to migrate, root first."""
+        """Return the messages to migrate, root first."""
         return self._split()[0]
 
     def off_path(self) -> list[ChatMessage]:
@@ -289,9 +288,7 @@ class Conversation(ExportModel):
             if parent not in by_uuid:
                 # Expected: dropping an unknown-sender message severs its
                 # children, and a real export has roots naming a synthetic parent.
-                _logger.warning(
-                    "export parent missing", extra={"conversation_id": self.uuid}
-                )
+                _logger.warning("export parent missing", extra={"conversation_id": self.uuid})
                 break
             cursor = by_uuid[parent]
 
@@ -304,10 +301,8 @@ class Conversation(ExportModel):
         ]
         return active, off
 
-    def _leaf(
-        self, by_uuid: Mapping[str, ChatMessage], positions: Mapping[str, int]
-    ) -> ChatMessage | None:
-        """The message the active path ends at, or `None` for an empty chat."""
+    def _leaf(self, by_uuid: Mapping[str, ChatMessage], positions: Mapping[str, int]) -> ChatMessage | None:
+        """Return the message the active path ends at, or `None` for an empty chat."""
         named = self.current_leaf_message_uuid
         if named is not None:
             if named in by_uuid:
@@ -315,32 +310,22 @@ class Conversation(ExportModel):
             # Shape drift, not un-modelled data: one dangling pointer must not
             # make a whole export unreadable, and there is nothing here for
             # `UnsupportedItem` to describe. Fall back and say so in the log.
-            _logger.warning(
-                "export leaf not found", extra={"conversation_id": self.uuid}
-            )
+            _logger.warning("export leaf not found", extra={"conversation_id": self.uuid})
 
         parented = {
-            message.parent_message_uuid
-            for message in by_uuid.values()
-            if message.parent_message_uuid is not None
+            message.parent_message_uuid for message in by_uuid.values() if message.parent_message_uuid is not None
         }
-        candidates = [
-            message for message in by_uuid.values() if message.uuid not in parented
-        ]
+        candidates = [message for message in by_uuid.values() if message.uuid not in parented]
         if not candidates:
             if not by_uuid:
                 return None
             # Every message is someone's parent, so the graph has a cycle.
-            _logger.warning(
-                "export message cycle", extra={"conversation_id": self.uuid}
-            )
+            _logger.warning("export message cycle", extra={"conversation_id": self.uuid})
             candidates = list(by_uuid.values())
         return max(candidates, key=lambda m: (m.created_at, positions[m.uuid]))
 
 
-def _ordered(
-    messages: Sequence[ChatMessage], positions: Mapping[str, int]
-) -> list[ChatMessage]:
+def _ordered(messages: Sequence[ChatMessage], positions: Mapping[str, int]) -> list[ChatMessage]:
     """By `index` when present and unique, else `created_at`, then array position.
 
     Uniqueness is evaluated across the path rather than the whole conversation: a
@@ -352,17 +337,9 @@ def _ordered(
     disagree, this wins, because this is the rule the spec pins and the one
     `docs/export-format.md` publishes.
     """
-    indexed = [
-        (message.index, positions[message.uuid], message)
-        for message in messages
-        if message.index is not None
-    ]
-    if len(indexed) == len(messages) and len({item[0] for item in indexed}) == len(
-        messages
-    ):
-        return [
-            item[2] for item in sorted(indexed, key=lambda item: (item[0], item[1]))
-        ]
+    indexed = [(message.index, positions[message.uuid], message) for message in messages if message.index is not None]
+    if len(indexed) == len(messages) and len({item[0] for item in indexed}) == len(messages):
+        return [item[2] for item in sorted(indexed, key=operator.itemgetter(0, 1))]
     return sorted(messages, key=lambda m: (m.created_at, positions[m.uuid]))
 
 

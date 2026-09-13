@@ -39,6 +39,7 @@ from dataporter.config import (
 from dataporter.hermes import skill as skilling
 from dataporter.hermes.profile import profile_config
 from dataporter.steps import Step
+from fake_chrome import entered
 from fake_composer import Browser, FakePage
 from fake_hermes import FakeHermes
 
@@ -74,7 +75,7 @@ on stdout, at any verbosity, at any point in a run."""
 
 
 def completed(conversation_id: str = CHAT, **fields: Any) -> str:
-    """What a Hermes run that migrated one conversation prints last."""
+    """Return what a Hermes run that migrated one conversation prints last."""
     payload: dict[str, Any] = {
         "outcome": "completed",
         "conversation_id": conversation_id,
@@ -86,7 +87,7 @@ def completed(conversation_id: str = CHAT, **fields: Any) -> str:
 
 
 def needs_human(reason: str = "auth_required", **fields: Any) -> str:
-    """What a Hermes run that cannot safely proceed prints last (`14`).
+    """Return what a Hermes run that cannot safely proceed prints last (`14`).
 
     Not a failure and not a retry: `13` leaves it alone because no second
     identical attempt clears it, and `14` asks a person instead.
@@ -127,7 +128,7 @@ class World:
     pauses: list[float] = field(default_factory=list)
 
     def answers(self, *answers: str) -> None:
-        """What the fake Hermes prints, one per `-z` run, last one repeating."""
+        """Set what the fake Hermes prints, one per `-z` run, last one repeating."""
         self.hermes.write(
             version="hermes 1.0.0",
             config_extra={"agent.model": MODEL},
@@ -145,8 +146,11 @@ class World:
         )
 
     def retries(self, **fields: Any) -> None:
-        """Change `13`'s budget for this run. A test that wants one attempt per
-        conversation says `max_attempts=1` rather than counting fake answers."""
+        """Change `13`'s budget for this run.
+
+        A test that wants one attempt per conversation says `max_attempts=1` rather than
+        counting fake answers.
+        """
         self.settings.retries = RetrySettings(**fields)
 
     def store(self) -> state.StateStore:
@@ -162,20 +166,16 @@ class World:
         return importing.Importer(self.settings, **kwargs)
 
 
-def build(
-    tmp_path: Path, export_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[World]:
+def build(tmp_path: Path, export_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     """One world, wired up and torn down. The `world` fixture's whole body."""
     page = FakePage(url=NEW_URL, composer="", send_enabled=True)
     browser = Browser(page)
-    browser.__enter__()
+    entered(browser)
     hermes = FakeHermes(root=tmp_path / "bin")
     settings = Settings(
         workspace=tmp_path / "migration",
         browser=BrowserSettings(cdp_port=browser.chrome.port),
-        hermes=HermesSettings(
-            executable=hermes.executable, home=tmp_path / "hermes-home"
-        ),
+        hermes=HermesSettings(executable=hermes.executable, home=tmp_path / "hermes-home"),
         timeouts=TimeoutSettings(cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0),
         run=RunSettings(max_conversations=10),
     )
@@ -201,8 +201,10 @@ def build(
     skilling.install(settings)
 
     def fake_launch(settings: Settings, url: str) -> launcher.BrowserSession:
-        """`07`'s adoption, without a Chrome. `adopted` so nothing tries to
-        close a browser the test owns."""
+        """`07`'s adoption, without a Chrome.
+
+        `adopted` so nothing tries to close a browser the test owns.
+        """
         created.launches.append(url)
         return launcher.BrowserSession(
             client=CdpClient(port=browser.chrome.port, timeout=2.0),
@@ -222,16 +224,14 @@ def build(
 
 
 def cli_env(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The world's settings, as the environment the CLI loads them from.
+    """Put the world's settings into the environment the CLI loads them from.
 
     Here rather than in one test module for the reason `World` is: `12` runs
     `import` through the CLI and `14` runs `import` and then `resume`.
     """
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(world.settings.workspace))
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(world.browser.chrome.port))
-    monkeypatch.setenv(
-        "DATAPORTER_HERMES__EXECUTABLE", str(world.settings.hermes.executable)
-    )
+    monkeypatch.setenv("DATAPORTER_HERMES__EXECUTABLE", str(world.settings.hermes.executable))
     monkeypatch.setenv("DATAPORTER_HERMES__HOME", str(world.settings.hermes_home))
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__HERMES_TASK_S", "60")

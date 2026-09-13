@@ -58,8 +58,10 @@ def conversation(messages: list[dict[str, Any]], **extra: Any) -> Conversation:
 
 
 def test_known_block_types_match_the_union() -> None:
-    """The hand-written constant is what `_coerce_block` dispatches on, so it has
-    to stay in step with the union it stands for."""
+    """The hand-written constant is what `_coerce_block` dispatches on.
+
+    It has to stay in step with the union it stands for.
+    """
     members = get_args(get_args(KnownContentBlock)[0])
     tags = {get_args(member.model_fields["type"].annotation)[0] for member in members}
     assert tags == set(KNOWN_BLOCK_TYPES)
@@ -84,20 +86,18 @@ def test_a_known_tag_with_a_broken_payload_is_kept_whole() -> None:
 def test_a_block_that_is_not_an_object_survives() -> None:
     (block,) = BLOCKS.validate_python(["just a string"])
     assert isinstance(block, UnknownBlock)
-    assert block.type == ""
+    assert not block.type
     assert block.raw == {"value": "just a string"}
 
 
 def test_a_block_with_no_type_survives() -> None:
     (block,) = BLOCKS.validate_python([{"text": "orphaned"}])
     assert isinstance(block, UnknownBlock)
-    assert block.type == ""
+    assert not block.type
 
 
 def test_known_blocks_dispatch_exactly() -> None:
-    blocks = BLOCKS.validate_python(
-        [{"type": "text", "text": "hi"}, {"type": "tool_use", "name": "artifacts"}]
-    )
+    blocks = BLOCKS.validate_python([{"type": "text", "text": "hi"}, {"type": "tool_use", "name": "artifacts"}])
     assert isinstance(blocks[0], TextBlock)
     assert isinstance(blocks[1], ToolUseBlock)
 
@@ -139,7 +139,7 @@ TIMESTAMPS = [
 ]
 
 
-@pytest.mark.parametrize("raw, hour", TIMESTAMPS, ids=lambda value: str(value))
+@pytest.mark.parametrize(("raw", "hour"), TIMESTAMPS, ids=str)
 def test_timestamps_are_utc_aware(raw: str, hour: int) -> None:
     chat = conversation([{**message("m1"), "created_at": raw}])
     created = chat.chat_messages[0].created_at
@@ -167,13 +167,11 @@ def test_the_named_leaf_wins() -> None:
 
 
 def test_without_a_named_leaf_the_latest_childless_message_wins() -> None:
-    chat = conversation(
-        [
-            message("m1", minute=0),
-            message("m2", parent="m1", minute=1),
-            message("m3", parent="m1", minute=5),
-        ]
-    )
+    chat = conversation([
+        message("m1", minute=0),
+        message("m2", parent="m1", minute=1),
+        message("m3", parent="m1", minute=5),
+    ])
     assert [m.uuid for m in chat.active_path()] == ["m1", "m3"]
 
 
@@ -193,17 +191,13 @@ def test_an_empty_conversation_has_empty_paths() -> None:
 
 
 def test_a_cycle_terminates() -> None:
-    chat = conversation(
-        [message("m1", parent="m2", minute=0), message("m2", parent="m1", minute=1)]
-    )
+    chat = conversation([message("m1", parent="m2", minute=0), message("m2", parent="m1", minute=1)])
     assert {m.uuid for m in chat.active_path()} == {"m1", "m2"}
 
 
 def test_a_missing_parent_stops_the_walk() -> None:
     """Dropping an unknown-sender message severs its children; the rest survives."""
-    chat = conversation(
-        [message("m2", parent="gone", minute=1), message("m3", parent="m2", minute=2)]
-    )
+    chat = conversation([message("m2", parent="gone", minute=1), message("m3", parent="m2", minute=2)])
     assert [m.uuid for m in chat.active_path()] == ["m2", "m3"]
 
 
@@ -230,10 +224,8 @@ ORDERING: list[tuple[str, list[tuple[int | None, int]], list[str]]] = [
 ]
 
 
-@pytest.mark.parametrize("name, rows, expected", ORDERING, ids=lambda item: str(item))
-def test_ordering(
-    name: str, rows: list[tuple[int | None, int]], expected: list[str]
-) -> None:
+@pytest.mark.parametrize(("name", "rows", "expected"), ORDERING, ids=str)
+def test_ordering(name: str, rows: list[tuple[int | None, int]], expected: list[str]) -> None:
     # Chained, so all three are on the active path and only the ordering rule
     # decides what comes out.
     messages = [

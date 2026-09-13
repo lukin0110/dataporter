@@ -16,7 +16,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from dataporter.browser import helpers, login_form, probe, session
 from dataporter.browser.cdp import CdpClient
@@ -25,7 +25,7 @@ from fake_chrome import Call, FakeChrome, FakeTarget
 
 
 def js_const(expression: str, name: str) -> Any:
-    """The value of `const <name> = …;` in one of our expressions."""
+    """Return the value of `const <name> = …;` in one of our expressions."""
     prefix = f"  const {name} = "
     for line in expression.splitlines():
         if line.startswith(prefix):
@@ -130,10 +130,7 @@ class FakePage:
         """Every turn, in page order, each answering the caller's questions."""
         if self.transcript is None:
             return [
-                *(
-                    {"role": "human", "chars": 1, "contains": list(expect)}
-                    for _ in range(max(len(expect), 1))
-                ),
+                *({"role": "human", "chars": 1, "contains": list(expect)} for _ in range(max(len(expect), 1))),
                 {"role": "assistant", "chars": 1, "contains": list(expect)},
             ]
         return [
@@ -150,9 +147,7 @@ class FakePage:
         return {
             "chars": len(expected or "") if self.title is None else len(shown),
             "source": "chat",
-            "matches": None
-            if expected is None
-            else (True if self.title is None else shown == expected),
+            "matches": None if expected is None else (True if self.title is None else shown == expected),
         }
 
     def attached(self, file_name: str) -> bool:
@@ -172,10 +167,10 @@ class FakePage:
 
     # -- answering CDP ------------------------------------------------------- #
 
-    def evaluate(self, expression: str) -> Any:
+    def evaluate(self, expression: str) -> Any:  # ruff: ignore[complex-structure, too-many-branches, too-many-return-statements] - one answer per probe
         if expression == "location.href":
             return self.url
-        if expression in (session.READY_JS, login_form.SETTLED_JS):
+        if expression in {session.READY_JS, login_form.SETTLED_JS}:
             # The two settle checks: `07`'s, which answers the URL once the
             # document has finished loading, and `24`'s, which answers whether
             # it has. A page mid-navigation says no to both.
@@ -213,9 +208,7 @@ class FakePage:
             # `16`'s check before the first paste: which of these files the page
             # is carrying, in one look. The per-file poll count does not apply —
             # `attach` has already waited for each chip.
-            return [
-                item for item in js_const(expression, "names") if self.attached(item)
-            ]
+            return [item for item in js_const(expression, "names") if self.attached(item)]
         if helpers.CHIP_TAG in expression:
             self.chip_asks += 1
             name = js_const(expression, "name")
@@ -247,7 +240,7 @@ class FakePage:
 
 
 def responder(pages: dict[str, FakePage]) -> Callable[[Any, Call], Any]:
-    """A `FakeChrome` responder that routes each call to its target's page."""
+    """Return a `FakeChrome` responder that routes each call to its target's page."""
 
     def answer(fake: Any, call: Call) -> dict[str, Any] | None:
         page = pages.get(call.path.rsplit("/", 1)[-1])
@@ -275,14 +268,11 @@ class Browser:
     def __init__(self, *pages: FakePage) -> None:
         self.pages = {f"page-{index}": page for index, page in enumerate(pages, 1)}
         self.chrome = FakeChrome(
-            targets=[
-                FakeTarget(id=identifier, url=page.url)
-                for identifier, page in self.pages.items()
-            ],
+            targets=[FakeTarget(id=identifier, url=page.url) for identifier, page in self.pages.items()],
             responder=responder(self.pages),
         )
 
-    def __enter__(self) -> "Browser":
+    def __enter__(self) -> Self:
         self.chrome.__enter__()
         return self
 

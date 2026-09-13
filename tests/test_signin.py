@@ -46,17 +46,13 @@ def settings_for(
     return Settings(
         workspace=tmp_path / "migration",
         non_interactive=non_interactive,
-        auth=AuthSettings(email=EMAIL, password=SecretStr(SECRET))
-        if credentials
-        else AuthSettings(),
+        auth=AuthSettings(email=EMAIL, password=SecretStr(SECRET)) if credentials else AuthSettings(),
         browser=BrowserSettings(cdp_port=browser.chrome.port),
         hermes=HermesSettings(
             executable=fake.executable if fake is not None else tmp_path / "none",
             home=tmp_path / "hermes-home",
         ),
-        timeouts=TimeoutSettings(
-            cdp_call_s=2.0, hermes_cli_s=30.0, hermes_check_s=30.0, signin_s=0.5
-        ),
+        timeouts=TimeoutSettings(cdp_call_s=2.0, hermes_cli_s=30.0, hermes_check_s=30.0, signin_s=0.5),
     )
 
 
@@ -73,9 +69,7 @@ def hermes(tmp_path: Path, **result: object) -> FakeHermes:
 
 
 def form_ready(tmp_path: Path, *fields: str) -> FakeHermes:
-    return hermes(
-        tmp_path, outcome="form_ready", fields=list(fields), url=login_form.LOGIN_URL
-    )
+    return hermes(tmp_path, outcome="form_ready", fields=list(fields), url=login_form.LOGIN_URL)
 
 
 # -- the prompt ---------------------------------------------------------------- #
@@ -96,10 +90,7 @@ def test_credentials_are_required_before_anything_starts(tmp_path: Path) -> None
         settings = settings_for(tmp_path, None, browser, credentials=False)
         with pytest.raises(UsageError, match="DATAPORTER_AUTH__EMAIL"):
             signin.require_credentials(settings)
-        assert (
-            signin.require_credentials(settings_for(tmp_path, None, browser)).email
-            == EMAIL
-        )
+        assert signin.require_credentials(settings_for(tmp_path, None, browser)).email == EMAIL
 
 
 # -- the two halves ------------------------------------------------------------ #
@@ -112,7 +103,7 @@ def test_the_form_is_reached_then_filled_then_proved(tmp_path: Path) -> None:
         settings = settings_for(tmp_path, fake, browser)
         outcome = signin.SignIn(settings).perform(session_of(browser, settings))
 
-    assert outcome == signin.SignInOutcome(True, filled=("email", "password"))
+    assert outcome == signin.SignInOutcome(signed_in=True, filled=("email", "password"))
     assert page.typed == {"email": EMAIL, "password": SECRET}
     assert page.stage == "done"
     assert len(fake.one_shots) == 1
@@ -128,15 +119,12 @@ def test_the_secret_reaches_the_page_and_nothing_else(tmp_path: Path) -> None:
         calls = browser.chrome.calls
 
     call = fake.one_shots[0]
-    assert SECRET not in call.prompt and EMAIL not in call.prompt
+    assert SECRET not in call.prompt
+    assert EMAIL not in call.prompt
     assert not any(SECRET in value or EMAIL in value for value in call.env.values())
     assert not any(SECRET in item or EMAIL in item for item in call.argv)
     assert not any(SECRET in item for item in page.expressions)
-    inserted = [
-        str(item.params.get("text"))
-        for item in calls
-        if item.method == "Input.insertText"
-    ]
+    inserted = [str(item.params.get("text")) for item in calls if item.method == "Input.insertText"]
     assert inserted == [EMAIL, SECRET]
 
 
@@ -178,9 +166,7 @@ def test_what_the_agent_could_not_reach_is_not_typed_into(
 
 
 @pytest.mark.parametrize("answer", ["", "not json", '{"outcome": "elsewhere"}'])
-def test_an_agent_that_did_not_answer_is_hermes_failed(
-    tmp_path: Path, answer: str
-) -> None:
+def test_an_agent_that_did_not_answer_is_hermes_failed(tmp_path: Path, answer: str) -> None:
     page = LoginForm()
     fake = FakeHermes(root=tmp_path / "bin").write(answer=answer)
     with Browser(page) as browser:
@@ -200,9 +186,7 @@ def test_each_attempt_gets_its_own_run_id(tmp_path: Path) -> None:
         session = session_of(browser, settings)
         signer.perform(session)
         signer.perform(session)
-    names = sorted(
-        item.name for item in settings.hermes_dir.glob("signin-*.stdout.txt")
-    )
+    names = sorted(item.name for item in settings.hermes_dir.glob("signin-*.stdout.txt"))
     assert names == ["signin-1.stdout.txt", "signin-2.stdout.txt"]
 
 
@@ -238,9 +222,7 @@ def test_unattended_a_sign_in_that_stopped_names_the_reason_and_the_remedy(
         settings = settings_for(tmp_path, form_ready(tmp_path, "email"), browser)
         with pytest.raises(AuthError) as raised:
             signin.ensure_signed_in(settings, session_of(browser, settings))
-    assert raised.value.detail == (
-        "automatic sign-in stopped: authentication required — run: dataporter login"
-    )
+    assert raised.value.detail == ("automatic sign-in stopped: authentication required — run: dataporter login")
 
 
 # -- the skill's section, performed ------------------------------------------ #
@@ -275,9 +257,7 @@ def test_the_sign_in_prompt_is_performable(tmp_path: Path) -> None:
         (["challenge"], "security_challenge"),
     ],
 )
-def test_what_is_not_a_form_is_reported_as_the_skill_says(
-    tmp_path: Path, shows: list[str], reason: str
-) -> None:
+def test_what_is_not_a_form_is_reported_as_the_skill_says(tmp_path: Path, shows: list[str], reason: str) -> None:
     printed = ScriptedSignIn(_Page(shows)).run(signin.prompt(workspace=tmp_path))
     found = signin.FormResult.model_validate(printed)
     assert (found.outcome, found.needs_human_reason) == ("needs_human", reason)

@@ -1,4 +1,4 @@
-"""Migration seeds: the files a new chat is fed, and the hashes that prove it.
+r"""Migration seeds: the files a new chat is fed, and the hashes that prove it.
 
 `03` landed the renderer in `render.py`, because it could not compute
 `chunk_count` or `estimated_seed_chars` without one. What is left to this slice is
@@ -8,7 +8,7 @@ lives in `render.py` and is not restated here.
 
 Determinism is the property to protect: the same conversation and the same
 settings produce byte-identical files. Nothing here reads a clock, a random number
-or an environment variable, and every part is written UTF-8 with `\\n` endings, so
+or an environment variable, and every part is written UTF-8 with `\n` endings, so
 the sha256 recorded in memory is the sha256 of the bytes on disk on every
 platform.
 
@@ -30,7 +30,9 @@ from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import UnsupportedError
 from dataporter.exit_codes import ExitCode
+from dataporter.export import load_export
 from dataporter.export.model import Conversation
+from dataporter.selection import export_path, selected_conversations
 
 _logger = log.get_logger(__name__)
 
@@ -48,7 +50,7 @@ def part_filename(index: int) -> str:
 
 
 def sha256_of(text: str) -> str:
-    """The hash `08`'s paste helper compares against, over UTF-8 bytes.
+    """Return the hash `08`'s paste helper compares against, over UTF-8 bytes.
 
     `orval.hashify` of a `str` is sha256 over `str.encode()`, which is UTF-8: the
     same digest this has always produced. Pinned by a test rather than trusted,
@@ -125,9 +127,7 @@ def from_rendered(rendered: render.RenderedConversation) -> Seed:
             message_uuids=list(uuids),
             ack=render.ack_line(rendered.short_id, index, total),
         )
-        for index, (text, uuids) in enumerate(
-            zip(rendered.chunks, rendered.chunk_message_uuids, strict=True), start=1
-        )
+        for index, (text, uuids) in enumerate(zip(rendered.chunks, rendered.chunk_message_uuids, strict=True), start=1)
     ]
     return Seed(
         conversation_uuid=rendered.conversation_uuid,
@@ -207,9 +207,7 @@ def write_seed(seed: Seed, root: Path) -> list[Path]:
     never share a directory.
     """
     if not planning.safe_component(seed.conversation_uuid):
-        raise UnsupportedError(
-            detail=f"conversation id is not a usable directory name: {seed.short_id}"
-        )
+        raise UnsupportedError(detail=f"conversation id is not a usable directory name: {seed.short_id}")
     directory = root / seed.conversation_uuid
     directory.mkdir(parents=True, exist_ok=True)
     for stale in sorted(directory.glob(PART_GLOB)):
@@ -271,9 +269,6 @@ def write_seeds(
     accounting lives. `quiet` suppresses the written lines and nothing else: they
     are progress, and the notes are results.
     """
-    from dataporter.export import load_export
-    from dataporter.selection import export_path, selected_conversations
-
     path = export_path(export)
     store.refuse_workspace_inside(path, settings.workspace)
     root = out if out is not None else settings.seeds_dir
@@ -287,9 +282,7 @@ def write_seeds(
         if outcome.seed is None:
             reason = outcome.reason or ""
             skipped.append((outcome.short_id, reason))
-            sink.note(
-                SKIPPED.format(short_id=log.safe_token(outcome.short_id), reason=reason)
-            )
+            sink.note(SKIPPED.format(short_id=log.safe_token(outcome.short_id), reason=reason))
             continue
         write_seed(outcome.seed, root)
         written += 1

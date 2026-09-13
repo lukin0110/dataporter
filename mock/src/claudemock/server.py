@@ -98,11 +98,13 @@ class Pending:
             self._pending.pop(token or "", None)
 
 
-class SignedOut(Exception):
-    """Raised by a route that needs a session and was not given one. The
-    handler turns it into the redirect to `/login`, so that `signed out` —
-    everything but the login page redirects to it, and the login page has no
-    composer — is one line in every route that needs it."""
+class SignedOutError(Exception):
+    """Raised by a route that needs a session and was not given one.
+
+    The handler turns it into the redirect to `/login`, so that `signed out` —
+    everything but the login page redirects to it, and the login page has no composer —
+    is one line in every route that needs it.
+    """
 
 
 class MessageIn(BaseModel):
@@ -117,7 +119,7 @@ class TitleIn(BaseModel):
 
 
 def set_cookie(response: Response, name: str, value: str) -> None:
-    """A cookie for the whole site. Only the session has a lifetime."""
+    """Set a cookie for the whole site. Only the session has a lifetime."""
     response.set_cookie(
         name,
         value,
@@ -150,8 +152,8 @@ def chat_json(chat: Chat, now: float) -> dict[str, Any]:
 # -- the application ---------------------------------------------------------- #
 
 
-def create_app(site: Site) -> FastAPI:
-    """The site as an ASGI application: every route the mock answers.
+def create_app(site: Site) -> FastAPI:  # ruff: ignore[complex-structure, too-many-statements] - one route per function
+    """Return the site as an ASGI application: every route the mock answers.
 
     A factory rather than a module-level `app`, because the site it serves is
     constructed per process — and per test, which is what keeps the tests of
@@ -163,13 +165,13 @@ def create_app(site: Site) -> FastAPI:
     def session(request: Request) -> str:
         token = request.cookies.get(SESSION_COOKIE)
         if not site.signed_in(token):
-            raise SignedOut
+            raise SignedOutError
         return str(token)
 
-    Session = Annotated[str, Depends(session)]  # noqa: N806 - it names a type
+    Session = Annotated[str, Depends(session)]  # ruff: ignore[non-lowercase-variable-in-function] - it names a type
 
-    @app.exception_handler(SignedOut)
-    def signed_out(_request: Request, _failure: SignedOut) -> Response:
+    @app.exception_handler(SignedOutError)
+    def signed_out(_request: Request, _failure: SignedOutError) -> Response:
         return redirect("/login")
 
     # -- the witness ------------------------------------------------------- #
@@ -211,7 +213,7 @@ def create_app(site: Site) -> FastAPI:
 
     @app.post("/login/email")
     def submit_email(request: Request, email: Annotated[str, Form()] = "") -> Response:
-        """The first step. Exactly one address gets past it (§21)."""
+        """Return the first step. Exactly one address gets past it (§21)."""
         token = request.cookies.get(LOGIN_COOKIE) or pending.new_login_token()
         if email != site.email:
             pending.forget(token)
@@ -220,9 +222,7 @@ def create_app(site: Site) -> FastAPI:
         return redirect("/login", **{LOGIN_COOKIE: token})
 
     @app.post("/login/password")
-    def submit_password(
-        request: Request, password: Annotated[str, Form()] = ""
-    ) -> Response:
+    def submit_password(request: Request, password: Annotated[str, Form()] = "") -> Response:
         token = request.cookies.get(LOGIN_COOKIE) or ""
         email = pending.pending(token)
         if not email or not site.credentials_match(email, password):
@@ -244,9 +244,7 @@ def create_app(site: Site) -> FastAPI:
         if chat is None:
             return not_found()
         now = site.now()
-        return HTMLResponse(
-            pages.chat_page(chat, chat.view(now), generating=chat.generating(now))
-        )
+        return HTMLResponse(pages.chat_page(chat, chat.view(now), generating=chat.generating(now)))
 
     @app.get("/api/chats/{chat_id}")
     def read_chat(_session: Session, chat_id: str) -> Response:
@@ -278,11 +276,14 @@ def create_app(site: Site) -> FastAPI:
 
     @app.post("/api/uploads")
     async def upload(session: Session, request: Request) -> Response:
-        """A file into the composer. The bytes are read and dropped: what a
-        rehearsal checks is that the site took the file and showed its name.
+        """Take a file into the composer.
+
+        The bytes are read and dropped: what a rehearsal checks is that the site took
+        the file and showed its name.
 
         The one `async def` here, because the body is the request's to read
-        and reading it is the only thing this route awaits."""
+        and reading it is the only thing this route awaits.
+        """
         name = unquote(request.headers.get("X-File-Name", "") or "")
         length = int(request.headers.get("Content-Length") or 0)
         payload = await request.body() if 0 < length <= MAX_BODY_BYTES else b""
@@ -296,8 +297,11 @@ def create_app(site: Site) -> FastAPI:
     @app.get("/{_rest:path}")
     @app.post("/{_rest:path}")
     def anything_else(_session: Session, _rest: str) -> Response:
-        """Last, so it catches only what no route above did: signed out, it
-        is the login page like everything else; signed in, it is not there."""
+        """Last, so it catches only what no route above did.
+
+        Signed out, it is the login page like everything else; signed in, it is not
+        there.
+        """
         return not_found()
 
     return app
@@ -309,9 +313,7 @@ def create_app(site: Site) -> FastAPI:
 class MockServer:
     """The HTTPS server, running on its own thread until it is closed."""
 
-    def __init__(
-        self, app: FastAPI, sock: socket.socket, material: certificate.Material
-    ) -> None:
+    def __init__(self, app: FastAPI, sock: socket.socket, material: certificate.Material) -> None:
         self.app = app
         self._socket = sock
         self._server = uvicorn.Server(
@@ -332,11 +334,14 @@ class MockServer:
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def _run(self) -> None:
-        """The thread's body: uvicorn, and whatever stopped it, kept for
-        `start` to report rather than printed by the thread on its way out."""
+        """Run the thread's body.
+
+        Uvicorn, and whatever stopped it, kept for `start` to report rather than printed
+        by the thread on its way out.
+        """
         try:
             self._server.run(sockets=[self._socket])
-        except BaseException as failure:
+        except BaseException as failure:  # ruff: ignore[blind-except] — whatever stopped it is the report
             self._failure = failure
 
     @property
@@ -345,22 +350,25 @@ class MockServer:
 
     def start(self, timeout_s: float = STARTUP_TIMEOUT_S) -> None:
         """Start the thread and wait until uvicorn is accepting connections.
-        A start that fails closes what it opened: the port is released rather
-        than held by a thread nobody will join."""
+
+        A start that fails closes what it opened: the port is released rather than held
+        by a thread nobody will join.
+        """
         self._thread.start()
-        deadline = time.monotonic() + timeout_s
         try:
-            while not self._server.started:
-                if not self._thread.is_alive():
-                    raise RuntimeError(
-                        "the mock's server stopped before it started"
-                    ) from self._failure
-                if time.monotonic() > deadline:
-                    raise RuntimeError("the mock's server did not start in time")
-                time.sleep(0.005)
+            self._await_started(time.monotonic() + timeout_s)
         except BaseException:
             self.close()
             raise
+
+    def _await_started(self, deadline: float) -> None:
+        """Block until uvicorn reports itself started, or say why it never will."""
+        while not self._server.started:
+            if not self._thread.is_alive():
+                raise RuntimeError("the mock's server stopped before it started") from self._failure
+            if time.monotonic() > deadline:
+                raise RuntimeError("the mock's server did not start in time")
+            time.sleep(0.005)
 
     def close(self) -> None:
         """Stop accepting, finish what is in flight, and release the port."""
@@ -371,10 +379,12 @@ class MockServer:
 
 
 def listen(host: str, port: int) -> socket.socket:
-    """A bound socket, before the server exists. Binding here rather than in
-    uvicorn is what makes `port=0` answerable — the tests ask for any free port
-    and need to know which one they got — and what makes a port already in use
-    an error in the caller's thread rather than in the server's."""
+    """Return a bound socket, before the server exists.
+
+    Binding here rather than in uvicorn is what makes `port=0` answerable — the tests
+    ask for any free port and need to know which one they got — and what makes a port
+    already in use an error in the caller's thread rather than in the server's.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
@@ -392,7 +402,7 @@ def serve(
     host: str = "127.0.0.1",
     material: certificate.Material,
 ) -> MockServer:
-    """A started server, listening. The caller closes it."""
+    """Return a started server, listening. The caller closes it."""
     sock = listen(host, port)
     try:
         server = MockServer(create_app(site), sock, material)

@@ -104,15 +104,13 @@ LIMITATIONS_BLOCK = (
 
 def entry(**fields: object) -> ConversationState:
     """One `state.json` entry, defaulted to a conversation that completed."""
-    return ConversationState.model_validate(
-        {
-            "title": "Naming the tool",
-            "status": Status.COMPLETED,
-            "destination": Destination(conversation_id="chat-1"),
-            "messages_represented": 3,
-            **fields,
-        }
-    )
+    return ConversationState.model_validate({
+        "title": "Naming the tool",
+        "status": Status.COMPLETED,
+        "destination": Destination(conversation_id="chat-1"),
+        "messages_represented": 3,
+        **fields,
+    })
 
 
 FIXTURE_ENTRIES: dict[str, ConversationState] = {
@@ -159,7 +157,7 @@ FIXTURE_ENTRIES: dict[str, ConversationState] = {
 
 
 def write_plan(root: Path, *, conversations: int, attachments: int) -> None:
-    """A `plan.json` with the two totals `19` reads and no conversations.
+    """Write a `plan.json` with the two totals `19` reads and no conversations.
 
     The report takes "source conversations" and "attachments found" off
     `totals`; a per-conversation list would be fixture that nothing here reads,
@@ -186,7 +184,7 @@ def workspace_of(
     attachments: int = 2,
     counters: Mapping[str, int] | None = None,
 ) -> Path:
-    """The three files `report` reads, written the way a run writes them."""
+    """Return the three files `report` reads, written the way a run writes them."""
     store = state.StateStore(root)
     for uuid, item in entries.items():
         store.update(uuid, **item.model_dump())
@@ -202,14 +200,11 @@ def workspace_of(
 
 
 def actions(root: Path, records: int) -> None:
-    """`records` lines in `logs/actions.jsonl`, as `08`'s helpers write them."""
+    """Write `records` lines in `logs/actions.jsonl`, as `08`'s helpers write them."""
     path = root / "logs" / "actions.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "".join(
-            json.dumps({"helper": "paste", "ok": True, "elapsed_ms": 1}) + "\n"
-            for _ in range(records)
-        ),
+        "".join(json.dumps({"helper": "paste", "ok": True, "elapsed_ms": 1}) + "\n" for _ in range(records)),
         encoding="utf-8",
     )
 
@@ -245,8 +240,10 @@ def test_every_line_of_the_block_is_the_same_width() -> None:
 
 
 def test_a_six_figure_count_widens_the_block_past_its_floor() -> None:
-    """`MIN_WIDTH` is a floor, not a field: a bigger export widens every line
-    rather than losing a separator."""
+    """`MIN_WIDTH` is a floor, not a field.
+
+    A bigger export widens every line rather than losing a separator.
+    """
     totals = BRIEF_TOTALS.model_copy(update={"browser_actions": 123_456_789})
     lines = [line for line in report.block(totals).splitlines() if line][1:]
     assert {len(line) for line in lines} == {33}
@@ -259,9 +256,11 @@ def test_a_six_figure_count_widens_the_block_past_its_floor() -> None:
 
 
 def test_the_fixture_renders_the_failures_section_exactly(tmp_path: Path) -> None:
-    """`19`'s second criterion: two failures and one partial, as the spec writes
-    them — and the spec is checked against the same bytes, because that block is
-    where these columns are written down."""
+    """`19`'s second criterion.
+
+    Two failures and one partial, as the spec writes them — and the spec is checked
+    against the same bytes, because that block is where these columns are written down.
+    """
     built = report.build(workspace_of(tmp_path))
 
     rendered = "".join(f"{line}\n" for line in report.failure_lines(built.failures))
@@ -288,8 +287,11 @@ def test_the_failure_list_is_partial_and_failed_in_state_order(
 
 
 def test_a_failure_carries_the_chat_it_left_behind(tmp_path: Path) -> None:
-    """§16 asks for the source conversation; `16`'s partial also has a
-    destination one, and an operator's next move is to go and look at it."""
+    """§16 asks for the source conversation.
+
+    `16`'s partial also has a destination one, and an operator's next move is to go and
+    look at it.
+    """
     built = report.build(workspace_of(tmp_path))
     records = {record.short_id: record for record in built.failures}
     assert records["8a02c7d1"].destination_conversation_id == "chat-1"
@@ -298,9 +300,11 @@ def test_a_failure_carries_the_chat_it_left_behind(tmp_path: Path) -> None:
 
 
 def test_an_entry_with_no_error_of_its_own_renders_a_dash(tmp_path: Path) -> None:
-    """The `partial` crash recovery leaves behind: a chat exists, nothing said
-    why. A dash says the file holds no reason rather than inventing one, and
-    `retry=unknown` says nobody decided."""
+    """The `partial` crash recovery leaves behind: a chat exists, nothing said why.
+
+    A dash says the file holds no reason rather than inventing one, and `retry=unknown`
+    says nobody decided.
+    """
     entries = {PARTIAL_VERIFY: entry(status=Status.PARTIAL, error=None)}
     built = report.build(workspace_of(tmp_path, entries))
 
@@ -338,8 +342,10 @@ def test_both_sections_are_safe_to_render_from_nothing() -> None:
 
 
 def test_two_invocations_print_the_same_bytes(tmp_path: Path) -> None:
-    """`generated_at` differs between them and is not in the block, which is
-    what lets a report be diffed against the one taken yesterday."""
+    """`generated_at` differs between them and is not in the block.
+
+    That is what lets a report be diffed against the one taken yesterday.
+    """
     root = workspace_of(tmp_path)
     first, second = report.build(root), report.build(root)
     assert report.render(first) == report.render(second)
@@ -347,17 +353,17 @@ def test_two_invocations_print_the_same_bytes(tmp_path: Path) -> None:
 
 
 def test_the_text_survives_a_json_round_trip(tmp_path: Path) -> None:
-    """`19`'s third criterion, and the reason the text is derived from a model:
-    `report --json` and `report` are two renderings of one object."""
+    """`19`'s third criterion, and the reason the text is derived from a model.
+
+    `report --json` and `report` are two renderings of one object.
+    """
     built = report.build(workspace_of(tmp_path))
     again = report.Report.model_validate_json(built.model_dump_json())
     assert again == built
     assert report.render(again) == report.render(built)
 
 
-def test_the_command_prints_the_same_bytes_as_the_model(
-    runner: CliRunner, tmp_path: Path
-) -> None:
+def test_the_command_prints_the_same_bytes_as_the_model(runner: CliRunner, tmp_path: Path) -> None:
     root = workspace_of(tmp_path)
     code, out, _ = run_cli(runner, "--workspace", str(root), "report")
     assert code == ExitCode.OK
@@ -368,14 +374,14 @@ def test_report_json_prints_the_model(runner: CliRunner, tmp_path: Path) -> None
     root = workspace_of(tmp_path)
     code, out, _ = run_cli(runner, "--workspace", str(root), "report", "--json")
     assert code == ExitCode.OK
-    assert report.render(report.Report.model_validate_json(out)) == report.render(
-        report.build(root)
-    )
+    assert report.render(report.Report.model_validate_json(out)) == report.render(report.build(root))
 
 
 def test_the_command_writes_nothing(runner: CliRunner, tmp_path: Path) -> None:
-    """`report` answers a question about a workspace; `import` is what writes
-    `report.json`, under the lock."""
+    """`report` answers a question about a workspace.
+
+    `import` is what writes `report.json`, under the lock.
+    """
     root = workspace_of(tmp_path)
     before = sorted(path.name for path in root.iterdir())
     run_cli(runner, "--workspace", str(root), "report")
@@ -391,14 +397,14 @@ def test_the_command_writes_nothing(runner: CliRunner, tmp_path: Path) -> None:
 def test_the_four_statuses_account_for_every_source_conversation(
     tmp_path: Path,
 ) -> None:
-    """`19`'s fourth criterion, on the fixture. `Pending` is the remainder, so a
-    conversation `--limit` never reached is counted without an entry."""
+    """`19`'s fourth criterion, on the fixture.
+
+    `Pending` is the remainder, so a conversation `--limit` never reached is counted
+    without an entry.
+    """
     totals = report.build(workspace_of(tmp_path, conversations=7)).totals
     assert totals.source_conversations == 7
-    assert (
-        totals.created + totals.partial + totals.failed + totals.pending
-        == totals.source_conversations
-    )
+    assert totals.created + totals.partial + totals.failed + totals.pending == totals.source_conversations
     assert totals.pending == 3
 
 
@@ -422,24 +428,18 @@ def test_the_attachment_counts_reconcile_with_the_plan(tmp_path: Path) -> None:
             )
         )
     }
-    attachments = report.build(
-        workspace_of(tmp_path, entries, attachments=4)
-    ).attachments
-    assert (
-        attachments.inline
-        + attachments.uploaded
-        + attachments.unsupported
-        + attachments.failed
-        == attachments.found
-    )
+    attachments = report.build(workspace_of(tmp_path, entries, attachments=4)).attachments
+    assert attachments.inline + attachments.uploaded + attachments.unsupported + attachments.failed == attachments.found
     # `skipped` reads the detail rather than the flag: it is the subset of
     # `unsupported` an operator asked for, not a fifth outcome.
     assert attachments.skipped == 1
 
 
 def test_attachments_migrated_is_what_is_in_the_new_chat(tmp_path: Path) -> None:
-    """Uploads and inlined text both reached the destination; the other two did
-    not, and the block says "migrated"."""
+    """Uploads and inlined text both reached the destination.
+
+    The other two did not, and the block says "migrated".
+    """
     totals = report.build(workspace_of(tmp_path)).totals
     assert totals.attachments_migrated == 2
 
@@ -447,8 +447,11 @@ def test_attachments_migrated_is_what_is_in_the_new_chat(tmp_path: Path) -> None
 def test_messages_represented_counts_the_conversations_that_landed(
     tmp_path: Path,
 ) -> None:
-    """Completed and partial: a failed conversation represents nothing, however
-    many messages the export had for it."""
+    """Completed and partial.
+
+    A failed conversation represents nothing, however many messages the export had for
+    it.
+    """
     totals = report.build(workspace_of(tmp_path)).totals
     assert totals.messages_represented == 5
 
@@ -466,8 +469,7 @@ def test_pending_is_printed_after_failed_when_there_is_any(tmp_path: Path) -> No
 
 
 def test_pending_is_left_out_when_it_is_zero(tmp_path: Path) -> None:
-    """A finished migration that printed `Pending: 0` would invite the question
-    the line exists to answer."""
+    """A finished migration that printed `Pending: 0` would invite the question the line exists to answer."""
     built = report.build(workspace_of(tmp_path))
     assert built.totals.pending == 0
     assert report.PENDING_LABEL not in report.render(built)
@@ -493,8 +495,10 @@ def test_the_limitation_block_is_the_spec_s_own(tmp_path: Path) -> None:
 
 
 def test_a_counted_slug_is_folded_to_its_name(tmp_path: Path) -> None:
-    """`04` writes `thinking_omitted:3` against one conversation. The column
-    counts conversations, so the number stays in `state.json`."""
+    """`04` writes `thinking_omitted:3` against one conversation.
+
+    The column counts conversations, so the number stays in `state.json`.
+    """
     built = report.build(workspace_of(tmp_path))
     assert built.limitations == {
         "timestamps_not_preserved": 2,
@@ -510,12 +514,8 @@ def test_one_conversation_counts_once_per_limitation(tmp_path: Path) -> None:
     workspace an older build wrote can hold both, and a count that read 2 for one
     chat would be a column meaning two things.
     """
-    entries = {
-        COMPLETED: entry(limitations=["thinking_omitted:3", "thinking_omitted:1"])
-    }
-    assert report.build(workspace_of(tmp_path, entries)).limitations == {
-        "thinking_omitted": 1
-    }
+    entries = {COMPLETED: entry(limitations=["thinking_omitted:3", "thinking_omitted:1"])}
+    assert report.build(workspace_of(tmp_path, entries)).limitations == {"thinking_omitted": 1}
 
 
 def test_limitations_sort_by_count_then_name(tmp_path: Path) -> None:
@@ -536,9 +536,10 @@ def test_a_report_with_no_limitations_has_no_limitations_section(
 
 
 def test_every_limitation_name_is_written_down(tmp_path: Path) -> None:
-    """The spec's rule: each name the code can produce has an entry in
-    `docs/LIMITATIONS.md`, so a slug in a report is a slug an operator can look
-    up.
+    """The spec's rule.
+
+    Each name the code can produce has an entry in `docs/LIMITATIONS.md`, so a slug in a
+    report is a slug an operator can look up.
 
     An entry is a heading of its own since `21` gave each name a count and a
     kind; `tests/test_scale_up_doc.py` is what checks the rest of that shape.
@@ -566,8 +567,10 @@ def test_browser_actions_counts_the_records_our_helpers_wrote(
 
 
 def test_a_truncated_actions_log_falls_back_to_the_counter(tmp_path: Path) -> None:
-    """`run.json` counted the same lines as they were written, so a log that was
-    rotated cannot make a run look idler than it was."""
+    """`run.json` counted the same lines as they were written.
+
+    A log that was rotated cannot make a run look idler than it was.
+    """
     root = workspace_of(tmp_path, counters={"browser_actions": 1_842})
     actions(root, 2)
     assert report.build(root).totals.browser_actions == 1_842
@@ -584,8 +587,7 @@ def test_the_run_counters_are_read_from_run_json(tmp_path: Path) -> None:
 
 
 def test_the_runs_are_carried_into_the_json(tmp_path: Path) -> None:
-    """`20` reads them: how many invocations it took, and what each one asked
-    for."""
+    """`20` reads them: how many invocations it took, and what each one asked for."""
     root = workspace_of(tmp_path)
     store = state.StateStore(root)
     index = store.start_run(state.Selection(limit=2, uuids=[COMPLETED]))
@@ -603,17 +605,22 @@ def test_the_runs_are_carried_into_the_json(tmp_path: Path) -> None:
 
 
 def test_verification_counts_over_the_chats_that_exist(tmp_path: Path) -> None:
-    """The population is the conversations with a destination id: one that never
-    landed has nothing to read back. `not_run` is the remainder, so the three
-    sum to it."""
+    """The population is the conversations with a destination id.
+
+    One that never landed has nothing to read back. `not_run` is the remainder, so the
+    three sum to it.
+    """
     built = report.build(workspace_of(tmp_path))
     assert built.verification == {"verified": 1, "failed": 1, "not_run": 0}
     assert sum(built.verification.values()) == 2
 
 
 def test_a_chat_nothing_checked_is_not_a_failed_check(tmp_path: Path) -> None:
-    """A `completed` entry from a build that did not verify, and the `partial` a
-    crash left: neither is a verification that failed."""
+    """Neither is a verification that failed.
+
+    A `completed` entry from a build that did not verify, and the `partial` a crash
+    left.
+    """
     entries = {
         COMPLETED: entry(),
         PARTIAL_VERIFY: entry(status=Status.PARTIAL, error=None),
@@ -625,8 +632,10 @@ def test_a_chat_nothing_checked_is_not_a_failed_check(tmp_path: Path) -> None:
 def test_a_failure_of_its_own_is_counted_under_its_own_category(
     tmp_path: Path,
 ) -> None:
-    """`17` writes a `verification` error only where the run left no reason, so
-    a chat that failed a step and then its check is reported under the step."""
+    """`17` writes a `verification` error only where the run left no reason.
+
+    A chat that failed a step and then its check is reported under the step.
+    """
     entries = {
         PARTIAL_VERIFY: entry(
             status=Status.PARTIAL,
@@ -648,15 +657,18 @@ def test_report_without_a_plan_exits_2(runner: CliRunner, tmp_path: Path) -> Non
     code, out, err = run_cli(runner, "--workspace", str(tmp_path), "report")
     assert code == ExitCode.USAGE
     assert err == f"error: no plan.json in {tmp_path} — run `import` first\n"
-    assert out == ""
+    assert not out
 
 
 def test_a_plan_that_cannot_be_read_is_not_reported_as_a_missing_one(
     tmp_path: Path,
 ) -> None:
-    """Raised by Copilot in review on #28: only `FileNotFoundError` means "no
-    run has been made here". Anything else is a filesystem problem, and telling
-    an operator to run `import` would send them at the same file."""
+    """Raised by Copilot in review on #28.
+
+    Only `FileNotFoundError` means "no run has been made here". Anything else is a
+    filesystem problem, and telling an operator to run `import` would send them at the
+    same file.
+    """
     workspace_of(tmp_path)
     path = tmp_path / PLAN_FILENAME
     path.unlink()
@@ -676,19 +688,17 @@ def test_an_unreadable_plan_is_reported_as_one(tmp_path: Path) -> None:
     assert str(raised.value).startswith(f"invalid {PLAN_FILENAME}")
 
 
-def test_a_workspace_from_another_schema_stops_the_command(
-    runner: CliRunner, tmp_path: Path
-) -> None:
-    """`run.json` is read before anything is printed, like `status`: a workspace
-    a different build wrote is a version mismatch, not half a report."""
+def test_a_workspace_from_another_schema_stops_the_command(runner: CliRunner, tmp_path: Path) -> None:
+    """`run.json` is read before anything is printed, like `status`.
+
+    A workspace a different build wrote is a version mismatch, not half a report.
+    """
     workspace_of(tmp_path)
-    (tmp_path / state.RUN_FILENAME).write_text(
-        json.dumps({"schema_version": 99}), encoding="utf-8"
-    )
+    (tmp_path / state.RUN_FILENAME).write_text(json.dumps({"schema_version": 99}), encoding="utf-8")
     code, out, err = run_cli(runner, "--workspace", str(tmp_path), "report")
     assert code == ExitCode.USAGE
     assert "state schema" in err
-    assert out == ""
+    assert not out
 
 
 # --------------------------------------------------------------------------- #
@@ -711,9 +721,7 @@ def test_import_writes_the_report_and_prints_it_last(
     assert report.render(built) == report.render(report.build(world.settings.workspace))
 
 
-def test_quiet_keeps_the_report(
-    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_quiet_keeps_the_report(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     """`-q` suppresses progress, and this is what the run amounts to."""
     cli_env(world, monkeypatch)
 
@@ -723,8 +731,7 @@ def test_quiet_keeps_the_report(
 
 
 def test_the_identities_hold_on_a_real_run(world: World) -> None:
-    """`19`'s fourth criterion again, on a run of the fixture export rather than
-    on a workspace a test wrote.
+    """`19`'s fourth criterion again, on a run of the fixture export rather than on a workspace a test wrote.
 
     The whole export, because that is what the attachment identity needs: `16`'s
     four counts sum to what the plan found *for a conversation that has been
@@ -737,43 +744,33 @@ def test_the_identities_hold_on_a_real_run(world: World) -> None:
     totals, attachments = built.totals, built.attachments
     assert totals.source_conversations == 6
     assert totals.pending == 0
-    assert (
-        totals.created + totals.partial + totals.failed + totals.pending
-        == totals.source_conversations
-    )
-    assert (
-        attachments.inline
-        + attachments.uploaded
-        + attachments.unsupported
-        + attachments.failed
-        == attachments.found
-    )
+    assert totals.created + totals.partial + totals.failed + totals.pending == totals.source_conversations
+    assert attachments.inline + attachments.uploaded + attachments.unsupported + attachments.failed == attachments.found
     assert totals.browser_actions > 0
 
 
 def test_a_run_that_stopped_short_has_not_accounted_for_every_file(
     world: World,
 ) -> None:
-    """The other half of the identity, so that it is a rule rather than a
-    coincidence of the fixture: a conversation nothing has attempted has all
-    four of its counts at zero, and the difference is exactly its planned
-    files."""
+    """The other half of the identity.
+
+    That it is a rule rather than a coincidence of the fixture: a conversation nothing
+    has attempted has all four of its counts at zero, and the difference is exactly its
+    planned files.
+    """
     world.run(limit=2)
 
     attachments = report.build(world.settings.workspace).attachments
     assert attachments.found == 2
-    assert (
-        attachments.inline
-        + attachments.uploaded
-        + attachments.unsupported
-        + attachments.failed
-        == 0
-    )
+    assert attachments.inline + attachments.uploaded + attachments.unsupported + attachments.failed == 0
 
 
 def test_no_content_reaches_the_report(world: World) -> None:
-    """`19`'s fifth criterion. `state.json` holds the titles — §7 puts them
-    there — and neither the text nor the JSON carries one."""
+    """`19`'s fifth criterion.
+
+    `state.json` holds the titles — §7 puts them there — and neither the text nor the
+    JSON carries one.
+    """
     world.run(limit=2)
 
     built = report.build(world.settings.workspace)
@@ -789,26 +786,24 @@ def test_no_content_reaches_the_report(world: World) -> None:
 def test_a_failed_conversation_is_reported_with_its_reason(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The fixture's unmigratable conversation, through the whole loop: `12`
-    records it as `failed` with `03`'s reason, and §16's record is that line."""
+    """The fixture's unmigratable conversation, through the whole loop.
+
+    `12` records it as `failed` with `03`'s reason, and §16's record is that line.
+    """
     cli_env(world, monkeypatch)
 
     _, out, _ = run_cli(runner, "import", str(world.export), "--limit", "6")
 
     built = report.build(world.settings.workspace)
-    unsupported = [
-        record for record in built.failures if record.category is Category.UNSUPPORTED
-    ]
-    assert unsupported and unsupported[0].retry_recommended is False
+    unsupported = [record for record in built.failures if record.category is Category.UNSUPPORTED]
+    assert unsupported
+    assert unsupported[0].retry_recommended is False
     assert report.FAILURES_HEADER in out
 
 
 def test_automatic_sign_ins_are_a_line_only_when_there_were_any() -> None:
-    """`24`'s counter: the golden block is unchanged at zero, and one more line
-    under `Human interventions:` otherwise."""
-    assert report.block(BRIEF_TOTALS.model_copy(update={"auto_signins": 0})) == (
-        BRIEF_BLOCK
-    )
+    """`24`'s counter: the golden block is unchanged at zero, and one more line under `Human interventions:` otherwise."""
+    assert report.block(BRIEF_TOTALS.model_copy(update={"auto_signins": 0})) == (BRIEF_BLOCK)
     rendered = report.block(BRIEF_TOTALS.model_copy(update={"auto_signins": 3}))
     assert rendered == BRIEF_BLOCK + "Automatic sign-ins:            3\n"
 

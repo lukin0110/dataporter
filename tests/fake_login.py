@@ -68,9 +68,7 @@ class LoginForm(FakePage):
             if not self.focusable_fields:
                 return False
             selector = js_const(expression, "selector")
-            self.focused = (
-                "email" if selector == login_form.EMAIL_SELECTOR else "password"
-            )
+            self.focused = "email" if selector == login_form.EMAIL_SELECTOR else "password"
             return self.focused == self.stage
         return super().evaluate(expression)
 

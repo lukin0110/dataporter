@@ -35,29 +35,25 @@ OFF_PATH_TEXT = "`ferry` — short, and it carries things across."
 """The branch fixture's abandoned reply. It is never in a seed."""
 
 
-def one_turn(
-    text: str, uuid: str = "aaaaaaaa-1111-4111-8111-111111111111"
-) -> Conversation:
-    """A one-message conversation, for the rules the fixture does not exercise."""
-    return Conversation.model_validate(
-        {
-            "uuid": uuid,
-            "name": "One long turn",
-            "created_at": "2024-05-01T09:00:00Z",
-            "updated_at": "2024-05-01T09:00:00Z",
-            "chat_messages": [
-                {
-                    "uuid": "m1",
-                    "sender": "human",
-                    "text": text,
-                    "content": [],
-                    "created_at": "2024-05-01T09:00:00Z",
-                    "updated_at": "2024-05-01T09:00:00Z",
-                }
-            ],
-            "current_leaf_message_uuid": "m1",
-        }
-    )
+def one_turn(text: str, uuid: str = "aaaaaaaa-1111-4111-8111-111111111111") -> Conversation:
+    """Return a one-message conversation, for the rules the fixture does not exercise."""
+    return Conversation.model_validate({
+        "uuid": uuid,
+        "name": "One long turn",
+        "created_at": "2024-05-01T09:00:00Z",
+        "updated_at": "2024-05-01T09:00:00Z",
+        "chat_messages": [
+            {
+                "uuid": "m1",
+                "sender": "human",
+                "text": text,
+                "content": [],
+                "created_at": "2024-05-01T09:00:00Z",
+                "updated_at": "2024-05-01T09:00:00Z",
+            }
+        ],
+        "current_leaf_message_uuid": "m1",
+    })
 
 
 def settings_for(attachments_dir: Path, max_chars: int = 50_000) -> Settings:
@@ -68,20 +64,13 @@ def settings_for(attachments_dir: Path, max_chars: int = 50_000) -> Settings:
     )
 
 
-def seeds_of(
-    export_dir: Path, attachments_dir: Path, max_chars: int = 50_000
-) -> dict[str, seeding.SeedOutcome]:
+def seeds_of(export_dir: Path, attachments_dir: Path, max_chars: int = 50_000) -> dict[str, seeding.SeedOutcome]:
     generator = seeding.SeedGenerator(settings_for(attachments_dir, max_chars))
     export = load_export(export_dir)
-    return {
-        outcome.conversation_uuid: outcome
-        for outcome in generator.seeds(export.conversations)
-    }
+    return {outcome.conversation_uuid: outcome for outcome in generator.seeds(export.conversations)}
 
 
-def seed_of(
-    export_dir: Path, attachments_dir: Path, uuid: str, max_chars: int = 50_000
-) -> seeding.Seed:
+def seed_of(export_dir: Path, attachments_dir: Path, uuid: str, max_chars: int = 50_000) -> seeding.Seed:
     outcome = seeds_of(export_dir, attachments_dir, max_chars)[uuid]
     assert outcome.seed is not None
     return outcome.seed
@@ -92,19 +81,20 @@ def seed_of(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("uuid", MIGRATABLE, ids=lambda uuid: uuid[:8])
-def test_each_fixture_conversation_matches_its_golden_part(
-    export_dir: Path, attachments_dir: Path, uuid: str
-) -> None:
+def short_id(uuid: str) -> str:
+    """Return the eight characters a test id is read by."""
+    return uuid[:8]
+
+
+@pytest.mark.parametrize("uuid", MIGRATABLE, ids=short_id)
+def test_each_fixture_conversation_matches_its_golden_part(export_dir: Path, attachments_dir: Path, uuid: str) -> None:
     seed = seed_of(export_dir, attachments_dir, uuid)
     expected = (GOLDEN / "default" / uuid / "part-01.txt").read_bytes()
     assert len(seed.chunks) == 1
     assert seed.chunks[0].text.encode("utf-8") == expected
 
 
-def test_the_long_conversation_splits_into_two_golden_parts(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_the_long_conversation_splits_into_two_golden_parts(export_dir: Path, attachments_dir: Path) -> None:
     """The one fixture large enough to chunk, with the budget forced down."""
     seed = seed_of(export_dir, attachments_dir, LONG, max_chars=4_000)
     directory = GOLDEN / "max-4000" / LONG
@@ -114,9 +104,7 @@ def test_the_long_conversation_splits_into_two_golden_parts(
     ]
 
 
-def test_the_files_on_disk_are_the_golden_bytes(
-    export_dir: Path, attachments_dir: Path, tmp_path: Path
-) -> None:
+def test_the_files_on_disk_are_the_golden_bytes(export_dir: Path, attachments_dir: Path, tmp_path: Path) -> None:
     """The hash is of the text; the operator pastes the file. They must agree."""
     seed = seed_of(export_dir, attachments_dir, LONG, max_chars=4_000)
     written = seeding.write_seed(seed, tmp_path / "seeds")
@@ -127,7 +115,7 @@ def test_the_files_on_disk_are_the_golden_bytes(
 
 
 # --------------------------------------------------------------------------- #
-# Acceptance: acknowledgements and hashes
+# Acceptance — acknowledgements and hashes
 # --------------------------------------------------------------------------- #
 
 
@@ -147,8 +135,9 @@ def test_every_chunk_ends_with_its_acknowledgement_line(
 
 
 def test_sha256_of_is_sha256_over_utf8_bytes() -> None:
-    """The digest is `orval.hashify`'s now, and `08` compares it against what a
-    browser composer holds — so pin it to the definition rather than trust it.
+    """The digest is `orval.hashify`'s now, and `08` compares it against a composer's.
+
+    So pin it to the definition rather than trust it.
 
     Non-ASCII on purpose: any encoding but UTF-8 would agree on plain text and
     part ways exactly where a real conversation does.
@@ -157,9 +146,7 @@ def test_sha256_of_is_sha256_over_utf8_bytes() -> None:
     assert seeding.sha256_of(text) == hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def test_every_sha256_is_the_hash_of_its_own_text(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_every_sha256_is_the_hash_of_its_own_text(export_dir: Path, attachments_dir: Path) -> None:
     seed = seed_of(export_dir, attachments_dir, LONG, max_chars=4_000)
     for chunk in seed.chunks:
         assert chunk.sha256 == seeding.sha256_of(chunk.text)
@@ -192,10 +179,12 @@ def body_count(text: str) -> int:
 def test_the_only_over_budget_chunk_holds_one_indivisible_fragment(
     tmp_path: Path,
 ) -> None:
-    """`04` allows exactly one exception, and this is what forces it: a budget so
-    small that the envelope alone spends it, leaving a part that is one fragment
-    and still too long. Anything with a second fragment in it could have been
-    split further and is a bug."""
+    """`04` allows exactly one exception, and this is what forces it.
+
+    A budget so small that the envelope alone spends it, leaving a part that is one
+    fragment and still too long. Anything with a second fragment in it could have been
+    split further and is a bug.
+    """
     # The hard cap is lifted out of the way: this is about the per-part budget,
     # and 300-character parts spend most of themselves on envelopes.
     settings = Settings(
@@ -218,9 +207,7 @@ def test_the_only_over_budget_chunk_holds_one_indivisible_fragment(
 # --------------------------------------------------------------------------- #
 
 
-def test_the_branch_conversation_carries_only_its_active_path(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_the_branch_conversation_carries_only_its_active_path(export_dir: Path, attachments_dir: Path) -> None:
     seed = seed_of(export_dir, attachments_dir, BRANCH)
     text = seed.chunks[0].text
     assert OFF_PATH_TEXT not in text
@@ -234,44 +221,34 @@ def test_the_branch_conversation_carries_only_its_active_path(
 # --------------------------------------------------------------------------- #
 
 
-def test_message_uuids_name_the_messages_a_part_fully_contains(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_message_uuids_name_the_messages_a_part_fully_contains(export_dir: Path, attachments_dir: Path) -> None:
     seed = seed_of(export_dir, attachments_dir, LONG, max_chars=4_000)
     delivered = [uuid for chunk in seed.chunks for uuid in chunk.message_uuids]
     assert len(delivered) == seed.messages_represented == 40
     assert len(set(delivered)) == len(delivered)
 
 
-def test_the_short_id_is_the_acknowledgement_token(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_the_short_id_is_the_acknowledgement_token(export_dir: Path, attachments_dir: Path) -> None:
     seed = seed_of(export_dir, attachments_dir, SIMPLE)
     assert seed.short_id == render.short_id(SIMPLE) == "aa000001"
 
 
-def test_generation_is_byte_identical_across_runs(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_generation_is_byte_identical_across_runs(export_dir: Path, attachments_dir: Path) -> None:
     first = seeds_of(export_dir, attachments_dir)
     second = seeds_of(export_dir, attachments_dir)
-    assert [outcome.seed for outcome in first.values()] == [
-        outcome.seed for outcome in second.values()
-    ]
+    assert [outcome.seed for outcome in first.values()] == [outcome.seed for outcome in second.values()]
 
 
 def test_a_seed_is_frozen_and_closed() -> None:
     with pytest.raises(Exception, match="extra_forbidden"):
-        seeding.Seed.model_validate(
-            {
-                "conversation_uuid": "u",
-                "short_id": "u",
-                "chunks": [],
-                "messages_represented": 0,
-                "limitations": [],
-                "surprise": 1,
-            }
-        )
+        seeding.Seed.model_validate({
+            "conversation_uuid": "u",
+            "short_id": "u",
+            "chunks": [],
+            "messages_represented": 0,
+            "limitations": [],
+            "surprise": 1,
+        })
 
 
 # --------------------------------------------------------------------------- #
@@ -279,22 +256,16 @@ def test_a_seed_is_frozen_and_closed() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_an_empty_conversation_is_skipped_with_the_plan_s_reason(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_an_empty_conversation_is_skipped_with_the_plan_s_reason(export_dir: Path, attachments_dir: Path) -> None:
     outcome = seeds_of(export_dir, attachments_dir)[EMPTY]
     assert outcome.seed is None
     assert outcome.reason == "empty_conversation"
 
 
-def test_a_conversation_over_the_hard_cap_is_skipped(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_a_conversation_over_the_hard_cap_is_skipped(export_dir: Path, attachments_dir: Path) -> None:
     """The plan decides; `04` does not have a rule of its own to disagree with."""
     settings = settings_for(attachments_dir)
-    settings = settings.model_copy(
-        update={"seed": SeedSettings(max_chars=50_000, hard_max_chars=1_000)}
-    )
+    settings = settings.model_copy(update={"seed": SeedSettings(max_chars=50_000, hard_max_chars=1_000)})
     export = load_export(export_dir)
     outcomes = list(seeding.SeedGenerator(settings).seeds(export.conversations))
     skipped = {item.short_id: item.reason for item in outcomes if item.seed is None}
@@ -302,8 +273,10 @@ def test_a_conversation_over_the_hard_cap_is_skipped(
 
 
 def test_a_conversation_id_with_a_control_character_is_refused(tmp_path: Path) -> None:
-    """It is not a traversal, but it is not a directory name either — and its
-    short id would otherwise put a newline in the `skipped` line."""
+    """It is not a traversal, but it is not a directory name either.
+
+    Its short id would otherwise put a newline in the `skipped` line.
+    """
     outcome = seeding.SeedGenerator(Settings(workspace=tmp_path)).seed(
         one_turn("Hello", uuid="aa00\n001-1111-4111-8111-111111111111")
     )
@@ -329,8 +302,7 @@ def test_a_conversation_id_that_is_not_a_path_component_is_refused(
 def test_writing_replaces_the_parts_that_were_there_before(
     export_dir: Path, attachments_dir: Path, tmp_path: Path
 ) -> None:
-    """A seed that shrinks from two parts to one must not leave part-02 behind for
-    `11` to list and `12` to paste."""
+    """A seed that shrinks from two parts to one must not leave part-02 behind for `11` to list and `12` to paste."""
     root = tmp_path / "seeds"
     seeding.write_seed(seed_of(export_dir, attachments_dir, LONG, 4_000), root)
     assert (root / LONG / "part-02.txt").exists()
@@ -340,8 +312,10 @@ def test_writing_replaces_the_parts_that_were_there_before(
 
 
 def test_writing_refuses_a_uuid_that_is_not_a_path_component(tmp_path: Path) -> None:
-    """The generator skips it first; this is the guard for `12`, which calls
-    `write_seed` directly."""
+    """The generator skips it first.
+
+    This is the guard for `12`, which calls `write_seed` directly.
+    """
     seed = seeding.Seed(
         conversation_uuid="../escape",
         short_id="escape",
@@ -359,12 +333,8 @@ def test_writing_refuses_a_uuid_that_is_not_a_path_component(tmp_path: Path) -> 
 # --------------------------------------------------------------------------- #
 
 
-def run_seeds(
-    runner: CliRunner, export_dir: Path, *arguments: str
-) -> tuple[int, str, str]:
-    result = runner.invoke(
-        cli.app, ["seeds", str(export_dir), *arguments], catch_exceptions=False
-    )
+def run_seeds(runner: CliRunner, export_dir: Path, *arguments: str) -> tuple[int, str, str]:
+    result = runner.invoke(cli.app, ["seeds", str(export_dir), *arguments], catch_exceptions=False)
     return result.exit_code, result.stdout, result.stderr
 
 
@@ -389,22 +359,16 @@ def test_seeds_writes_the_workspace_and_prints_one_line_per_conversation(
     assert written == [f"{uuid}/part-01.txt" for uuid in sorted(MIGRATABLE)]
 
 
-def test_seeds_prints_no_titles_and_no_message_text(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_seeds_prints_no_titles_and_no_message_text(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """§10: nothing on stdout that a screen-share would leak."""
     _, out, err = run_seeds(runner, export_dir)
     for forbidden in ("Listing files", "Postgres", "pathlib", OFF_PATH_TEXT):
         assert forbidden not in out + err
 
 
-def test_seeds_honours_out_and_only(
-    runner: CliRunner, workspace: Path, export_dir: Path, tmp_path: Path
-) -> None:
+def test_seeds_honours_out_and_only(runner: CliRunner, workspace: Path, export_dir: Path, tmp_path: Path) -> None:
     out_dir = tmp_path / "elsewhere"
-    code, out, _ = run_seeds(
-        runner, export_dir, "--only", BRANCH, "--out", str(out_dir)
-    )
+    code, out, _ = run_seeds(runner, export_dir, "--only", BRANCH, "--out", str(out_dir))
     assert code == ExitCode.OK
     assert out == "ee000005  parts=1  chars=819\n"
     assert [path.name for path in sorted(out_dir.iterdir())] == [BRANCH]
@@ -415,9 +379,7 @@ def test_seeds_keeps_export_order_whatever_order_only_was_typed(
     runner: CliRunner, workspace: Path, export_dir: Path, tmp_path: Path
 ) -> None:
     """Two runs of the same command print the same lines; `06` owns selection."""
-    code, out, _ = run_seeds(
-        runner, export_dir, "--only", BRANCH, "--only", SIMPLE, "--out", str(tmp_path)
-    )
+    code, out, _ = run_seeds(runner, export_dir, "--only", BRANCH, "--only", SIMPLE, "--out", str(tmp_path))
     assert code == ExitCode.OK
     assert out.splitlines() == [
         "aa000001  parts=1  chars=639",
@@ -425,22 +387,18 @@ def test_seeds_keeps_export_order_whatever_order_only_was_typed(
     ]
 
 
-def test_seeds_rejects_an_unknown_conversation(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_seeds_rejects_an_unknown_conversation(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """A typo is an operator mistake, not an empty selection."""
     code, out, err = run_seeds(runner, export_dir, "--only", "nope")
     assert code == ExitCode.USAGE
     assert err == "error: conversation not in export: nope\n"
-    assert out == ""
+    assert not out
 
 
-def test_seeds_exits_4_when_nothing_could_be_seeded(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_seeds_exits_4_when_nothing_could_be_seeded(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     code, out, err = run_seeds(runner, export_dir, "--only", EMPTY)
     assert code == ExitCode.NOTHING_TO_DO
-    assert out == ""
+    assert not out
     assert err == "skipped ff000006: empty_conversation\n"
 
 
@@ -453,7 +411,7 @@ def test_seeds_writes_the_files_but_no_progress_when_quiet(
         catch_exceptions=False,
     )
     assert result.exit_code == ExitCode.OK
-    assert result.stdout == ""
+    assert not result.stdout
     assert (workspace / "migration" / "seeds" / SIMPLE / "part-01.txt").exists()
 
 

@@ -26,9 +26,7 @@ from dataporter.hermes.runner import HermesResult
 FRONTMATTER_KEYS = ("name", "description", "version", "platforms", "metadata")
 """Every top-level key `11` fixes in the skill's frontmatter."""
 
-SKILL_TEXT = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(
-    encoding="utf-8"
-)
+SKILL_TEXT = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(encoding="utf-8")
 
 SECTIONS = (
     "When to use",
@@ -99,9 +97,7 @@ def test_the_packaged_skill_is_in_the_install() -> None:
 
 
 def test_the_packaged_skill_identifies_itself_as_11_specifies() -> None:
-    text = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(
-        encoding="utf-8"
-    )
+    text = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(encoding="utf-8")
     fields = skilling.frontmatter(text)
     assert fields["name"] == skilling.SKILL_NAME
     assert fields["version"] == "0.1.0"
@@ -110,14 +106,13 @@ def test_the_packaged_skill_identifies_itself_as_11_specifies() -> None:
 
 
 def test_the_helper_prefix_is_the_program_name() -> None:
-    """The `helper` row is a literal the agent is told to use verbatim, and it is
-    the one copy of the command name that `PROGRAM_NAME` does not produce. ADR
-    0004's rename is what made that worth a test: a skill still spelling the old
-    command fails at run time, in the agent, and nowhere in the suite."""
-    assert (
-        f"`{PROGRAM_NAME} --workspace <workspace> browser …`. Use it verbatim"
-        in SKILL_TEXT
-    )
+    """The `helper` row is a literal the agent is told to use verbatim.
+
+    It is the one copy of the command name that `PROGRAM_NAME` does not produce. ADR
+    0004's rename is what made that worth a test: a skill still spelling the old command
+    fails at run time, in the agent, and nowhere in the suite.
+    """
+    assert f"`{PROGRAM_NAME} --workspace <workspace> browser …`. Use it verbatim" in SKILL_TEXT
     assert "hermes-claude-migrate" not in SKILL_TEXT
 
 
@@ -140,8 +135,10 @@ def test_the_safety_rules_are_all_there() -> None:
 
 
 def test_it_names_every_error_a_helper_can_answer_with() -> None:
-    """`08` decides this vocabulary; the skill branches on it. One list, or the
-    skill teaches Hermes to recognise a word no helper prints."""
+    """`08` decides this vocabulary; the skill branches on it.
+
+    One list, or the skill teaches Hermes to recognise a word no helper prints.
+    """
     for error in HELPER_ERRORS:
         assert error in SKILL_TEXT, f"the skill does not mention {error}"
 
@@ -153,12 +150,11 @@ def test_it_never_tells_an_agent_to_read_a_seed() -> None:
 
 
 def test_every_result_example_validates_against_09s_contract() -> None:
-    """The examples are what an agent copies. One that our own runner would
-    reject is worse than no example at all."""
-    examples = [
-        HermesResult.model_validate(json.loads(block))
-        for block in JSON_BLOCK.findall(SKILL_TEXT)
-    ]
+    """The examples are what an agent copies.
+
+    One that our own runner would reject is worse than no example at all.
+    """
+    examples = [HermesResult.model_validate(json.loads(block)) for block in JSON_BLOCK.findall(SKILL_TEXT)]
     assert {item.outcome for item in examples} == set(OUTCOMES)
     for item in examples:
         assert item.step is not None, f"{item.last_step} is not a step name"
@@ -170,13 +166,14 @@ def test_the_needs_human_reasons_are_the_ones_14_will_branch_on() -> None:
 
 
 def test_it_offers_every_error_category_and_invents_none() -> None:
-    """`01` fixed the taxonomy. A category the skill made up would reach
-    `state.json` through `09`'s contract and fail validation there."""
+    """`01` fixed the taxonomy.
+
+    A category the skill made up would reach `state.json` through `09`'s contract and
+    fail validation there.
+    """
     offered = CATEGORY_LINE.search(SKILL_TEXT)
     assert offered is not None
-    assert {item for item in re.findall(r"`([a-z_]+)`", offered.group(1))} == {
-        str(item) for item in Category
-    }
+    assert set(re.findall(r"`([a-z_]+)`", offered.group(1))) == {str(item) for item in Category}
 
 
 # --------------------------------------------------------------------------- #
@@ -208,15 +205,7 @@ def test_install_puts_it_where_09_says(tmp_path: Path) -> None:
     meta = skilling.install(settings)
     target = skilling.install_dir(settings)
 
-    assert target == (
-        tmp_path
-        / "hermes-home"
-        / "profiles"
-        / "dataporter"
-        / "skills"
-        / "dataporter"
-        / "claude-migrate"
-    )
+    assert target == (tmp_path / "hermes-home" / "profiles" / "dataporter" / "skills" / "dataporter" / "claude-migrate")
     assert (target / skilling.SKILL_FILENAME).is_file()
     assert str(meta) == "claude-migrate 0.1.0"
     assert skilling.installed(settings) == meta
@@ -250,9 +239,7 @@ def test_a_skill_with_no_version_does_not_count_as_installed(tmp_path: Path) -> 
     settings = make_settings(tmp_path)
     target = skilling.install_dir(settings)
     target.mkdir(parents=True)
-    (target / skilling.SKILL_FILENAME).write_text(
-        "---\nname: x\n---\n", encoding="utf-8"
-    )
+    (target / skilling.SKILL_FILENAME).write_text("---\nname: x\n---\n", encoding="utf-8")
     assert skilling.installed(settings) is None
 
 
@@ -265,9 +252,7 @@ def test_an_install_that_cannot_be_written_says_where(tmp_path: Path) -> None:
 
 def test_the_profile_directory_is_where_transcripts_live(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
-    assert skilling.profile_dir(settings) == (
-        tmp_path / "hermes-home" / "profiles" / "dataporter"
-    )
+    assert skilling.profile_dir(settings) == (tmp_path / "hermes-home" / "profiles" / "dataporter")
 
 
 def test_the_sign_in_task_is_scoped_and_rule_5_is_intact() -> None:

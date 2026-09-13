@@ -1,10 +1,12 @@
 """Configuration precedence: CLI flag > environment > config.toml > defaults."""
 
+import re
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
+from dataporter import config
 from dataporter.config import (
     DEFAULT_ACCOUNTS,
     DEFAULT_STORE,
@@ -30,23 +32,17 @@ def test_default_is_migration_beside_the_cwd(workspace: Path) -> None:
     assert settings.workspace == workspace / DEFAULT_WORKSPACE
 
 
-def test_environment_sets_the_workspace(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_environment_sets_the_workspace(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAPORTER_WORKSPACE", "/tmp/x")
     assert load_settings().workspace == Path("/tmp/x")
 
 
-def test_flag_beats_the_environment(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_flag_beats_the_environment(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAPORTER_WORKSPACE", "/tmp/x")
     assert load_settings(workspace=Path("/tmp/y")).workspace == Path("/tmp/y")
 
 
-def test_config_file_loses_to_both(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_config_file_loses_to_both(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     write_config(workspace / DEFAULT_WORKSPACE, 'workspace = "/tmp/z"\n')
 
     # ...to the environment,
@@ -62,11 +58,11 @@ def test_config_file_beats_the_default(workspace: Path) -> None:
     assert load_settings().workspace == Path("/tmp/z")
 
 
-def test_config_is_read_from_the_bootstrap_workspace(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A `workspace` key in config.toml sets the workspace but does not relocate
-    config discovery — otherwise resolution would be a fixed-point iteration."""
+def test_config_is_read_from_the_bootstrap_workspace(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A `workspace` key sets the workspace but does not relocate config discovery.
+
+    Otherwise resolution would be a fixed-point iteration.
+    """
     elsewhere = workspace / "elsewhere"
     write_config(elsewhere, 'workspace = "/tmp/z"\n')
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(elsewhere))
@@ -76,11 +72,8 @@ def test_config_is_read_from_the_bootstrap_workspace(
     assert load_settings().workspace == elsewhere
 
 
-def test_empty_environment_value_is_ignored(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`DATAPORTER_WORKSPACE=` in a shell script means unset, not the current
-    directory."""
+def test_empty_environment_value_is_ignored(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`DATAPORTER_WORKSPACE=` in a shell script means unset, not the current directory."""
     monkeypatch.setenv("DATAPORTER_WORKSPACE", "")
     assert load_settings().workspace == workspace / DEFAULT_WORKSPACE
 
@@ -119,14 +112,11 @@ class NestedSettings(Settings):
     pacing: Pacing = Pacing()
 
 
-def test_nested_sections_follow_the_same_ladder(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_nested_sections_follow_the_same_ladder(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     write_config(
         workspace / DEFAULT_WORKSPACE,
         "[pacing]\ndelay_between_conversations_s = 5\n",
     )
-    from dataporter import config
 
     token = config._config_file.set(config.config_file_for())
     try:
@@ -154,9 +144,7 @@ def test_seed_and_attachment_defaults_are_the_spec_values(workspace: Path) -> No
     assert "exe" not in settings.attachments.accepted_types
 
 
-def test_a_real_section_takes_an_environment_override(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_real_section_takes_an_environment_override(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The mechanism `01` built, on the first sections to actually use it."""
     monkeypatch.setenv("DATAPORTER_SEED__MAX_CHARS", "1234")
     assert load_settings().seed.max_chars == 1234
@@ -192,8 +180,11 @@ def test_accepted_types_are_normalised(workspace: Path) -> None:
 
 
 def test_the_browser_profile_lives_in_the_workspace(workspace: Path) -> None:
-    """Not configurable: the point of the dedicated profile is that it is ours,
-    and that `session logout` knows where to find it (§17)."""
+    """Not configurable.
+
+    The point of the dedicated profile is that it is ours, and that `session logout`
+    knows where to find it (§17).
+    """
     settings = load_settings()
     assert settings.browser_profile_dir == settings.workspace / "browser-profile"
 
@@ -209,9 +200,7 @@ def test_the_browser_section_comes_from_the_config_file(workspace: Path) -> None
     assert settings.browser.extra_args == ()
 
 
-def test_timeouts_have_defaults_and_can_be_overridden(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_timeouts_have_defaults_and_can_be_overridden(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_settings().timeouts.login_s == 600.0
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__LOGIN_S", "30")
     settings = load_settings()
@@ -232,14 +221,11 @@ def test_the_retry_budget_has_the_spec_defaults(workspace: Path) -> None:
     assert settings.run.stop_after_consecutive_failures == 3
 
 
-def test_the_retry_budget_follows_the_ladder(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_retry_budget_follows_the_ladder(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`15` owns these numbers; `13` only has to make them reachable."""
     write_config(
         workspace / DEFAULT_WORKSPACE,
-        "[retries]\nmax_attempts = 5\nbackoff_s = [1, 2]\n"
-        "[run]\nstop_after_consecutive_failures = 9\n",
+        "[retries]\nmax_attempts = 5\nbackoff_s = [1, 2]\n[run]\nstop_after_consecutive_failures = 9\n",
     )
     settings = load_settings()
     assert settings.retries.max_attempts == 5
@@ -265,18 +251,14 @@ def test_the_mode_is_off_and_the_browser_headed_by_default(workspace: Path) -> N
     assert settings.credentials is None
 
 
-def test_the_flag_and_the_environment_both_switch_the_mode_on(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_flag_and_the_environment_both_switch_the_mode_on(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_settings(non_interactive=True).non_interactive is True
     monkeypatch.setenv("DATAPORTER_NON_INTERACTIVE", "1")
     assert load_settings().non_interactive is True
     assert load_settings().headless is True
 
 
-def test_headless_follows_the_mode_unless_configured(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_headless_follows_the_mode_unless_configured(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAPORTER_NON_INTERACTIVE", "1")
     monkeypatch.setenv("DATAPORTER_BROWSER__HEADLESS", "false")
     assert load_settings().headless is False
@@ -285,9 +267,7 @@ def test_headless_follows_the_mode_unless_configured(
     assert load_settings().headless is True
 
 
-def test_credentials_come_from_the_environment(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_credentials_come_from_the_environment(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
     monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", "hunter2")
     found = load_settings().credentials
@@ -296,9 +276,7 @@ def test_credentials_come_from_the_environment(
     assert found.password.get_secret_value() == "hunter2"
 
 
-def test_half_a_credential_is_no_credential(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_half_a_credential_is_no_credential(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
     assert load_settings().credentials is None
 
@@ -326,16 +304,12 @@ def test_the_flags_set_the_half_they_name_and_keep_the_other(
     )
 
 
-def test_an_unreadable_secret_file_is_a_configuration_error(
-    workspace: Path, tmp_path: Path
-) -> None:
+def test_an_unreadable_secret_file_is_a_configuration_error(workspace: Path, tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="cannot read"):
         load_settings(password_file=tmp_path / "missing.txt")
 
 
-def test_the_secret_never_appears_in_a_dump(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_secret_never_appears_in_a_dump(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
     monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", "hunter2")
     settings = load_settings()
@@ -354,11 +328,9 @@ def test_the_secret_never_appears_in_a_dump(
         "account = 'old-personal'\n",
     ],
 )
-def test_the_config_file_may_not_carry_the_mode_or_a_credential(
-    workspace: Path, table: str
-) -> None:
+def test_the_config_file_may_not_carry_the_mode_or_a_credential(workspace: Path, table: str) -> None:
     write_config(workspace / "migration", table)
-    with pytest.raises(ConfigError, match="not in config.toml"):
+    with pytest.raises(ConfigError, match=re.escape("not in config.toml")):
         load_settings()
 
 
@@ -369,8 +341,10 @@ def test_the_config_file_may_not_carry_the_mode_or_a_credential(
 def test_a_blank_half_is_no_credential(
     workspace: Path, monkeypatch: pytest.MonkeyPatch, email: str, secret: str
 ) -> None:
-    """Whitespace arrives as a string where an empty variable would not; a run
-    must not start a browser on it. (Raised by Copilot in review on #33.)"""
+    """Whitespace arrives as a string where an empty variable would not.
+
+    A run must not start a browser on it. (Raised by Copilot in review on #33.)
+    """
     monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", email)
     monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", secret)
     assert load_settings().credentials is None
@@ -428,9 +402,7 @@ def test_a_download_cap_of_zero_is_refused(workspace: Path) -> None:
         load_settings()
 
 
-def test_the_store_flag_outranks_the_environment(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_store_flag_outranks_the_environment(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATAPORTER_STORE__DIR", str(workspace / "from-env"))
     settings = with_store_dir(load_settings(), workspace / "from-flag")
     assert settings.store_dir == workspace / "from-flag"
@@ -457,9 +429,7 @@ def test_the_source_defaults_to_claude_and_the_flag_may_be_absent(
 
 
 @pytest.mark.parametrize("token", ["chatgpt", "Claude", "claude/../..", ""])
-def test_a_source_the_tool_does_not_have_is_refused(
-    workspace: Path, token: str
-) -> None:
+def test_a_source_the_tool_does_not_have_is_refused(workspace: Path, token: str) -> None:
     with pytest.raises(ConfigError, match=f"no such source: {token}"):
         with_account(load_settings(), token, "a")
 
@@ -475,9 +445,7 @@ def test_a_label_that_is_one_is_accepted(workspace: Path, token: str) -> None:
     assert with_account(load_settings(), "claude", token).account == token
 
 
-def test_a_source_from_the_environment_is_validated_too(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_source_from_the_environment_is_validated_too(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The flag may be absent; the rule is about the value that results."""
     monkeypatch.setenv("DATAPORTER_SOURCE", "gemini")
     with pytest.raises(ConfigError, match="no such source: gemini"):

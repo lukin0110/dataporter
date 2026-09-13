@@ -38,7 +38,7 @@ class Sink(Protocol):
         ...
 
     def block(self, text: str) -> None:
-        """A block on stdout, verbatim: it already ends in a newline."""
+        """Write one line on stdout. A newline is appended."""
         ...
 
     def note(self, text: str) -> None:

@@ -85,7 +85,7 @@ stores a password.
   `browser-profile/`, `hermes/`, `seeds/`, `logs/`, merged into whatever is already there
   rather than overwriting it.
 - Exit codes: a missing browser, a port that never opens and a CDP call that goes
-  unanswered are `BrowserError` → exit `6`; `PortInUse` — the port is occupied by a
+  unanswered are `BrowserError` → exit `6`; `PortInUseError` — the port is occupied by a
   browser we must not touch — is its own subclass and exits `2`, because nothing is
   missing and the operator fixes it by closing something.
 
@@ -109,7 +109,7 @@ stores a password.
   all — so `launch` writes `<profile>/dataporter-cdp.json` with the port, the pid and the
   browser target's uuid, and adopts only when the uuid on the port matches. The uuid is
   minted per browser process, so a match means the same instance and not merely the same
-  port. Anything else is `PortInUse`: attaching to the operator's everyday Chrome would
+  port. Anything else is `PortInUseError`: attaching to the operator's everyday Chrome would
   put the run inside the profile §17 exists to stay out of, and closing it afterwards
   would shut their windows.
 - **`browser.extra_args`** is an escape hatch for environments that cannot show a window:

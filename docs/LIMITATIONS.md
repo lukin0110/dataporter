@@ -216,8 +216,9 @@ page, which nobody has watched yet: `docs/extraction-01.md` is where they stop b
   asks is unknown, and the ask is allowed one action in the account. Exit `1`, no record,
   and a person clears it. *by construction*
 - **One browser at a time.** The destination session and each source session share
-  `browser.cdp_port`, so a Chrome left running for one is `PortInUse` for the other. Close
-  it and run the command again; sessions are sequential by design, not by accident.
+  `browser.cdp_port`, so a Chrome left running for one is `PortInUseError` for the
+  other. Close it and run the command again; sessions are sequential by design, not by
+  accident.
   *by construction*
 - **An unattended ask on a signed-out profile needs Hermes.** Signing in without a person
   is `24`'s agent half, so a cron job whose source session has expired exits `3` and asks

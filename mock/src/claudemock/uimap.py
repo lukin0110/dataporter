@@ -60,16 +60,11 @@ WHAT_THE_MOCK_DOES: Mapping[str, str] = {
         "step, each an <input> the map names and each submitted by Enter"
     ),
     "new chat": "/new: an empty composer, a disabled Send, a hidden file input",
-    "conversation": (
-        "/chat/<uuid>: the whole transcript, server-rendered, so a reload shows "
-        "every turn"
-    ),
+    "conversation": ("/chat/<uuid>: the whole transcript, server-rendered, so a reload shows every turn"),
     "composer present": 'a visible div[contenteditable="true"], one block per line',
     "composer empty": "the composer holds one empty paragraph after a submit",
-    "can submit": 'a button whose aria-label contains "Send", disabled while the '
-    "composer is empty",
-    "generating": "the Send button is replaced by one whose aria-label contains "
-    '"Stop" until the reply is whole',
+    "can submit": 'a button whose aria-label contains "Send", disabled while the composer is empty',
+    "generating": 'the Send button is replaced by one whose aria-label contains "Stop" until the reply is whole',
     "generation finished": (
         "the reply is revealed in steps, the last of which puts the Stop button "
         "back to Send — so a reader waiting for it to stop growing really waits"

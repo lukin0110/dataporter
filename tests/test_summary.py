@@ -8,6 +8,8 @@ operator reads before deciding to migrate their account.
 
 import json
 import re
+import socket
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -45,9 +47,7 @@ FIXTURE_CONTENT = (
 export so that a fixture edit cannot quietly empty the list.
 """
 
-BRIEF_TOTALS = PlanTotals(
-    conversations=127, messages=4821, attachments=36, migratable=124, unsupported=3
-)
+BRIEF_TOTALS = PlanTotals(conversations=127, messages=4821, attachments=36, migratable=124, unsupported=3)
 """The brief's §9 example numbers."""
 
 BRIEF_BLOCK = (
@@ -102,8 +102,10 @@ bar and the header above them."""
 
 
 def test_the_counters_are_the_brief_s_own_lines() -> None:
-    """§10 is a golden string too, and its block was self-consistent from the
-    start: every counter line is 13 columns, so the rule reproduces all four."""
+    """§10 is a golden string too, and its block was self-consistent from the start.
+
+    Every counter line is 13 columns, so the rule reproduces all four.
+    """
     brief = BRIEF.read_text(encoding="utf-8").splitlines()
     rendered = summary.counters_lines(BRIEF_COUNTS)
     assert rendered == [
@@ -117,15 +119,13 @@ def test_the_counters_are_the_brief_s_own_lines() -> None:
 
 
 def test_a_six_figure_total_widens_every_counter_line() -> None:
-    counters = summary.counters_lines(
-        {
-            "total": 200_000,
-            "completed": 123_456,
-            "partial": 0,
-            "failed": 7,
-            "pending": 1,
-        }
-    )
+    counters = summary.counters_lines({
+        "total": 200_000,
+        "completed": 123_456,
+        "partial": 0,
+        "failed": 7,
+        "pending": 1,
+    })
     assert counters == [
         "Completed: 123,456",
         "Partial:         0",
@@ -156,12 +156,8 @@ def test_a_seven_figure_message_count_widens_every_line() -> None:
 
 
 def test_a_narrow_plan_still_gets_the_minimum_width() -> None:
-    totals = PlanTotals(
-        conversations=0, messages=0, attachments=0, migratable=0, unsupported=0
-    )
-    assert {
-        len(line) for line in summary.dry_run_report(totals).splitlines() if line
-    } == {summary.MIN_WIDTH}
+    totals = PlanTotals(conversations=0, messages=0, attachments=0, migratable=0, unsupported=0)
+    assert {len(line) for line in summary.dry_run_report(totals).splitlines() if line} == {summary.MIN_WIDTH}
 
 
 # --------------------------------------------------------------------------- #
@@ -174,7 +170,7 @@ def test_inspect_prints_the_block_the_reasons_and_the_classes(
 ) -> None:
     code, out, err = run(runner, "inspect", str(export_dir))
     assert code == ExitCode.OK
-    assert err == ""
+    assert not err
     assert out == (
         "Conversations found:      6\n"
         "Messages:                50\n"
@@ -193,17 +189,13 @@ def test_inspect_prints_the_block_the_reasons_and_the_classes(
     )
 
 
-def test_the_reasons_sum_to_the_unsupported_count(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_the_reasons_sum_to_the_unsupported_count(export_dir: Path, attachments_dir: Path) -> None:
     plan = plan_of(export_dir, attachments_dir)
     reasons = summary.unsupported_reasons(plan)
     assert sum(count for _, count in reasons) == plan.totals.unsupported
 
 
-def test_reasons_are_sorted_by_count_then_name(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_reasons_are_sorted_by_count_then_name(export_dir: Path, attachments_dir: Path) -> None:
     """Two runs of the same command print the same lines, in the same order."""
     plan = plan_of(export_dir, attachments_dir)
     unmigratable = [
@@ -217,29 +209,24 @@ def test_reasons_are_sorted_by_count_then_name(
         ("seed_over_hard_cap", 1),
     ]
     assert (
-        "Unsupported reasons:\n"
-        "  empty_conversation      2\n"
-        "  seed_over_hard_cap      1\n"
+        "Unsupported reasons:\n  empty_conversation      2\n  seed_over_hard_cap      1\n"
     ) in summary.inspect_report(widened)
 
 
-def test_only_the_blocking_reason_is_counted(
-    export_dir: Path, attachments_dir: Path
-) -> None:
-    """`reasons` continues with limitation slugs, which describe a conversation
-    that *is* being migrated and would otherwise be counted as a second cause."""
+def test_only_the_blocking_reason_is_counted(export_dir: Path, attachments_dir: Path) -> None:
+    """`reasons` continues with limitation slugs.
+
+    They describe a conversation that *is* being migrated and would otherwise be counted
+    as a second cause.
+    """
     plan = plan_of(export_dir, attachments_dir)
     empty = next(item for item in plan.conversations if item.uuid == EMPTY)
-    with_limitations = empty.model_copy(
-        update={"reasons": ["empty_conversation", "thinking_omitted:3"]}
-    )
+    with_limitations = empty.model_copy(update={"reasons": ["empty_conversation", "thinking_omitted:3"]})
     widened = plan.model_copy(update={"conversations": [with_limitations]})
     assert summary.unsupported_reasons(widened) == [("empty_conversation", 1)]
 
 
-def test_every_attachment_class_is_listed_even_at_zero(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_every_attachment_class_is_listed_even_at_zero(export_dir: Path, attachments_dir: Path) -> None:
     plan = plan_of(export_dir, attachments_dir)
     assert summary.attachment_classes(plan) == [
         ("inline", 1),
@@ -248,9 +235,7 @@ def test_every_attachment_class_is_listed_even_at_zero(
     ]
 
 
-def test_the_classes_sum_to_the_attachment_total(
-    export_dir: Path, attachments_dir: Path
-) -> None:
+def test_the_classes_sum_to_the_attachment_total(export_dir: Path, attachments_dir: Path) -> None:
     plan = plan_of(export_dir, attachments_dir)
     classes = summary.attachment_classes(plan)
     assert sum(count for _, count in classes) == plan.totals.attachments
@@ -266,20 +251,13 @@ def test_a_plan_with_nothing_unsupported_prints_no_reasons_section(
     without = plan.model_copy(
         update={
             "conversations": migratable,
-            "totals": plan.totals.model_copy(
-                update={"conversations": len(migratable), "unsupported": 0}
-            ),
+            "totals": plan.totals.model_copy(update={"conversations": len(migratable), "unsupported": 0}),
         }
     )
     report = summary.inspect_report(without)
     assert summary.UNSUPPORTED_REASONS_HEADER not in report
     # The attachment classes still follow the block, separated by one blank line.
-    assert report.endswith(
-        "\nAttachments:\n"
-        "  inline           1\n"
-        "  upload           0\n"
-        "  unsupported      1\n"
-    )
+    assert report.endswith("\nAttachments:\n  inline           1\n  upload           0\n  unsupported      1\n")
 
 
 # --------------------------------------------------------------------------- #
@@ -287,9 +265,7 @@ def test_a_plan_with_nothing_unsupported_prints_no_reasons_section(
 # --------------------------------------------------------------------------- #
 
 
-def test_a_dry_run_creates_no_workspace(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_a_dry_run_creates_no_workspace(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     code, out, _ = run(runner, "import", str(export_dir), "--dry-run")
     assert code == ExitCode.OK
     assert out.splitlines()[0] == "Conversations found:      6"
@@ -304,14 +280,13 @@ def test_a_dry_run_touches_nothing_that_could_reach_an_account(
     export_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The `07`/`09` half of the criterion, standing in for objects that do not
-    exist yet: anything that could open a socket or start a process raises."""
+    """The `07`/`09` half of the criterion, standing in for objects that do not exist yet.
+
+    Anything that could open a socket or start a process raises.
+    """
 
     def explode(*arguments: object, **keywords: object) -> None:
         raise AssertionError("a dry run contacted something")
-
-    import socket
-    import subprocess
 
     monkeypatch.setattr(socket.socket, "connect", explode)
     monkeypatch.setattr(subprocess, "Popen", explode)
@@ -320,17 +295,13 @@ def test_a_dry_run_touches_nothing_that_could_reach_an_account(
     assert code == ExitCode.OK
 
 
-def test_inspect_is_byte_identical_across_runs(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_inspect_is_byte_identical_across_runs(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     first = run(runner, "inspect", str(export_dir))
     second = run(runner, "inspect", str(export_dir))
     assert first == second
 
 
-def test_neither_command_prints_a_title_or_a_message(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_neither_command_prints_a_title_or_a_message(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """§10: no conversation content on stdout at any verbosity."""
     _, inspected, inspect_err = run(runner, "-v", "inspect", str(export_dir))
     _, dry, dry_err = run(runner, "-v", "import", str(export_dir), "--dry-run")
@@ -339,9 +310,7 @@ def test_neither_command_prints_a_title_or_a_message(
         assert forbidden not in dry + dry_err
 
 
-def test_inspect_prints_only_labels_counts_and_slugs(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_inspect_prints_only_labels_counts_and_slugs(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """Stronger than the string scan: every line is one this slice owns.
 
     A file name is not content the way a title is, but it is export data, and the
@@ -364,9 +333,7 @@ def test_inspect_prints_only_labels_counts_and_slugs(
 # --------------------------------------------------------------------------- #
 
 
-def test_only_narrows_what_the_dry_run_counts(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_only_narrows_what_the_dry_run_counts(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     code, out, _ = run(runner, "import", str(export_dir), "--dry-run", "--only", BRANCH)
     assert code == ExitCode.OK
     assert out == (
@@ -379,9 +346,7 @@ def test_only_narrows_what_the_dry_run_counts(
     )
 
 
-def test_limit_truncates_in_export_order(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_limit_truncates_in_export_order(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     code, out, _ = run(runner, "import", str(export_dir), "--dry-run", "--limit", "2")
     assert code == ExitCode.OK
     # The first two conversations of the fixture: 2 messages and 40.
@@ -391,8 +356,11 @@ def test_limit_truncates_in_export_order(
 def test_the_retry_flags_widen_nothing_before_there_is_state(
     runner: CliRunner, workspace: Path, export_dir: Path
 ) -> None:
-    """`06` owns selection from state; with no `state.json` every conversation is
-    pending, so `--retry-failed` and `--retry-partial` add nothing to add."""
+    """`06` owns selection from state.
+
+    With no `state.json` every conversation is pending, so `--retry-failed` and
+    `--retry-partial` add nothing to add.
+    """
     plain = run(runner, "import", str(export_dir), "--dry-run")
     retried = run(
         runner,
@@ -405,26 +373,20 @@ def test_the_retry_flags_widen_nothing_before_there_is_state(
     assert plain == retried
 
 
-def test_an_empty_selection_is_exit_4(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_an_empty_selection_is_exit_4(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     code, out, _ = run(runner, "import", str(export_dir), "--dry-run", "--limit", "0")
     assert code == ExitCode.NOTHING_TO_DO
-    assert out == ""
+    assert not out
 
 
-def test_a_negative_limit_is_a_usage_error(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_a_negative_limit_is_a_usage_error(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """`[:-1]` would quietly drop the last conversation instead."""
     code, _, err = run(runner, "import", str(export_dir), "--dry-run", "--limit", "-1")
     assert code == ExitCode.USAGE
     assert err == "error: --limit must not be negative\n"
 
 
-def test_an_unknown_only_uuid_is_a_usage_error(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_an_unknown_only_uuid_is_a_usage_error(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     code, _, err = run(runner, "import", str(export_dir), "--dry-run", "--only", "nope")
     assert code == ExitCode.USAGE
     assert err == "error: conversation not in export: nope\n"
@@ -438,63 +400,52 @@ def test_an_unknown_only_uuid_is_a_usage_error(
 def test_attachments_dir_moves_a_file_from_unsupported_to_upload(
     runner: CliRunner, workspace: Path, export_dir: Path, tmp_path: Path
 ) -> None:
-    """The flag `01` gave only to `import`: without it `inspect` cannot tell
-    class 2 from class 3, which is the question it exists to answer."""
+    """The flag `01` gave only to `import`.
+
+    Without it `inspect` cannot tell class 2 from class 3, which is the question it
+    exists to answer.
+    """
     before = run(runner, "inspect", str(export_dir))[1]
     assert "  upload           0\n" in before
 
     elsewhere = tmp_path / "bytes"
     elsewhere.mkdir()
     (elsewhere / CHART).write_bytes(b"\x89PNG\r\n\x1a\n")
-    code, after, _ = run(
-        runner, "inspect", str(export_dir), "--attachments-dir", str(elsewhere)
-    )
+    code, after, _ = run(runner, "inspect", str(export_dir), "--attachments-dir", str(elsewhere))
     assert code == ExitCode.OK
     assert "  upload           1\n" in after
     assert "  unsupported      0\n" in after
 
 
-def test_json_prints_the_plan_and_nothing_else(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_json_prints_the_plan_and_nothing_else(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     code, out, err = run(runner, "inspect", str(export_dir), "--json")
     assert code == ExitCode.OK
-    assert err == ""
+    assert not err
     plan = MigrationPlan.model_validate_json(out)
     assert out == plan.model_dump_json(indent=2) + "\n"
     # Indented, so `plan.json` and this stream are diffable by hand.
     assert json.loads(out)["totals"]["conversations"] == 6
 
 
-def test_the_json_plan_carries_the_export_fingerprint(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_the_json_plan_carries_the_export_fingerprint(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """A selection narrows the conversations, never the identity of the export."""
-    whole = MigrationPlan.model_validate_json(
-        run(runner, "inspect", str(export_dir), "--json")[1]
-    )
+    whole = MigrationPlan.model_validate_json(run(runner, "inspect", str(export_dir), "--json")[1])
     assert whole.export_fingerprint == load_export(export_dir).fingerprint
 
 
-def test_inspect_does_not_write_a_workspace_either(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_inspect_does_not_write_a_workspace_either(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     run(runner, "inspect", str(export_dir))
     assert list(workspace.iterdir()) == []
 
 
-def test_inspect_of_a_missing_export_is_exit_2(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_inspect_of_a_missing_export_is_exit_2(runner: CliRunner, workspace: Path) -> None:
     code, out, err = run(runner, "inspect", "./nowhere")
     assert code == ExitCode.USAGE
-    assert out == ""
+    assert not out
     assert err == "error: export not found: ./nowhere\n"
 
 
-def test_an_export_with_no_conversations_inspects_to_zeros(
-    runner: CliRunner, workspace: Path, tmp_path: Path
-) -> None:
+def test_an_export_with_no_conversations_inspects_to_zeros(runner: CliRunner, workspace: Path, tmp_path: Path) -> None:
     """`inspect` answers a question about a file; "it holds nothing" is an answer."""
     export = tmp_path / "empty-export"
     export.mkdir()
@@ -503,9 +454,4 @@ def test_an_export_with_no_conversations_inspects_to_zeros(
     assert code == ExitCode.OK
     assert out.startswith("Conversations found:      0\n")
     assert summary.UNSUPPORTED_REASONS_HEADER not in out
-    assert out.endswith(
-        "Attachments:\n"
-        "  inline           0\n"
-        "  upload           0\n"
-        "  unsupported      0\n"
-    )
+    assert out.endswith("Attachments:\n  inline           0\n  upload           0\n  unsupported      0\n")

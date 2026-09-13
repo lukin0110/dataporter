@@ -108,16 +108,14 @@ and `failed` carries `error` saying what stopped it, in your own words.
 
 
 def prompt(*, workspace: Path) -> str:
-    """The sign-in task. Names a URL and the helper prefix; carries no credential."""
-    return "\n".join(
-        [
-            HEAD,
-            f"login url: {login_form.LOGIN_URL}",
-            f"helper: {prompting.helper_command(workspace)}",
-            "",
-            TAIL,
-        ]
-    )
+    """Return the sign-in task. Names a URL and the helper prefix; carries no credential."""
+    return "\n".join([
+        HEAD,
+        f"login url: {login_form.LOGIN_URL}",
+        f"helper: {prompting.helper_command(workspace)}",
+        "",
+        TAIL,
+    ])
 
 
 def require_credentials(settings: Settings) -> Credentials:
@@ -140,15 +138,12 @@ class SignInOutcome:
 
 def _describe(exc: ValidationError) -> str:
     return "; ".join(
-        f"{'.'.join(str(item) for item in error['loc']) or '(root)'}: {error['msg']}"
-        for error in exc.errors()
+        f"{'.'.join(str(item) for item in error['loc']) or '(root)'}: {error['msg']}" for error in exc.errors()
     )
 
 
 def _phrase(reason: str | None) -> str:
-    return intervening.REASON_PHRASES.get(
-        reason or "", intervening.REASON_PHRASES[intervening.DEFAULT_REASON]
-    )
+    return intervening.REASON_PHRASES.get(reason or "", intervening.REASON_PHRASES[intervening.DEFAULT_REASON])
 
 
 BLOCKED_REASONS: dict[str, str] = {
@@ -169,13 +164,9 @@ fault, and a field that will not take focus is a page nobody here understands.
 class SignIn:
     """The two halves, run in order, for one browser session."""
 
-    def __init__(
-        self, settings: Settings, *, runner: hermes_running.HermesRunner | None = None
-    ) -> None:
+    def __init__(self, settings: Settings, *, runner: hermes_running.HermesRunner | None = None) -> None:
         self.settings = settings
-        self.runner = (
-            runner if runner is not None else hermes_running.HermesRunner(settings)
-        )
+        self.runner = runner if runner is not None else hermes_running.HermesRunner(settings)
         self.attempts = 0
 
     def perform(self, session: BrowserSession) -> SignInOutcome:
@@ -186,21 +177,15 @@ class SignIn:
             form = self._form()
         except HermesError as exc:
             _logger.warning("sign-in agent failed", extra={"attempt": self.attempts})
-            return SignInOutcome(False, HERMES_FAILED, exc.detail or HERMES_FAILED)
+            return SignInOutcome(signed_in=False, reason=HERMES_FAILED, detail=exc.detail or HERMES_FAILED)
         if form.outcome != FORM_READY:
-            reason = (
-                form.needs_human_reason
-                if form.outcome == "needs_human"
-                else intervening.DEFAULT_REASON
-            )
+            reason = form.needs_human_reason if form.outcome == "needs_human" else intervening.DEFAULT_REASON
             _logger.info(
                 "sign-in form not reached",
                 extra={"outcome": form.outcome, "reason": reason or ""},
             )
-            return SignInOutcome(False, _phrase(reason), form.error)
-        result = login_form.fill_and_submit(
-            session, credentials, timeout_s=self.settings.timeouts.signin_s
-        )
+            return SignInOutcome(signed_in=False, reason=_phrase(reason), detail=form.error)
+        result = login_form.fill_and_submit(session, credentials, timeout_s=self.settings.timeouts.signin_s)
         signed_in = result.signed_in and browser_session.signed_in(session)
         _logger.info(
             "sign-in",
@@ -211,17 +196,17 @@ class SignIn:
             },
         )
         if signed_in:
-            return SignInOutcome(True, filled=result.filled)
+            return SignInOutcome(signed_in=True, filled=result.filled)
         blocked = result.blocked or login_form.NO_PROGRESS
         return SignInOutcome(
-            False,
-            _phrase(BLOCKED_REASONS.get(blocked, intervening.DEFAULT_REASON)),
-            blocked,
-            result.filled,
+            signed_in=False,
+            reason=_phrase(BLOCKED_REASONS.get(blocked, intervening.DEFAULT_REASON)),
+            detail=blocked,
+            filled=result.filled,
         )
 
     def _form(self) -> FormResult:
-        """The agent's half: the subprocess, and the object it printed last."""
+        """Return the agent's half: the subprocess, and the object it printed last."""
         raw = self.runner.run_raw(
             prompt(workspace=self.settings.workspace),
             run_id=RUN_ID.format(attempt=self.attempts),
@@ -233,14 +218,11 @@ class SignIn:
         try:
             return FormResult.model_validate(payload)
         except ValidationError as exc:
-            raise HermesError(
-                detail=f"invalid sign-in json: {_describe(exc)}; "
-                f"stdout: {raw.stdout_path}"
-            ) from exc
+            raise HermesError(detail=f"invalid sign-in json: {_describe(exc)}; stdout: {raw.stdout_path}") from exc
 
 
 def needs_person(outcome: SignInOutcome) -> str:
-    """The exit-`3` message for a sign-in that could not be completed."""
+    """Return the exit-`3` message for a sign-in that could not be completed."""
     return NEEDS_PERSON.format(reason=outcome.reason, program=PROGRAM_NAME)
 
 
@@ -250,7 +232,7 @@ def ensure_signed_in(
     *,
     signer: SignIn | None = None,
 ) -> bool:
-    """The session is signed in, or this raises `AuthError` (exit `3`).
+    """Ensure the session is signed in, or raise `AuthError` (exit `3`).
 
     Interactively that is `12`'s rule unchanged: a signed-out session ends the
     run with `login` as the remedy. Unattended, one sign-in is attempted first,

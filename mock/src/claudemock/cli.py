@@ -51,28 +51,26 @@ name a real mailbox (§23, *What it never touches*)."""
 
 
 def reachability(*, host: str, port: int, material: certificate.Material) -> str:
-    """The reachability block, byte for byte, ending in a blank line.
+    """Return the reachability block, byte for byte, ending in a blank line.
 
     `26`'s golden string, pinned by `mock/tests/test_cli.py`. §21 constrains what
     it does and leaves what it looks like to the slice; the shape here is the
     brief's own illustration, kept because an operator has nothing to gain from
     a different one.
     """
-    return "\n".join(
-        [
-            f"Mock claude.ai listening on https://{host}:{port}",
-            "",
-            "Add to <workspace>/config.toml before running the tool:",
-            "",
-            "[browser]",
-            "extra_args = [",
-            f'  "--host-resolver-rules=MAP {HOST} {host}:{port}",',
-            f'  "{material.flag}",',
-            "]",
-            "",
-            "",
-        ]
-    )
+    return "\n".join([
+        f"Mock claude.ai listening on https://{host}:{port}",
+        "",
+        "Add to <workspace>/config.toml before running the tool:",
+        "",
+        "[browser]",
+        "extra_args = [",
+        f'  "--host-resolver-rules=MAP {HOST} {host}:{port}",',
+        f'  "{material.flag}",',
+        "]",
+        "",
+        "",
+    ])
 
 
 def parser() -> argparse.ArgumentParser:
@@ -137,9 +135,7 @@ def serve(arguments: argparse.Namespace) -> int:
         reply_delay_s=arguments.reply_delay_s,
         reply_steps=arguments.reply_steps,
     )
-    running = server.serve(
-        site, host=arguments.host, port=arguments.port, material=material
-    )
+    running = server.serve(site, host=arguments.host, port=arguments.port, material=material)
     print(
         reachability(host=arguments.host, port=running.port, material=material),
         end="",

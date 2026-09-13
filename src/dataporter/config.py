@@ -617,7 +617,7 @@ class Settings(BaseSettings):
         happened to be validated first.
         """
         if self.attachments.dir is not None:
-            return Path(os.path.abspath(self.attachments.dir))
+            return Path(os.path.abspath(self.attachments.dir))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
         return self.workspace / ATTACHMENTS_DIRNAME
 
     @property
@@ -630,8 +630,8 @@ class Settings(BaseSettings):
         typed it, which is what the blocks print.
         """
         if self.store.dir is not None:
-            return Path(os.path.abspath(self.store.dir.expanduser()))
-        return Path(os.path.abspath(DEFAULT_STORE.expanduser()))
+            return Path(os.path.abspath(self.store.dir.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
+        return Path(os.path.abspath(DEFAULT_STORE.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
 
     @property
     def store_display(self) -> str:
@@ -649,8 +649,8 @@ class Settings(BaseSettings):
     def accounts_dir(self) -> Path:
         """Where account homes live: `accounts.dir`, else `~/.dataporter/accounts`."""
         if self.accounts.dir is not None:
-            return Path(os.path.abspath(self.accounts.dir.expanduser()))
-        return Path(os.path.abspath(DEFAULT_ACCOUNTS.expanduser()))
+            return Path(os.path.abspath(self.accounts.dir.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
+        return Path(os.path.abspath(DEFAULT_ACCOUNTS.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
 
     @property
     def account_home(self) -> Path | None:
@@ -666,8 +666,9 @@ class Settings(BaseSettings):
 
     @property
     def logs_dir(self) -> Path:
-        """What `log.enable_run_log` is handed: the account home, else the
-        workspace. The run log lands in `<it>/logs/` either way.
+        """What `log.enable_run_log` is handed: the account home, else the workspace.
+
+        The run log lands in `<it>/logs/` either way.
 
         An extraction has no workspace — it is about an account rather than
         about a migration — so its records belong beside the account's other
@@ -739,15 +740,15 @@ class Settings(BaseSettings):
         """
         configured = self.hermes.home
         if configured is not None:
-            return Path(os.path.abspath(configured.expanduser()))
-        return Path(os.path.abspath(DEFAULT_HERMES_HOME.expanduser()))
+            return Path(os.path.abspath(configured.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
+        return Path(os.path.abspath(DEFAULT_HERMES_HOME.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
 
     @field_validator("workspace")
     @classmethod
     def _absolute(cls, value: Path) -> Path:
         # `09` runs Hermes with cwd=<workspace>, so this must be absolute well
         # before any subprocess starts. abspath, not resolve: no symlink chasing.
-        return Path(os.path.abspath(value))
+        return Path(os.path.abspath(value))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
 
     @classmethod
     def settings_customise_sources(
@@ -781,9 +782,7 @@ line. Like the credentials, they are set per invocation — by `with_account`,
 from the flags — and never read out of a file.
 """
 
-CONFIG_FILE_REFUSED = (
-    "{keys} belong in the environment or on the command line, not in config.toml"
-)
+CONFIG_FILE_REFUSED = "{keys} belong in the environment or on the command line, not in config.toml"
 
 
 class _TomlWithoutSecrets(TomlConfigSettingsSource):
@@ -821,13 +820,11 @@ def bootstrap_workspace(workspace: Path | None = None) -> Path:
     0.0.12's overloads narrow the return type for chains of up to five values.
     See `docs/orval-candidates.md` (D2).
     """
-    return coalesce_lazy(
-        lambda: workspace, _workspace_from_env, lambda: DEFAULT_WORKSPACE
-    )
+    return coalesce_lazy(lambda: workspace, _workspace_from_env, lambda: DEFAULT_WORKSPACE)
 
 
 def config_file_for(workspace: Path | None = None) -> Path:
-    """The `config.toml` path this invocation will read, if it exists."""
+    """Return the `config.toml` path this invocation will read, if it exists."""
     return bootstrap_workspace(workspace) / CONFIG_FILENAME
 
 
@@ -844,11 +841,7 @@ def with_attachments_dir(settings: Settings, directory: Path | None) -> Settings
     """
     if directory is None:
         return settings
-    return settings.model_copy(
-        update={
-            "attachments": settings.attachments.model_copy(update={"dir": directory})
-        }
-    )
+    return settings.model_copy(update={"attachments": settings.attachments.model_copy(update={"dir": directory})})
 
 
 SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -869,9 +862,7 @@ writes twice.
 """
 
 NO_SUCH_SOURCE = "no such source: {token}"
-BAD_LABEL = (
-    "account label must be letters, digits, dots, dashes or underscores: {token}"
-)
+BAD_LABEL = "account label must be letters, digits, dots, dashes or underscores: {token}"
 
 
 def with_account(settings: Settings, source: str | None, account: str) -> Settings:
@@ -904,7 +895,7 @@ def _sources() -> tuple[str, ...]:
     The same shape as `cli.state_error`: the list of vendors the tool has is a
     fact about the store, and the store is what needs `Settings`.
     """
-    from dataporter.store import SOURCES
+    from dataporter.store import SOURCES  # ruff: ignore[import-outside-top-level]
 
     return SOURCES
 
@@ -912,9 +903,7 @@ def _sources() -> tuple[str, ...]:
 SOURCE_WITHOUT_ACCOUNT = "--source names the vendor of an account; give --account LABEL"
 
 
-def with_session_account(
-    settings: Settings, source: str | None, account: str | None
-) -> Settings:
+def with_session_account(settings: Settings, source: str | None, account: str | None) -> Settings:
     """Whose session `login`, `session status` and `session logout` mean (`31`).
 
     `None` for `account` is the destination, which is what those three commands
@@ -943,9 +932,7 @@ def with_store_dir(settings: Settings, directory: Path | None) -> Settings:
     """
     if directory is None:
         return settings
-    return settings.model_copy(
-        update={"store": settings.store.model_copy(update={"dir": directory})}
-    )
+    return settings.model_copy(update={"store": settings.store.model_copy(update={"dir": directory})})
 
 
 def with_skip_attachments(settings: Settings, skip: bool) -> Settings:
@@ -958,9 +945,7 @@ def with_skip_attachments(settings: Settings, skip: bool) -> Settings:
     """
     if not skip:
         return settings
-    return settings.model_copy(
-        update={"attachments": settings.attachments.model_copy(update={"skip": True})}
-    )
+    return settings.model_copy(update={"attachments": settings.attachments.model_copy(update={"skip": True})})
 
 
 def with_pacing(
@@ -996,13 +981,9 @@ def with_pacing(
     """
     changes: dict[str, Any] = {}
     if delay is not None:
-        changes["pacing"] = _revalidated(
-            settings.pacing, delay_between_conversations_s=delay
-        )
+        changes["pacing"] = _revalidated(settings.pacing, delay_between_conversations_s=delay)
     if max_retries is not None:
-        changes["retries"] = _revalidated(
-            settings.retries, max_attempts=max_retries + 1
-        )
+        changes["retries"] = _revalidated(settings.retries, max_attempts=max_retries + 1)
     if timeout is not None:
         changes["timeouts"] = _revalidated(settings.timeouts, hermes_task_s=timeout)
     if not changes:
@@ -1080,7 +1061,7 @@ def load_settings(
 
 
 def _first_line(path: Path) -> str:
-    """The credential in `path`: its first line, stripped. Never logged."""
+    """Return the credential in `path`: its first line, stripped. Never logged."""
     try:
         with path.open(encoding="utf-8") as handle:
             return handle.readline().strip()
@@ -1089,7 +1070,7 @@ def _first_line(path: Path) -> str:
 
 
 def _describe(exc: ValidationError) -> str:
-    """A one-line, operator-facing rendering of a pydantic validation failure."""
+    """Return a one-line, operator-facing rendering of a pydantic validation failure."""
     parts = []
     for error in exc.errors():
         location = ".".join(str(item) for item in error["loc"]) or "(root)"

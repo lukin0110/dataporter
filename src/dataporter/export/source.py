@@ -38,7 +38,7 @@ import zipfile
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 from pydantic import ValidationError
 
@@ -65,7 +65,7 @@ _TOKEN = re.compile(r"[^A-Za-z0-9_.:/-]")
 
 
 def _token(value: object, limit: int = 40) -> str:
-    """A reason fragment safe to put in a report.
+    """Return a reason fragment safe to put in a report.
 
     The sender and the block `type` come from the export and end up in
     `report.json`, so they are reduced to a bounded, punctuation-free token.
@@ -75,7 +75,7 @@ def _token(value: object, limit: int = 40) -> str:
 
 
 def _describe(exc: ValidationError) -> str:
-    """A pydantic error as `loc: msg`, with the offending value left out.
+    """Return a pydantic error as `loc: msg`, with the offending value left out.
 
     Same shape as `config._describe`, deliberately re-written rather than
     imported: a private name is not a cross-module contract.
@@ -153,9 +153,7 @@ class ExportSource:
         # "corrupt zip archive", not "that is not a zip".
         if zipfile.is_zipfile(resolved) or resolved.suffix.lower() == ".zip":
             return _ZipSource(resolved, display)
-        raise ExportError(
-            detail=f"export is not a directory or a .zip archive: {display}"
-        )
+        raise ExportError(detail=f"export is not a directory or a .zip archive: {display}")
 
     @property
     def is_archive(self) -> bool:
@@ -174,7 +172,7 @@ class ExportSource:
     def close(self) -> None:
         return None
 
-    def __enter__(self) -> "ExportSource":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(
@@ -191,11 +189,7 @@ class ExportSource:
         try:
             return data.decode("utf-8")
         except UnicodeDecodeError as exc:
-            raise ExportError(
-                detail=(
-                    f"{member} is not valid UTF-8 at byte {exc.start}: {self.display}"
-                )
-            ) from exc
+            raise ExportError(detail=(f"{member} is not valid UTF-8 at byte {exc.start}: {self.display}")) from exc
 
     def parse(self, body: str, member: str) -> Any:
         try:
@@ -203,10 +197,7 @@ class ExportSource:
         except json.JSONDecodeError as exc:
             offset = len(body[: exc.pos].encode("utf-8"))
             raise ExportError(
-                detail=(
-                    f"{member} is not valid JSON at byte {offset} "
-                    f"({exc.msg}): {self.display}"
-                )
+                detail=(f"{member} is not valid JSON at byte {offset} ({exc.msg}): {self.display}")
             ) from exc
 
 
@@ -234,9 +225,7 @@ class _DirectorySource(ExportSource):
         try:
             return (self._root / member).read_bytes()
         except OSError as exc:
-            raise ExportError(
-                detail=f"cannot read {member} ({exc.strerror}): {self.display}"
-            ) from exc
+            raise ExportError(detail=f"cannot read {member} ({exc.strerror}): {self.display}") from exc
 
 
 class _ZipSource(ExportSource):
@@ -246,19 +235,11 @@ class _ZipSource(ExportSource):
         super().__init__(path, display)
         try:
             self._archive = zipfile.ZipFile(path, "r")
-            members = [
-                info.filename for info in self._archive.infolist() if not info.is_dir()
-            ]
+            members = [info.filename for info in self._archive.infolist() if not info.is_dir()]
         except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, EOFError) as exc:
-            raise ExportError(
-                detail=f"corrupt zip archive ({exc}): {self.display}"
-            ) from exc
+            raise ExportError(detail=f"corrupt zip archive ({exc}): {self.display}") from exc
         self._prefix = _archive_prefix(members)
-        self._members = {
-            name[len(self._prefix) :]: name
-            for name in members
-            if name.startswith(self._prefix)
-        }
+        self._members = {name[len(self._prefix) :]: name for name in members if name.startswith(self._prefix)}
 
     @property
     def is_archive(self) -> bool:
@@ -276,11 +257,7 @@ class _ZipSource(ExportSource):
                 # A full read is CRC-checked; nothing is written to disk.
                 return stream.read()
         except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, EOFError) as exc:
-            raise ExportError(
-                detail=(
-                    f"cannot read {member} from the archive ({exc}): {self.display}"
-                )
-            ) from exc
+            raise ExportError(detail=(f"cannot read {member} from the archive ({exc}): {self.display}")) from exc
 
     def close(self) -> None:
         self._archive.close()
@@ -335,7 +312,7 @@ def _archive_prefix(members: list[str]) -> str:
 
 
 def _directory_root(path: Path) -> Path:
-    """The directory holding `conversations.json`: `path`, or one level down."""
+    """Return the directory holding `conversations.json`: `path`, or one level down."""
     if (path / CONVERSATIONS_FILE).exists():
         return path
     children = [item for item in path.iterdir() if item.is_dir()]
@@ -374,9 +351,7 @@ def read_export(source: ExportSource) -> Export:
             unsupported.add(name, "unknown_file")
 
     if CONVERSATIONS_FILE not in names:
-        raise ExportError(
-            detail=f"{CONVERSATIONS_FILE} missing from export: {source.display}"
-        )
+        raise ExportError(detail=f"{CONVERSATIONS_FILE} missing from export: {source.display}")
 
     raw = source.read(CONVERSATIONS_FILE)
     # Not `orval.hashify`, which `04` uses for seed text: it hashes a `str`
@@ -385,14 +360,9 @@ def read_export(source: ExportSource) -> Export:
     fingerprint = hashlib.sha256(raw).hexdigest()
     decoded = source.parse(source.decode(raw, CONVERSATIONS_FILE), CONVERSATIONS_FILE)
     if not isinstance(decoded, list):
-        raise ExportError(
-            detail=f"{CONVERSATIONS_FILE} is not a JSON array: {source.display}"
-        )
+        raise ExportError(detail=f"{CONVERSATIONS_FILE} is not a JSON array: {source.display}")
 
-    conversations = [
-        _conversation(item, position, source, unsupported)
-        for position, item in enumerate(decoded)
-    ]
+    conversations = [_conversation(item, position, source, unsupported) for position, item in enumerate(decoded)]
     users = _optional_list("users.json", source, unsupported)
     projects = _optional_list("projects.json", source, unsupported)
     memories = _optional_list("memories.json", source, unsupported)
@@ -409,16 +379,10 @@ def read_export(source: ExportSource) -> Export:
     return export
 
 
-def _conversation(
-    item: Any, position: int, source: ExportSource, unsupported: _Unsupported
-) -> Conversation:
+def _conversation(item: Any, position: int, source: ExportSource, unsupported: _Unsupported) -> Conversation:
     """Validate one conversation, dropping what cannot be represented."""
     if not isinstance(item, Mapping):
-        raise ExportError(
-            detail=(
-                f"{CONVERSATIONS_FILE}[{position}] is not an object: {source.display}"
-            )
-        )
+        raise ExportError(detail=(f"{CONVERSATIONS_FILE}[{position}] is not an object: {source.display}"))
     data: dict[str, Any] = {str(key): value for key, value in item.items()}
     uuid = data.get("uuid") if isinstance(data.get("uuid"), str) else f"[{position}]"
     path = f"{CONVERSATIONS_FILE}:{uuid}"
@@ -447,10 +411,7 @@ def _conversation(
         conversation = Conversation.model_validate(data)
     except ValidationError as exc:
         raise ExportError(
-            detail=(
-                f"invalid conversation at {CONVERSATIONS_FILE}[{position}] "
-                f"({_describe(exc)}): {source.display}"
-            )
+            detail=(f"invalid conversation at {CONVERSATIONS_FILE}[{position}] ({_describe(exc)}): {source.display}")
         ) from exc
 
     _collect_blocks(conversation, path, unsupported)
@@ -458,9 +419,7 @@ def _conversation(
     return conversation
 
 
-def _collect_blocks(
-    conversation: Conversation, path: str, unsupported: _Unsupported
-) -> None:
+def _collect_blocks(conversation: Conversation, path: str, unsupported: _Unsupported) -> None:
     """Record every block the models could not represent."""
     for block in _blocks(conversation):
         if not isinstance(block, UnknownBlock):
@@ -473,9 +432,7 @@ def _collect_blocks(
             unsupported.add(path, f"unknown_block_type:{_token(block.type)}")
 
 
-def _collect_duplicates(
-    conversation: Conversation, path: str, unsupported: _Unsupported
-) -> None:
+def _collect_duplicates(conversation: Conversation, path: str, unsupported: _Unsupported) -> None:
     seen: set[str] = set()
     for message in conversation.chat_messages:
         if message.uuid in seen:
@@ -488,9 +445,7 @@ def _blocks(conversation: Conversation) -> Iterator[Any]:
         yield from message.content
 
 
-def _optional_list(
-    member: str, source: ExportSource, unsupported: _Unsupported
-) -> list[dict[str, Any]]:
+def _optional_list(member: str, source: ExportSource, unsupported: _Unsupported) -> list[dict[str, Any]]:
     """Read an optional top-level file for counts. Absence is not an error.
 
     A malformed optional file is not fatal either: only `conversations.json` can
@@ -508,11 +463,7 @@ def _optional_list(
         _logger.warning("export file unparsable", extra={"member": member})
         unsupported.add(member, "unparsable_file")
         return []
-    return [
-        {str(key): value for key, value in entry.items()}
-        for entry in decoded
-        if isinstance(entry, Mapping)
-    ]
+    return [{str(key): value for key, value in entry.items()} for entry in decoded if isinstance(entry, Mapping)]
 
 
 def _log_shape(export: Export) -> None:
@@ -544,8 +495,7 @@ def _log_shape(export: Export) -> None:
             "blocks": blocks,
             "with_index": with_index,
             "with_leaf": sum(
-                conversation.current_leaf_message_uuid is not None
-                for conversation in export.conversations
+                conversation.current_leaf_message_uuid is not None for conversation in export.conversations
             ),
             "with_files": with_files,
             "with_files_v2": with_files_v2,

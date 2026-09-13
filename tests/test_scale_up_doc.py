@@ -35,7 +35,7 @@ from dataporter import verify as verifying
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "spikes"))
 
-import sign_off  # noqa: E402  — after the path insert, as `10`'s scripts are
+import sign_off
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
@@ -78,23 +78,19 @@ complaint rather than a finding."""
 
 
 def section(text: str, heading: str) -> list[str]:
-    """The lines under `heading`, up to the next heading of the same level."""
+    """Return the lines under `heading`, up to the next heading of the same level."""
     lines = text.splitlines()
     level = heading.split(" ", 1)[0] + " "
     start = lines.index(heading)
     end = next(
-        (
-            position
-            for position, line in enumerate(lines[start + 1 :], start + 1)
-            if line.startswith(level)
-        ),
+        (position for position, line in enumerate(lines[start + 1 :], start + 1) if line.startswith(level)),
         len(lines),
     )
     return lines[start + 1 : end]
 
 
 def rows(lines: list[str]) -> list[list[str]]:
-    """The body rows of the *first* table in `lines`, cell by cell.
+    """Return the body rows of the *first* table in `lines`, cell by cell.
 
     The first and not all of them: a section here carries its own table and then
     a subsection with another — attachment coverage by class, the probe grades —
@@ -114,11 +110,12 @@ def rows(lines: list[str]) -> list[list[str]]:
 
 
 def commands_named(text: str) -> set[str]:
-    """The commands a document tells an operator to run.
+    """Return the commands a document tells an operator to run.
 
     `[a-z][a-z-]*` rather than `[a-z-]+`, which `20`'s write-up can afford:
     these documents name `--version` and `--dry-run` too, and a flag read as a
-    command name would fail this for saying something true."""
+    command name would fail this for saying something true.
+    """
     return set(re.findall(rf"{PROGRAM_NAME} ([a-z][a-z-]*)", text))
 
 
@@ -138,15 +135,20 @@ def test_the_write_up_has_every_section_21_asks_for(heading: str) -> None:
 
 
 def test_every_19_metric_has_a_row() -> None:
-    """And the rows are the script's own labels: the table is pasted from
-    `sign_off.py metrics`, so the two cannot be allowed to drift."""
+    """And the rows are the script's own labels.
+
+    The table is pasted from `sign_off.py metrics`, so the two cannot be allowed to
+    drift.
+    """
     table = rows(section(TEXT, "## The metrics (§19)"))
     assert [row[0] for row in table] == list(sign_off.METRIC_NAMES)
 
 
 def test_every_metric_row_carries_a_measure_and_one_mark() -> None:
-    """A metric with no measure is an opinion; two marks is a row that has been
-    half updated."""
+    """A metric with no measure is an opinion.
+
+    Two marks is a row that has been half updated.
+    """
     for row in rows(section(TEXT, "## The metrics (§19)")):
         assert len(row) == 5, row
         assert row[1], f"{row[0]} does not say how it is measured"
@@ -154,15 +156,12 @@ def test_every_metric_row_carries_a_measure_and_one_mark() -> None:
 
 
 def test_the_primary_metric_asks_for_its_two_terms() -> None:
-    """`21`: "the primary metric is stated as a percentage with its numerator and
-    denominator". A percentage column alone would satisfy the eye and not the
-    criterion."""
+    """`21`: "the primary metric is stated as a percentage with its numerator and denominator".
+
+    A percentage column alone would satisfy the eye and not the criterion.
+    """
     table = rows(section(TEXT, "## The metrics (§19)"))
-    header = [
-        line
-        for line in section(TEXT, "## The metrics (§19)")
-        if line.startswith("| §19 metric")
-    ]
+    header = [line for line in section(TEXT, "## The metrics (§19)") if line.startswith("| §19 metric")]
     assert header, "the metrics table has no header"
     assert "Terms" in header[0]
     assert table[0][0].startswith("Primary:")
@@ -178,10 +177,11 @@ def test_the_gate_has_a_row_per_threshold() -> None:
 
 
 def test_the_safety_table_has_a_row_per_check_the_script_prints() -> None:
-    """`sign_off.py safety` reports the export digest and four history buckets
-    apart, so a table with one "anything else" row would have to be aggregated
-    by hand out of the script's own output. (Raised by Copilot in review on
-    #30.)"""
+    """`sign_off.py safety` reports the export digest and four history buckets apart.
+
+    A table with one "anything else" row would have to be aggregated by hand out of the
+    script's own output. (Raised by Copilot in review on #30.)
+    """
     table = rows(section(TEXT, "## Safety (§17)"))
     assert [row[0].split("`")[1] for row in table] == list(sign_off.SAFETY_CHECKS)
     assert all(MARK.search(row[-1]) for row in table)
@@ -204,14 +204,15 @@ def test_nothing_claims_a_measurement_while_no_run_has_happened() -> None:
     """The rule that makes the marks worth anything, and `20`'s rule before it."""
     if NOT_RUN not in TEXT:
         return
-    assert MEASURED.search(PROSE) is None, (
-        "a number claims a measurement while the status line still says none"
-    )
+    assert MEASURED.search(PROSE) is None, "a number claims a measurement while the status line still says none"
 
 
 def test_the_criterion_is_answered_in_a_sentence() -> None:
-    """§19 is met or it is not. A section that described the numbers again
-    instead of answering would be the one thing the sign-off cannot do."""
+    """§19 is met or it is not.
+
+    A section that described the numbers again instead of answering would be the one
+    thing the sign-off cannot do.
+    """
     body = section(TEXT, "## Was §19's criterion met?")
     assert any(MARK.search(line) for line in body)
 
@@ -246,8 +247,11 @@ def test_the_script_really_takes_each_subcommand(name: str) -> None:
 
 
 def test_the_readme_gets_a_reader_to_a_pilot() -> None:
-    """`21`'s criterion: a reader who has never seen the project can run `login`,
-    `import --dry-run` and `import --pilot` from `README.md` alone."""
+    """`21`'s criterion.
+
+    A reader who has never seen the project can run `login`, `import --dry-run` and
+    `import --pilot` from `README.md` alone.
+    """
     text = README.read_text(encoding="utf-8")
     for step in (
         f"{PROGRAM_NAME} setup",
@@ -278,20 +282,23 @@ def test_the_readme_says_where_content_ends_up_and_how_to_purge_it() -> None:
 
 @pytest.mark.parametrize(
     "topic",
-    (
+    [
         "## Interrupting",
         "## Resuming a pause",
         "## Retrying failures",
         "## Cleaning up",
-    ),
+    ],
 )
 def test_the_runbook_covers_the_topics_21_names(topic: str) -> None:
     assert f"\n{topic}\n" in RUNBOOK.read_text(encoding="utf-8")
 
 
 def test_the_runbook_says_the_tool_deletes_nothing_at_the_destination() -> None:
-    """`21` asks for cleanup "by hand — the tool never deletes at the
-    destination", which is a §17 promise and not a convenience."""
+    """`21` asks for cleanup "by hand.
+
+    The tool never deletes at the destination", which is a §17 promise and not a
+    convenience.
+    """
     assert "deletes nothing at the destination" in RUNBOOK.read_text(encoding="utf-8")
 
 

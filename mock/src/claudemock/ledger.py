@@ -57,12 +57,12 @@ class Ledger:
             setattr(self, name, getattr(self, name) + amount)
 
     def counters(self) -> dict[str, int]:
-        """The five numbers as a mapping, in the block's order."""
+        """Return the five numbers as a mapping, in the block's order."""
         with self._lock:
             return {name: int(getattr(self, name)) for name, _ in LABELS}
 
     def block(self) -> str:
-        """The ledger block, byte for byte, ending in a blank line.
+        """Return the ledger block, byte for byte, ending in a blank line.
 
         `26`'s golden string, in the shape §21 illustrates: the heading, a blank
         line, five labelled counts with the numbers right-aligned, a blank line.

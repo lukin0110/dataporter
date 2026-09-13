@@ -68,7 +68,7 @@ def cdp_url(settings: Settings) -> str:
 
 
 def profile_config(settings: Settings) -> dict[str, str]:
-    """The keys `setup` sets, in the order `09` lists them.
+    """Return the keys `setup` sets, in the order `09` lists them.
 
     Two are derived rather than fixed — the CDP url follows `browser.cdp_port`, so
     an operator who moved the debug port does not have to remember to move it here
@@ -98,7 +98,7 @@ says the wide tool is off, the other says Hermes is pointed at our Chrome."""
 
 
 def configured_model(config: Mapping[str, str]) -> str:
-    """The model this profile will use, or `""` if none of `MODEL_KEYS` is set."""
+    """Return the model this profile will use, or `""` if none of `MODEL_KEYS` is set."""
     for key in MODEL_KEYS:
         value = config.get(key, "").strip()
         if value:
@@ -119,8 +119,7 @@ class SetupReport:
 
     def lines(self) -> list[str]:
         return [
-            f"hermes profile   {self.profile} "
-            f"({'created' if self.created else 'already existed'})",
+            f"hermes profile   {self.profile} ({'created' if self.created else 'already existed'})",
             f"hermes config    {self.keys} keys set",
             f"skill            {self.skill} -> {self.skill_dir}",
             *([f"hermes model     {self.model}"] if self.model else []),

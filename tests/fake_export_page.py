@@ -111,7 +111,7 @@ class FakeExportPage:
     """JavaScript dialog events to push before the next reply."""
 
     def state(self) -> dict[str, Any]:
-        """What `07`'s probe makes of this page.
+        """Return what `07`'s probe makes of this page.
 
         No composer, whatever the stage: a settings page has none, which is the
         whole reason `export_page.signed_out` reads the URL instead. The one page
@@ -130,11 +130,9 @@ class FakeExportPage:
         }
 
     def view(self) -> dict[str, Any]:
-        """What `EXPORT_PAGE_JS` answers for this stage."""
+        """Return what `EXPORT_PAGE_JS` answers for this stage."""
         self.view_reads += 1
-        if self.leaves_after_view is not None and self.view_reads >= (
-            self.leaves_after_view
-        ):
+        if self.leaves_after_view is not None and self.view_reads >= (self.leaves_after_view):
             self.url = SIGNED_OUT_URL
         return {
             "button": self.button and self.stage is Stage.SETTINGS,
@@ -164,7 +162,7 @@ class FakeExportPage:
     def evaluate(self, expression: str) -> Any:
         if expression == "location.href":
             return self.url
-        if expression in (session.READY_JS, login_form.SETTLED_JS):
+        if expression in {session.READY_JS, login_form.SETTLED_JS}:
             if self.loading_for > 0:
                 self.loading_for -= 1
                 return False
@@ -179,11 +177,7 @@ class FakeExportPage:
 
     def respond(self, call: Call) -> dict[str, Any] | None:
         if call.method == "Runtime.evaluate":
-            return {
-                "result": {
-                    "result": {"value": self.evaluate(str(call.params["expression"]))}
-                }
-            }
+            return {"result": {"result": {"value": self.evaluate(str(call.params["expression"]))}}}
         if call.method == "Page.enable":
             if self.dialog_already_open:
                 self.dialogs.append(dialog_event())
@@ -202,7 +196,7 @@ class FakeExportPage:
 
 
 def responder(page: FakeExportPage) -> Callable[[Any, Call], Any]:
-    """A `FakeChrome` responder that answers for one tab and pushes its dialogs.
+    """Return a `FakeChrome` responder that answers for one tab and pushes its dialogs.
 
     The dialog is pushed as an event rather than returned, because that is how
     Chrome reports one and how `probe.pending_dialogs` finds it: the ask learns
@@ -230,7 +224,7 @@ def visit(chrome: FakeChrome, page: FakeExportPage, url: str) -> None:
 
 
 def browser(page: FakeExportPage, port: int = 0) -> FakeChrome:
-    """A fake Chrome with this page on its one tab.
+    """Return a fake Chrome with this page on its one tab.
 
     `port` is for the test that asks twice: an ask closes the browser on its way
     out, as `login` does and for the same reason — Chrome flushes its cookie jar

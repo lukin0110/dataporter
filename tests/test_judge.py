@@ -53,17 +53,15 @@ def probe(**fields: object) -> Probe:
 
 
 def seeded(settings: Settings, *parts: str) -> None:
-    """A conversation's seed on disk, as `04` writes it."""
+    """Write a conversation's seed on disk, as `04` writes it."""
     directory = settings.seeds_dir / FIRST
     directory.mkdir(parents=True, exist_ok=True)
     for index, text in enumerate(parts, start=1):
         (directory / f"part-{index:02d}.txt").write_text(text, encoding="utf-8")
 
 
-def grading(
-    score: Score = "pass", reason: str = "about the right conversation"
-) -> tuple[judging.Grader, list[str]]:
-    """A grader that answers the same way every time, and remembers what it saw."""
+def grading(score: Score = "pass", reason: str = "about the right conversation") -> tuple[judging.Grader, list[str]]:
+    """Return a grader that answers the same way every time, and remembers what it saw."""
     seen: list[str] = []
 
     def grade(text: str) -> judging.FidelityVerdict:
@@ -86,8 +84,7 @@ def test_the_source_is_the_seed_parts_in_order(tmp_path: Path) -> None:
 
 
 def test_the_source_is_capped(tmp_path: Path) -> None:
-    """A judge handed forty kilobytes is being asked to read the conversation
-    rather than to recognise it."""
+    """A judge handed forty kilobytes is being asked to read the conversation rather than to recognise it."""
     settings = settings_for(tmp_path, judge=JudgeSettings(max_seed_chars=4))
     seeded(settings, "part one")
 
@@ -95,7 +92,7 @@ def test_the_source_is_capped(tmp_path: Path) -> None:
 
 
 def test_a_conversation_with_no_seed_on_disk_has_no_source(tmp_path: Path) -> None:
-    assert judging.source_text(settings_for(tmp_path), FIRST) == ""
+    assert not judging.source_text(settings_for(tmp_path), FIRST)
 
 
 def test_the_comparison_labels_both_halves() -> None:
@@ -126,18 +123,17 @@ def test_a_probe_that_never_got_an_answer_is_not_graded(tmp_path: Path) -> None:
     seeded(settings, "User: how do I list files?")
     grade, seen = grading()
 
-    assert (
-        judging.verdict_for(settings, probe(outcome="failed", reply=""), grade=grade)
-        is None
-    )
+    assert judging.verdict_for(settings, probe(outcome="failed", reply=""), grade=grade) is None
     assert seen == []
 
 
 def test_a_reply_with_no_seed_to_check_it_against_is_not_graded(
     tmp_path: Path,
 ) -> None:
-    """A verdict on a reply with no source would be a judgement of how plausible
-    a sentence sounds, which is the one number nobody could check."""
+    """A verdict on a reply with no source would judge how plausible a sentence sounds.
+
+    That is the one number nobody could check.
+    """
     grade, seen = grading()
 
     assert judging.verdict_for(settings_for(tmp_path), probe(), grade=grade) is None
@@ -163,9 +159,7 @@ def test_an_ungraded_probe_says_why() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_without_the_extra_the_judge_says_what_to_install(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_without_the_extra_the_judge_says_what_to_install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def missing(name: str) -> ModuleType:
         raise ImportError(f"No module named {name!r}")
 
@@ -177,14 +171,12 @@ def test_without_the_extra_the_judge_says_what_to_install(
     assert str(raised.value) == judging.NO_EXTRA
 
 
-def test_with_the_extra_and_no_key_it_says_which_variable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The key is Hermes's own, and this tool reads neither of them (§17): the
-    one thing it does is notice that there is not one."""
-    monkeypatch.setattr(
-        judging.importlib, "import_module", lambda name: ModuleType(name)
-    )
+def test_with_the_extra_and_no_key_it_says_which_variable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The key is Hermes's own, and this tool reads neither of them (§17).
+
+    The one thing it does is notice that there is not one.
+    """
+    monkeypatch.setattr(judging.importlib, "import_module", ModuleType)
     monkeypatch.delenv(judging.API_KEY_ENV, raising=False)
 
     with pytest.raises(judging.JudgeError) as raised:
@@ -193,12 +185,12 @@ def test_with_the_extra_and_no_key_it_says_which_variable(
     assert str(raised.value) == judging.NO_KEY
 
 
-def test_the_agent_is_built_from_the_configured_model(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """What `20` specifies: an `Agent` with `output_type=FidelityVerdict`. The
-    package is stood in for, because it is an extra and this suite has not got
-    it — what is checked is the call, which is the part that is ours."""
+def test_the_agent_is_built_from_the_configured_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """What `20` specifies: an `Agent` with `output_type=FidelityVerdict`.
+
+    The package is stood in for, because it is an extra and this suite has not got it —
+    what is checked is the call, which is the part that is ours.
+    """
     built: dict[str, object] = {}
 
     class Agent:
@@ -230,8 +222,11 @@ def test_the_agent_is_built_from_the_configured_model(
 
 
 def test_judge_with_no_probes_exits_4(runner: CliRunner, workspace: Path) -> None:
-    """`followup` is what produces the replies; grading none is not a graded
-    experiment, and it is not the extra's fault either — so this comes first."""
+    """`followup` is what produces the replies.
+
+    Grading none is not a graded experiment, and it is not the extra's fault either — so
+    this comes first.
+    """
     result = runner.invoke(cli.app, ["judge"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.NOTHING_TO_DO
@@ -240,11 +235,12 @@ def test_judge_with_no_probes_exits_4(runner: CliRunner, workspace: Path) -> Non
 def test_judge_does_not_report_nothing_to_grade_while_the_workspace_is_locked(
     runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The lock is taken before `probes.json` is read, not only around the
-    writes: a `followup` filling the file in the middle of this would have the
-    judge report "nothing to grade" about replies that were arriving as it
-    looked. A busy workspace is exit `2`. (Raised by Copilot in review on
-    #29.)"""
+    """The lock is taken before `probes.json` is read, not only around the writes.
+
+    A `followup` filling the file in the middle of this would have the judge report
+    "nothing to grade" about replies that were arriving as it looked. A busy workspace
+    is exit `2`. (Raised by Copilot in review on #29.)
+    """
     settings = Settings(workspace=workspace / "migration")
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
     lock = state.WorkspaceLock(settings.workspace)
@@ -258,9 +254,7 @@ def test_judge_does_not_report_nothing_to_grade_while_the_workspace_is_locked(
     assert "locked" in result.stderr
 
 
-def test_judge_without_the_extra_exits_6(
-    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_judge_without_the_extra_exits_6(runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings(workspace=workspace / "migration")
     following.write(settings, ProbeFile(probes=[probe()]))
 
@@ -287,9 +281,7 @@ def test_judge_only_grades_the_conversation_it_names(
     monkeypatch.setattr(judging, "grader", lambda settings: grade)
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
 
-    result = runner.invoke(
-        cli.app, ["judge", "--only", "aa000001"], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["judge", "--only", "aa000001"], catch_exceptions=False)
 
     assert result.stdout == "aa000001  pass\n"
     graded = following.read(settings).probes

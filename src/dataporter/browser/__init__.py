@@ -22,7 +22,7 @@ from dataporter.browser.helpers import (
 )
 from dataporter.browser.launcher import (
     BrowserSession,
-    PortInUse,
+    PortInUseError,
     find_executable,
     launch,
 )
@@ -42,7 +42,7 @@ __all__ = [
     "PageState",
     "PageView",
     "PasteMethod",
-    "PortInUse",
+    "PortInUseError",
     "Surface",
     "Target",
     "find_executable",

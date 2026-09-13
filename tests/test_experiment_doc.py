@@ -66,23 +66,19 @@ NO_SESSIONS = "**Sessions here:** none."
 
 
 def section(heading: str) -> list[str]:
-    """The lines under `heading`, up to the next heading of the same level."""
+    """Return the lines under `heading`, up to the next heading of the same level."""
     lines = TEXT.splitlines()
     level = heading.split(" ", 1)[0] + " "
     start = lines.index(heading)
     end = next(
-        (
-            position
-            for position, line in enumerate(lines[start + 1 :], start + 1)
-            if line.startswith(level)
-        ),
+        (position for position, line in enumerate(lines[start + 1 :], start + 1) if line.startswith(level)),
         len(lines),
     )
     return lines[start + 1 : end]
 
 
 def rows(lines: list[str]) -> list[list[str]]:
-    """The body rows of the first table in `lines`, cell by cell."""
+    """Return the body rows of the first table in `lines`, cell by cell."""
     found: list[list[str]] = []
     for line in lines:
         if not line.startswith("|"):
@@ -105,11 +101,8 @@ def test_every_18_question_has_a_section(label: str, question: str) -> None:
 
 
 @pytest.mark.parametrize(("label", "question"), QUESTIONS)
-def test_every_question_has_a_measure_evidence_and_one_marked_number(
-    label: str, question: str
-) -> None:
-    """A question with no measure is an opinion, and one with no evidence path
-    is a number nobody can check."""
+def test_every_question_has_a_measure_evidence_and_one_marked_number(label: str, question: str) -> None:
+    """A question with no measure is an opinion, and one with no evidence path is a number nobody can check."""
     lines = section(f"### {label} — {question}")
     body = " ".join(lines)
     assert "**Measure:**" in body, f"{label} says how it is not measured"
@@ -127,13 +120,13 @@ def test_every_mark_in_the_document_is_one_of_the_two() -> None:
 
 
 def test_nothing_claims_a_measurement_while_no_pilot_has_run() -> None:
-    """The rule that makes the marks worth anything: a document that says no run
-    has happened may not carry a number from one."""
+    """The rule that makes the marks worth anything.
+
+    A document that says no run has happened may not carry a number from one.
+    """
     if NOT_RUN not in TEXT:
         return
-    assert MEASURED.search(PROSE) is None, (
-        "a number claims a measurement while the status line still says none"
-    )
+    assert MEASURED.search(PROSE) is None, "a number claims a measurement while the status line still says none"
 
 
 # --------------------------------------------------------------------------- #
@@ -142,8 +135,10 @@ def test_nothing_claims_a_measurement_while_no_pilot_has_run() -> None:
 
 
 def test_the_selection_table_has_a_row_per_category() -> None:
-    """The categories are the experiment's design, so a category added to
-    `pilot.CATEGORIES` and not to the write-up fails here."""
+    """The categories are the experiment's design.
+
+    A category added to `pilot.CATEGORIES` and not to the write-up fails here.
+    """
     found = rows(section("## The selection"))
     assert [(row[0], row[1]) for row in found] == [
         (str(category.number), category.name) for category in pilot.CATEGORIES
@@ -151,8 +146,10 @@ def test_the_selection_table_has_a_row_per_category() -> None:
 
 
 def test_the_checklist_has_a_row_per_step_of_11() -> None:
-    """`20` asks whether each step's verify condition was observed before the
-    next act, which is a question per step and not per conversation."""
+    """`20` asks whether each step's verify condition was observed before the next act.
+
+    That is a question per step and not per conversation.
+    """
     found = rows(section("## Transcript review checklist"))
     assert [row[0] for row in found] == [f"`{step}`" for step in ORDER]
 
@@ -198,14 +195,8 @@ def test_the_transcript_directory_says_what_is_stripped() -> None:
 
 def test_it_stops_saying_there_are_none_once_there_are() -> None:
     readme = (TRANSCRIPTS / "README.md").read_text(encoding="utf-8")
-    saved = [
-        path
-        for path in TRANSCRIPTS.iterdir()
-        if path.is_file() and path.name != "README.md"
-    ]
+    saved = [path for path in TRANSCRIPTS.iterdir() if path.is_file() and path.name != "README.md"]
     if saved:
-        assert NO_SESSIONS not in readme, (
-            "transcripts are here and the README denies it"
-        )
+        assert NO_SESSIONS not in readme, "transcripts are here and the README denies it"
     else:
         assert NO_SESSIONS in readme

@@ -20,13 +20,11 @@ SEED = "Part 1 of 1\n\nReply with exactly one line:\nMIGRATION-ACK aa000001 1/1\
 
 
 def sign_in(client: Client, *, email: str = EMAIL, password: str = PASSWORD) -> str:
-    """The two steps, as a browser walks them. Returns the last `Location`."""
+    """Return the last `Location`, walking the two steps as a browser does."""
     client.request("/login")
     client.post("/login/email", urlencode({"email": email}).encode())
     client.request("/login")
-    _, _, location = client.post(
-        "/login/password", urlencode({"password": password}).encode()
-    )
+    _, _, location = client.post("/login/password", urlencode({"password": password}).encode())
     return location
 
 
@@ -55,9 +53,7 @@ def test_the_banner_is_dismissed_once(running: Client) -> None:
 
 def test_the_email_step_becomes_the_password_step(running: Client) -> None:
     running.request("/login")
-    status, _, location = running.post(
-        "/login/email", urlencode({"email": EMAIL}).encode()
-    )
+    status, _, location = running.post("/login/email", urlencode({"email": EMAIL}).encode())
     assert (status, location) == (303, "/login")
     _, body, _ = running.request("/login")
     assert 'type="password"' in body
@@ -66,9 +62,7 @@ def test_the_email_step_becomes_the_password_step(running: Client) -> None:
 
 def test_a_wrong_email_is_refused_and_the_form_says_so(running: Client) -> None:
     running.request("/login")
-    _, _, location = running.post(
-        "/login/email", urlencode({"email": "someone@example.invalid"}).encode()
-    )
+    _, _, location = running.post("/login/email", urlencode({"email": "someone@example.invalid"}).encode())
     assert location == "/login?error=refused"
     _, body, _ = running.request("/login?error=refused")
     assert 'role="alert"' in body
@@ -90,9 +84,7 @@ def test_the_configured_pair_signs_in(running: Client, site: Site) -> None:
     assert 'input type="file"' in body
 
 
-def test_a_submit_makes_a_chat_that_survives_a_reload(
-    running: Client, site: Site
-) -> None:
+def test_a_submit_makes_a_chat_that_survives_a_reload(running: Client, site: Site) -> None:
     sign_in(running)
     _, body, _ = running.post_json("/api/chats", {"text": SEED})
     chat_id = json.loads(body)["id"]
@@ -134,18 +126,14 @@ def test_a_rename_survives_a_reload(running: Client, site: Site) -> None:
     chat_id = json.loads(body)["id"]
     running.post_json(f"/api/chats/{chat_id}/title", {"title": "Notes on pooling"})
     _, page, _ = running.request(f"/chat/{chat_id}")
-    assert '<button id="chat-menu-trigger" data-testid="chat-menu-trigger">Notes on '
+    assert '<button id="chat-menu-trigger" data-testid="chat-menu-trigger">Notes on ' in page
     assert "Notes on pooling</button>" in page
     assert site.counters()["renames"] == 1
 
 
-def test_a_file_is_accepted_and_belongs_to_the_next_chat(
-    running: Client, site: Site
-) -> None:
+def test_a_file_is_accepted_and_belongs_to_the_next_chat(running: Client, site: Site) -> None:
     sign_in(running)
-    status, body, _ = running.post(
-        "/api/uploads", b"some bytes", **{"X-File-Name": "q3-chart.png"}
-    )
+    status, body, _ = running.post("/api/uploads", b"some bytes", **{"X-File-Name": "q3-chart.png"})
     assert (status, json.loads(body)["ok"]) == (200, True)
     _, chat, _ = running.post_json("/api/chats", {"text": SEED})
     _, page, _ = running.request(f"/chat/{json.loads(chat)['id']}")
@@ -175,8 +163,11 @@ def test_the_ledger_is_served_as_a_block_and_as_json(running: Client) -> None:
 def test_a_server_that_cannot_start_releases_its_port(
     site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A key that is not there: uvicorn fails to start, and the socket `serve`
-    bound before handing it over is closed rather than left holding the port."""
+    """A key that is not there.
+
+    Uvicorn fails to start, and the socket `serve` bound before handing it over is
+    closed rather than left holding the port.
+    """
     bound: list[socket.socket] = []
     listen = server.listen
 
@@ -185,9 +176,7 @@ def test_a_server_that_cannot_start_releases_its_port(
         return bound[-1]
 
     monkeypatch.setattr(server, "listen", listen_and_remember)
-    missing = certificate.Material(
-        cert_path=tmp_path / "cert.pem", key_path=tmp_path / "key.pem", spki_sha256=""
-    )
+    missing = certificate.Material(cert_path=tmp_path / "cert.pem", key_path=tmp_path / "key.pem", spki_sha256="")
     with pytest.raises(RuntimeError, match="stopped before it started") as caught:
         server.serve(site, port=0, material=missing)
     assert isinstance(caught.value.__cause__, OSError)

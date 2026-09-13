@@ -49,9 +49,7 @@ NOT_RUN = "**Spike run:** none."
 
 MARK = re.compile(r"\*(unknown|observed on \d{4}-\d{2}-\d{2})\*")
 OBSERVED = re.compile(r"\*observed on \d{4}-\d{2}-\d{2}\*")
-LIMITATION_MARK = re.compile(
-    r"\*(unknown|by construction|observed on \d{4}-\d{2}-\d{2})\*"
-)
+LIMITATION_MARK = re.compile(r"\*(unknown|by construction|observed on \d{4}-\d{2}-\d{2})\*")
 """`LIMITATIONS.md` has a third mark: a limitation that follows from replaying a
 conversation as pasted messages is not waiting on an observation, and marking it
 `unknown` would put it in a queue it can never leave."""
@@ -63,23 +61,19 @@ conversation as pasted messages is not waiting on an observation, and marking it
 
 
 def section(path: Path, heading: str) -> list[str]:
-    """The lines under `heading`, up to the next heading of the same level."""
-    lines = path.read_text().splitlines()
+    """Return the lines under `heading`, up to the next heading of the same level."""
+    lines = path.read_text(encoding="utf-8").splitlines()
     level = heading.split(" ", 1)[0] + " "
     start = lines.index(heading)
     end = next(
-        (
-            position
-            for position, line in enumerate(lines[start + 1 :], start + 1)
-            if line.startswith(level)
-        ),
+        (position for position, line in enumerate(lines[start + 1 :], start + 1) if line.startswith(level)),
         len(lines),
     )
     return lines[start + 1 : end]
 
 
 def bullets(lines: list[str], prefix: str) -> list[str]:
-    """The bullets starting with `prefix`, each joined with its wrapped lines.
+    """Return the bullets starting with `prefix`, each joined with its wrapped lines.
 
     A mark usually sits on the last line of a wrapped bullet, so a per-line check
     would read every multi-line entry as unmarked.
@@ -116,7 +110,7 @@ def marked_rows(path: Path) -> list[str]:
     """
     rows: list[str] = []
     collecting = False
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("|") and line.rstrip().endswith("| Mark |"):
             collecting = True
             continue
@@ -131,9 +125,7 @@ def marked_rows(path: Path) -> list[str]:
 def spec_questions() -> list[str]:
     """`10`'s ten questions, read off the spec's own numbered list."""
     numbers = [
-        match.group(1)
-        for line in section(SPEC, "## Questions to answer")
-        if (match := re.match(r"(\d+)\. ", line))
+        match.group(1) for line in section(SPEC, "## Questions to answer") if (match := re.match(r"(\d+)\. ", line))
     ]
     return [f"Q{number}" for number in numbers]
 
@@ -164,11 +156,7 @@ def test_each_document_answers_the_questions_it_owns(path: Path) -> None:
 
 @pytest.mark.parametrize("path", ANSWER_DOCS, ids=lambda path: path.name)
 def test_every_answer_is_marked(path: Path) -> None:
-    unmarked = [
-        question
-        for question, bullet in answers(path).items()
-        if not MARK.search(bullet)
-    ]
+    unmarked = [question for question, bullet in answers(path).items() if not MARK.search(bullet)]
     assert unmarked == []
 
 
@@ -177,10 +165,13 @@ def test_every_table_row_is_marked(path: Path) -> None:
     assert [row for row in marked_rows(path) if not MARK.search(row)] == []
 
 
-@pytest.mark.parametrize("path", (UI_MAP, SEED_LIMITS), ids=lambda path: path.name)
+@pytest.mark.parametrize("path", [UI_MAP, SEED_LIMITS], ids=lambda path: path.name)
 def test_the_tables_that_carry_observations_have_rows(path: Path) -> None:
-    """`hermes-attach.md` is exempt: its one table is the fallback ladder, and a
-    rung is a decision rather than something anybody watched the page do."""
+    """`hermes-attach.md` is exempt.
+
+    Its one table is the fallback ladder, and a rung is a decision rather than something
+    anybody watched the page do.
+    """
     assert marked_rows(path)
 
 
@@ -192,11 +183,9 @@ def test_a_document_that_observed_nothing_says_so(path: Path) -> None:
     or something was observed and the line has to be replaced by the date, the
     Hermes version and the Chrome version `10`'s method asks for.
     """
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     claims = OBSERVED.search(text) is not None
-    assert claims is not (NOT_RUN in text), (
-        f"{path.name}: {NOT_RUN!r} and an `observed on` mark cannot both be true"
-    )
+    assert claims is not (NOT_RUN in text), f"{path.name}: {NOT_RUN!r} and an `observed on` mark cannot both be true"
 
 
 # --------------------------------------------------------------------------- #

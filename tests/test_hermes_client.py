@@ -1,6 +1,7 @@
 """Finding `hermes`, running it in an environment we built, reading what it says."""
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -36,32 +37,26 @@ def test_the_configured_executable_wins(tmp_path: Path, fake: FakeHermes) -> Non
 
 
 @pytest.mark.slow
-def test_a_bare_name_is_looked_up_on_path(
-    tmp_path: Path, fake: FakeHermes, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_bare_name_is_looked_up_on_path(tmp_path: Path, fake: FakeHermes, monkeypatch: pytest.MonkeyPatch) -> None:
     fake.on_path(monkeypatch)
     cli = hermes_client.HermesCli(make_settings(tmp_path))
     assert cli.path == fake.executable
 
 
-def test_a_missing_hermes_names_the_remedy(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_missing_hermes_names_the_remedy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hermes_client.shutil, "which", lambda name: None)
     cli = hermes_client.HermesCli(make_settings(tmp_path))
     with pytest.raises(HermesUsageError, match="hermes not found") as caught:
-        cli.path
+        _ = cli.path
     # Not transient: no number of retries installs Hermes.
     assert caught.value.transient is False
 
 
-def test_a_configured_executable_that_is_not_there_says_so(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_configured_executable_that_is_not_there_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hermes_client.shutil, "which", lambda name: None)
     cli = hermes_client.HermesCli(make_settings(tmp_path, Path("/opt/nope/hermes")))
     with pytest.raises(HermesUsageError, match="configured hermes executable"):
-        cli.path
+        _ = cli.path
 
 
 @pytest.mark.slow
@@ -76,9 +71,7 @@ def test_the_path_is_resolved_once(tmp_path: Path, fake: FakeHermes) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_the_environment_is_the_allowlist_and_nothing_else(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_environment_is_the_allowlist_and_nothing_else(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HERMES_YOLO_MODE", "1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-not-ours")
     settings = make_settings(tmp_path)
@@ -89,9 +82,7 @@ def test_the_environment_is_the_allowlist_and_nothing_else(
     assert env["DATAPORTER_WORKSPACE"] == str(settings.workspace)
 
 
-def test_an_unset_variable_is_not_invented(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_unset_variable_is_not_invented(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LANG", raising=False)
     assert "LANG" not in hermes_client.hermes_env(make_settings(tmp_path))
 
@@ -133,18 +124,14 @@ def test_an_unreadable_version_is_an_error(tmp_path: Path, fake: FakeHermes) -> 
 
 
 @pytest.mark.slow
-def test_a_non_zero_exit_becomes_a_usage_error(
-    tmp_path: Path, fake: FakeHermes
-) -> None:
+def test_a_non_zero_exit_becomes_a_usage_error(tmp_path: Path, fake: FakeHermes) -> None:
     fake.write(version="hermes 1.0.0", version_exit=3)
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
     with pytest.raises(HermesUsageError, match="hermes --version"):
         cli.version()
 
 
-def test_an_unrunnable_executable_is_a_usage_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_unrunnable_executable_is_a_usage_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Something that resolves and then will not exec: a broken install."""
     directory = tmp_path / "bin"
     directory.mkdir()
@@ -163,7 +150,7 @@ def test_a_call_that_never_returns_is_cut_off(tmp_path: Path, fake: FakeHermes) 
         timeouts=TimeoutSettings(hermes_cli_s=0.5),
     )
     cli = hermes_client.HermesCli(settings)
-    with pytest.raises(HermesError, match="timed out after 0.5s"):
+    with pytest.raises(HermesError, match=re.escape("timed out after 0.5s")):
         # `-z` is the one branch of the fake that sleeps.
         cli.run("-z", "anything")
 
@@ -178,9 +165,7 @@ def test_profiles_and_creation_round_trip(tmp_path: Path, fake: FakeHermes) -> N
 
 
 @pytest.mark.slow
-def test_config_set_is_passed_through_verbatim(
-    tmp_path: Path, fake: FakeHermes
-) -> None:
+def test_config_set_is_passed_through_verbatim(tmp_path: Path, fake: FakeHermes) -> None:
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
     cli.config_set("browser.cdp_url", "http://127.0.0.1:9222")
     assert fake.config == {"browser.cdp_url": "http://127.0.0.1:9222"}
@@ -241,9 +226,7 @@ def test_a_sibling_key_after_a_block_leaves_the_block() -> None:
 
 
 def test_mismatches_name_the_key_what_is_there_and_what_was_wanted() -> None:
-    found = hermes_client.mismatches(
-        {"browser.backend": "browser-use"}, {"browser.backend": "off", "a.b": "1"}
-    )
+    found = hermes_client.mismatches({"browser.backend": "browser-use"}, {"browser.backend": "off", "a.b": "1"})
     assert found == [
         "browser.backend=browser-use, expected off",
         "a.b unset, expected 1",
@@ -252,17 +235,12 @@ def test_mismatches_name_the_key_what_is_there_and_what_was_wanted() -> None:
 
 def test_a_value_that_only_differs_in_case_is_not_a_mismatch() -> None:
     """A YAML round trip may hand back `Off` for the `off` we set."""
-    assert (
-        hermes_client.mismatches({"browser.backend": "Off"}, {"browser.backend": "off"})
-        == []
-    )
+    assert hermes_client.mismatches({"browser.backend": "Off"}, {"browser.backend": "off"}) == []
 
 
 def test_a_path_under_home_is_abbreviated(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hermes_client.Path, "home", lambda: Path("/home/someone"))
-    assert hermes_client.home_relative(Path("/home/someone/.local/bin/hermes")) == (
-        "~/.local/bin/hermes"
-    )
+    assert hermes_client.home_relative(Path("/home/someone/.local/bin/hermes")) == ("~/.local/bin/hermes")
     assert hermes_client.home_relative(Path("/opt/hermes")) == "/opt/hermes"
 
 
@@ -272,24 +250,18 @@ def test_a_command_with_a_space_in_it_is_quoted() -> None:
 
 
 def test_the_failure_line_is_the_last_thing_said(tmp_path: Path) -> None:
-    completed = hermes_client.Completed(
-        command=("hermes",), returncode=1, stdout="starting\n", stderr="\nboom\n"
-    )
+    completed = hermes_client.Completed(command=("hermes",), returncode=1, stdout="starting\n", stderr="\nboom\n")
     assert completed.failure == "boom"
     assert not completed.ok
 
 
 def test_a_silent_failure_falls_back_to_the_exit_code() -> None:
-    completed = hermes_client.Completed(
-        command=("hermes",), returncode=9, stdout="", stderr=""
-    )
+    completed = hermes_client.Completed(command=("hermes",), returncode=9, stdout="", stderr="")
     assert completed.failure == "exited 9"
 
 
 def test_the_failure_line_cannot_forge_a_second_line() -> None:
-    completed = hermes_client.Completed(
-        command=("hermes",), returncode=1, stdout="", stderr="boom\r\nok  (fake)"
-    )
+    completed = hermes_client.Completed(command=("hermes",), returncode=1, stdout="", stderr="boom\r\nok  (fake)")
     assert "\n" not in completed.failure
     assert os.linesep not in completed.failure
 
@@ -298,8 +270,10 @@ def test_the_failure_line_cannot_forge_a_second_line() -> None:
 def test_a_credential_in_the_parent_never_reaches_hermes(
     tmp_path: Path, fake: FakeHermes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`24`: the environment is built, not filtered, and `DATAPORTER_AUTH__*` is not
-    on the list — so the agent cannot `printenv` its way to a password."""
+    """`24`: the environment is built, not filtered, and `DATAPORTER_AUTH__*` is not on it.
+
+    So the agent cannot `printenv` its way to a password.
+    """
     monkeypatch.setenv("DATAPORTER_AUTH__EMAIL", "someone@example.test")
     monkeypatch.setenv("DATAPORTER_AUTH__PASSWORD", "hunter2")
     settings = make_settings(tmp_path, fake.executable)

@@ -38,9 +38,7 @@ DATE = "2026-09-12"
 
 def test_the_export_covers_every_category_24_names(tmp_path: Path) -> None:
     export, attachments = exporting.build(tmp_path)
-    conversations = json.loads(
-        (export / "conversations.json").read_text(encoding="utf-8")
-    )
+    conversations = json.loads((export / "conversations.json").read_text(encoding="utf-8"))
     by_uuid = {item["uuid"]: item for item in conversations}
 
     assert len(conversations) == len(exporting.MIGRATABLE) + 1
@@ -52,9 +50,7 @@ def test_the_export_covers_every_category_24_names(tmp_path: Path) -> None:
     # Over the tool's default 50,000-character seed budget, so the seed is two
     # parts. Measured on the rendered text, not asserted as a part count: the
     # budget belongs to `10`.
-    longest = sum(
-        len(message["text"]) for message in by_uuid[exporting.LONG]["chat_messages"]
-    )
+    longest = sum(len(message["text"]) for message in by_uuid[exporting.LONG]["chat_messages"])
     assert longest > 50_000
     first = by_uuid[exporting.ATTACHED]["chat_messages"][0]
     assert [item["file_name"] for item in first["attachments"]] == [
@@ -69,9 +65,7 @@ def test_the_export_is_the_same_export_every_time(tmp_path: Path) -> None:
     """`plan.json` is reproducible only if the export it is built from is."""
     first, _ = exporting.build(tmp_path / "one")
     again, _ = exporting.build(tmp_path / "two")
-    assert (first / "conversations.json").read_bytes() == (
-        again / "conversations.json"
-    ).read_bytes()
+    assert (first / "conversations.json").read_bytes() == (again / "conversations.json").read_bytes()
 
 
 def test_no_real_account_appears_in_it(tmp_path: Path) -> None:
@@ -92,12 +86,11 @@ def profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return state
 
 
-def test_the_version_is_new_enough_for_doctor(
-    profile: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_version_is_new_enough_for_doctor(profile: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert scripted.main(["--version"]) == 0
     found = parse_version(capsys.readouterr().out)
-    assert found is not None and at_least(found)
+    assert found is not None
+    assert at_least(found)
 
 
 def test_setup_creates_a_profile_and_reads_its_own_configuration(
@@ -105,21 +98,16 @@ def test_setup_creates_a_profile_and_reads_its_own_configuration(
 ) -> None:
     """The round-trip `09`'s `setup` and `doctor` make: create, set, show."""
     assert scripted.main(["profile", "create", "dataporter"]) == 0
+    assert scripted.main(["-p", "dataporter", "config", "set", "browser.backend", "off"]) == 0
     assert (
-        scripted.main(["-p", "dataporter", "config", "set", "browser.backend", "off"])
-        == 0
-    )
-    assert (
-        scripted.main(
-            [
-                "-p",
-                "dataporter",
-                "config",
-                "set",
-                "browser.cdp_url",
-                "http://127.0.0.1:9222",
-            ]
-        )
+        scripted.main([
+            "-p",
+            "dataporter",
+            "config",
+            "set",
+            "browser.cdp_url",
+            "http://127.0.0.1:9222",
+        ])
         == 0
     )
     assert scripted.main(["profile", "list"]) == 0
@@ -138,9 +126,7 @@ def test_an_unknown_command_is_a_usage_error(profile: Path) -> None:
     assert scripted.main(["mimic", "a", "person"]) == 2
 
 
-def test_a_task_it_does_not_know_is_a_failed_result(
-    profile: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_task_it_does_not_know_is_a_failed_result(profile: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A result object the runner's contract can read, never a traceback."""
     assert scripted.main(["-p", "dataporter", "-z", "do something else"]) == 0
     printed = json.loads(capsys.readouterr().out)
@@ -181,9 +167,7 @@ def test_a_prompt_with_no_nonce_cannot_be_answered(profile: Path) -> None:
 def test_the_executable_carries_the_interpreter_and_the_profile(
     tmp_path: Path,
 ) -> None:
-    written = scripted.write_executable(
-        tmp_path / "bin", repo=tmp_path / "repo", state=tmp_path / "bin" / "p.json"
-    )
+    written = scripted.write_executable(tmp_path / "bin", repo=tmp_path / "repo", state=tmp_path / "bin" / "p.json")
     body = written.read_text(encoding="utf-8")
     assert body.startswith("#!")
     assert str(tmp_path / "repo" / "tests") in body
@@ -227,9 +211,7 @@ def helpers_answering(**answers: Any) -> Any:
 
     def run(argv: Sequence[str]) -> tuple[int, dict[str, Any]]:
         calls.append(list(argv))
-        return 0, answers.get(
-            argv[-1] if argv[-1] in answers else argv[4], {"ok": True}
-        )
+        return 0, answers.get(argv[-1] if argv[-1] in answers else argv[4], {"ok": True})
 
     run.calls = calls  # ty: ignore[unresolved-attribute]
     return run
@@ -260,9 +242,7 @@ def test_the_probe_asks_once_in_the_chat_the_prompt_named() -> None:
 
 
 def test_the_probe_stops_in_a_chat_that_is_not_the_one_it_was_given() -> None:
-    helper = helpers_answering(
-        probe={"ok": True, "composer_present": True, "conversation_id": "somewhere"}
-    )
+    helper = helpers_answering(probe={"ok": True, "composer_present": True, "conversation_id": "somewhere"})
     printed = ScriptedProbe(helper=helper, browser=Page()).run(PROBE_PROMPT)
     assert printed["outcome"] == "failed"
     assert "reply" not in printed
@@ -288,7 +268,7 @@ LEDGER = {
 
 
 def workspace_of(tmp_path: Path, **changes: Any) -> running.Settings:
-    """A finished rehearsal's workspace, as the three files §25 reads."""
+    """Return a finished rehearsal's workspace, as the three files §25 reads."""
     settings = running.Settings(root=tmp_path, mode="non-interactive")
     settings.workspace.mkdir(parents=True, exist_ok=True)
     state = {
@@ -317,26 +297,22 @@ def workspace_of(tmp_path: Path, **changes: Any) -> running.Settings:
         json.dumps({"human_interventions": 0, "auto_signins": 0}), encoding="utf-8"
     )
     (settings.workspace / "report.json").write_text(
-        json.dumps(
-            {
-                "totals": {
-                    "source_conversations": len(state),
-                    "created": len(exporting.MIGRATABLE),
-                    "partial": 0,
-                    "failed": 1,
-                    "pending": 0,
-                }
+        json.dumps({
+            "totals": {
+                "source_conversations": len(state),
+                "created": len(exporting.MIGRATABLE),
+                "partial": 0,
+                "failed": 1,
+                "pending": 0,
             }
-        ),
+        }),
         encoding="utf-8",
     )
     return settings
 
 
 def ok(name: str, stdout: str = "") -> running.Outcome:
-    return running.Outcome(
-        name=name, argv=(name,), exit_code=0, seconds=1.0, stdout=stdout
-    )
+    return running.Outcome(name=name, argv=(name,), exit_code=0, seconds=1.0, stdout=stdout)
 
 
 SAFETY = """\
@@ -375,8 +351,10 @@ def test_a_clean_rehearsal_passes_every_criterion(tmp_path: Path) -> None:
 
 
 def test_the_drills_own_count_is_on_the_ledgers_side(tmp_path: Path) -> None:
-    """The killed run created a chat the tool never learned the id of, and sent
-    one part into it. Both are the mock's and neither is the tool's."""
+    """The killed run created a chat the tool never learned the id of, and sent one part into it.
+
+    Both are the mock's and neither is the tool's.
+    """
     settings = workspace_of(tmp_path, state={exporting.SHORT: {"attempts": 2}})
     counted = dict(
         LEDGER,
@@ -421,17 +399,18 @@ def test_a_pause_is_a_failed_rehearsal(tmp_path: Path) -> None:
 
 
 def test_the_ledger_block_is_26s_block(tmp_path: Path) -> None:
-    """The same columns the mock prints, rebuilt from its numbers — `26`'s golden
-    string, which the mock's own tests pin and this one keeps in step with."""
-    block = running.ledger_block(
-        {
-            "sign_ins": 2,
-            "chats_created": 8,
-            "messages_received": 11,
-            "files_accepted": 2,
-            "renames": 8,
-        }
-    )
+    """The same columns the mock prints, rebuilt from its numbers.
+
+    `26`'s golden string, which the mock's own tests pin and this one keeps in step
+    with.
+    """
+    block = running.ledger_block({
+        "sign_ins": 2,
+        "chats_created": 8,
+        "messages_received": 11,
+        "files_accepted": 2,
+        "renames": 8,
+    })
     assert block == (
         "Mock claude.ai — ledger\n"
         "\n"
@@ -454,15 +433,16 @@ def test_the_two_arguments_the_mock_printed_are_the_whole_of_the_way_in() -> Non
 
 
 def test_the_config_names_a_browser_only_when_one_was_named(tmp_path: Path) -> None:
-    """Left out, the tool runs its own discovery; written empty, it would be read
-    as `Path(".")` and refused. (Raised by Copilot in review on #36.)"""
+    """Left out, the tool runs its own discovery.
+
+    Written empty, it would be read as `Path(".")` and refused. (Raised by Copilot in
+    review on #36.)
+    """
     settings = running.Settings(root=tmp_path, mode="non-interactive", cdp_port=9333)
     without = running.config_text(settings, pin="PIN=", attachments=tmp_path / "a")
     assert "executable" not in without
     assert "cdp_port = 9333" in without
-    named = running.Settings(
-        root=tmp_path, mode="non-interactive", chrome="/opt/chromium", cdp_port=9333
-    )
+    named = running.Settings(root=tmp_path, mode="non-interactive", chrome="/opt/chromium", cdp_port=9333)
     with_chrome = running.config_text(named, pin="PIN=", attachments=tmp_path / "a")
     assert 'executable = "/opt/chromium"' in with_chrome
     # Either way, the two lines the mock printed are there and no blanket trust is.
@@ -474,8 +454,11 @@ def test_the_config_names_a_browser_only_when_one_was_named(tmp_path: Path) -> N
 
 @pytest.mark.slow
 def test_a_run_the_drill_could_not_kill_is_still_bounded() -> None:
-    """`finish` never waits past its bound: a tool that hung would otherwise take
-    the whole rehearsal down with it. (Raised by Copilot in review on #36.)"""
+    """`finish` never waits past its bound.
+
+    A tool that hung would otherwise take the whole rehearsal down with it. (Raised by
+    Copilot in review on #36.)
+    """
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(60)"],
         stdout=subprocess.PIPE,
@@ -492,8 +475,10 @@ def test_a_run_the_drill_could_not_kill_is_still_bounded() -> None:
 
 @pytest.mark.slow
 def test_a_run_that_ends_in_time_is_not_reported_as_timed_out() -> None:
-    """Marked `slow` for what it does — spawn a process — not for how long it
-    takes (`tests/conftest.py`)."""
+    """Marked `slow` for what it does.
+
+    Spawn a process — not for how long it takes (`tests/conftest.py`).
+    """
     process = subprocess.Popen(
         [sys.executable, "-c", "print('done')"],
         stdout=subprocess.PIPE,
@@ -506,8 +491,7 @@ def test_a_run_that_ends_in_time_is_not_reported_as_timed_out() -> None:
 
 
 def test_the_record_carries_a_mark_on_every_number(tmp_path: Path) -> None:
-    """§26: a claim without a number is not a record, and a number without a
-    mark is not a measurement."""
+    """§26: a claim without a number is not a record, and a number without a mark is not a measurement."""
     settings = workspace_of(tmp_path)
     checks = checks_for(settings)
     text = running.render(
@@ -528,7 +512,8 @@ def test_the_record_carries_a_mark_on_every_number(tmp_path: Path) -> None:
         extra_args=running.chrome_args(settings, "PIN="),
     )
     rows = [line for line in text.splitlines() if line.startswith("| every")]
-    assert rows and all(f"*measured on {DATE}*" in row for row in rows)
+    assert rows
+    assert all(f"*measured on {DATE}*" in row for row in rows)
     assert "**Verdict:** passed" in text
     assert "Claude migration complete" in text
     assert "Mock claude.ai — ledger" in text
@@ -556,8 +541,11 @@ def test_the_record_says_what_a_rehearsal_could_not_exercise(tmp_path: Path) -> 
 
 
 def test_the_standing_findings_are_always_reported(tmp_path: Path) -> None:
-    """Each is something this arrangement discovered; a record that stopped
-    reporting one would be a record of a rehearsal that stopped doing it."""
+    """Each is something this arrangement discovered.
+
+    A record that stopped reporting one would be a record of a rehearsal that stopped
+    doing it.
+    """
     found = running.findings_of([ok("setup")], [])
     assert len(found) == len(running.STANDING_FINDINGS)
     assert any("orphan" in item or "never learned the id" in item for item in found)
@@ -583,9 +571,11 @@ def test_an_audit_that_printed_nothing_is_not_a_pass(tmp_path: Path) -> None:
 
 
 def test_a_deliberate_non_zero_exit_is_not_a_finding() -> None:
-    """The run the drill kills, `doctor` before anybody has signed in, and the
-    instruments whose last rows are for a person: each is explained once, in the
-    standing findings, rather than twice."""
+    """Each standing finding is explained once, rather than twice.
+
+    The run the drill kills, `doctor` before anybody has signed in, and the instruments
+    whose last rows are for a person.
+    """
     killed = running.Outcome(
         name="import --all (interrupted)",
         argv=("import",),
@@ -609,8 +599,7 @@ RECORD = Path(__file__).resolve().parents[1] / "docs" / "rehearsal-01.md"
 
 @pytest.mark.skipif(not RECORD.exists(), reason="no rehearsal has been recorded")
 def test_the_committed_record_keeps_26s_discipline() -> None:
-    """Every number marked, both blocks present, and §27 said in the record
-    rather than only in the brief."""
+    """Every number marked, both blocks present, and §27 said in the record rather than only in the brief."""
     text = RECORD.read_text(encoding="utf-8")
     rows = [
         line

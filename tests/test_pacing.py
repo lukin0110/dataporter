@@ -25,6 +25,7 @@ agent's, so what is checkable here is that the prompt and the skill ask for it.
 
 import io
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -61,8 +62,7 @@ from world import CHAT, FIRST, World, completed, result
 WAITING = re.compile(r"^waiting .*$", re.MULTILINE)
 
 SPEC_PACING_LINE = (
-    "pacing                    ok  (delay 20s, parts 5s, attempts 3, "
-    "timeout 1800s, limit 10, rate-limit cap 3600s)"
+    "pacing                    ok  (delay 20s, parts 5s, attempts 3, timeout 1800s, limit 10, rate-limit cap 3600s)"
 )
 """`doctor`'s first line, byte for byte. §13's four parameters and the two `15`
 adds, in the order an operator needs them: how long between conversations, how
@@ -167,9 +167,7 @@ def test_every_parameter_is_readable_and_overridable(
     assert read(load_settings()) == 12
 
 
-def test_the_three_flags_outrank_the_environment(
-    workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_three_flags_outrank_the_environment(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The top of the ladder, for §13's three flag-configurable parameters.
 
     `--max-retries` is retries and `max_attempts` is attempts, so the flag's `4`
@@ -217,14 +215,13 @@ def test_a_flag_does_not_drop_the_rest_of_its_table(workspace: Path) -> None:
         ({"timeout": 0.0}, "hermes_task_s"),
     ],
 )
-def test_a_nonsensical_pacing_value_is_refused(
-    workspace: Path, kwargs: dict[str, float], field: str
-) -> None:
-    """`model_copy(update=...)` does not validate, which is how `--max-retries -1`
-    became a budget of zero attempts — and a conversation with no attempts has
-    its first failure recorded `retry_recommended: false`, about a retry nothing
-    made. The constraint is on the field, so the same value is refused however it
-    arrives. (Raised by Copilot in review on #24.)
+def test_a_nonsensical_pacing_value_is_refused(workspace: Path, kwargs: dict[str, float], field: str) -> None:
+    """`model_copy(update=...)` does not validate.
+
+    That is how `--max-retries -1` became a budget of zero attempts — and a conversation
+    with no attempts has its first failure recorded `retry_recommended: false`, about a
+    retry nothing made. The constraint is on the field, so the same value is refused
+    however it arrives. (Raised by Copilot in review on #24.)
     """
     with pytest.raises(ConfigError) as raised:
         with_pacing(load_settings(), **kwargs)
@@ -264,19 +261,21 @@ def test_the_same_value_is_refused_from_the_environment(
     "kwargs",
     [{"delay": 0.0}, {"max_retries": 0}, {"timeout": 1.0}],
 )
-def test_the_edges_that_are_meant_to_work_still_do(
-    workspace: Path, kwargs: dict[str, float]
-) -> None:
-    """No gap between conversations, no retries and a one-second budget are all
-    things an operator may legitimately ask for."""
+def test_the_edges_that_are_meant_to_work_still_do(workspace: Path, kwargs: dict[str, float]) -> None:
+    """No gap between conversations, no retries and a one-second budget.
+
+    All three are things an operator may legitimately ask for.
+    """
     assert with_pacing(load_settings(), **kwargs) is not None
 
 
 def test_a_negative_flag_is_refused_by_the_command_line_itself(
     runner: CliRunner, workspace: Path, export_dir: Path
 ) -> None:
-    """And the message names the flag that was typed, not the field behind it:
-    `--max-retries` counts retries and `retries.max_attempts` counts attempts."""
+    """And the message names the flag that was typed, not the field behind it.
+
+    `--max-retries` counts retries and `retries.max_attempts` counts attempts.
+    """
     result = runner.invoke(
         cli.app,
         ["import", str(export_dir), "--dry-run", "--max-retries", "-1"],
@@ -318,9 +317,7 @@ def test_an_unset_limit_is_the_configured_maximum(workspace: Path) -> None:
 
 
 def test_all_on_its_own_is_no_limit_at_all(workspace: Path) -> None:
-    chosen = selecting.selection_for(
-        load_settings(), only=[], limit=None, all_conversations=True
-    )
+    chosen = selecting.selection_for(load_settings(), only=[], limit=None, all_conversations=True)
     assert chosen.limit is None
 
 
@@ -336,16 +333,12 @@ def test_a_limit_over_the_ceiling_is_a_usage_error(workspace: Path) -> None:
 
     # `error: ` is `01`'s prefix on every usage error, added by the CLI; the rest
     # is `15`'s words, and they are the exception's whole message.
-    assert str(raised.value) == (
-        "use --all to migrate more than 10 conversations in one run"
-    )
+    assert str(raised.value) == ("use --all to migrate more than 10 conversations in one run")
 
 
 def test_all_with_a_limit_is_that_limit(workspace: Path) -> None:
     """An operator who typed both has asked for a number, knowing the ceiling."""
-    chosen = selecting.selection_for(
-        load_settings(), only=[], limit=11, all_conversations=True
-    )
+    chosen = selecting.selection_for(load_settings(), only=[], limit=11, all_conversations=True)
     assert chosen.limit == 11
 
 
@@ -358,9 +351,7 @@ def test_a_raised_ceiling_raises_the_message_with_it(workspace: Path) -> None:
         selecting.selection_for(settings, only=[], limit=41)
 
 
-def test_the_dry_run_refuses_the_same_limit(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_the_dry_run_refuses_the_same_limit(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """The ceiling is about the command's intent, so it is read before the run."""
     result = runner.invoke(
         cli.app,
@@ -376,7 +367,7 @@ def test_the_dry_run_refuses_the_same_limit(
 
 
 def still_limited(world: World) -> None:
-    """A page that never reports the limit lifting, so a wait runs its course.
+    """Stage a page that never reports the limit lifting, so a wait runs its course.
 
     `world`'s default page has an enabled send control, which is
     `probe.rate_limited(...) is False` — the early exit. Tests about how long a
@@ -398,8 +389,6 @@ def rate_limited(**fields: Any) -> str:
 
 def test_until_names_the_hour_the_wait_ends() -> None:
     """The account's clock in UTC, said so: `15:00` alone is read wrongly."""
-    from datetime import UTC, datetime
-
     noon = datetime(2026, 9, 10, 14, 31, 0, tzinfo=UTC)
     assert importing.until(1740, now=noon) == "15:00 UTC"
 
@@ -423,9 +412,7 @@ def test_a_named_wait_is_waited_and_the_conversation_then_completes(
     assert run.human_interventions == 0
     assert world.pauses == [3.0]
     assert len(waits(printed)) == 1
-    assert re.fullmatch(
-        r"waiting 3s \(rate limit until \d\d:\d\d UTC\)", waits(printed)[0]
-    )
+    assert re.fullmatch(r"waiting 3s \(rate limit until \d\d:\d\d UTC\)", waits(printed)[0])
 
 
 def test_the_second_attempt_resumes_rather_than_starting_again(
@@ -459,9 +446,7 @@ def test_a_wait_longer_than_the_cap_is_an_intervention(world: World) -> None:
     world.answers(rate_limited(retry_after_s=3), completed())
     asked = Scripted()
 
-    summary = world.importer(intervention=asked).run(
-        world.export, importing.state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=asked).run(world.export, importing.state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.OK
     assert len(asked.asks) == 1
@@ -475,9 +460,7 @@ def test_a_wait_longer_than_the_cap_is_an_intervention(world: World) -> None:
     assert world.pauses == []
 
 
-def test_an_unnamed_wait_falls_back_to_the_backoff(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_an_unnamed_wait_falls_back_to_the_backoff(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """No time on the page means a guess, and the line says whose guess it is."""
     still_limited(world)
     world.answers(rate_limited(), completed())
@@ -489,18 +472,13 @@ def test_an_unnamed_wait_falls_back_to_the_backoff(
     assert world.store().run().rate_limit_waits == 1
 
 
-def test_three_unnamed_waits_in_a_row_become_an_ask(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Two guesses are patience; a fourth would be a run spent achieving
-    nothing."""
+def test_three_unnamed_waits_in_a_row_become_an_ask(world: World, capsys: pytest.CaptureFixture[str]) -> None:
+    """Two guesses are patience; a fourth would be a run spent achieving nothing."""
     still_limited(world)
     world.answers(rate_limited(), rate_limited(), rate_limited(), completed())
     asked = Scripted()
 
-    summary = world.importer(intervention=asked).run(
-        world.export, importing.state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=asked).run(world.export, importing.state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.OK
     # Two waited out on `13`'s schedule, the third handed to a person. The lines
@@ -534,29 +512,25 @@ def test_three_named_limits_in_a_row_become_an_ask_too(world: World) -> None:
     )
     asked = Scripted()
 
-    summary = world.importer(intervention=asked).run(
-        world.export, importing.state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=asked).run(world.export, importing.state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.OK
     assert world.pauses == [1.0, 1.0]
     assert len(asked.asks) == 1
-    assert re.fullmatch(
-        r"rate limited 3 times, now until \d\d:\d\d UTC", asked.asks[0].detail
-    )
+    assert re.fullmatch(r"rate limited 3 times, now until \d\d:\d\d UTC", asked.asks[0].detail)
     assert world.store().run().rate_limit_waits == 2
 
 
 def test_an_ask_gives_the_conversation_its_patience_back(world: World) -> None:
-    """The count is spent on the ask, so a helped conversation is not asked
-    about again on its very next refusal."""
+    """The count is spent on the ask.
+
+    A helped conversation is not asked about again on its very next refusal.
+    """
     still_limited(world)
     world.answers(*([rate_limited(retry_after_s=1)] * 6), completed())
     asked = Scripted()
 
-    world.importer(intervention=asked).run(
-        world.export, importing.state.Selection(limit=1)
-    )
+    world.importer(intervention=asked).run(world.export, importing.state.Selection(limit=1))
 
     # Refusals 1 and 2 waited, 3 asked; 4 and 5 waited, 6 asked.
     assert world.pauses == [1.0, 1.0, 1.0, 1.0]
@@ -599,9 +573,7 @@ def test_an_account_that_never_lets_up_ends_the_run(world: World) -> None:
     world.answers(rate_limited(retry_after_s=1))
     asked = Scripted()
 
-    summary = world.importer(intervention=asked).run(
-        world.export, importing.state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=asked).run(world.export, importing.state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.FAILED
     assert summary.stopped is True
@@ -610,8 +582,10 @@ def test_an_account_that_never_lets_up_ends_the_run(world: World) -> None:
 
 
 def test_a_rate_limit_never_spends_a_retry(world: World) -> None:
-    """`13`'s budget is for failures, and this is not one: a conversation that
-    was waited out twice still has every one of its two attempts."""
+    """`13`'s budget is for failures, and this is not one.
+
+    A conversation that was waited out twice still has every one of its two attempts.
+    """
     still_limited(world)
     world.retries(max_attempts=2, backoff_s=(7.0,))
     world.answers(
@@ -681,8 +655,10 @@ def test_the_delay_flag_is_what_the_run_sleeps(world: World) -> None:
 def test_the_prompt_tells_the_agent_how_long_to_wait_between_parts(
     world: World,
 ) -> None:
-    """The one pacing value this process cannot spend: the per-part loop is
-    inside the Hermes run, so it travels in the prompt."""
+    """The one pacing value this process cannot spend.
+
+    The per-part loop is inside the Hermes run, so it travels in the prompt.
+    """
     world.settings.pacing = PacingSettings(delay_between_parts_s=5.0)
 
     world.run(limit=1)
@@ -716,9 +692,7 @@ def test_a_negative_delay_is_a_bug_and_is_refused() -> None:
 
 def test_the_skill_asks_the_agent_to_make_that_gap() -> None:
     """A prompt field nothing reads would be a field nothing spends."""
-    text = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(
-        encoding="utf-8"
-    )
+    text = (skilling.packaged_dir() / skilling.SKILL_FILENAME).read_text(encoding="utf-8")
     assert "| `delay between parts` |" in text
     assert "wait `delay between parts`" in text
 
@@ -746,9 +720,7 @@ class NeverLogsIn(Scripted):
 
 def test_an_auth_pause_nobody_resolves_in_time_stops_the_run(world: World) -> None:
     """`15`'s `auth` rule: exit `3`, and the pause stays for a later `resume`."""
-    world.settings.timeouts = TimeoutSettings(
-        cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=0.0
-    )
+    world.settings.timeouts = TimeoutSettings(cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=0.0)
     world.answers(
         result(
             outcome="needs_human",
@@ -758,9 +730,7 @@ def test_an_auth_pause_nobody_resolves_in_time_stops_the_run(world: World) -> No
     )
     asked = NeverLogsIn(world)
 
-    summary = world.importer(intervention=asked).run(
-        world.export, importing.state.Selection(limit=2)
-    )
+    summary = world.importer(intervention=asked).run(world.export, importing.state.Selection(limit=2))
 
     assert summary.exit_code is ExitCode.NOT_AUTHENTICATED
     assert summary.stopped is True
@@ -789,14 +759,12 @@ def test_a_resume_that_is_still_signed_out_stops_with_3_as_well(
             error={"category": "auth", "detail": "sign-in form shown at /login"},
         )
     )
-    paused = world.importer(
-        intervention=intervening.Console(stdin=io.StringIO(""))
-    ).run(world.export, importing.state.Selection(limit=1))
+    paused = world.importer(intervention=intervening.Console(stdin=io.StringIO(""))).run(
+        world.export, importing.state.Selection(limit=1)
+    )
     assert paused.exit_code is ExitCode.PAUSED
 
-    world.settings.timeouts = TimeoutSettings(
-        cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=0.0
-    )
+    world.settings.timeouts = TimeoutSettings(cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=0.0)
     # The window the operator was asked to log in in, still showing no composer.
     world.page.composer = None
     asked = Scripted()
@@ -813,15 +781,12 @@ def test_a_resume_that_is_still_signed_out_stops_with_3_as_well(
     assert len(world.hermes.one_shots) == 1
 
 
-def test_a_browser_that_cannot_be_read_does_not_end_a_wait(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_browser_that_cannot_be_read_does_not_end_a_wait(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     """A probe that fails says nothing about the limit, so the wait stands.
 
     The safe direction: the account asked for the whole wait, and a page nobody
     could read is not evidence that it has changed its mind.
     """
-
     readable = browser_session.current_state
     reads = 0
 
@@ -845,9 +810,7 @@ def test_a_browser_that_cannot_be_read_does_not_end_a_wait(
 
 def test_an_operator_who_does_log_in_is_not_timed_out(world: World) -> None:
     """The deadline bounds a stalemate, not a person taking a moment."""
-    world.settings.timeouts = TimeoutSettings(
-        cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=600.0
-    )
+    world.settings.timeouts = TimeoutSettings(cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=600.0)
     world.answers(
         result(
             outcome="needs_human",
@@ -857,9 +820,7 @@ def test_an_operator_who_does_log_in_is_not_timed_out(world: World) -> None:
         completed(),
     )
 
-    summary = world.importer(intervention=Scripted()).run(
-        world.export, importing.state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=Scripted()).run(world.export, importing.state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.OK
     assert world.entry(FIRST).status is Status.COMPLETED
@@ -867,9 +828,7 @@ def test_an_operator_who_does_log_in_is_not_timed_out(world: World) -> None:
 
 def test_only_an_auth_ask_has_a_deadline(world: World) -> None:
     """The other five are cleared by a person's word, and a word has no clock."""
-    world.settings.timeouts = TimeoutSettings(
-        cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=0.0
-    )
+    world.settings.timeouts = TimeoutSettings(cdp_call_s=2.0, hermes_cli_s=30.0, hermes_task_s=60.0, login_s=0.0)
     world.answers(
         result(
             outcome="needs_human",
@@ -879,9 +838,7 @@ def test_only_an_auth_ask_has_a_deadline(world: World) -> None:
         completed(),
     )
 
-    summary = world.importer(intervention=Scripted()).run(
-        world.export, importing.state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=Scripted()).run(world.export, importing.state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.OK
 
@@ -895,10 +852,7 @@ def test_the_retry_settings_are_untouched_by_a_pacing_flag(workspace: Path) -> N
 def test_settings_still_load_with_a_full_pacing_table(workspace: Path) -> None:
     write_config(
         workspace / DEFAULT_WORKSPACE,
-        "[pacing]\n"
-        "delay_between_conversations_s = 1\n"
-        "delay_between_parts_s = 2\n"
-        "max_rate_limit_wait_s = 3\n",
+        "[pacing]\ndelay_between_conversations_s = 1\ndelay_between_parts_s = 2\nmax_rate_limit_wait_s = 3\n",
     )
     settings: Settings = load_settings()
     assert settings.pacing == PacingSettings(

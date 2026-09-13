@@ -105,7 +105,7 @@ changed by a byte.
   reporter whether the run was started from the CLI or from Python, and the sink receives
   §16's block afterwards. Routing the progress through the sink too would mean a second
   implementation of the redraw, and `18` is a golden string.
-- **Two exceptions are imported lazily.** `state.StateError` and `launcher.PortInUse` are
+- **Two exceptions are imported lazily.** `state.StateError` and `launcher.PortInUseError` are
   named in `_RootGroup`'s clauses and nowhere else in `cli.py`; fetching them inside a
   function keeps the module's import list the statement the acceptance test checks —
   nothing in `cli` opens a workspace or a browser.

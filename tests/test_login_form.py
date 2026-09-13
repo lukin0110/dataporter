@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr
 
-from dataporter.browser import launcher, login_form
+from dataporter.browser import helpers, launcher, login_form
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import Credentials
 from fake_composer import Browser, FakePage
@@ -27,9 +27,7 @@ def form() -> Iterator[LoginForm]:
         yield page
 
 
-def session_for(
-    page: FakePage, browser: Browser, tmp_path: Path
-) -> launcher.BrowserSession:
+def session_for(page: FakePage, browser: Browser, tmp_path: Path) -> launcher.BrowserSession:
     return launcher.BrowserSession(
         client=CdpClient(port=browser.chrome.port, timeout=2.0),
         profile=tmp_path / "profile",
@@ -41,9 +39,7 @@ def fill(page: LoginForm, tmp_path: Path, **kwargs: object) -> login_form.FillRe
     browser = Browser(page)
     with browser:
         session = session_for(page, browser, tmp_path)
-        return login_form.fill_and_submit(
-            session, CREDENTIALS, timeout_s=0.3, poll_s=0.01, **kwargs
-        )
+        return login_form.fill_and_submit(session, CREDENTIALS, timeout_s=0.3, poll_s=0.01, **kwargs)
 
 
 # -- the wall ------------------------------------------------------------------ #
@@ -77,8 +73,6 @@ def test_the_login_surface_admits_nothing_else(url: str) -> None:
 
 def test_the_migration_surface_still_refuses_the_login_page() -> None:
     """The door is this module's alone: every helper the agent runs stays walled."""
-    from dataporter.browser import helpers
-
     assert not helpers.CLAUDE.permits("https://claude.ai/login")
 
 
@@ -89,7 +83,7 @@ def test_email_then_password_signs_in(tmp_path: Path) -> None:
     page = LoginForm()
     result = fill(page, tmp_path)
 
-    assert result == login_form.FillResult(True, ("email", "password"), 2)
+    assert result == login_form.FillResult(signed_in=True, filled=("email", "password"), rounds=2)
     assert page.typed == {"email": "someone@example.test", "password": "hunter2"}
     assert page.enters == 2
     assert page.stage == "done"
@@ -159,9 +153,7 @@ def test_no_claude_tab_is_reported(tmp_path: Path) -> None:
     page = FakePage(url="https://example.test/")
     browser = Browser(page)
     with browser:
-        result = login_form.fill_and_submit(
-            session_for(page, browser, tmp_path), CREDENTIALS, timeout_s=0.1
-        )
+        result = login_form.fill_and_submit(session_for(page, browser, tmp_path), CREDENTIALS, timeout_s=0.1)
     assert result.blocked == login_form.NO_TAB
 
 
@@ -181,8 +173,10 @@ def test_a_form_that_never_moves_on_runs_out_of_time(tmp_path: Path) -> None:
 
 
 def test_a_page_mid_navigation_is_asked_again(tmp_path: Path) -> None:
-    """A read that fails while the form is being replaced is "not yet", as it
-    is for `session.wait_for_login`; the next poll sees the new page."""
+    """A read that fails while the form is being replaced is "not yet".
+
+    As it is for `session.wait_for_login`: the next poll sees the new page.
+    """
     page = LoginForm(fail_after_enter=2)
     result = fill(page, tmp_path)
 
@@ -199,7 +193,7 @@ def test_an_answer_that_is_not_a_form_reading_is_no_fields() -> None:
 
 
 def test_filled_names_are_names() -> None:
-    result = login_form.FillResult(True, ("email", "password"), 2)
+    result = login_form.FillResult(signed_in=True, filled=("email", "password"), rounds=2)
     assert list(login_form.filled_names(result)) == ["email", "password"]
 
 
@@ -222,8 +216,6 @@ def test_a_real_form_is_filled_and_lands_on_new(
         host="127.0.0.1",
         allowed=re.compile(r"^http://127\.0\.0\.1:\d+/(login(/.*)?|new)$"),
     )
-    result = login_form.fill_and_submit(
-        session, CREDENTIALS, timeout_s=10.0, surface=surface
-    )
+    result = login_form.fill_and_submit(session, CREDENTIALS, timeout_s=10.0, surface=surface)
     assert result.signed_in is True
     assert result.filled == ("email", "password")

@@ -9,10 +9,12 @@ from claudemock import certificate, cli
 def test_the_reachability_block_is_the_one_an_operator_pastes(
     material: certificate.Material,
 ) -> None:
-    """`26`'s golden string. §21 says what the lines must do — send the host to
-    the mock, trust its key and never every certificate — and leaves the port,
-    the mechanism and the lines themselves to the slice; this is where they are
-    pinned."""
+    """`26`'s golden string.
+
+    §21 says what the lines must do — send the host to the mock, trust its key and never
+    every certificate — and leaves the port, the mechanism and the lines themselves to
+    the slice; this is where they are pinned.
+    """
     block = cli.reachability(host="127.0.0.1", port=8443, material=material)
     assert block == (
         "Mock claude.ai listening on https://127.0.0.1:8443\n"
@@ -31,8 +33,11 @@ def test_the_reachability_block_is_the_one_an_operator_pastes(
 def test_the_trust_is_scoped_to_the_mocks_own_key(
     material: certificate.Material,
 ) -> None:
-    """Never `--ignore-certificate-errors`: a rehearsal browser that trusted
-    every certificate would be a much larger thing to switch off."""
+    """Never `--ignore-certificate-errors`.
+
+    A rehearsal browser that trusted every certificate would be a much larger thing to
+    switch off.
+    """
     block = cli.reachability(host="127.0.0.1", port=8443, material=material)
     assert "--ignore-certificate-errors=" not in block
     assert len(material.spki_sha256) == 44  # base64 of a sha-256

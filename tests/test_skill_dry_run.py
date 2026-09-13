@@ -38,6 +38,7 @@ from dataporter.hermes import prompt as prompting
 from dataporter.hermes.runner import HermesResult
 from dataporter.steps import Step
 from fake_agent import ScriptedAgent
+from fake_chrome import entered
 from fake_composer import Browser, FakePage, Turn
 
 pytestmark = pytest.mark.slow
@@ -141,14 +142,14 @@ def seed_files(two_part_seed: seeding.Seed, tmp_path: Path) -> list[Path]:
 
 @pytest.fixture
 def quick_polls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The poll interval, not the logic. Three stable polls still have to pass."""
+    """Shorten the poll interval, not the logic. Three stable polls still have to pass."""
     monkeypatch.setattr(helpers, "RESPONSE_POLL_S", 0.01)
 
 
 def browser_with(page: FakePage, monkeypatch: pytest.MonkeyPatch) -> Browser:
-    """A fake browser the CLI can find on the port the environment names."""
+    """Return a fake browser the CLI can find on the port the environment names."""
     browser = Browser(page)
-    browser.__enter__()
+    entered(browser)
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(browser.chrome.port))
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "5")
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__RESPONSE_S", "5")
@@ -221,12 +222,7 @@ def test_both_seeds_reached_the_composer_whole(
     browser, _ = new_chat
     migrate(browser, runner, two_part_seed, seed_files, tmp_path)
 
-    records = [
-        json.loads(line)
-        for line in helpers.actions_path(tmp_path / "migration")
-        .read_text()
-        .splitlines()
-    ]
+    records = [json.loads(line) for line in helpers.actions_path(tmp_path / "migration").read_text().splitlines()]
     pastes = [item for item in records if item["helper"] == "paste"]
     assert len(pastes) == 2
     assert all(item["ok"] for item in records)
@@ -246,9 +242,7 @@ def test_the_chat_is_renamed_and_then_read_back(
     procedure sees is `matches: true`, and the name itself never reaches stdout.
     """
     browser, page = new_chat
-    printed, _ = migrate(
-        browser, runner, two_part_seed, seed_files, tmp_path, title=TITLE
-    )
+    printed, _ = migrate(browser, runner, two_part_seed, seed_files, tmp_path, title=TITLE)
 
     result = HermesResult.model_validate(printed)
     assert result.outcome == "completed"
@@ -265,8 +259,10 @@ def test_a_rename_that_does_not_take_costs_the_conversation_nothing(
     seed_files: list[Path],
     tmp_path: Path,
 ) -> None:
-    """The conversation is worth more than its name, so the run still completes —
-    at `verify`, which is the step after the one that did not pass."""
+    """The conversation is worth more than its name, so the run still completes.
+
+    At `verify`, which is the step after the one that did not pass.
+    """
     browser, _ = new_chat
 
     class Stubborn(Ui):
@@ -449,9 +445,7 @@ def test_a_resumed_run_continues_the_chat_it_was_given(
 ) -> None:
     """Part one is already there, so only part two is pasted — into that chat."""
     first_ack = two_part_seed.chunks[0].ack
-    page = FakePage(
-        url=CHAT_URL, composer="", last_role="assistant", last_text=first_ack
-    )
+    page = FakePage(url=CHAT_URL, composer="", last_role="assistant", last_text=first_ack)
     browser = browser_with(page, monkeypatch)
     try:
         printed, ui = migrate(
@@ -494,8 +488,10 @@ def test_an_attachment_goes_in_before_the_first_paste(
     seed_files: list[Path],
     tmp_path: Path,
 ) -> None:
-    """`16`: the chip belongs to the message part 1 is pasted into, so it is
-    attached first, checked once, and reported by name."""
+    """`16`: the chip belongs to the message part 1 is pasted into.
+
+    It is attached first, checked once, and reported by name.
+    """
     browser, page = new_chat
     printed, _ = migrate(
         browser,
@@ -557,9 +553,7 @@ def test_a_resume_with_nothing_left_to_paste_attaches_nothing(
 ) -> None:
     """There is no message being composed, so a chip would belong to nothing."""
     last_ack = two_part_seed.chunks[-1].ack
-    page = FakePage(
-        url=CHAT_URL, composer="", last_role="assistant", last_text=last_ack
-    )
+    page = FakePage(url=CHAT_URL, composer="", last_role="assistant", last_text=last_ack)
     browser = browser_with(page, monkeypatch)
     try:
         printed, _ = migrate(
@@ -608,5 +602,6 @@ def test_a_chat_that_does_not_hold_the_acknowledgement_is_not_resumed(
 
     result = HermesResult.model_validate(printed)
     assert result.outcome == "partial"
-    assert result.error is not None and result.error.category == "verification"
+    assert result.error is not None
+    assert result.error.category == "verification"
     assert page.text_reads == 0  # nothing was inserted, so nothing was read back

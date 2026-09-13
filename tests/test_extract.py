@@ -42,20 +42,14 @@ def settings(tmp_path: Path, workspace: Path) -> Settings:
     """One invocation, pointed at a store and an accounts tree under `tmp_path`."""
     loaded = with_store_dir(load_settings(), tmp_path / "store")
     return with_account(
-        loaded.model_copy(
-            update={
-                "accounts": loaded.accounts.model_copy(
-                    update={"dir": tmp_path / "accounts"}
-                )
-            }
-        ),
+        loaded.model_copy(update={"accounts": loaded.accounts.model_copy(update={"dir": tmp_path / "accounts"})}),
         "claude",
         "old-personal",
     )
 
 
 def opener(body: bytes) -> Callable[..., Any]:
-    """An opener that answers with `body` and records what it was asked for."""
+    """Return an opener that answers with `body` and records what it was asked for."""
 
     def open_url(link: str, timeout: float | None = None) -> io.BytesIO:
         open_url.asked.append((link, timeout))  # type: ignore[attr-defined]
@@ -120,9 +114,7 @@ def test_a_body_is_filed_as_a_snapshot(settings: Settings, export_zip: Path) -> 
 
 def test_the_block_is_the_brief_block(settings: Settings, export_zip: Path) -> None:
     sink = Collected()
-    outcome = extract.fetch(
-        settings, LINK, open_url=opener(export_zip.read_bytes()), sink=sink
-    )
+    outcome = extract.fetch(settings, LINK, open_url=opener(export_zip.read_bytes()), sink=sink)
     assert outcome.snapshot is not None
     size = f"{export_zip.stat().st_size / 1_000_000:.1f}"
 
@@ -138,14 +130,10 @@ def test_the_block_is_the_brief_block(settings: Settings, export_zip: Path) -> N
     )
 
 
-def test_an_open_ask_sets_the_stamp_and_is_gone_afterwards(
-    settings: Settings, export_zip: Path
-) -> None:
+def test_an_open_ask_sets_the_stamp_and_is_gone_afterwards(settings: Settings, export_zip: Path) -> None:
     open_ask(settings)
     sink = Collected()
-    outcome = extract.fetch(
-        settings, LINK, open_url=opener(export_zip.read_bytes()), sink=sink
-    )
+    outcome = extract.fetch(settings, LINK, open_url=opener(export_zip.read_bytes()), sink=sink)
 
     assert outcome.snapshot is not None
     assert outcome.snapshot.stamp == STAMP
@@ -166,16 +154,12 @@ def test_a_link_that_is_not_https_is_refused_before_any_request(
     settings: Settings,
 ) -> None:
     with pytest.raises(FetchError) as raised:
-        extract.fetch(
-            settings, "http://downloads.example.com/e.zip", open_url=never_called()
-        )
+        extract.fetch(settings, "http://downloads.example.com/e.zip", open_url=never_called())
 
     assert str(raised.value) == extract.LINK_NOT_HTTPS
 
 
-def test_a_refused_link_says_how_to_ask_again(
-    settings: Settings, export_zip: Path
-) -> None:
+def test_a_refused_link_says_how_to_ask_again(settings: Settings, export_zip: Path) -> None:
     open_ask(settings)
 
     with pytest.raises(FetchError) as raised:
@@ -193,21 +177,15 @@ def test_a_refused_link_says_how_to_ask_again(
 
 def test_no_network_is_the_environment(settings: Settings) -> None:
     with pytest.raises(NetworkError) as raised:
-        extract.fetch(
-            settings, LINK, open_url=refusing(urllib.error.URLError("no route"))
-        )
+        extract.fetch(settings, LINK, open_url=refusing(urllib.error.URLError("no route")))
 
     assert "no route" in (raised.value.detail or "")
     assert LINK not in (raised.value.detail or "")
     assert not settings.store_dir.exists()
 
 
-def test_a_body_over_the_cap_is_refused_and_leaves_no_temp_file(
-    settings: Settings, export_zip: Path
-) -> None:
-    capped = settings.model_copy(
-        update={"store": settings.store.model_copy(update={"max_download_bytes": 8})}
-    )
+def test_a_body_over_the_cap_is_refused_and_leaves_no_temp_file(settings: Settings, export_zip: Path) -> None:
+    capped = settings.model_copy(update={"store": settings.store.model_copy(update={"max_download_bytes": 8})})
 
     with pytest.raises(FetchError) as raised:
         extract.fetch(capped, LINK, open_url=opener(export_zip.read_bytes()))
@@ -225,9 +203,7 @@ def test_a_body_that_is_not_a_zip_is_refused(settings: Settings) -> None:
     assert temp_files(settings) == []
 
 
-def test_a_zip_without_conversations_is_not_an_export(
-    settings: Settings, tmp_path: Path
-) -> None:
+def test_a_zip_without_conversations_is_not_an_export(settings: Settings, tmp_path: Path) -> None:
     other = tmp_path / "other.zip"
     with zipfile.ZipFile(other, "w") as archive:
         archive.writestr("readme.txt", "nothing to see")
@@ -236,15 +212,11 @@ def test_a_zip_without_conversations_is_not_an_export(
         extract.fetch(settings, LINK, open_url=opener(other.read_bytes()))
 
     # Named as "the download", never as the uuid temp file it landed in.
-    assert str(raised.value) == (
-        f"conversations.json missing from export: {extract.DOWNLOAD_DISPLAY}"
-    )
+    assert str(raised.value) == (f"conversations.json missing from export: {extract.DOWNLOAD_DISPLAY}")
     assert temp_files(settings) == []
 
 
-def test_a_second_fetch_under_the_same_ask_is_refused(
-    settings: Settings, export_zip: Path
-) -> None:
+def test_a_second_fetch_under_the_same_ask_is_refused(settings: Settings, export_zip: Path) -> None:
     """The stamp is the ask's, so the second one lands on the first's directory."""
     open_ask(settings)
     extract.fetch(settings, LINK, open_url=opener(export_zip.read_bytes()))
@@ -279,9 +251,7 @@ def test_from_refuses_a_directory(settings: Settings, export_dir: Path) -> None:
     assert str(raised.value) == extract.NOT_AN_ARCHIVE
 
 
-def test_from_refuses_something_that_is_not_a_zip(
-    settings: Settings, tmp_path: Path
-) -> None:
+def test_from_refuses_something_that_is_not_a_zip(settings: Settings, tmp_path: Path) -> None:
     loose = tmp_path / "notes.txt"
     loose.write_text("hello")
 
@@ -291,9 +261,7 @@ def test_from_refuses_something_that_is_not_a_zip(
     assert str(raised.value) == extract.NOT_A_ZIP_FILE.format(path=loose)
 
 
-def test_from_refuses_a_path_that_is_not_there(
-    settings: Settings, tmp_path: Path
-) -> None:
+def test_from_refuses_a_path_that_is_not_there(settings: Settings, tmp_path: Path) -> None:
     with pytest.raises(FetchError) as raised:
         extract.file(settings, tmp_path / "nowhere.zip")
 
@@ -338,9 +306,7 @@ def test_abandon_with_no_ask_is_exit_2(settings: Settings) -> None:
     assert str(raised.value) == "no ask is open for claude/old-personal"
 
 
-def test_an_unreadable_ask_stops_the_fetch(
-    settings: Settings, export_zip: Path
-) -> None:
+def test_an_unreadable_ask_stops_the_fetch(settings: Settings, export_zip: Path) -> None:
     """Reading it as "no ask" would stamp the snapshot with the wrong moment."""
     open_ask(settings)
     extract.ask_path(settings).write_text("{not json")
@@ -356,27 +322,22 @@ def test_an_unreadable_ask_stops_the_fetch(
 # --------------------------------------------------------------------------- #
 
 
-def test_the_two_flag_combinations_are_refused(
-    settings: Settings, export_zip: Path
-) -> None:
+def test_the_two_flag_combinations_are_refused(settings: Settings, export_zip: Path) -> None:
     with pytest.raises(UsageError) as both:
-        extract.extract_command(
-            settings, extract.ExtractRequest(link=LINK, from_path=export_zip)
-        )
+        extract.extract_command(settings, extract.ExtractRequest(link=LINK, from_path=export_zip))
     assert str(both.value) == extract.LINK_AND_FILE
 
     with pytest.raises(UsageError) as abandoning:
-        extract.extract_command(
-            settings, extract.ExtractRequest(link=LINK, abandon=True)
-        )
+        extract.extract_command(settings, extract.ExtractRequest(link=LINK, abandon=True))
     assert str(abandoning.value) == extract.ABANDON_ALONE
 
 
-def test_no_mode_flag_is_the_ask(
-    settings: Settings, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Which mode the flags name is this module's; what the ask then does is
-    `31`'s, and `test_ask.py` is where it has a browser to do it with."""
+def test_no_mode_flag_is_the_ask(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Which mode the flags name is this module's.
+
+    What the ask then does is `31`'s, and `test_ask.py` is where it has a browser to do
+    it with.
+    """
     asked: list[str] = []
 
     def record(settings: Settings, *, sink: Collected) -> extract.ExtractOutcome:
@@ -413,9 +374,7 @@ def test_the_link_is_in_no_log_record(settings: Settings, export_zip: Path) -> N
     assert LINK not in written
     assert "secret-token" not in written
     records = [json.loads(line) for line in written.splitlines()]
-    assert {"download complete", "snapshot filed"} <= {
-        record["event"] for record in records
-    }
+    assert {"download complete", "snapshot filed"} <= {record["event"] for record in records}
 
 
 # --------------------------------------------------------------------------- #
@@ -425,10 +384,10 @@ def test_the_link_is_in_no_log_record(settings: Settings, export_zip: Path) -> N
 
 @pytest.fixture
 def served(export_zip: Path) -> Iterator[str]:
-    """The fixture archive on a local HTTP server, and its URL."""
+    """Yield the fixture archive on a local HTTP server, and its URL."""
 
     class Handler(SimpleHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802 - http.server's spelling
+        def do_GET(self) -> None:
             body = export_zip.read_bytes()
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
@@ -477,9 +436,7 @@ def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return ["--store", str(tmp_path / "store")]
 
 
-def test_a_source_the_tool_does_not_have_exits_2(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_a_source_the_tool_does_not_have_exits_2(runner: CliRunner, workspace: Path) -> None:
     result = runner.invoke(
         cli.app,
         ["extract", "--source", "chatgpt", "--account", "a"],
@@ -491,14 +448,11 @@ def test_a_source_the_tool_does_not_have_exits_2(
 
 
 def test_a_label_that_is_not_one_exits_2(runner: CliRunner, workspace: Path) -> None:
-    result = runner.invoke(
-        cli.app, ["extract", "--account", "Old Personal"], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["extract", "--account", "Old Personal"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr == (
-        "error: account label must be letters, digits, dots, dashes or "
-        "underscores: Old Personal\n"
+        "error: account label must be letters, digits, dots, dashes or underscores: Old Personal\n"
     )
 
 
@@ -525,9 +479,7 @@ def test_from_files_a_snapshot_through_the_cli(
     assert result.exit_code == ExitCode.OK
     filed_in = sorted((tmp_path / "store" / "claude" / "a").iterdir())
     assert len(filed_in) == 1
-    assert sorted(item.name for item in filed_in[0].iterdir()) == sorted(
-        store.SNAPSHOT_FILES
-    )
+    assert sorted(item.name for item in filed_in[0].iterdir()) == sorted(store.SNAPSHOT_FILES)
 
 
 def test_a_dead_link_exits_2_through_the_cli(
@@ -537,9 +489,7 @@ def test_a_dead_link_exits_2_through_the_cli(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flags = cli_env(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        extract, "fetch", lambda *args, **kwargs: _raise(FetchError("link refused"))
-    )
+    monkeypatch.setattr(extract, "fetch", lambda *args, **kwargs: _raise(FetchError("link refused")))
     result = runner.invoke(
         cli.app,
         ["extract", "--account", "a", *flags, "--link", LINK],
@@ -556,8 +506,11 @@ def test_no_network_exits_6_through_the_cli(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The one clause `30` adds to the CLI: a `NetworkError` is the environment,
-    not the operator's typing, and without it this would exit `70`."""
+    """The one clause `30` adds to the CLI.
+
+    A `NetworkError` is the environment, not the operator's typing, and without it this
+    would exit `70`.
+    """
     flags = cli_env(tmp_path, monkeypatch)
     monkeypatch.setattr(
         extract,
@@ -578,25 +531,21 @@ def _raise(exc: Exception) -> None:
     raise exc
 
 
-def test_an_export_with_no_file_references_has_no_gap(
-    settings: Settings, tmp_path: Path
-) -> None:
-    """ "No references, no gap": a snapshot with nothing missing says nothing."""
+def test_an_export_with_no_file_references_has_no_gap(settings: Settings, tmp_path: Path) -> None:
+    """No references, no gap: a snapshot with nothing missing says nothing."""
     plain = tmp_path / "plain.zip"
     with zipfile.ZipFile(plain, "w") as archive:
         archive.writestr(
             "conversations.json",
-            json.dumps(
-                [
-                    {
-                        "uuid": "c1",
-                        "name": "A chat",
-                        "created_at": "2026-01-01T00:00:00Z",
-                        "updated_at": "2026-01-01T00:00:00Z",
-                        "chat_messages": [],
-                    }
-                ]
-            ),
+            json.dumps([
+                {
+                    "uuid": "c1",
+                    "name": "A chat",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "chat_messages": [],
+                }
+            ]),
         )
     sink = Collected()
     outcome = extract.file(settings, plain, sink=sink)
@@ -607,31 +556,31 @@ def test_an_export_with_no_file_references_has_no_gap(
 
 
 def test_one_missing_file_is_not_one_files(settings: Settings, tmp_path: Path) -> None:
-    """The reason is read as part of the block's sentence, so it has two
-    spellings. (Raised by Copilot in review on #43.)"""
+    """The reason is read as part of the block's sentence, so it has two spellings.
+
+    (Raised by Copilot in review on #43.)
+    """
     one = tmp_path / "one.zip"
     with zipfile.ZipFile(one, "w") as archive:
         archive.writestr(
             "conversations.json",
-            json.dumps(
-                [
-                    {
-                        "uuid": "c1",
-                        "name": "A chat",
-                        "created_at": "2026-01-01T00:00:00Z",
-                        "updated_at": "2026-01-01T00:00:00Z",
-                        "chat_messages": [
-                            {
-                                "uuid": "m1",
-                                "text": "here it is",
-                                "sender": "human",
-                                "created_at": "2026-01-01T00:00:00Z",
-                                "files": [{"file_name": "notes.txt"}],
-                            }
-                        ],
-                    }
-                ]
-            ),
+            json.dumps([
+                {
+                    "uuid": "c1",
+                    "name": "A chat",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "chat_messages": [
+                        {
+                            "uuid": "m1",
+                            "text": "here it is",
+                            "sender": "human",
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "files": [{"file_name": "notes.txt"}],
+                        }
+                    ],
+                }
+            ]),
         )
     sink = Collected()
     outcome = extract.file(settings, one, sink=sink)

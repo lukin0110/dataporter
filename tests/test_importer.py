@@ -38,6 +38,7 @@ from dataporter.exit_codes import ExitCode
 from dataporter.hermes import runner as hermes_running
 from dataporter.state import ErrorRecord, Status
 from dataporter.steps import Step
+from fake_chrome import entered
 from fake_composer import Browser, FakePage
 from world import (
     CHAT,
@@ -97,9 +98,7 @@ def test_the_seed_and_the_prompt_reached_hermes(world: World) -> None:
 def test_the_plan_is_written_before_anything_runs(world: World) -> None:
     world.run(limit=1)
 
-    plan = json.loads(
-        (world.settings.workspace / importing.PLAN_FILENAME).read_text(encoding="utf-8")
-    )
+    plan = json.loads((world.settings.workspace / importing.PLAN_FILENAME).read_text(encoding="utf-8"))
     # The whole export, not the selection: §10's "conversations found".
     assert len(plan["conversations"]) == 6
     assert plan["totals"]["migratable"] == 5
@@ -127,9 +126,7 @@ def test_every_planned_conversation_gets_an_entry(world: World) -> None:
     }
 
 
-def test_titles_are_in_state_and_nowhere_else(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_titles_are_in_state_and_nowhere_else(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """§7 puts the title in `state.json`; §10 keeps it off everything else."""
     world.run()
     captured = capsys.readouterr()
@@ -142,9 +139,7 @@ def test_titles_are_in_state_and_nowhere_else(
     # first: the unsupported one was written as `failed` before the loop started.
     assert captured.out.startswith("Claude migration\n\n6 conversations found\n\n")
     assert "aa000001  completed  (2/6)\n" in captured.out
-    assert captured.out.endswith(
-        "Completed:  5\nPartial:    0\nFailed:     1\nPending:    0\n"
-    )
+    assert captured.out.endswith("Completed:  5\nPartial:    0\nFailed:     1\nPending:    0\n")
 
 
 # --------------------------------------------------------------------------- #
@@ -166,7 +161,7 @@ def test_a_failing_conversation_does_not_end_the_run(world: World) -> None:
     summary = world.run(limit=3)
 
     assert summary.exit_code is ExitCode.FAILED
-    assert [status for status in summary.outcomes.values()] == [
+    assert list(summary.outcomes.values()) == [
         Status.COMPLETED,
         Status.FAILED,
         Status.COMPLETED,
@@ -313,8 +308,10 @@ def test_the_run_pauses_between_conversations_but_not_after_the_last(
 
 
 def test_pause_sleeps_only_for_a_positive_wait() -> None:
-    """The seam every wait goes through. Zero is not a sleep, and a sleep is
-    short."""
+    """The seam every wait goes through.
+
+    Zero is not a sleep, and a sleep is short.
+    """
     importing.pause(0)
     importing.pause(-1)
     importing.pause(0.001)
@@ -339,13 +336,9 @@ def test_a_signed_out_session_is_refused_before_anything_is_written(
     assert not (world.settings.workspace / state.STATE_FILENAME).exists()
 
 
-def test_an_unconfigured_hermes_is_refused_before_the_browser(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_unconfigured_hermes_is_refused_before_the_browser(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     """The local half of `doctor`, and no browser launched to find it out."""
-    world.hermes.state_path.write_text(
-        json.dumps({"profiles": [], "config": {}}), encoding="utf-8"
-    )
+    world.hermes.state_path.write_text(json.dumps({"profiles": [], "config": {}}), encoding="utf-8")
 
     with pytest.raises(HermesError) as raised:
         world.run(limit=1)
@@ -354,9 +347,7 @@ def test_an_unconfigured_hermes_is_refused_before_the_browser(
     assert world.launches == []
 
 
-def test_a_browser_that_cannot_come_back_ends_the_run(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_browser_that_cannot_come_back_ends_the_run(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     """One conversation lands, then Chrome goes away for good: exit `6`."""
 
     class StopTheBrowser(Silent):
@@ -466,9 +457,7 @@ class AfterOne(Silent):
             self.world.browser.chrome.stop()
 
 
-def replacement(
-    monkeypatch: pytest.MonkeyPatch, world: World, browser: Browser
-) -> None:
+def replacement(monkeypatch: pytest.MonkeyPatch, world: World, browser: Browser) -> None:
     """Launch the world's browser first, then `browser` for every relaunch."""
     launched = 0
 
@@ -488,25 +477,21 @@ def replacement(
 def test_a_relaunched_browser_is_put_through_the_preflight_checks(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A Chrome restarted over our profile can restore the tabs it had open, so
-    the tab it leaves us with is as unproven as a freshly launched one's."""
-    came_back = Browser(
-        FakePage(url=NEW_URL, composer=""), FakePage(url="about:blank", composer=None)
-    )
-    came_back.__enter__()
+    """A Chrome restarted over our profile can restore the tabs it had open.
+
+    The tab it leaves us with is as unproven as a freshly launched one's.
+    """
+    came_back = Browser(FakePage(url=NEW_URL, composer=""), FakePage(url="about:blank", composer=None))
+    entered(came_back)
     replacement(monkeypatch, world, came_back)
     progress = AfterOne(world)
 
     try:
-        summary = world.importer(progress=progress).run(
-            world.export, state.Selection(limit=2)
-        )
+        summary = world.importer(progress=progress).run(world.export, state.Selection(limit=2))
         # The blank tab the replacement came back with is gone: `close-extra-tabs`
         # ran on it, exactly as the preflight would have. The one that is left is
         # in the chat `17`'s verification navigated it to.
-        assert [target.url for target in came_back.chrome.targets] == [
-            f"https://claude.ai/chat/{CHAT}"
-        ]
+        assert [target.url for target in came_back.chrome.targets] == [f"https://claude.ai/chat/{CHAT}"]
     finally:
         came_back.chrome.stop()
 
@@ -514,20 +499,19 @@ def test_a_relaunched_browser_is_put_through_the_preflight_checks(
     assert progress.seen == ["aa000001", "bb000002"]
 
 
-def test_a_relaunched_browser_that_is_signed_out_ends_the_run(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Exit `3` wherever it is noticed: every conversation left would fail the
-    same way, and `14` is where this becomes a pause instead."""
+def test_a_relaunched_browser_that_is_signed_out_ends_the_run(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exit `3` wherever it is noticed.
+
+    Every conversation left would fail the same way, and `14` is where this becomes a
+    pause instead.
+    """
     came_back = Browser(FakePage(url=NEW_URL, composer=None))
-    came_back.__enter__()
+    entered(came_back)
     replacement(monkeypatch, world, came_back)
 
     try:
         with pytest.raises(AuthError):
-            world.importer(progress=AfterOne(world)).run(
-                world.export, state.Selection(limit=2)
-            )
+            world.importer(progress=AfterOne(world)).run(world.export, state.Selection(limit=2))
     finally:
         came_back.chrome.stop()
 
@@ -536,11 +520,11 @@ def test_a_relaunched_browser_that_is_signed_out_ends_the_run(
     assert len(world.hermes.one_shots) == 1
 
 
-def test_a_browser_the_run_started_is_closed_on_the_way_out(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`07`'s rule: one this run launched is ours to close; an adopted one is
-    whoever started it's, and every other test here adopts."""
+def test_a_browser_the_run_started_is_closed_on_the_way_out(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`07`'s rule: one this run launched is ours to close.
+
+    An adopted one is whoever started it's, and every other test here adopts.
+    """
     closed: list[bool] = []
 
     class Ours(launcher.BrowserSession):
@@ -570,19 +554,17 @@ def test_a_locked_workspace_is_refused_and_force_unlock_takes_it(
         encoding="utf-8",
     )
 
-    with pytest.raises(state.WorkspaceLocked):
+    with pytest.raises(state.WorkspaceLockedError):
         world.run(limit=1)
 
-    summary = world.importer(force_unlock=True).run(
-        world.export, state.Selection(limit=1)
-    )
+    summary = world.importer(force_unlock=True).run(world.export, state.Selection(limit=1))
     assert summary.exit_code is ExitCode.OK
 
 
 def test_a_workspace_from_another_export_is_refused(world: World) -> None:
     world.store().bind_export("sha256:not-this-export")
 
-    with pytest.raises(state.FingerprintMismatch):
+    with pytest.raises(state.FingerprintMismatchError):
         world.run(limit=1)
 
     assert world.hermes.one_shots == []
@@ -593,33 +575,29 @@ def test_a_workspace_from_another_export_is_refused(world: World) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_a_conversation_id_that_is_not_a_directory_name_fails_alone(
-    world: World, tmp_path: Path
-) -> None:
+def test_a_conversation_id_that_is_not_a_directory_name_fails_alone(world: World, tmp_path: Path) -> None:
     """`04` refuses to join it to a path; `12` records that and moves on."""
     hostile = "../escape"
     export = tmp_path / "hostile-export"
     export.mkdir()
     (export / "conversations.json").write_text(
-        json.dumps(
-            [
-                {
-                    "uuid": hostile,
-                    "name": "Nowhere",
-                    "created_at": "2024-05-01T09:00:00.000000Z",
-                    "updated_at": "2024-05-01T09:01:00.000000Z",
-                    "chat_messages": [
-                        {
-                            "uuid": "m1",
-                            "text": "hello",
-                            "sender": "human",
-                            "created_at": "2024-05-01T09:00:00.000000Z",
-                            "updated_at": "2024-05-01T09:00:00.000000Z",
-                        }
-                    ],
-                }
-            ]
-        ),
+        json.dumps([
+            {
+                "uuid": hostile,
+                "name": "Nowhere",
+                "created_at": "2024-05-01T09:00:00.000000Z",
+                "updated_at": "2024-05-01T09:01:00.000000Z",
+                "chat_messages": [
+                    {
+                        "uuid": "m1",
+                        "text": "hello",
+                        "sender": "human",
+                        "created_at": "2024-05-01T09:00:00.000000Z",
+                        "updated_at": "2024-05-01T09:00:00.000000Z",
+                    }
+                ],
+            }
+        ]),
         encoding="utf-8",
     )
     world.export = export
@@ -718,9 +696,7 @@ def test_a_completed_result_with_no_chat_says_so() -> None:
 
 
 def test_a_rate_limit_keeps_its_retry_after() -> None:
-    mapped = importing.interpret(
-        hermes_result(outcome="rate_limited", retry_after_s=90), landed=False
-    )
+    mapped = importing.interpret(hermes_result(outcome="rate_limited", retry_after_s=90), landed=False)
     assert mapped.error is not None
     assert mapped.error.detail == "rate limited; retry after 90s"
     assert mapped.error.retry_recommended is True
@@ -741,9 +717,7 @@ def test_a_needs_human_with_no_reason_is_still_recorded() -> None:
 
 def test_every_needs_human_reason_has_a_category() -> None:
     """`09` owns the six reasons; a seventh cannot arrive without a home."""
-    assert set(importing.NEEDS_HUMAN_CATEGORIES) == set(
-        hermes_running.NEEDS_HUMAN_REASONS
-    )
+    assert set(importing.NEEDS_HUMAN_CATEGORIES) == set(hermes_running.NEEDS_HUMAN_REASONS)
 
 
 def test_retry_recommended_is_read_off_the_error_class() -> None:
@@ -776,9 +750,7 @@ def test_import_exits_0_and_prints_the_counters(
 ) -> None:
     cli_env(world, monkeypatch)
 
-    outcome = runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    outcome = runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.OK
     lines = outcome.stdout.splitlines()
@@ -810,9 +782,7 @@ def test_import_exits_1_when_a_conversation_did_not_make_it(
     cli_env(world, monkeypatch)
     world.answers(result(outcome="failed", error={"category": "ui", "detail": "x"}))
 
-    outcome = runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    outcome = runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.FAILED
 
@@ -823,9 +793,7 @@ def test_import_exits_3_when_the_session_is_signed_out(
     cli_env(world, monkeypatch)
     world.page.composer = None
 
-    outcome = runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    outcome = runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.NOT_AUTHENTICATED
     assert outcome.stderr == ("error: not logged in — run: dataporter login\n")
@@ -837,21 +805,15 @@ def test_import_exits_4_when_there_is_nothing_to_do(
     cli_env(world, monkeypatch)
     world.run()
 
-    outcome = runner.invoke(
-        cli.app, ["import", str(world.export)], catch_exceptions=False
-    )
+    outcome = runner.invoke(cli.app, ["import", str(world.export)], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.NOTHING_TO_DO
 
 
-def test_the_run_log_holds_no_content(
-    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_run_log_holds_no_content(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     """§10 again, for the file the terminal is not."""
     cli_env(world, monkeypatch)
-    runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False)
 
     logs = sorted((world.settings.workspace / "logs").glob("run-*.jsonl"))
     assert logs

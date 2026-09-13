@@ -100,10 +100,7 @@ class MigrationError(Exception):
     ) -> None:
         cls = type(self)
         if not hasattr(cls, "category"):
-            raise TypeError(
-                f"{cls.__name__} is abstract: raise a MigrationError subclass "
-                f"that declares a category"
-            )
+            raise TypeError(f"{cls.__name__} is abstract: raise a MigrationError subclass that declares a category")
         if transient is not None and cls.default_transient is not None:
             raise TypeError(
                 f"{cls.__name__}.transient is fixed at {cls.default_transient} "
@@ -111,9 +108,7 @@ class MigrationError(Exception):
             )
         super().__init__(detail)
         self.detail = detail
-        self.transient: bool | None = (
-            transient if transient is not None else cls.default_transient
-        )
+        self.transient: bool | None = transient if transient is not None else cls.default_transient
         self.step = step
         """The last step name reached, one of `11`'s step names."""
         self.source_conversation_id = source_conversation_id
@@ -154,9 +149,7 @@ class RateLimitError(MigrationError):
         step: str | None = None,
         source_conversation_id: str | None = None,
     ) -> None:
-        super().__init__(
-            detail=detail, step=step, source_conversation_id=source_conversation_id
-        )
+        super().__init__(detail=detail, step=step, source_conversation_id=source_conversation_id)
         self.retry_after_s = retry_after_s
 
 
@@ -210,8 +203,9 @@ class HermesError(MigrationError):
 
 
 class HermesUsageError(HermesError):
-    """Hermes cannot be invoked as asked: not installed, too old, or it rejected
-    the arguments (its own exit code `2`).
+    """Hermes cannot be invoked as asked.
+
+    Not installed, too old, or it rejected the arguments (its own exit code `2`).
 
     Category `hermes` like its parent, but never worth retrying — the next attempt
     would make the same mistake at a later time. A subclass rather than a

@@ -56,14 +56,11 @@ interpreter and our helper commands, `HOME` so it can find its profile and its
 WORKSPACE_ENV_VAR = "DATAPORTER_WORKSPACE"
 """Set, not forwarded. See the module docstring."""
 
-INSTALL_HINT = (
-    "hermes not found — install the Hermes Agent, or set hermes.executable in the "
-    "workspace config.toml"
-)
+INSTALL_HINT = "hermes not found — install the Hermes Agent, or set hermes.executable in the workspace config.toml"
 
 
 def hermes_env(settings: Settings) -> dict[str, str]:
-    """The complete environment every Hermes subprocess gets."""
+    """Return the complete environment every Hermes subprocess gets."""
     env = {name: os.environ[name] for name in PASSED_THROUGH_ENV if name in os.environ}
     env[WORKSPACE_ENV_VAR] = str(settings.workspace)
     return env
@@ -122,18 +119,10 @@ class HermesCli:
         if self._path is not None:
             return self._path
         configured = self.settings.hermes.executable
-        candidate = (
-            str(Path(configured).expanduser())
-            if configured is not None
-            else HERMES_EXECUTABLE
-        )
+        candidate = str(Path(configured).expanduser()) if configured is not None else HERMES_EXECUTABLE
         found = shutil.which(candidate)
         if found is None:
-            detail = (
-                f"configured hermes executable not found: {configured}"
-                if configured is not None
-                else INSTALL_HINT
-            )
+            detail = f"configured hermes executable not found: {configured}" if configured is not None else INSTALL_HINT
             raise HermesUsageError(detail=detail)
         self._path = Path(found)
         return self._path
@@ -158,7 +147,7 @@ class HermesCli:
         # refuses an `extra` that would overwrite one.
         _logger.debug("hermes call", extra={"call": " ".join(args)})
         try:
-            finished = subprocess.run(
+            finished = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - the Hermes command we built
                 command,
                 capture_output=True,
                 text=True,
@@ -170,9 +159,7 @@ class HermesCli:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise HermesError(
-                detail=f"hermes {args[0] if args else ''} timed out after {limit:g}s"
-            ) from exc
+            raise HermesError(detail=f"hermes {args[0] if args else ''} timed out after {limit:g}s") from exc
         except OSError as exc:
             raise HermesUsageError(detail=f"cannot run {self.path}: {exc}") from exc
         return Completed(
@@ -191,25 +178,21 @@ class HermesCli:
         """
         finished = self.run(*args, timeout_s=timeout_s)
         if not finished.ok:
-            raise HermesUsageError(
-                detail=f"hermes {' '.join(args)}: {finished.failure}"
-            )
+            raise HermesUsageError(detail=f"hermes {' '.join(args)}: {finished.failure}")
         return finished
 
     # -- the calls ---------------------------------------------------------- #
 
     def version(self) -> tuple[int, ...]:
-        """The installed version. Raises when it cannot be read or parsed."""
+        """Return the installed version. Raises when it cannot be read or parsed."""
         finished = self.checked("--version")
         parsed = versioning.parse_version(finished.stdout or finished.stderr)
         if parsed is None:
-            raise HermesUsageError(
-                detail=f"cannot read a version from: {finished.failure}"
-            )
+            raise HermesUsageError(detail=f"cannot read a version from: {finished.failure}")
         return parsed
 
     def profiles(self) -> list[str]:
-        """The profile names `hermes profile list` reports."""
+        """Return the profile names `hermes profile list` reports."""
         return parse_profile_list(self.checked("profile", "list").stdout)
 
     def create_profile(self) -> None:
@@ -223,7 +206,7 @@ class HermesCli:
         return self.checked(*self.profile_flags(), "config", "show").stdout
 
     def config(self) -> dict[str, str]:
-        """The profile's configuration, flattened to dotted keys."""
+        """Return the profile's configuration, flattened to dotted keys."""
         return parse_config(self.config_show_text())
 
 
@@ -303,16 +286,20 @@ def _split_setting(text: str) -> tuple[str, str, str]:
     return text[:equals].strip(), "=", text[equals + 1 :]
 
 
+QUOTE_PAIR = 2
+"""The opening quote and the closing one: a shorter value has no pair to strip."""
+
+
 def _unquote(value: str) -> str:
     """Strip one layer of matching quotes, and a trailing comment."""
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+    if len(value) >= QUOTE_PAIR and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
     head = value.split(" #", 1)[0].strip()
     return head
 
 
 def mismatches(config: Mapping[str, str], expected: Mapping[str, str]) -> list[str]:
-    """The keys of `expected` the profile does not agree with, described.
+    """Return the keys of `expected` the profile does not agree with, described.
 
     Compared case-insensitively, because `off`, `Off` and `"off"` are all things
     a YAML round trip may hand back for a key we set to `off`. The description is
@@ -344,5 +331,5 @@ def home_relative(path: Path) -> str:
 
 
 def quoted(command: Sequence[str]) -> str:
-    """A command as a prompt can show it, quoted so a path with a space survives."""
+    """Return a command as a prompt can show it, quoted so a path with a space survives."""
     return shlex.join(command)

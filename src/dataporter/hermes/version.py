@@ -29,7 +29,7 @@ _NUMBERS = re.compile(r"\d+(?:\.\d+)*")
 
 
 def parse_version(text: str) -> tuple[int, ...] | None:
-    """The first dotted run of digits in `text`, or `None` if there is none."""
+    """Return the first dotted run of digits in `text`, or `None` if there is none."""
     found = _NUMBERS.search(text)
     if found is None:
         return None
@@ -40,9 +40,7 @@ def format_version(parts: tuple[int, ...]) -> str:
     return ".".join(str(part) for part in parts)
 
 
-def at_least(
-    found: tuple[int, ...], minimum: tuple[int, ...] = MINIMUM_VERSION
-) -> bool:
+def at_least(found: tuple[int, ...], minimum: tuple[int, ...] = MINIMUM_VERSION) -> bool:
     """Whether `found` is `minimum` or newer.
 
     Both sides are padded to the same length so that `0.4` and `0.4.0` compare

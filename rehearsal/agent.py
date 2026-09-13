@@ -49,8 +49,11 @@ BLANK = ("", "about:blank", "chrome://newtab/", "about:newtab")
 
 
 class AgentError(RuntimeError):
-    """The page could not be driven at all. Never a migration failure — the
-    procedure reports those itself, in the result object."""
+    """The page could not be driven at all.
+
+    Never a migration failure — the procedure reports those itself, in the result
+    object.
+    """
 
 
 # --------------------------------------------------------------------------- #
@@ -59,7 +62,7 @@ class AgentError(RuntimeError):
 
 
 def chosen_tab(client: CdpClient) -> Target:
-    """The tab this rehearsal is driving.
+    """Return the tab this rehearsal is driving.
 
     The claude.ai one if there is one, and otherwise whatever blank tab Chrome
     started with — which is the state the very first navigation begins from.
@@ -294,7 +297,7 @@ class CdpSignInBrowser:
         CdpBrowser(self.driver).navigate(url)
 
     def visible_fields(self) -> Sequence[str]:
-        """What the page is showing, once whatever was in front of it is gone.
+        """Return what the page is showing, once whatever was in front of it is gone.
 
         One banner, once: if nothing is showing and there is something
         banner-shaped with a button in it, click it and look again until the
@@ -334,9 +337,7 @@ class HelperRunner:
     def __call__(self, argv: Sequence[str]) -> tuple[int, dict[str, Any]]:
         command = [str(item) for item in argv]
         self.calls.append(command)
-        finished = subprocess.run(  # noqa: S603 - our own CLI, argv we built
-            command, capture_output=True, text=True, check=False
-        )
+        finished = subprocess.run(command, capture_output=True, text=True, check=False)
         printed = last_json_object(finished.stdout)
         if printed is None:
             return finished.returncode, {
@@ -348,7 +349,7 @@ class HelperRunner:
 
 
 def last_json_object(text: str) -> dict[str, Any] | None:
-    """The last JSON object a helper printed.
+    """Return the last JSON object a helper printed.
 
     A helper prints exactly one, so the last is the only; reading it with the
     tool's own scanner rather than `json.loads` keeps a stray line of Chrome's
@@ -369,5 +370,5 @@ def helper_argv(prefix: Sequence[str], *args: str) -> list[str]:
 
 
 def split_helper(line: str) -> list[str]:
-    """The `helper:` line of a prompt, as argv, with the prompt's `…` dropped."""
+    """Return the `helper:` line of a prompt, as argv, with the prompt's `…` dropped."""
     return [item for item in shlex.split(line) if item != "…"]

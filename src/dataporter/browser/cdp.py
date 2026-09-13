@@ -30,7 +30,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator, Mapping, Sequence
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -87,6 +87,10 @@ class Target:
         )
 
 
+HTTP_NOT_FOUND = 404
+"""The status `/json/close/<id>` answers for a target that is already gone."""
+
+
 class HttpStatusError(BrowserError):
     """A CDP HTTP endpoint answered with an error status.
 
@@ -109,9 +113,7 @@ def http_get(url: str, timeout: float) -> str:
     except urllib.error.HTTPError as exc:
         # Before URLError, which it subclasses. A status is a considered answer
         # from a browser that is there, not a browser that is not.
-        raise HttpStatusError(
-            detail=f"{url} answered {exc.code}", status=exc.code
-        ) from exc
+        raise HttpStatusError(detail=f"{url} answered {exc.code}", status=exc.code) from exc
     except urllib.error.URLError as exc:
         # Includes the ordinary "nothing is listening" case, which callers turn
         # into "no browser on this port" rather than into a failure.
@@ -121,8 +123,11 @@ def http_get(url: str, timeout: float) -> str:
 
 
 def http_json(url: str, timeout: float) -> Any:
-    """The same, parsed. Not every endpoint is JSON: `/json/close/<id>` answers
-    `Target is closing` in plain text, which is why this is the narrower one."""
+    """Return the same, parsed.
+
+    Not every endpoint is JSON: `/json/close/<id>` answers `Target is closing` in plain
+    text, which is why this is the narrower one.
+    """
     raw = http_get(url, timeout)
     try:
         return json.loads(raw)
@@ -139,9 +144,7 @@ class Connection:
     `Page.javascriptDialogOpening`, which arrives unsolicited.
     """
 
-    def __init__(
-        self, websocket_url: str, *, timeout: float = DEFAULT_TIMEOUT_S
-    ) -> None:
+    def __init__(self, websocket_url: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> None:
         self.websocket_url = websocket_url
         self.timeout = timeout
         self._next_id = 0
@@ -165,15 +168,11 @@ class Connection:
                 )
             )
         except (WebSocketException, OSError, TimeoutError) as exc:
-            raise BrowserError(
-                detail=f"cannot connect to {websocket_url}: {exc}"
-            ) from exc
+            raise BrowserError(detail=f"cannot connect to {websocket_url}: {exc}") from exc
 
     # -- the protocol ------------------------------------------------------- #
 
-    def send(
-        self, method: str, params: Mapping[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def send(self, method: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Send one command and return its `result`.
 
         A CDP-level error (`{"error": {...}}`) is a `BrowserError`: every call
@@ -200,9 +199,7 @@ class Connection:
             error = message.get("error")
             if error is not None:
                 raise BrowserError(
-                    detail=f"{method} failed: "
-                    f"{error.get('message', 'unknown error')} "
-                    f"({error.get('code', '?')})"
+                    detail=f"{method} failed: {error.get('message', 'unknown error')} ({error.get('code', '?')})"
                 )
             result = message.get("result", {})
             return result if isinstance(result, dict) else {}
@@ -237,9 +234,7 @@ class Connection:
         try:
             raw = self._socket.recv(timeout=remaining)
         except TimeoutError:
-            raise BrowserError(
-                detail=f"{method} timed out after {self.timeout:g}s"
-            ) from None
+            raise BrowserError(detail=f"{method} timed out after {self.timeout:g}s") from None
         except (WebSocketException, OSError) as exc:
             raise BrowserError(detail=f"browser connection lost: {exc}") from exc
         return _decode(raw)
@@ -247,10 +242,8 @@ class Connection:
     # -- lifecycle ---------------------------------------------------------- #
 
     def close(self) -> None:
-        try:
+        with suppress(WebSocketException, OSError):  # pragma: no cover - already gone
             self._stack.close()
-        except (WebSocketException, OSError):  # pragma: no cover - already gone
-            pass
 
     def __enter__(self) -> Self:
         return self
@@ -308,9 +301,7 @@ class Page(Connection):
         details = result.get("exceptionDetails")
         if details is not None:
             # Our own JS threw. The text is ours, not the page's.
-            raise BrowserError(
-                detail=f"page expression failed: {details.get('text', 'exception')}"
-            )
+            raise BrowserError(detail=f"page expression failed: {details.get('text', 'exception')}")
         value = result.get("result", {})
         return value.get("value")
 
@@ -352,9 +343,7 @@ class Page(Connection):
         root_id = deep_get(root, "root.nodeId")
         if root_id is None:
             raise BrowserError(detail="DOM.getDocument returned no document node")
-        node_id = self.send(
-            "DOM.querySelector", {"nodeId": root_id, "selector": selector}
-        ).get("nodeId")
+        node_id = self.send("DOM.querySelector", {"nodeId": root_id, "selector": selector}).get("nodeId")
         if not node_id:
             raise BrowserError(detail=f"no element matches {selector}")
         self.send(
@@ -402,7 +391,7 @@ class CdpClient:
         return True
 
     def browser_id(self) -> str:
-        """The browser instance's own target id, from its WebSocket URL.
+        """Return the browser instance's own target id, from its WebSocket URL.
 
         Unique per launched browser, which is what makes it usable as "is this
         the Chrome we started" — see `launcher.adopt`.
@@ -421,14 +410,11 @@ class CdpClient:
         return [item for item in self.targets() if item.is_page]
 
     def attach(self, target_id: str) -> Page:
-        """A `Page` for one target id, looked up in the live target list."""
+        """Return a `Page` for one target id, looked up in the live target list."""
         for target in self.targets():
             if target.id == target_id:
                 if not target.websocket_url:
-                    raise BrowserError(
-                        detail=f"target {log.safe_token(target_id)} "
-                        f"cannot be attached to"
-                    )
+                    raise BrowserError(detail=f"target {log.safe_token(target_id)} cannot be attached to")
                 _logger.debug("cdp attach", extra={"target_id": target_id})
                 return Page(target, timeout=self.timeout)
         raise BrowserError(detail=f"no such target: {log.safe_token(target_id)}")
@@ -444,12 +430,12 @@ class CdpClient:
         try:
             http_get(f"{self.base_url}/json/close/{target_id}", self.timeout)
         except HttpStatusError as exc:
-            if exc.status != 404:
+            if exc.status != HTTP_NOT_FOUND:
                 raise
 
     @contextmanager
     def browser_connection(self) -> Iterator[Connection]:
-        """A connection to the browser target itself, for `Browser.close`."""
+        """Yield a connection to the browser target itself, for `Browser.close`."""
         url = str(self.version().get("webSocketDebuggerUrl", ""))
         if not url:
             raise BrowserError(detail="browser has no debugger URL")
