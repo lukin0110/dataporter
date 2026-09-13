@@ -219,13 +219,15 @@ def selectors_js(site: Site) -> str:
     )
 
 
-def take(page: Page, site: Site) -> Sketch:
+def take(page: Page, site: Site, *, url: str | None = None, dialogs: Sequence[str] | None = None) -> Sketch:
     """Sketch the page the connection is on.
 
     Reads and counts, and nothing else: `Accessibility.enable` (idempotent,
     once per call rather than tracked per connection), the full tree, one
     evaluate for the selector counts, the pending dialogs `probe` already
-    tracks, and the live URL.
+    tracks, and the live URL. A caller that already knows the URL and the
+    dialogs — `35`'s watch, which heard both as events — passes them, and the
+    sketch's one evaluate is then the selector count.
     """
     page.send("Accessibility.enable")
     tree = page.send("Accessibility.getFullAXTree")
@@ -237,12 +239,12 @@ def take(page: Page, site: Site) -> Sketch:
         name: int(counts[name]) if isinstance(counts.get(name), int) and not isinstance(counts.get(name), bool) else 0
         for name in site.selectors
     }
-    located = tracing.url_fields(page.url)
+    located = tracing.url_fields(page.url if url is None else url)
     return Sketch(
         path=located["path"],
         query=tuple(located["query"]),
         title_chars=title_chars,
         controls=tuple(controls),
         selectors=selectors,
-        dialogs=tuple(probing.pending_dialogs(page)),
+        dialogs=tuple(probing.pending_dialogs(page) if dialogs is None else dialogs),
     )

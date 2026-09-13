@@ -299,6 +299,8 @@ source = ["src/dataporter"]
 # has to be; `browser/site.py` is a dataclass and a line.
 # `34`: 7149/7182, 99.54% — `browser/sketch.py` at 100%, and the four modules the
 # sketch touches still at 100%.
+# `35`: 7371/7404, 99.55% — `browser/watch.py` at 100%; `cdp.py`'s two missed lines
+# are `drain`'s socket-error branch, which predate it.
 fail_under = 99
 show_missing = true
 # `python -m dataporter`'s guard runs in a subprocess, where coverage does not

@@ -45,10 +45,10 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from dataporter import log, render, signin, state
-from dataporter import trace as tracing
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher
 from dataporter.browser import probe as probing
+from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
@@ -591,8 +591,8 @@ def verify_all(
         # a window the operator left open reuses it.
         browser = launcher.launch(settings, probing.NEW_CHAT_URL)
         try:
-            with tracing.opened(
-                settings, command="verify", flags=flags, site=probing.MIGRATION_SITE, client=browser.client
+            with watching.watched(
+                settings, command="verify", flags=flags, site=probing.MIGRATION_SITE, browser=browser
             ) as traced:
                 # Exit `3` when signed out — after `24`'s one unattended sign-in,
                 # in that mode: a signed-out session makes every chat unreadable,

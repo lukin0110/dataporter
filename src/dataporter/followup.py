@@ -43,9 +43,9 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import importer as importing
 from dataporter import log, render, signin, state
-from dataporter import trace as tracing
 from dataporter import verify as verifying
 from dataporter.browser import launcher
+from dataporter.browser import watch as watching
 from dataporter.browser.probe import MIGRATION_SITE, NEW_CHAT_URL
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
@@ -455,8 +455,8 @@ def ask_all(
         asking = Prober(settings)
         file = read(settings)
         try:
-            with tracing.opened(
-                settings, command="followup", flags=flags, site=MIGRATION_SITE, client=browser.client
+            with watching.watched(
+                settings, command="followup", flags=flags, site=MIGRATION_SITE, browser=browser
             ) as traced:
                 signin.ensure_signed_in(settings, browser)
                 for position, (uuid, entry) in enumerate(wanted):

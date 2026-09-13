@@ -223,6 +223,28 @@ class Connection:
             if "id" not in message:
                 self._events.append(message)
 
+    def pull(self, timeout: float = 0.0) -> list[dict[str, Any]]:
+        """Receive events for up to `timeout` and hand every pending one over, once.
+
+        For a listener that handles each event as it comes (`35`'s watch), where
+        `drain`'s memory of everything since the connection opened would grow
+        with the run. What a `send` in between put aside is handed over too, so
+        nothing is lost to a sketch taken mid-stream; nothing is kept after.
+        """
+        found, self._events = self._events, []
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = max(deadline - time.monotonic(), 0.0)
+            try:
+                raw = self._socket.recv(timeout=remaining)
+            except TimeoutError:
+                return found
+            except (WebSocketException, OSError) as exc:
+                raise BrowserError(detail=f"browser connection lost: {exc}") from exc
+            message = _decode(raw)
+            if "id" not in message:
+                found.append(message)
+
     def events(self, name: str) -> list[dict[str, Any]]:
         """Every event of one kind seen so far, oldest first."""
         return [item for item in self._events if item.get("method") == name]

@@ -82,6 +82,7 @@ from dataporter import verify as verifying
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher, probe
 from dataporter.browser import session as browser_session
+from dataporter.browser import watch as watching
 from dataporter.config import (
     RetrySettings,
     Settings,
@@ -802,6 +803,9 @@ class Importer:
         """The invocation's own flags, by name, for the trace's header (`33`)."""
         self.trace: tracing.Trace | None = None
         """The run's trace, opened with the browser and ended with the lock."""
+        self.watch: watching.Watch | None = None
+        """`35`'s eyes on the tab: started with every browser this run opens,
+        stopped with it."""
         self.command = "import"
         self.export_fingerprint: str | None = None
         self.progress: reporting.Progress = progress if progress is not None else reporting.Reporter()
@@ -1006,6 +1010,11 @@ class Importer:
                 client=self._session().client,
                 export_fingerprint=self.export_fingerprint,
             )
+        # A new watch per browser: the one on a browser that died has written
+        # `watch_lost`, and the new certificate and navigation are the restart.
+        if self.watch is not None:
+            self.watch.stop()
+        self.watch = watching.Watch.start(self.trace, self._session().client, probe.MIGRATION_SITE)
         self._require_signed_in()
         # Blank and duplicate new-chat tabs only, never a conversation (`08`).
         # Hermes picks its tab by looking, and one candidate is what makes that
@@ -1997,6 +2006,9 @@ class Importer:
 
     def _close_browser(self) -> None:
         """Close a browser this run started; leave one it adopted alone."""
+        watch, self.watch = self.watch, None
+        if watch is not None:
+            watch.stop()
         session, self.session = self.session, None
         if session is not None and not session.adopted:
             session.close()

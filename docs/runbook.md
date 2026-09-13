@@ -187,6 +187,13 @@ dataporter verify --only 8a02c7d1
 `verify` opens the browser and no Hermes at all: it is the second opinion, so it asks the
 page rather than the agent that wrote to it.
 
+Every command that opened a browser also left `logs/trace-<ts>.jsonl` beside its run
+log (brief `04`): the moves the helpers made and what the page did in between, in
+outline. A line with `"what":"watch_lost"` means the tool's own eyes on the tab closed
+mid-run — a browser that died, a session that dropped — and the trace is incomplete
+from there. It means nothing for the migration itself: the run's exit code, the report
+and `state.json` are unaffected, and a relaunched browser is watched afresh.
+
 ## Signing the run off
 
 ```sh
