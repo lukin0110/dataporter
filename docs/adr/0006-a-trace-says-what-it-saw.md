@@ -10,10 +10,10 @@ rule that maps the host to the mock is visible there), the agent's `--version` l
 verbatim, and the certificate the browser was shown for the host, as the first
 observation that carries one. The scripted agent's version line says `(scripted agent)`
 so that it is a mark too. A reader — a person, Claude Code, the rehearsal runner —
-derives the label: the mock's certificate and the scripted agent is a rehearsal; the
-mock's certificate and a real Hermes is a run against the mock; a public authority's
-certificate is the real world. The filename stays neutral, because the file exists before
-the page is seen.
+derives the label: a certificate signed by itself — its issuer its own subject, which is
+the mock's — and the scripted agent is a rehearsal; the mock's certificate and a real
+Hermes is a run against the mock; a public authority's certificate is the real world.
+The filename stays neutral, because the file exists before the page is seen.
 
 ## Considered
 

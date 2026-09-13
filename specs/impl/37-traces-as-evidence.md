@@ -102,6 +102,7 @@ No tool code changes.
   committing person reads the file; `34`'s first risk says what to look for (a control
   named after a conversation). A second reader on the pull request is the second check.
 - **A row marked from a trace of the wrong site.** A trace of the mock committed by
-  mistake has `claude-mock` in its certificate line; the test could refuse that issuer
-  by name, and does not, because the tool's tree must not know the mock's name either
-  (ADR 0001). The README's rule and the reviewer are the check.
+  mistake has a certificate line whose issuer is its own subject; the test could refuse
+  a self-signed issuer, and does not, because a fixture server is self-signed too and
+  the tool's tree must not know the mock's shape either (ADR 0001). The README's rule
+  and the reviewer are the check.

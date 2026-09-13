@@ -76,7 +76,7 @@ Illustrative in its values, normative in its keys and their order:
 
 ```text
 {"trace":1,"kind":"header","ts":"2026-09-13T10:00:00.000Z","command":"import","flags":["--pilot"],"source":"claude","host":"claude.ai","account":null,"export_fingerprint":"1f844dc5…","tool":"dataporter 0.1.0","chrome":"Chromium 141.0.7390.37","agent":"hermes 1.0.0 (scripted agent)","chrome_arguments":["--host-resolver-rules=MAP claude.ai 127.0.0.1:8443","--ignore-certificate-errors-spki-list=…"],"root":"/home/me/export/migration"}
-{"kind":"observation","ts":"…","t_ms":412,"what":"certificate","host":"claude.ai","issuer":"claude-mock","subject":"claude.ai"}
+{"kind":"observation","ts":"…","t_ms":412,"what":"certificate","host":"claude.ai","issuer":"claude.ai","subject":"claude.ai"}
 {"kind":"observation","ts":"…","t_ms":415,"what":"navigation","path":"/new","query":[]}
 {"kind":"sketch","ts":"…","t_ms":640,"hash":"3f9c2a1b7e04","path":"/new","query":[],"title_chars":8,"controls":[{"role":"textbox","label":"Write your prompt to Claude","chars":0},{"role":"button","label":"Send message","disabled":true},{"role":"link","count":12,"chars":231}],"selectors":{"COMPOSER_SELECTOR":1,"MESSAGE_SELECTOR":0,"TITLE_SELECTOR":0,"FILE_INPUT_SELECTOR":1},"dialogs":[]}
 {"kind":"move","ts":"…","t_ms":650,"helper":"probe","ok":true,"elapsed_ms":38,"conversation_id":null,"before":"3f9c2a1b7e04","after":"3f9c2a1b7e04","result":{"kind":"new_chat","logged_in":true,"composer_present":true,"composer_chars":0,"generating":false,"send_enabled":false,"tab_count":1}}
@@ -215,8 +215,12 @@ verdict:
   configuration;
 - the agent's version line, verbatim, as `hermes --version` printed it. The scripted
   agent (§23) says `(scripted agent)` in its line, so that it is a mark too;
-- the certificate the browser was shown for the host: the mock's is its own, signed by
-  itself and naming `claude-mock`; the real site's is a public authority's.
+- the certificate the browser was shown for the host: its issuer and its subject. The
+  mock's is signed by itself, so its issuer is its own name; the real site's issuer is
+  a public authority's. *(Amended by `36`: this section first said the mock's certificate
+  names `claude-mock`. The mock writes that organisation into it, but a browser reports
+  an issuer by its common name, so what a trace shows for the mock is an issuer equal to
+  its subject — which is the mark of a certificate signed by itself, and enough.)*
 
 A reader sees the mock's certificate and the scripted agent and knows it is reading a
 rehearsal; the mock's certificate and a real Hermes, a run against the mock; a public

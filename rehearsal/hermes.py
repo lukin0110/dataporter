@@ -55,9 +55,14 @@ from rehearsal.agent import (
 )
 
 VERSION = "1.0.0"
-"""What `--version` prints, as `hermes 1.0.0`. Above `09`'s minimum, and a
-version of *this*, not a claim about the real Hermes — the rehearsal record
-names both."""
+"""What `--version` prints, as `hermes 1.0.0 (scripted agent)`. Above `09`'s
+minimum, and a version of *this*, not a claim about the real Hermes — the
+rehearsal record names both, and a trace's header carries the line verbatim
+(brief `04` §47), which is why the suffix says what this is."""
+
+AGENT_SUFFIX = "(scripted agent)"
+"""The mark ADR 0006 asks the scripted agent to leave in its version line.
+`09`'s parser reads the digits and stops, so the suffix costs nothing there."""
 
 MODEL = "none/scripted-agent"
 """What `doctor`'s `hermes model` line reports. A profile with no model
@@ -282,7 +287,7 @@ def main(argv: Sequence[str]) -> int:  # ruff: ignore[too-many-return-statements
     profiles = Profiles(Path(os.environ.get(STATE_ENV_VAR) or Path.home() / ".hermes-scripted.json"))
 
     if "--version" in arguments:
-        sys.stdout.write(f"hermes {VERSION}\n")
+        sys.stdout.write(f"hermes {VERSION} {AGENT_SUFFIX}\n")
         return 0
 
     state = profiles.load()

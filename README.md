@@ -353,7 +353,10 @@ The mock prints the two Chrome arguments that point a browser at it; the tool it
 no setting that names it, so a rehearsal proves the code that ships or it proves nothing.
 What comes out is §25's pass criteria, reconciled against the mock's own count of what it
 was asked to do, and — with `--record docs/rehearsal-NN.md` — a record like
-[`docs/rehearsal-01.md`](docs/rehearsal-01.md). It is **not** evidence about claude.ai:
+[`docs/rehearsal-02.md`](docs/rehearsal-02.md). Every step that drove a tab leaves a
+trace, and the runner files them under `<root>/traces/`, named after the step: a
+rehearsal's traces are the baseline a real run's are laid beside (brief `04` §48).
+It is **not** evidence about claude.ai:
 see [`specs/02-claude-mock.md`](specs/02-claude-mock.md) §27 and
 [`mock/README.md`](mock/README.md). The mock also serves an export page and hands out a
 link instead of an email (`32`), so `extract` is rehearsed against it too — by hand, per
