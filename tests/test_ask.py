@@ -408,6 +408,24 @@ def test_a_browser_that_never_arrives_at_the_page_is_exit_6(
     assert extract.read_ask(settings) is None
 
 
+def test_a_session_that_expires_before_the_click_is_never_clicked_on(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """The wall admits `/login`, so the wall alone does not say the tab is on the
+    page the button is on. A session that expired between the look and the click
+    would otherwise have the ask pressing a sign-in form's submit button, which
+    `CONFIRM_BUTTON_SELECTOR` is generic enough to find.
+    (Raised by Copilot in review on #44.)"""
+    page.leaves_after_view = 1
+
+    with pytest.raises(BrowserError) as raised:
+        extract.ask(settings)
+
+    assert raised.value.detail == export_page.NOT_THE_EXPORT_PAGE
+    assert page.clicks == []
+    assert extract.read_ask(settings) is None
+
+
 def test_two_claude_tabs_are_not_driven_blind(
     settings: Settings, page: FakeExportPage, launches: list[str], chrome: FakeChrome
 ) -> None:

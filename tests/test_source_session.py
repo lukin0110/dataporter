@@ -31,7 +31,6 @@ pytestmark = pytest.mark.slow
 """Slow all the way through: a fake Chrome per test, binding two ports."""
 
 ACCOUNT = "old-personal"
-LOGGED_OUT = page_state(url="https://claude.ai/login", composer_present=False)
 
 
 def make_settings(tmp_path: Path, port: int) -> Settings:

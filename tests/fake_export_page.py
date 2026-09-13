@@ -75,6 +75,17 @@ class FakeExportPage:
     """Whether `Page.navigate` moves this page. `False` is a browser that never
     arrives — a redirect back, a page that will not load."""
 
+    leaves_after_view: int | None = None
+    """How many looks at the page before the tab is somewhere else.
+
+    A session that expired between the look and the click, which is the one
+    moment `_click`'s own check exists for: the tab lands on `/login`, which the
+    extraction surface admits, and the ask must still refuse to press anything
+    there.
+    """
+
+    view_reads: int = 0
+
     loading_for: int = 0
     """How many looks the page spends still loading (`07`'s `settled`)."""
 
@@ -120,6 +131,11 @@ class FakeExportPage:
 
     def view(self) -> dict[str, Any]:
         """What `EXPORT_PAGE_JS` answers for this stage."""
+        self.view_reads += 1
+        if self.leaves_after_view is not None and self.view_reads >= (
+            self.leaves_after_view
+        ):
+            self.url = SIGNED_OUT_URL
         return {
             "button": self.button and self.stage is Stage.SETTINGS,
             "dialog": self.stage is Stage.CONFIRM,
