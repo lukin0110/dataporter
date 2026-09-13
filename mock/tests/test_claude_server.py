@@ -1,4 +1,4 @@
-"""The wire: cookies, redirects, and the pages a real browser would be given.
+"""The mock claude.ai's wire: cookies, redirects, and the pages a real browser would be given.
 
 A real TLS connection to a real port, because that is what the mock is for. What
 these cannot cover is a real Chrome running the page's own script — that is what
@@ -7,14 +7,12 @@ a rehearsal is.
 
 import io
 import json
-import socket
 import zipfile
-from pathlib import Path
 from urllib.parse import urlencode
 
-import pytest
-from claudemock import certificate, server
+from claudemock import server
 from claudemock.site import Site
+from mockcore import certificate
 
 from conftest import EMAIL, PASSWORD, WALL, Client
 
@@ -253,26 +251,3 @@ def test_a_link_is_announced_as_it_is_minted(site: Site, material: certificate.M
     finally:
         started.close()
     assert announced == [json.loads(body)["link"]]
-
-
-def test_a_server_that_cannot_start_releases_its_port(
-    site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A key that is not there.
-
-    Uvicorn fails to start, and the socket `serve` bound before handing it over is
-    closed rather than left holding the port.
-    """
-    bound: list[socket.socket] = []
-    listen = server.listen
-
-    def listen_and_remember(host: str, port: int) -> socket.socket:
-        bound.append(listen(host, port))
-        return bound[-1]
-
-    monkeypatch.setattr(server, "listen", listen_and_remember)
-    missing = certificate.Material(cert_path=tmp_path / "cert.pem", key_path=tmp_path / "key.pem", spki_sha256="")
-    with pytest.raises(RuntimeError, match="stopped before it started") as caught:
-        server.serve(site, port=0, material=missing)
-    assert isinstance(caught.value.__cause__, OSError)
-    assert [sock.fileno() for sock in bound] == [-1]

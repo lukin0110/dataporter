@@ -98,6 +98,15 @@ the real page.
 | `export file name` | the slice's | not documented; community reports contradict each other | *unknown* |
 | `no import` | — | "ChatGPT does not support fully merging accounts or moving conversations from one account's chat history into another account's chat history." Uploading `conversations.json` to a chat makes it a reference file and "does not add old conversations to your chat history" | *reported (OpenAI 9106926, 2026-09-13)* |
 
+Every selector in the middle column has exactly one spelling in the mock's source —
+[`mock/src/chatgptmock/pages.py`](../mock/src/chatgptmock/pages.py) is the markup and
+[`uimap.py`](../mock/src/chatgptmock/uimap.py) beside it cites the row behind each state
+the mock can show, in one line each — so correcting a row here is one edit there, and
+`chatgpt-mock rows` prints the citations. The tool has no ChatGPT half yet; when it does,
+its selectors get their one spelling on its side of ADR 0003's line, re-typed and never
+imported. The mock's tests read this file and fail when the mock cites a row that is not
+here, or one marked *observed*.
+
 ## Notes
 
 Traces of runs against chatgpt.com go in [`spike/traces/`](spike/traces/), read end to end

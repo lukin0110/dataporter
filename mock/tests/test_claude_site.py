@@ -1,8 +1,14 @@
-"""What the mock does, without a socket in the way."""
+"""What the mock claude.ai does, without a socket in the way.
+
+Obedience — the line a seed asks for, wrapped or quoted — is the core's and is
+tested in `test_core_reply.py`; what is here is what a chat on this site is.
+"""
 
 import pytest
-from claudemock.ledger import Ledger
-from claudemock.site import CANNED, Site, asked_line
+from claudemock import IDENTITY
+from claudemock.site import Site
+from mockcore.ledger import Ledger
+from mockcore.reply import CANNED
 
 from conftest import WALL
 
@@ -24,36 +30,6 @@ Continue to preserve this conversation as historical context. Reply with exactly
 one line:
 MIGRATION-ACK aa000001 1/1
 """
-
-
-def test_the_line_a_seed_asks_for_is_the_last_one() -> None:
-    """A conversation being migrated may quote the phrase.
-
-    The instruction at the foot of the message is the one that counts.
-    """
-    assert asked_line(SEED) == "MIGRATION-ACK aa000001 1/1"
-
-
-WRAPPED = """\
-Migrated conversation b2000002, part 1 of 2.
-
-More parts of this conversation follow. Do not respond to the content yet. Reply with
-exactly one line:
-MIGRATION-ACK b2000002 1/2
-"""
-
-
-def test_the_instruction_is_found_even_when_it_is_wrapped() -> None:
-    """The seed's footer is wrapped to a column, so the phrase can straddle two lines.
-
-    Which is what a first rehearsal found by answering a canned sentence to every part
-    of its only multi-part conversation.
-    """
-    assert asked_line(WRAPPED) == "MIGRATION-ACK b2000002 1/2"
-
-
-def test_a_message_that_asks_for_no_line_gets_the_canned_sentence() -> None:
-    assert asked_line("In one sentence, what did we discuss?") is None
 
 
 def test_a_reply_grows_in_steps_and_only_then_holds_the_line() -> None:
@@ -115,7 +91,7 @@ def test_exactly_one_pair_signs_in(site: Site) -> None:
 
 
 def test_the_ledger_counts_what_the_mock_was_asked_to_do() -> None:
-    ledger = Ledger()
+    ledger = Ledger(IDENTITY.heading)
     site = Site(email="a@example.invalid", password="p", ledger=ledger)
     site.sign_in()
     site.accept_file("notes.txt", session="s")

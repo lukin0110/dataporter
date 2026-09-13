@@ -106,7 +106,7 @@ exclude = [
     "spikes",
     "specs",
     "docs",
-    # `26` and `29`: the mock is its own project and the rehearsal is a
+    # `26` and `29`: the mocks are their own project and the rehearsal is a
     # developer's instrument. Neither is part of what a consumer installs, and
     # `rehearsal` imports the test tree, which a wheel does not carry.
     "mock",
@@ -119,11 +119,13 @@ exclude = [
 ]
 
 [tool.uv.workspace]
-# `26`'s mock is a member rather than a directory: it has its own dependencies
-# (FastAPI and uvicorn for the wire, `cryptography` to mint a TLS certificate),
-# its own tests and its own README, and it imports nothing from `dataporter`.
-# Moving it to its own repository is a directory move — ADR 0003 — and this line
-# is the only thing that would have to go with it.
+# The mocks are a member rather than a directory: one project, `mocks`, holding
+# `26`'s mock claude.ai, brief `05`'s mock chatgpt.com and the core they share
+# (ADR 0007), with its own dependencies (FastAPI and uvicorn for the wire,
+# `cryptography` to mint a TLS certificate), its own tests and its own README,
+# and it imports nothing from `dataporter`. Moving it to its own repository is a
+# directory move — ADR 0003 — and this line is the only thing that would have to
+# go with it.
 members = ["mock"]
 
 [tool.ruff]  # https://github.com/lukin0110/uv-copier/blob/main/template/pyproject.toml.jinja

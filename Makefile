@@ -25,13 +25,14 @@ check-all: lint test-all
 test:
 	uv run pytest
 
-# `26`'s mock is a separate project with its own dependencies, its own tests and
-# its own pytest configuration, so it is a second invocation rather than another
-# testpath. A second is what it costs; it binds a socket and speaks TLS for every
-# test in it, and `make check` runs it because a mock that has stopped behaving
-# like claude.ai is a rehearsal that proves nothing.
+# The mocks (`26`'s claude.ai and brief `05`'s chatgpt.com, one project since
+# `38`) are a separate project with their own dependencies, their own tests and
+# their own pytest configuration, so it is a second invocation rather than another
+# testpath. A few seconds is what it costs; every test of the wire binds a socket
+# and speaks TLS, and `make check` runs it because a mock that has stopped
+# behaving like its site is a rehearsal that proves nothing.
 test-mock:
-	uv run --package claude-mock pytest mock
+	uv run --package mocks pytest mock
 
 # `-m "slow or not slow"` rather than `-m ""`: both clear the default selection,
 # but only this one relies on the documented expression grammar, and it reads as
@@ -46,7 +47,7 @@ test-mock:
 # A one-off can always ask: `uv run pytest -m "slow or not slow" -n auto`.
 test-all:
 	uv run pytest -m "slow or not slow" --cov --cov-report=term-missing -n auto
-	uv run --package claude-mock pytest mock
+	uv run --package mocks pytest mock
 
 fmt:
 	uv run ruff format src tests spikes rehearsal mock

@@ -121,8 +121,10 @@ M9 — Trace (brief 04, §41–§51) — outside the gates: every command that d
 
 M10 — The mock chatgpt.com (brief 05, §52–§58) — outside the gates: it needs no account
       and changes nothing in the tool, and it is built ahead of the tool's ChatGPT half
-  (no slices yet — to be carved from the brief: the core and the rename, the site's
-   sign-in and chats, the export page and the archive, the README's walk)
+  38  The core and the rename: `mockcore`, the distribution `mocks`, the mock claude.ai on it
+  39  The mock chatgpt.com: sign-in on two hosts, chats, the paste that becomes an attachment
+  40  The mock chatgpt.com: the export page, a link behind a session, the archive
+  41  The README's walk: the project's README, the two-mock merge, the specs index
 ```
 
 ## Dependencies
@@ -181,6 +183,21 @@ amendment, and the mock's README, which reads a trace and imports nothing.
 ```text
 01, 08, 31 ─> 33 ─> 34 ─> 35 ─> 36 ─> 37
                     (34 also needs 07; 36 needs 29; 37 needs 10 and 26)
+```
+
+M10 is a chain of four, and none of it is the tool's: `38` is the refactor — the half
+of `26` and `32` that a second site would otherwise copy becomes a core, and the mock
+claude.ai keeps every byte it prints; `39` is the second site's sign-in and chats, built
+out of `docs/chatgpt-ui-map.md` the way `26` was built out of the Claude map; `40` is
+its export page and its archive, built out of `docs/chatgpt-export-format.md`; `41` is
+the paperwork — the README a person walks the mock by, and this index. Nothing drives
+the mock chatgpt.com yet, so §56 lends every slice its live criterion: `Built` when its
+suite passes, `Done` when the brief that gives the tool a ChatGPT half has run against
+it.
+
+```text
+26, 32 ─> 38 ─> 39 ─> 40 ─> 41
+              (39 needs docs/chatgpt-ui-map.md; 40 needs docs/chatgpt-export-format.md)
 ```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
@@ -248,6 +265,10 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [35](impl/35-watch.md) | The watch | §44, §46, §47, §50 | Done |
 | [36](impl/36-rehearsal-traces.md) | The rehearsal's traces | §47, §48 | Done |
 | [37](impl/37-traces-as-evidence.md) | Traces as evidence | §49, §50 | Built |
+| [38](impl/38-mock-core.md) | The core and the rename | §53 | Built |
+| [39](impl/39-chatgpt-mock-site.md) | The mock chatgpt.com: sign-in and chats | §54, §57 | Built |
+| [40](impl/40-chatgpt-export-and-archive.md) | The mock chatgpt.com: the export page and the archive | §54, §55 | Built |
+| [41](impl/41-chatgpt-mock-walk.md) | The README's walk | §53, §54, §56 | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -313,12 +334,19 @@ what turns it `Done` is the first trace of a run against claude.ai committed und
 `docs/spike/traces/` and the first row marked from it — a person's trip to a throwaway
 account, which no test can take.
 
-Of the fifth brief, §52–§58 are claimed by no slice yet. §57 draws the line between
-what its slices build and what they name and leave, and §58 is its list of what is
-deliberately left; the slices, when they are carved, claim §53–§57 between them and §52
-as the goal. None can be `Done` on its own suite alone: §56 lends the live criterion to
-the brief that gives the tool a ChatGPT half, and a slice of `05` reaches `Built` when
-its suite passes and `Done` when that brief's first run has walked the mock.
+Of the fifth brief, §53–§57 are claimed by `38`–`41`: `38` takes the core and the
+project shape, `39` the sign-in, the chats, the ledger, the reachability and the lifetime
+of §54 and the rows §57 says a slice builds, `40` the export page of §54 and the archive
+of §55, and `41` the walk of §56 and the two-mock merge of §54. §52 is that brief's goal
+and is claimed by all four; §58 is its list of what is deliberately left and stays
+unclaimed until one of its items is built. All four are `Built` and none is `Done`: §56
+lends the live criterion to the brief that gives the tool a ChatGPT half, and a slice of
+`05` reaches `Done` when that brief's first run has walked the mock. What has walked it
+so far is a headless Chromium driven through the README's walk by hand on 2026-09-13
+(`39`, `40` and `41` record it), which proves the pages and turns no row of
+`docs/chatgpt-ui-map.md` *observed*. `38`'s own live criterion is a rehearsal against
+the refactored mock claude.ai, which nobody has run since; its suite of the wire is what
+says the bytes did not change until the next record does.
 
 ## Working rules
 
@@ -418,9 +446,8 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   split is now a rail (a pull request is never gated on a browser) rather than the thing
   that makes the loop bearable.
 - **The mocks and the rehearsal:** the mocks are one `uv` workspace member, `mock/`
-  (brief `05` §53, ADR 0007): distribution `mocks` — `claude-mock` until the slice that
-  adds the core renames it — holding a core package, `mockcore`, and one package and
-  one command per site: `claudemock` / `claude-mock` on `127.0.0.1:8443` and
+  (brief `05` §53, ADR 0007): distribution `mocks` — `claude-mock` until `38` renamed it
+  — holding a core package, `mockcore`, and one package and one command per site: `claudemock` / `claude-mock` on `127.0.0.1:8443` and
   `chatgptmock` / `chatgpt-mock` on `127.0.0.1:8444`, each with its own certificate
   under `~/.cache/<command>/`, its own UI map (`docs/claude-ui-map.md`,
   `docs/chatgpt-ui-map.md`) and its own archive shape. The rehearsal is a top-level

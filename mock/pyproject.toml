@@ -1,7 +1,7 @@
 [project]
-name = "claude-mock"
-version = "0.1.0"
-description = "A served stand-in for claude.ai, for rehearsing a migration against."
+name = "mocks"
+version = "0.2.0"
+description = "Served stand-ins for claude.ai and chatgpt.com, for rehearsing a migration against."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -17,8 +17,12 @@ dependencies = [
     "uvicorn>=0.52.4",
 ]
 
+# One command per site (brief `05` §53, ADR 0007). The distribution was
+# `claude-mock` until `38` added the core and the second site; the commands kept
+# their names.
 [project.scripts]
 claude-mock = "claudemock.cli:main"
+chatgpt-mock = "chatgptmock.cli:main"
 
 [dependency-groups]
 dev = ["pytest"]
@@ -27,8 +31,10 @@ dev = ["pytest"]
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
+# The core the sites share, and a package per site. Each site imports the core
+# and nothing of the other site's.
 [tool.hatch.build.targets.wheel]
-packages = ["src/claudemock"]
+packages = ["src/mockcore", "src/claudemock", "src/chatgptmock"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

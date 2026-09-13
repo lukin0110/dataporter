@@ -20,12 +20,21 @@ Three rules hold everywhere in this package:
 - **It knows nothing about the tool.** This project imports nothing from
   `dataporter`, and `dataporter` imports nothing from it. Moving it to its own
   repository is a directory move (ADR 0003).
+
+What this site shares with the other mocks — the certificate, the session, the
+witness, the ledger, the reachability block, the obedient reply, the link — is
+`mockcore`'s (brief `05` §53, ADR 0007). What is here is claude.ai's alone: its
+pages, its paths, its selectors, its archive, and its citations.
 """
 
-__version__ = "0.1.0"
+from mockcore import Identity
 
 PROGRAM_NAME = "claude-mock"
 
 HOST = "claude.ai"
 """The host the mock answers as. Nothing here maps it — the operator's Chrome
 does, with the resolver rule the CLI prints."""
+
+DEFAULT_PORT = 8443
+
+IDENTITY = Identity(program=PROGRAM_NAME, site=HOST, hosts=(HOST,), port=DEFAULT_PORT)

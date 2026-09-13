@@ -214,6 +214,9 @@ without a model.
 
 Both moves can be rehearsed with no account: `mock/` serves the export page and prints
 the link where the vendor would have emailed it ([`mock/README.md`](mock/README.md)).
+The same project serves a mock chatgpt.com (brief `05`), built ahead of the tool's
+ChatGPT half — a sign-in on two host names, a composer that turns a long paste into an
+attachment, and a download that wants a session — so that half meets them here first.
 
 ## Running unattended
 
@@ -342,12 +345,11 @@ runs those eighteen against whatever Chrome or Chromium you point it at.
 ### Rehearsing it
 
 You do not need a Claude account to run the whole tool end to end. `mock/` is a served
-stand-in for claude.ai — its own project, one dependency, no model behind it — and
-`rehearsal/` runs the full run's protocol against it with a model-free agent standing
-where Hermes stands:
+stand-in for claude.ai — its own project, no model behind it — and `rehearsal/` runs the
+full run's protocol against it with a model-free agent standing where Hermes stands:
 
 ```sh
-uv run --package claude-mock claude-mock serve        # in one terminal
+uv run --package mocks claude-mock serve              # in one terminal
 uv run python -m rehearsal.run --root /tmp/rehearsal  # in another
 ```
 
@@ -362,7 +364,10 @@ It is **not** evidence about claude.ai:
 see [`specs/02-claude-mock.md`](specs/02-claude-mock.md) §27 and
 [`mock/README.md`](mock/README.md). The mock also serves an export page and hands out a
 link instead of an email (`32`), so `extract` is rehearsed against it too — by hand, per
-`mock/README.md`; `rehearsal/run.py` runs the migration protocol only.
+`mock/README.md`; `rehearsal/run.py` runs the migration protocol only. The same project
+holds a mock chatgpt.com, `chatgpt-mock serve` on the port beside it (brief `05`), which
+nothing in the tool drives yet: `mock/README.md` writes down the walk a person takes
+through it instead.
 
 [`specs/README.md`](specs/README.md) is the map: what each slice is, what is `Done`, and
 which brief section it satisfies. Start there rather than here.

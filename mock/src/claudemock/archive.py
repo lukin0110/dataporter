@@ -34,7 +34,9 @@ import zipfile
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 
-from claudemock.site import Chat, Turn
+from mockcore.reply import Turn
+
+from claudemock.site import Chat
 
 CONVERSATIONS_FILE = "conversations.json"
 USERS_FILE = "users.json"
