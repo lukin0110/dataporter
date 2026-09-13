@@ -11,8 +11,13 @@ Two consequences worth stating, because they are what the citation is *for*:
   first, marked `*unknown*`. Adding it here without adding it there is the
   mistake `tests/test_uimap.py` exists to catch.
 - A mock run never turns an `*unknown*` into an `*observed on <date>*`. Only a
-  person watching the real claude.ai does that. The mock is a consequence of the
+  person watching the real claude.ai does that — or reading a trace of a run
+  against it (the tool's brief `04`, §49). The mock is a consequence of the
   map, never evidence about it.
+- A row's `WHAT_THE_MOCK_DOES` line may name the trace and line it was
+  corrected from — `docs/spike/traces/<file>.jsonl:<line>` — as a citation and
+  nothing more: the mock reads a trace the way a person does and imports
+  nothing from the tool that wrote it.
 
 Where a row is `*unknown*` — which today is all of them — the mock takes the
 simplest behaviour the tool's code already accepts, and `WHAT_THE_MOCK_DOES`

@@ -18,10 +18,13 @@ acceptance criterion and a new unmarked row is exactly the kind of thing that
 gets added without one.
 """
 
+import json
 import re
 from pathlib import Path
 
 import pytest
+
+from dataporter import log
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
@@ -213,3 +216,50 @@ def test_every_limitation_is_marked() -> None:
 
 def test_the_spike_directory_says_what_lands_in_it() -> None:
     assert (DOCS / "spike" / "README.md").is_file()
+
+
+# --------------------------------------------------------------------------- #
+# Traces as evidence (`37`)
+# --------------------------------------------------------------------------- #
+
+TRACES = DOCS / "spike" / "traces"
+CITATION = re.compile(r"docs/spike/traces/([\w.-]+\.jsonl)(?::(\d+))?")
+"""A trace cited by file and, optionally, line — the spelling `traces/README.md` asks for."""
+
+
+def committed_traces() -> list[Path]:
+    return sorted(TRACES.glob("*.jsonl")) if TRACES.is_dir() else []
+
+
+def test_the_traces_directory_says_what_lands_in_it() -> None:
+    assert (TRACES / "README.md").is_file()
+
+
+def test_every_trace_the_map_cites_exists_and_has_that_line() -> None:
+    for citation in CITATION.finditer(UI_MAP.read_text(encoding="utf-8")):
+        path = TRACES / citation.group(1)
+        assert path.is_file(), citation.group(0)
+        if citation.group(2) is not None:
+            assert int(citation.group(2)) <= len(path.read_text(encoding="utf-8").splitlines()), citation.group(0)
+
+
+def test_a_committed_trace_is_a_trace_and_carries_no_content() -> None:
+    """The guard, once more, at commit time: on the bytes in the repository."""
+    for path in committed_traces():
+        lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert lines, path.name
+        first = json.loads(lines[0])
+        assert list(first)[:2] == ["trace", "kind"], path.name
+        assert first["trace"] == 1
+        assert first["kind"] == "header"
+        for number, line in enumerate(lines, 1):
+            parsed = json.loads(line)
+            assert isinstance(parsed, dict), f"{path.name}:{number}"
+            assert log.forbidden_names(parsed) == set(), f"{path.name}:{number}"
+
+
+def test_an_observed_row_cites_its_evidence() -> None:
+    """A row nobody could check is a row nobody may mark: a screenshot, a note or a trace."""
+    for row in marked_rows(UI_MAP):
+        if OBSERVED.search(row):
+            assert "spike/" in row, row

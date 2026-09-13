@@ -5,7 +5,7 @@
 **Depends on:** [36](36-rehearsal-traces.md), [10](10-attach-spike.md) (the UI map),
 [26](26-mock-claude.md) (the mock's citations)
 **Enables:** the first `*observed on <date>*` in `docs/claude-ui-map.md`
-**Status:** Not started
+**Status:** Built
 
 ## Goal
 
