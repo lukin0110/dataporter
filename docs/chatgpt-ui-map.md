@@ -17,7 +17,7 @@ map wins and the code changes.
 
 ## Marks
 
-Every row carries one of three, as §54 defines them:
+Every row's signal carries one of three, as §54 defines them:
 
 - ***observed on \<date\>*** — a person watched the site do it, or read it in a trace of a
   run against chatgpt.com committed under [`spike/traces/`](spike/traces/) and cites the
@@ -28,6 +28,11 @@ Every row carries one of three, as §54 defines them:
   observation;
 - ***unknown*** — nobody has looked, and the mock takes the simplest behaviour the shape
   admits and says so.
+
+A row's mark is the mark of its signal. Where the signal is *reported* but a named part
+of it is not — a path, a trigger, a wording, a redirect chain — the row says so after a
+semicolon with a second mark naming the part (`*reported (…)*; the path *unknown*`), and
+a slice treats that part as *unknown*: served in the simplest shape, and never claimed.
 
 **A mock run never turns a *reported* or an *unknown* row *observed*.** A walk of the mock
 by hand (§56) does not either. Only a person watching chatgpt.com, or reading a trace of a
