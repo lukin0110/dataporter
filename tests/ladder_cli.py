@@ -114,13 +114,9 @@ def write_shim(directory: Path, *, cdp_port: int, server_port: int) -> Path:
     # "no composer". The old name never collided because the command was not the
     # package; ADR 0004 made them the same word.
     script = directory / SHIM_SOURCE
-    script.write_text(
-        _SOURCE.format(cdp_port=cdp_port, server_port=server_port), encoding="utf-8"
-    )
+    script.write_text(_SOURCE.format(cdp_port=cdp_port, server_port=server_port), encoding="utf-8")
     shim = directory / SHIM_NAME
-    shim.write_text(
-        f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8"
-    )
+    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8")
     shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return shim
 

@@ -40,7 +40,7 @@ itself is headed (§12); this is the test suite's own escape hatch."""
 
 
 def real_browser() -> Path | None:
-    """A browser to drive, or `None`. Never raises: absence is a skip."""
+    """Return a browser to drive, or `None`. Never raises: absence is a skip."""
     override = os.environ.get(BROWSER_ENV_VAR, "").strip()
     if override:
         found = shutil.which(override)
@@ -87,7 +87,7 @@ def requires_a_browser[F: Callable[..., Any]](test: F) -> F:
 
 @contextmanager
 def live_browser() -> Iterator[tuple[launcher.BrowserSession, PageServer]]:
-    """A real browser and the fixture server it is pointed at.
+    """Yield a real browser and the fixture server it is pointed at.
 
     Expensive — a process and a profile directory — so the fixtures that use it
     are module-scoped.
@@ -98,9 +98,7 @@ def live_browser() -> Iterator[tuple[launcher.BrowserSession, PageServer]]:
     with tempfile.TemporaryDirectory() as directory:
         settings = Settings(
             workspace=Path(directory) / "migration",
-            browser=BrowserSettings(
-                executable=executable, cdp_port=free_port(), extra_args=HEADLESS_ARGS
-            ),
+            browser=BrowserSettings(executable=executable, cdp_port=free_port(), extra_args=HEADLESS_ARGS),
             timeouts=TimeoutSettings(browser_start_s=60.0, cdp_call_s=30.0),
         )
         with PageServer() as server:
@@ -125,10 +123,7 @@ def visit(session: launcher.BrowserSession, url: str) -> None:
         page.navigate(url)
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
-            if (
-                page.evaluate("document.readyState") == "complete"
-                and page.evaluate("location.href") == url
-            ):
+            if page.evaluate("document.readyState") == "complete" and page.evaluate("location.href") == url:
                 return
             time.sleep(0.05)
         raise AssertionError(f"{url} never finished loading")  # pragma: no cover

@@ -83,7 +83,7 @@ def render_one(
     acknowledgements: Sequence[str] = ("MIGRATION-ACK ab12cd34 1/1",),
     **rest: Any,
 ) -> str:
-    """A one-part prompt, with whatever field the test is about replaced."""
+    """Return a one-part prompt, with whatever field the test is about replaced."""
     return prompting.render(
         short_id=short_id,
         parts=parts,
@@ -152,9 +152,9 @@ def test_a_prompt_that_does_not_add_up_is_refused(overrides: dict[str, Any]) -> 
 
 
 def test_the_helper_prefix_is_the_one_doctor_proved(tmp_path: Path) -> None:
-    """`09`'s `doctor` runs `<program> --workspace <ws> browser probe`; a prompt
-    that spelled the prefix differently would be sending Hermes at a command
-    nothing has ever checked."""
-    assert prompting.helper_command(tmp_path).startswith(
-        f"{PROGRAM_NAME} --workspace {tmp_path} browser"
-    )
+    """`09`'s `doctor` runs `<program> --workspace <ws> browser probe`.
+
+    A prompt that spelled the prefix differently would be sending Hermes at a command
+    nothing has ever checked.
+    """
+    assert prompting.helper_command(tmp_path).startswith(f"{PROGRAM_NAME} --workspace {tmp_path} browser")

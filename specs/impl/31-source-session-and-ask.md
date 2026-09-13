@@ -36,7 +36,7 @@ model. The fetch that follows is `30`'s.
   `ensure_profile` calls `ensure_gitignore(settings.workspace)` only when the profile is
   under the workspace. `login`, `status` and `logout` call
   `log.enable_run_log(settings.logs_dir)`. One `browser.cdp_port`: a destination Chrome
-  still on it is `PortInUse`, exit `2`, with the existing message. Sessions are
+  still on it is `PortInUseError`, exit `2`, with the existing message. Sessions are
   sequential, and the README says so.
 - **The extraction surface** (`browser/export_page.py`, new): `EXPORT_PAGE_URL` and
   `EXTRACTION_SURFACE = Surface(host=CLAUDE_HOST, allowed=…)`, permitting
@@ -184,7 +184,7 @@ model. The fetch that follows is `30`'s.
   source's.
 - **One port, sequential sessions.** `launcher.adopt` keys "is this browser ours" on the
   port and the browser id; a second port would be a second identity for nothing this
-  brief needs. The refusal is the existing `PortInUse` message.
+  brief needs. The refusal is the existing `PortInUseError` message.
 - **`/new` stays out of the extraction surface.** `signed_in` probes whatever URL it is
   given; giving it the export page keeps the wall at two doors — the sign-in page and
   the export page — which is what §36 says.

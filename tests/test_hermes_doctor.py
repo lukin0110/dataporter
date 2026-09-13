@@ -31,11 +31,7 @@ the other tab in *our* browser, and the helper's `ok` field."""
 
 @pytest.fixture
 def chrome() -> Iterator[FakeChrome]:
-    with FakeChrome(
-        targets=[
-            FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())
-        ]
-    ) as fake:
+    with FakeChrome(targets=[FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())]) as fake:
         yield fake
 
 
@@ -53,16 +49,12 @@ def make_settings(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> Setti
     return Settings(
         workspace=tmp_path / "migration",
         browser=BrowserSettings(executable=Path(sys.executable), cdp_port=chrome.port),
-        hermes=HermesSettings(
-            executable=fake.executable, home=tmp_path / "hermes-home"
-        ),
+        hermes=HermesSettings(executable=fake.executable, home=tmp_path / "hermes-home"),
         timeouts=TimeoutSettings(cdp_call_s=2.0, hermes_check_s=30.0),
     )
 
 
-def adopt_instead(
-    monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome, *, adopted: bool = True
-) -> None:
+def adopt_instead(monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome, *, adopted: bool = True) -> None:
     """`launch` returns a session over the fake browser instead of starting one."""
 
     def fake_launch(settings: Settings, url: str) -> launcher.BrowserSession:
@@ -101,9 +93,7 @@ def test_setup_then_doctor_is_ten_ok_lines(
 
     results = run_checks(settings)
     assert labels(results) == list(hermes_doctor.LABELS)
-    assert all(check.ok for check in results), [
-        check.render() for check in results if not check.ok
-    ]
+    assert all(check.ok for check in results), [check.render() for check in results if not check.ok]
 
 
 def test_the_two_hermes_checks_really_ran_hermes(
@@ -174,9 +164,7 @@ def test_an_adopted_browser_is_left_running(
 # --------------------------------------------------------------------------- #
 
 
-def test_no_hermes_stops_at_the_first_line(
-    tmp_path: Path, chrome: FakeChrome, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_no_hermes_stops_at_the_first_line(tmp_path: Path, chrome: FakeChrome, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     settings = Settings(workspace=tmp_path / "migration")
     results = run_checks(settings)
@@ -186,9 +174,7 @@ def test_no_hermes_stops_at_the_first_line(
     assert "hermes not found" in results[0].detail
 
 
-def test_a_version_below_the_floor_is_refused(
-    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
-) -> None:
+def test_a_version_below_the_floor_is_refused(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> None:
     fake.write(version="hermes 0.0.1")
     results = run_checks(make_settings(tmp_path, fake, chrome))
     assert len(results) == 1
@@ -196,17 +182,13 @@ def test_a_version_below_the_floor_is_refused(
     assert versioning.format_version(versioning.MINIMUM_VERSION) in results[0].detail
 
 
-def test_an_unreadable_version_stops_there_too(
-    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
-) -> None:
+def test_an_unreadable_version_stops_there_too(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> None:
     fake.write(version="hermes", version_exit=1)
     results = run_checks(make_settings(tmp_path, fake, chrome))
     assert labels(results) == [hermes_doctor.HERMES_ON_PATH]
 
 
-def test_a_missing_profile_points_at_setup(
-    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
-) -> None:
+def test_a_missing_profile_points_at_setup(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> None:
     results = run_checks(make_settings(tmp_path, fake, chrome))
     assert labels(results) == [
         hermes_doctor.HERMES_ON_PATH,
@@ -223,17 +205,13 @@ def test_a_profile_list_that_fails_is_reported_as_the_profile_check(
     assert labels(results)[-1] == hermes_doctor.HERMES_PROFILE
 
 
-def test_no_model_stops_before_the_config_check(
-    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
-) -> None:
+def test_no_model_stops_before_the_config_check(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> None:
     settings = make_settings(tmp_path, fake, chrome)
     fake.write(version="hermes 1.0.0", answer=ANSWER)  # no model key
     profiling.run_setup(settings)
     results = run_checks(settings)
     assert labels(results)[-1] == hermes_doctor.HERMES_MODEL
-    assert results[-1].detail == (
-        "no model configured — run: hermes -p dataporter setup model"
-    )
+    assert results[-1].detail == ("no model configured — run: hermes -p dataporter setup model")
 
 
 def test_a_config_show_that_fails_is_reported_as_the_model_check(
@@ -246,9 +224,7 @@ def test_a_config_show_that_fails_is_reported_as_the_model_check(
     assert labels(results)[-1] == hermes_doctor.HERMES_MODEL
 
 
-def test_a_key_the_profile_lost_is_named(
-    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
-) -> None:
+def test_a_key_the_profile_lost_is_named(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> None:
     settings = make_settings(tmp_path, fake, chrome)
     profiling.run_setup(settings)
     fake.write(
@@ -271,29 +247,15 @@ def test_the_config_line_reports_the_two_keys_that_matter(
     settings = make_settings(tmp_path, fake, chrome)
     profiling.run_setup(settings)
     adopt_instead(monkeypatch, chrome)
-    detail = next(
-        check.detail
-        for check in run_checks(settings)
-        if check.label == hermes_doctor.HERMES_CONFIG
-    )
-    assert detail == (
-        f"browser.backend=off, browser.cdp_url=http://127.0.0.1:{chrome.port}"
-    )
+    detail = next(check.detail for check in run_checks(settings) if check.label == hermes_doctor.HERMES_CONFIG)
+    assert detail == (f"browser.backend=off, browser.cdp_url=http://127.0.0.1:{chrome.port}")
 
 
-def test_a_missing_skill_points_at_setup(
-    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
-) -> None:
+def test_a_missing_skill_points_at_setup(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> None:
     settings = make_settings(tmp_path, fake, chrome)
     profiling.run_setup(settings)
     (
-        settings.hermes_home
-        / "profiles"
-        / "dataporter"
-        / "skills"
-        / "dataporter"
-        / "claude-migrate"
-        / "SKILL.md"
+        settings.hermes_home / "profiles" / "dataporter" / "skills" / "dataporter" / "claude-migrate" / "SKILL.md"
     ).unlink()
     results = run_checks(settings)
     assert labels(results)[-1] == hermes_doctor.SKILL_INSTALLED
@@ -311,11 +273,7 @@ def test_no_browser_stops_at_the_executable(
     # stubbed `shutil.which`: the `hermes` lookup goes through the same module
     # and the same `PATH`, so either would fail line one instead of line six.
     settings = settings.model_copy(
-        update={
-            "browser": BrowserSettings(
-                executable=Path("/opt/not-a-browser"), cdp_port=chrome.port
-            )
-        }
+        update={"browser": BrowserSettings(executable=Path("/opt/not-a-browser"), cdp_port=chrome.port)}
     )
     results = run_checks(settings)
     assert labels(results)[-1] == hermes_doctor.CHROME_EXECUTABLE
@@ -455,9 +413,7 @@ def test_a_signed_out_session_is_the_last_failure(
             FakeTarget(
                 id="page-1",
                 url="https://claude.ai/login",
-                evaluate=page_state(
-                    url="https://claude.ai/login", composer_present=False
-                ),
+                evaluate=page_state(url="https://claude.ai/login", composer_present=False),
             )
         ]
     ) as chrome:
@@ -495,35 +451,30 @@ def test_a_browser_that_goes_away_fails_the_session_check(
 
 
 def test_an_ok_line_puts_its_detail_in_brackets() -> None:
-    rendered = hermes_doctor.Check("hermes profile", True, "dataporter").render()
+    rendered = hermes_doctor.Check("hermes profile", ok=True, detail="dataporter").render()
     assert rendered == "hermes profile            ok  (dataporter)"
 
 
 def test_the_longest_label_still_leaves_a_space() -> None:
     """`hermes attaches to chrome` is the widest label `09` names."""
-    rendered = hermes_doctor.Check(hermes_doctor.HERMES_ATTACHES, True, "x").render()
+    rendered = hermes_doctor.Check(hermes_doctor.HERMES_ATTACHES, ok=True, detail="x").render()
     assert rendered == "hermes attaches to chrome ok  (x)"
-    assert all(
-        len(label) <= hermes_doctor.LABEL_WIDTH for label in hermes_doctor.LABELS
-    )
+    assert all(len(label) <= hermes_doctor.LABEL_WIDTH for label in hermes_doctor.LABELS)
 
 
 def test_every_ok_column_lines_up() -> None:
-    columns = {
-        hermes_doctor.Check(label, True, "x").render().index("ok")
-        for label in hermes_doctor.LABELS
-    }
+    columns = {hermes_doctor.Check(label, ok=True, detail="x").render().index("ok") for label in hermes_doctor.LABELS}
     assert len(columns) == 1
 
 
 def test_a_failure_line_has_no_brackets() -> None:
-    rendered = hermes_doctor.Check("session", False, "not logged in").render()
+    rendered = hermes_doctor.Check("session", ok=False, detail="not logged in").render()
     assert rendered == "session                   FAIL not logged in"
-    assert hermes_doctor.Check("session", False).render().endswith("FAIL")
+    assert hermes_doctor.Check("session", ok=False).render().endswith("FAIL")
 
 
 def test_an_ok_line_with_nothing_to_add_is_just_ok() -> None:
-    assert hermes_doctor.Check("session", True).render().endswith(" ok")
+    assert hermes_doctor.Check("session", ok=True).render().endswith(" ok")
 
 
 # --------------------------------------------------------------------------- #
@@ -559,9 +510,7 @@ def test_a_configured_workspace_has_no_local_failure(
     assert fake.one_shots == []
 
 
-def test_a_missing_profile_is_the_local_failure(
-    tmp_path: Path, fake: FakeHermes, chrome: FakeChrome
-) -> None:
+def test_a_missing_profile_is_the_local_failure(tmp_path: Path, fake: FakeHermes, chrome: FakeChrome) -> None:
     settings = make_settings(tmp_path, fake, chrome)
     failure = hermes_doctor.local_failure(settings)
     assert failure is not None
@@ -600,9 +549,7 @@ def test_doctor_prints_ten_lines_and_exits_zero(
     profiling.run_setup(make_settings(tmp_path, fake, chrome))
     adopt_instead(monkeypatch, chrome)
 
-    result = runner.invoke(
-        cli.app, ["--workspace", str(workspace), "doctor"], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["--workspace", str(workspace), "doctor"], catch_exceptions=False)
     lines = result.stdout.splitlines()
     assert result.exit_code == ExitCode.OK
     assert [line[: hermes_doctor.LABEL_WIDTH].strip() for line in lines] == [
@@ -610,7 +557,7 @@ def test_doctor_prints_ten_lines_and_exits_zero(
         *hermes_doctor.LABELS,
     ]
     assert all(" ok" in line for line in lines)
-    assert result.stderr == ""
+    assert not result.stderr
 
 
 def test_doctor_without_hermes_exits_6_at_the_first_line(
@@ -666,9 +613,7 @@ def test_a_browser_that_will_not_open_a_tab_fails_the_attach_check(
         return None
 
     with FakeChrome(
-        targets=[
-            FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())
-        ],
+        targets=[FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())],
         responder=refuse,
     ) as chrome:
         settings = make_settings(tmp_path, fake, chrome)
@@ -691,9 +636,7 @@ def test_a_throwaway_tab_that_will_not_close_does_not_fail_the_check(
         return None
 
     with FakeChrome(
-        targets=[
-            FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())
-        ],
+        targets=[FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())],
         responder=broken_id,
     ) as chrome:
         settings = make_settings(tmp_path, fake, chrome)

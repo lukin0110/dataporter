@@ -71,9 +71,7 @@ it instead of on a phrase somebody may reword.
 """
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Mark by fixture, so `slow` cannot drift away from what a test costs."""
     for item in items:
         if SLOW_FIXTURES & set(getattr(item, "fixturenames", ())):
@@ -81,9 +79,7 @@ def pytest_collection_modifyitems(
 
 
 @pytest.fixture(autouse=True)
-def no_expensive_fakes(
-    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def no_expensive_fakes(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     """In a test that is not `slow`, building a fake is an error.
 
     The attribute is patched on the class object rather than on the module
@@ -129,7 +125,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty directory that is also the cwd, so `./migration` is predictable."""
+    """Return an empty directory that is also the cwd, so `./migration` is predictable."""
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -141,7 +137,7 @@ def runner() -> CliRunner:
 
 @pytest.fixture
 def export_dir() -> Path:
-    """The checked-in synthetic export. Read-only: never write through this."""
+    """Return the checked-in synthetic export. Read-only: never write through this."""
     return FIXTURES / "export-small"
 
 
@@ -154,10 +150,8 @@ def attachments_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def world(
-    tmp_path: Path, export_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[World]:
-    """A workspace, a fake Hermes and a fake browser, ready to run `import`.
+def world(tmp_path: Path, export_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
+    """Yield a workspace, a fake Hermes and a fake browser, ready to run `import`.
 
     Here rather than in one test module because `12` and `13` both drive it;
     `world.py` holds the whole body, and this is the name a test asks for.
@@ -167,7 +161,7 @@ def world(
 
 @pytest.fixture
 def export_zip(export_dir: Path, tmp_path: Path) -> Path:
-    """The same fixture as an archive, built here rather than checked in.
+    """Return the same fixture as an archive, built here rather than checked in.
 
     A binary blob in the tree cannot be reviewed, and building it from the
     directory keeps the two byte-identical by construction.
@@ -181,7 +175,7 @@ def export_zip(export_dir: Path, tmp_path: Path) -> Path:
 
 @pytest.fixture
 def snapshot_dir(export_zip: Path, tmp_path: Path) -> Path:
-    """The same fixture, filed as a snapshot (`30`).
+    """Return the same fixture, filed as a snapshot (`30`).
 
     Filed by the store's own `file_archive` rather than by three `write_bytes`
     calls, so a test that reads one is reading what `extract` really writes —
@@ -211,7 +205,7 @@ def snapshot_dir(export_zip: Path, tmp_path: Path) -> Path:
 
 @pytest.fixture
 def truncated_zip(export_zip: Path, tmp_path: Path) -> Path:
-    """An archive whose end-of-central-directory record is gone."""
+    """Return an archive whose end-of-central-directory record is gone."""
     target = tmp_path / "truncated.zip"
     target.write_bytes(export_zip.read_bytes()[: export_zip.stat().st_size // 2])
     return target
@@ -223,7 +217,7 @@ LONG_CONVERSATION = "bb000002-2222-4222-8222-222222222222"
 
 @pytest.fixture
 def two_part_seed(export_dir: Path, attachments_dir: Path) -> seeding.Seed:
-    """A real two-part seed, for the slices that need one to point at.
+    """Return a real two-part seed, for the slices that need one to point at.
 
     Here rather than in one test module because `11` needs it twice — once to
     render a prompt and once to migrate through it — and a second way of
@@ -236,9 +230,7 @@ def two_part_seed(export_dir: Path, attachments_dir: Path) -> seeding.Seed:
     )
     outcome = next(
         item
-        for item in seeding.SeedGenerator(settings).seeds(
-            load_export(export_dir).conversations
-        )
+        for item in seeding.SeedGenerator(settings).seeds(load_export(export_dir).conversations)
         if item.conversation_uuid == LONG_CONVERSATION
     )
     assert outcome.seed is not None

@@ -30,8 +30,10 @@ EXPORT_NOT_FOUND = "export not found: {export}"
 
 
 def export_path(export: str) -> Path:
-    """Check the export path exists, echoing it back exactly as the operator typed
-    it — `str(Path("./nowhere"))` is `"nowhere"`, which would break the message."""
+    """Check the export path exists, echoing it back exactly as the operator typed it.
+
+    `str(Path("./nowhere"))` is `"nowhere"`, which would break the message.
+    """
     path = Path(export)
     if not path.exists():
         raise UsageError(EXPORT_NOT_FOUND.format(export=export))
@@ -39,7 +41,7 @@ def export_path(export: str) -> Path:
 
 
 def selected_conversations(export: Export, only: Sequence[str]) -> list[Conversation]:
-    """The conversations `--only` names, or all of them, in export order.
+    """Return the conversations `--only` names, or all of them, in export order.
 
     Export order rather than the order the flags were typed: two runs of the same
     command must write the same files and print the same lines. Resolution — full
@@ -69,7 +71,7 @@ def selection_for(
     skip_attachments: bool = False,
     pilot: Sequence[state.PilotChoice] = (),
 ) -> state.Selection:
-    """The flags, as the record `06` selects from and `run.json` keeps.
+    """Return the flags, as the record `06` selects from and `run.json` keeps.
 
     `--limit` is resolved here rather than in `state`: an unset flag means
     `run.max_conversations`, and it is the effective number — the one that shaped
@@ -120,17 +122,13 @@ def plan_for(
     contain. The fingerprint stays the export's: it identifies the file, not the
     subset of it somebody asked about.
     """
-    effective = with_skip_attachments(
-        with_attachments_dir(settings, attachments_dir), skip_attachments
-    )
+    effective = with_skip_attachments(with_attachments_dir(settings, attachments_dir), skip_attachments)
     conversations = (
         list(export.conversations)
         if uuids is None
         else [item for item in export.conversations if item.uuid in set(uuids)]
     )
-    return build_plan(
-        export.model_copy(update={"conversations": conversations}), effective
-    )
+    return build_plan(export.model_copy(update={"conversations": conversations}), effective)
 
 
 @dataclass(frozen=True)
@@ -154,9 +152,7 @@ def inspect_export(
     Reads the export and writes nothing — no run log, no workspace — for the
     reason a dry run writes nothing: this answers a question about a file.
     """
-    plan = plan_for(
-        settings, load_export(export_path(export)), attachments_dir=attachments_dir
-    )
+    plan = plan_for(settings, load_export(export_path(export)), attachments_dir=attachments_dir)
     if json_output:
         # The plan itself, and nothing else on stdout: this is what `12` and `19`
         # read, so a header line would be a header line in somebody's `jq`.

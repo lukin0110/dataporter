@@ -41,7 +41,7 @@ _VERSION_TIMEOUT_S = 20.0
 
 
 def _version_of(executable: Path | str) -> str:
-    """`<executable> --version`, reduced to its first version number.
+    """Return `<executable> --version`, reduced to its first version number.
 
     Never raises: a spike note is worth recording even from a machine where one
     of the two binaries answers something unexpected.
@@ -68,7 +68,7 @@ def _version_of(executable: Path | str) -> str:
 
 
 def chrome_executable() -> str:
-    """The browser `07` would launch, or `unknown`."""
+    """Return the browser `07` would launch, or `unknown`."""
     try:
         return str(launcher.find_executable())
     except BrowserError:

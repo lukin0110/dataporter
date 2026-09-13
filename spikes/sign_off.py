@@ -225,10 +225,7 @@ def columns(rows: Sequence[Sequence[str]]) -> Iterator[str]:
         return
     widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
     for row in rows:
-        cells = [
-            cell.ljust(widths[index]) if index < len(row) - 1 else cell
-            for index, cell in enumerate(row)
-        ]
+        cells = [cell.ljust(widths[index]) if index < len(row) - 1 else cell for index, cell in enumerate(row)]
         yield "  ".join(cells).rstrip()
 
 
@@ -269,19 +266,15 @@ def interventions_by_conversation(workspace: Workspace) -> dict[str, list[str]]:
         identifier = record.get("conversation_id")
         reason = record.get("reason")
         if isinstance(identifier, str):
-            found.setdefault(identifier, []).append(
-                reason if isinstance(reason, str) else UNKNOWN
-            )
+            found.setdefault(identifier, []).append(reason if isinstance(reason, str) else UNKNOWN)
     paused = workspace.run.paused
     if paused is not None:
         found.setdefault(short_id(paused.conversation_uuid), []).append(paused.reason)
     return found
 
 
-def intervened(
-    workspace: Workspace, asks: Mapping[str, list[str]] | None = None
-) -> set[str]:
-    """The uuids a person was asked about, by any run in this workspace.
+def intervened(workspace: Workspace, asks: Mapping[str, list[str]] | None = None) -> set[str]:
+    """Return the uuids a person was asked about, by any run in this workspace.
 
     `asks` is `interventions_by_conversation`'s answer where a caller already
     has it. Parsing the logs is the most expensive thing this script does — a
@@ -291,7 +284,9 @@ def intervened(
     """
     short_ids = set(interventions_by_conversation(workspace) if asks is None else asks)
     return {
-        uuid for uuid, _ in workspace.migration.items() if short_id(uuid) in short_ids
+        uuid
+        for uuid in workspace.migration.keys()  # ruff: ignore[in-dict-keys] - a root model, not a dict
+        if short_id(uuid) in short_ids
     }
 
 
@@ -301,7 +296,7 @@ def intervened(
 
 
 def part_sizes(workspace: Workspace, uuid: str) -> list[int]:
-    """The characters of each seed part of one conversation.
+    """Return the characters of each seed part of one conversation.
 
     From the files where they are, because `04` wrote them and they are what was
     pasted. `plan.json`'s `estimated_seed_chars` over `chunk_count` is the
@@ -313,9 +308,7 @@ def part_sizes(workspace: Workspace, uuid: str) -> list[int]:
     parts = sorted(directory.glob(seeding.PART_GLOB)) if directory.is_dir() else []
     if parts:
         return [len(part.read_text(encoding="utf-8")) for part in parts]
-    planned = next(
-        (item for item in workspace.plan.conversations if item.uuid == uuid), None
-    )
+    planned = next((item for item in workspace.plan.conversations if item.uuid == uuid), None)
     if planned is None or planned.chunk_count <= 0:
         return []
     average = planned.estimated_seed_chars // planned.chunk_count
@@ -323,8 +316,7 @@ def part_sizes(workspace: Workspace, uuid: str) -> list[int]:
 
 
 def small_part_acks(workspace: Workspace) -> Number:
-    """Parts acknowledged ÷ parts attempted, over conversations whose every part
-    is under `BIG_PART_CHARS`.
+    """Parts acknowledged ÷ parts attempted, over conversations whose every part is under `BIG_PART_CHARS`.
 
     Per conversation and not per part, because `state.json` counts acks per
     conversation (`chunks_acked` against `chunks_total`) and splitting one
@@ -344,10 +336,10 @@ def small_part_acks(workspace: Workspace) -> Number:
 
 
 def big_part_conversations(workspace: Workspace) -> list[str]:
-    """The short ids question 2's threshold does not cover."""
+    """Return the short ids question 2's threshold does not cover."""
     return [
         short_id(uuid)
-        for uuid, _ in workspace.migration.items()
+        for uuid in workspace.migration.keys()  # ruff: ignore[in-dict-keys] - a root model, not a dict
         if (sizes := part_sizes(workspace, uuid)) and max(sizes) >= BIG_PART_CHARS
     ]
 
@@ -372,7 +364,7 @@ class Check:
 
 
 def table_rows(pattern: str) -> list[str]:
-    """The body cells of a Markdown table row, or `[]` for anything else."""
+    """Return the body cells of a Markdown table row, or `[]` for anything else."""
     line = pattern.strip()
     if not line.startswith("|"):
         return []
@@ -405,7 +397,7 @@ def hand_grades(path: Path | None = None) -> list[tuple[str, str]]:
         if line.startswith("## "):
             break
         cells = table_rows(line)
-        if len(cells) < 2 or cells[0] in ("Conversation", UNMEASURED, "-"):
+        if len(cells) < 2 or cells[0] in {"Conversation", UNMEASURED, "-"}:
             continue
         grade = cells[1].strip("`").casefold()
         if grade in GRADES:
@@ -415,7 +407,7 @@ def hand_grades(path: Path | None = None) -> list[tuple[str, str]]:
 
 def gate(workspace: Workspace, *, failures_understood: bool) -> list[Check]:
     """`21`'s four gate rows, in `21`'s order."""
-    attempted = [entry for _, entry in workspace.migration.items() if entry.attempts]
+    attempted = [entry for entry in workspace.migration.values() if entry.attempts]
     created = Number(
         sum(1 for entry in attempted if entry.destination.conversation_id),
         len(attempted),
@@ -482,9 +474,7 @@ def unattended(workspace: Workspace, paused: set[str] | None = None) -> Number:
     clean = sum(
         1
         for uuid, entry in workspace.migration.items()
-        if entry.status is Status.COMPLETED
-        and entry.attempts == 1
-        and uuid not in paused
+        if entry.status is Status.COMPLETED and entry.attempts == 1 and uuid not in paused
     )
     return Number(clean, workspace.report.totals.source_conversations)
 
@@ -501,9 +491,7 @@ def probe_grades(workspace: Workspace) -> Counter[str]:
     if not path.is_file():
         return Counter()
     file = following.ProbeFile.model_validate_json(path.read_text(encoding="utf-8"))
-    return Counter(
-        probe.verdict.score for probe in file.probes if probe.verdict is not None
-    )
+    return Counter(probe.verdict.score for probe in file.probes if probe.verdict is not None)
 
 
 def elapsed_hours(run: RunFile) -> float:
@@ -516,14 +504,12 @@ def elapsed_hours(run: RunFile) -> float:
     nothing, and the drill is the reason to say so out loud.
     """
     return sum(
-        (record.ended - record.started).total_seconds() / 3600
-        for record in run.runs
-        if record.ended is not None
+        (record.ended - record.started).total_seconds() / 3600 for record in run.runs if record.ended is not None
     )
 
 
 def metrics(workspace: Workspace, *, recoveries: int | None) -> list[Metric]:
-    """The seven rows of `21`'s table, each a number and its two terms."""
+    """Return the seven rows of `21`'s table, each a number and its two terms."""
     totals = workspace.report.totals
     attachments = workspace.report.attachments
     grades = probe_grades(workspace)
@@ -534,11 +520,7 @@ def metrics(workspace: Workspace, *, recoveries: int | None) -> list[Metric]:
     # per session to parse.
     asks = interventions_by_conversation(workspace)
     paused = intervened(workspace, asks)
-    needed = [
-        entry
-        for uuid, entry in workspace.migration.items()
-        if entry.attempts > 1 or uuid in paused
-    ]
+    needed = [entry for uuid, entry in workspace.migration.items() if entry.attempts > 1 or uuid in paused]
     recovered = sum(1 for entry in needed if entry.status is Status.COMPLETED)
     reasons = Counter(reason for reasons_of in asks.values() for reason in reasons_of)
     primary = unattended(workspace, paused)
@@ -571,14 +553,11 @@ def metrics(workspace: Workspace, *, recoveries: int | None) -> list[Metric]:
         ),
         Metric(
             "browser reliability",
-            f"{reliability.fraction:.1f} actions/recovery"
-            if reliability.fraction is not None
-            else UNMEASURED,
+            f"{reliability.fraction:.1f} actions/recovery" if reliability.fraction is not None else UNMEASURED,
             reliability.terms,
             "pass --recoveries N from the transcript review"
             if recoveries is None
-            else f"{plural(totals.retries, 'retry', 'retries')} + "
-            f"{plural(recoveries or 0, 'recovery row')}",
+            else f"{plural(totals.retries, 'retry', 'retries')} + {plural(recoveries or 0, 'recovery row')}",
         ),
         Metric(
             "recovery rate",
@@ -598,8 +577,7 @@ def metrics(workspace: Workspace, *, recoveries: int | None) -> list[Metric]:
             "manual interventions",
             str(totals.human_interventions),
             f"{len(reasons)} reasons",
-            ", ".join(f"{name} {count}" for name, count in sorted(reasons.items()))
-            or "none recorded",
+            ", ".join(f"{name} {count}" for name, count in sorted(reasons.items())) or "none recorded",
         ),
     ]
 
@@ -612,23 +590,17 @@ def metrics(workspace: Workspace, *, recoveries: int | None) -> list[Metric]:
 def chat_ids(workspace: Workspace) -> list[str]:
     """Every `/chat/<uuid>` id `state.json` holds, one per entry that has one."""
     return [
-        entry.destination.conversation_id
-        for _, entry in workspace.migration.items()
-        if entry.destination.conversation_id
+        entry.destination.conversation_id for entry in workspace.migration.values() if entry.destination.conversation_id
     ]
 
 
 def drill(workspace: Workspace) -> list[Check]:
-    """`21`'s drill: no duplicate chat, no lost conversation, and evidence that
-    the process really was killed."""
+    """`21`'s drill: no duplicate chat, no lost conversation, and evidence that the process really was killed."""
     ids = chat_ids(workspace)
     duplicates = [name for name, count in Counter(ids).items() if count > 1]
     totals = workspace.report.totals
     landed = totals.created + totals.partial
-    reconciles = (
-        totals.created + totals.partial + totals.failed + totals.pending
-        == totals.source_conversations
-    )
+    reconciles = totals.created + totals.partial + totals.failed + totals.pending == totals.source_conversations
     return [
         Check(
             "chat ids are distinct",
@@ -669,7 +641,7 @@ def drill(workspace: Workspace) -> list[Check]:
 
 
 def export_digest(export: Path) -> str:
-    """The sha256 `02` fingerprints an export by: `conversations.json`'s bytes.
+    """Return the sha256 `02` fingerprints an export by: `conversations.json`'s bytes.
 
     The archive's own digest would be a different claim — a zip rewritten with
     the same members has a different one — and the fingerprint in `run.json` is
@@ -681,7 +653,7 @@ def export_digest(export: Path) -> str:
 
 
 def history_urls(profile: Path) -> list[str]:
-    """The `url` column of every Chrome history database under `profile`.
+    """Return the `url` column of every Chrome history database under `profile`.
 
     Copied to a temporary directory before it is opened, with whatever
     write-ahead log sits beside it: the file is Chrome's, a browser that is still
@@ -706,9 +678,7 @@ def history_urls(profile: Path) -> list[str]:
             # connection commits or rolls back and leaves it open, and this one
             # holds a file inside a temporary directory that is about to go.
             with closing(connection):
-                found.extend(
-                    str(row[0]) for row in connection.execute("SELECT url FROM urls")
-                )
+                found.extend(str(row[0]) for row in connection.execute("SELECT url FROM urls"))
     return found
 
 
@@ -771,8 +741,10 @@ def known_chats(workspace: Workspace) -> set[str]:
 
 
 def safety(workspace: Workspace, *, export: Path | None, profile: Path) -> list[Check]:
-    """The two §17 criteria: the export is untouched, and so is everything that
-    is not this migration."""
+    """Return the two §17 criteria.
+
+    The export is untouched, and so is everything that is not this migration.
+    """
     recorded = workspace.run.export_fingerprint or workspace.plan.export_fingerprint
     if export is None:
         # A row, not a silence. `safety` answers "was anything outside this
@@ -798,41 +770,37 @@ def safety(workspace: Workspace, *, export: Path | None, profile: Path) -> list[
             )
         ]
     if not profile.is_dir():
-        checks.append(
-            Check("browser history", UNMEASURED, f"no profile at {profile}", UNKNOWN)
-        )
+        checks.append(Check("browser history", UNMEASURED, f"no profile at {profile}", UNKNOWN))
         return checks
     buckets = classify(history_urls(profile), known_chats(workspace))
     paths = sorted({visit.path for visit in buckets["other_claude"]})
     hosts = sorted({visit.host for visit in buckets["foreign"]})
-    checks.extend(
-        [
-            Check(
-                HISTORY_CHECKS[0],
-                str(len(buckets["expected"])),
-                "/new and /chat/<id> this workspace created",
-                GO,
-            ),
-            Check(
-                HISTORY_CHECKS[1],
-                str(len(buckets["unknown_chat"])),
-                ", ".join(visit.path for visit in buckets["unknown_chat"]) or "none",
-                GO if not buckets["unknown_chat"] else NO_GO,
-            ),
-            Check(
-                HISTORY_CHECKS[2],
-                str(len(buckets["foreign"])),
-                ", ".join(hosts) or "none",
-                GO if not buckets["foreign"] else NO_GO,
-            ),
-            Check(
-                HISTORY_CHECKS[3],
-                str(len(buckets["other_claude"])),
-                ", ".join(paths) or "none",
-                GO if not paths else UNKNOWN,
-            ),
-        ]
-    )
+    checks.extend([
+        Check(
+            HISTORY_CHECKS[0],
+            str(len(buckets["expected"])),
+            "/new and /chat/<id> this workspace created",
+            GO,
+        ),
+        Check(
+            HISTORY_CHECKS[1],
+            str(len(buckets["unknown_chat"])),
+            ", ".join(visit.path for visit in buckets["unknown_chat"]) or "none",
+            GO if not buckets["unknown_chat"] else NO_GO,
+        ),
+        Check(
+            HISTORY_CHECKS[2],
+            str(len(buckets["foreign"])),
+            ", ".join(hosts) or "none",
+            GO if not buckets["foreign"] else NO_GO,
+        ),
+        Check(
+            HISTORY_CHECKS[3],
+            str(len(buckets["other_claude"])),
+            ", ".join(paths) or "none",
+            GO if not paths else UNKNOWN,
+        ),
+    ])
     return checks
 
 
@@ -849,14 +817,10 @@ def sample(workspace: Workspace, *, size: int, seed: int) -> list[str]:
     fidelity "on a random sample of 20 completed conversations", and a write-up
     that cannot say which twenty cannot be checked.
     """
-    completed = sorted(
-        uuid
-        for uuid, entry in workspace.migration.items()
-        if entry.status is Status.COMPLETED
-    )
+    completed = sorted(uuid for uuid, entry in workspace.migration.items() if entry.status is Status.COMPLETED)
     if len(completed) <= size:
         return completed
-    return sorted(random.Random(seed).sample(completed, size))
+    return sorted(random.Random(seed).sample(completed, size))  # ruff: ignore[suspicious-non-cryptographic-random-usage] — a reproducible sample
 
 
 # --------------------------------------------------------------------------- #
@@ -868,9 +832,7 @@ def print_checks(title: str, checks: Sequence[Check]) -> int:
     """One block of rows, and the exit code the verdicts add up to."""
     print(title)
     print()
-    for line in columns(
-        [[check.name, check.number, check.terms, check.verdict] for check in checks]
-    ):
+    for line in columns([[check.name, check.number, check.terms, check.verdict] for check in checks]):
         print(f"  {line}")
     print()
     blocking = [check for check in checks if check.blocking]
@@ -901,9 +863,7 @@ def print_metrics(rows: Sequence[Metric]) -> int:
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(
-        prog="sign_off.py", description="21's gate, metrics, drill and safety audit."
-    )
+    root = argparse.ArgumentParser(prog="sign_off.py", description="21's gate, metrics, drill and safety audit.")
     subcommands = root.add_subparsers(dest="command", required=True)
 
     def add(name: str, help_text: str) -> argparse.ArgumentParser:
@@ -937,12 +897,8 @@ def parser() -> argparse.ArgumentParser:
 
     add("drill", "The interruption drill: no duplicates, nothing lost.")
 
-    safety_command = add(
-        "safety", "§17: the export's digest, and the profile's history."
-    )
-    safety_command.add_argument(
-        "--export", type=Path, default=None, help="The source export, to re-digest."
-    )
+    safety_command = add("safety", "§17: the export's digest, and the profile's history.")
+    safety_command.add_argument("--export", type=Path, default=None, help="The source export, to re-digest.")
     safety_command.add_argument(
         "--profile",
         type=Path,

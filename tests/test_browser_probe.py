@@ -97,15 +97,11 @@ def test_conversation_id_comes_from_the_url_only() -> None:
 
 @pytest.fixture
 def fake() -> Iterator[FakeChrome]:
-    with FakeChrome(
-        targets=[FakeTarget(id="page-1", url="https://claude.ai/new")]
-    ) as chrome:
+    with FakeChrome(targets=[FakeTarget(id="page-1", url="https://claude.ai/new")]) as chrome:
         yield chrome
 
 
-def probe_with(
-    chrome: FakeChrome, state: dict[str, object], **kwargs: int
-) -> PageState:
+def probe_with(chrome: FakeChrome, state: dict[str, object], **kwargs: int) -> PageState:
     chrome.targets[0].evaluate = state
     client = CdpClient(port=chrome.port, timeout=5.0)
     with client.attach("page-1") as page:
@@ -123,8 +119,10 @@ def test_a_login_page_is_not_logged_in(fake: FakeChrome) -> None:
 
 
 def test_a_composer_on_a_login_page_is_still_not_logged_in(fake: FakeChrome) -> None:
-    """The two conditions are `and`ed: a login form's own text box must not read
-    as a signed-in session."""
+    """The two conditions are `and`ed.
+
+    A login form's own text box must not read as a signed-in session.
+    """
     state = probe_with(fake, page_state(url="https://claude.ai/login"))
     assert not state.logged_in
 
@@ -221,9 +219,7 @@ def test_page_view_is_one_evaluate_for_both_answers(fake: FakeChrome) -> None:
     with client.attach("page-1") as page:
         view = page_view(page, expect=["ACK part 1"])
     assert view.state.conversation_id == CHAT_ID
-    assert view.last_message == LastMessage(
-        role="assistant", chars=12, contains=("ACK part 1",)
-    )
+    assert view.last_message == LastMessage(role="assistant", chars=12, contains=("ACK part 1",))
     assert fake.methods().count("Runtime.evaluate") == 1
 
 
@@ -252,11 +248,8 @@ def test_page_report_is_also_one_evaluate(fake: FakeChrome) -> None:
     [None, "not an object", {}, {"chars": None, "source": "nowhere"}],
 )
 def test_a_page_that_answers_with_nonsense_has_no_title(raw: object) -> None:
-    """An unrendered chat reads as an empty title nobody asked about, never as a
-    title that matched."""
-    assert TitleMatch.from_raw(raw) == TitleMatch(
-        chars=0, source="document", matches=None
-    )
+    """An unrendered chat reads as an empty title nobody asked about, never as a title that matched."""
+    assert TitleMatch.from_raw(raw) == TitleMatch(chars=0, source="document", matches=None)
 
 
 def test_a_page_that_answers_with_no_messages_reads_as_no_transcript(
@@ -269,8 +262,7 @@ def test_a_page_that_answers_with_no_messages_reads_as_no_transcript(
 
 
 def test_a_title_is_squashed_the_same_way_on_both_sides() -> None:
-    """The other half of the rule is `_TITLE_OBJECT`, which squashes the same
-    runs of whitespace in the page."""
+    """The other half of the rule is `_TITLE_OBJECT`, which squashes the same runs of whitespace in the page."""
     assert normalise_title("  two   words\n") == "two words"
 
 
@@ -284,23 +276,28 @@ def test_a_title_is_squashed_the_same_way_on_both_sides() -> None:
     ],
 )
 def test_a_page_that_answers_with_nonsense_reads_as_no_message(raw: object) -> None:
-    """Same tolerance `probe` has: an error page, or a document that has not
-    rendered, is "no message" and not an exception."""
+    """Same tolerance `probe` has.
+
+    An error page, or a document that has not rendered, is "no message" and not an
+    exception.
+    """
     assert LastMessage.from_raw(raw) == LastMessage(role=None, chars=0, contains=())
 
 
 def test_the_selectors_are_named_once() -> None:
-    """Every expression is built from the same constants, which is what makes
-    `08`'s paste and `07`'s count refer to the same element."""
-    assert f'const COMPOSER_SELECTOR = "{COMPOSER_SELECTOR}"' in PAGE_STATE_JS.replace(
-        '\\"', '"'
-    )
+    """Every expression is built from the same constants.
+
+    That is what makes `08`'s paste and `07`'s count refer to the same element.
+    """
+    assert f'const COMPOSER_SELECTOR = "{COMPOSER_SELECTOR}"' in PAGE_STATE_JS.replace('\\"', '"')
     assert "/* dataporter:page_state */" in PAGE_STATE_JS
 
 
 def test_page_state_carries_no_content_fields() -> None:
-    """The model is the contract `08` prints to stdout. Nothing that could hold a
-    message, a title or a snapshot has a place in it."""
+    """The model is the contract `08` prints to stdout.
+
+    Nothing that could hold a message, a title or a snapshot has a place in it.
+    """
     assert set(PageState.model_fields) == {
         "url",
         "kind",
@@ -335,9 +332,7 @@ def visit(session: launcher.BrowserSession, url: str) -> PageState:
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
             if page.evaluate("document.readyState") == "complete":
-                state = probe(
-                    page, tab_count=len(browser_session.claude_tabs(session.client))
-                )
+                state = probe(page, tab_count=len(browser_session.claude_tabs(session.client)))
                 if state.url == url:
                     return state
             time.sleep(0.1)

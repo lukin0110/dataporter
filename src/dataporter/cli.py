@@ -95,7 +95,7 @@ def finish(outcome: console.HasExitCode) -> NoReturn:
 
 
 def invoked_name(ctx: typer.Context) -> str:
-    """The command path as typed, e.g. `import` or `session status`.
+    """Return the command path as typed, e.g. `import` or `session status`.
 
     Not `ctx.command_path`, which prepends the program name and interpolates
     parent usage metavars. Derived rather than hardcoded per command, so renaming
@@ -131,7 +131,7 @@ def not_implemented(ctx: typer.Context, detail: str = "") -> NoReturn:
 
 
 def app_context(ctx: typer.Context) -> AppContext:
-    """The resolved global options. Later slices read settings from here."""
+    """Return the resolved global options. Later slices read settings from here."""
     obj = ctx.find_object(AppContext)
     if obj is None:  # pragma: no cover - the root callback always sets it
         raise RuntimeError("application context was not initialised")
@@ -160,7 +160,7 @@ class _RootGroup(TyperGroup):
 
     # `ctx` is typer's vendored click Context, which has no public name to annotate
     # against; narrowing it to typer.Context would violate the supertype signature.
-    def invoke(self, ctx: Any) -> Any:
+    def invoke(self, ctx: Any) -> Any:  # ruff: ignore[complex-structure] - one clause per exit code
         try:
             return super().invoke(ctx)
         except (typer.Exit, typer.Abort, typer.TyperException):
@@ -231,22 +231,25 @@ class _RootGroup(TyperGroup):
 
 
 def state_error() -> type[Exception]:
-    """`state.StateError`, imported here so that this file's own import list stays
-    the statement `23` makes: nothing in it opens a workspace."""
-    from dataporter.state import StateError
+    """`state.StateError`, imported here rather than at the top of the file.
+
+    This file's own import list stays the statement `23` makes: nothing in it opens a
+    workspace.
+    """
+    from dataporter.state import StateError  # ruff: ignore[import-outside-top-level]
 
     return StateError
 
 
 def port_in_use() -> type[BrowserError]:
-    """`launcher.PortInUse`, for the reason `state_error` is a function."""
-    from dataporter.browser.launcher import PortInUse
+    """`launcher.PortInUseError`, for the reason `state_error` is a function."""
+    from dataporter.browser.launcher import PortInUseError  # ruff: ignore[import-outside-top-level]
 
-    return PortInUse
+    return PortInUseError
 
 
 def _typer(**kwargs: Any) -> typer.Typer:
-    """A Typer app with this project's output discipline applied."""
+    """Return a Typer app with this project's output discipline applied."""
     return typer.Typer(
         add_completion=False,  # --install-completion is not in the spec's surface
         pretty_exceptions_enable=False,  # no rich tracebacks; see _RootGroup
@@ -255,9 +258,7 @@ def _typer(**kwargs: Any) -> typer.Typer:
     )
 
 
-app = _typer(
-    cls=_RootGroup, help="Migrate a Claude export into another Claude account."
-)
+app = _typer(cls=_RootGroup, help="Migrate a Claude export into another Claude account.")
 session_app = _typer(help="Inspect or end a browser session.")
 browser_app = _typer(help="Deterministic browser primitives Hermes calls.")
 
@@ -275,8 +276,8 @@ def _version_callback(value: bool) -> None:
         return
     # Hardcoded, not derived from the invoked program name: `--version` output is
     # a golden string and `python -m dataporter` must not change it.
-    print(f"{PROGRAM_NAME} {distribution_version()}")
-    raise typer.Exit()
+    print(f"{PROGRAM_NAME} {distribution_version()}")  # ruff: ignore[print] - `--version` is a golden string
+    raise typer.Exit
 
 
 Workspace = Annotated[
@@ -338,6 +339,7 @@ PasswordFile = Annotated[
 def main(
     ctx: typer.Context,
     workspace: Workspace = None,
+    *,
     verbose: Verbose = False,
     quiet: Quiet = False,
     version: Version = False,
@@ -505,9 +507,7 @@ job is to explain that."""
 
 
 @app.command()
-def login(
-    ctx: typer.Context, account: AccountOption = None, source: Source = None
-) -> None:
+def login(ctx: typer.Context, account: AccountOption = None, source: Source = None) -> None:
     """Open Claude in a dedicated browser profile and wait for sign-in."""
     finish(
         browser_session.login(
@@ -521,6 +521,7 @@ def login(
 def import_cmd(
     ctx: typer.Context,
     export: Export,
+    *,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Parse and report; change no account."),
@@ -537,9 +538,7 @@ def import_cmd(
     ] = False,
     retry_partial: Annotated[
         bool,
-        typer.Option(
-            "--retry-partial", help="Include previously partial conversations."
-        ),
+        typer.Option("--retry-partial", help="Include previously partial conversations."),
     ] = False,
     force: Annotated[
         bool,
@@ -595,6 +594,7 @@ def inspect_cmd(
     ctx: typer.Context,
     export: Export,
     attachments_dir: AttachmentsDir = None,
+    *,
     json_output: JsonOutput = False,
 ) -> None:
     """Report what an export contains and what can be migrated."""
@@ -616,9 +616,7 @@ def seeds(
     only: Only = None,
     out: Annotated[
         Path | None,
-        typer.Option(
-            "--out", metavar="DIR", help="Write seeds here instead of the workspace."
-        ),
+        typer.Option("--out", metavar="DIR", help="Write seeds here instead of the workspace."),
     ] = None,
 ) -> None:
     """Generate migration seeds without touching a browser."""
@@ -659,6 +657,7 @@ def extract(
             help="File an archive you already have, with no ask behind it.",
         ),
     ] = None,
+    *,
     abandon: Annotated[
         bool,
         typer.Option("--abandon", help="Give up the open ask for this account."),
@@ -676,9 +675,7 @@ def extract(
 
 
 @app.command()
-def snapshots(
-    ctx: typer.Context, json_output: JsonOutput = False, store: StoreDir = None
-) -> None:
+def snapshots(ctx: typer.Context, *, json_output: JsonOutput = False, store: StoreDir = None) -> None:
     """List the snapshots in the store."""
     finish(
         storing.list_command(
@@ -690,58 +687,40 @@ def snapshots(
 
 
 @app.command()
-def status(ctx: typer.Context, json_output: JsonOutput = False) -> None:
+def status(ctx: typer.Context, *, json_output: JsonOutput = False) -> None:
     """Show migration progress recorded in the workspace."""
-    finish(
-        reporting.status(
-            settings_of(ctx), json_output=json_output, sink=console.Terminal()
-        )
-    )
+    finish(reporting.status(settings_of(ctx), json_output=json_output, sink=console.Terminal()))
 
 
 @app.command()
 def resume(ctx: typer.Context) -> None:
     """Continue a migration that paused for human intervention."""
     context = app_context(ctx)
-    finish(
-        importing.resume_command(
-            context.settings, quiet=context.quiet, sink=console.Terminal()
-        )
-    )
+    finish(importing.resume_command(context.settings, quiet=context.quiet, sink=console.Terminal()))
 
 
 @app.command()
 def verify(ctx: typer.Context, only: Only = None) -> None:
     """Check that migrated conversations exist in the destination account."""
-    finish(
-        verifying.verify_all(settings_of(ctx), only=only or (), sink=console.Terminal())
-    )
+    finish(verifying.verify_all(settings_of(ctx), only=only or (), sink=console.Terminal()))
 
 
 @app.command()
 def followup(ctx: typer.Context, only: Only = None) -> None:
     """Ask each migrated chat one follow-up question (the pilot's probe)."""
-    finish(
-        following.ask_all(settings_of(ctx), only=only or (), sink=console.Terminal())
-    )
+    finish(following.ask_all(settings_of(ctx), only=only or (), sink=console.Terminal()))
 
 
 @app.command()
 def judge(ctx: typer.Context, only: Only = None) -> None:
     """Grade the follow-up replies with a model (the `judge` extra)."""
-    finish(
-        judging.judge_all(settings_of(ctx), only=only or (), sink=console.Terminal())
-    )
+    finish(judging.judge_all(settings_of(ctx), only=only or (), sink=console.Terminal()))
 
 
 @app.command()
-def report(ctx: typer.Context, json_output: JsonOutput = False) -> None:
+def report(ctx: typer.Context, *, json_output: JsonOutput = False) -> None:
     """Print the end-of-migration report."""
-    finish(
-        reporting.show(
-            settings_of(ctx), json_output=json_output, sink=console.Terminal()
-        )
-    )
+    finish(reporting.show(settings_of(ctx), json_output=json_output, sink=console.Terminal()))
 
 
 @app.command()
@@ -757,9 +736,7 @@ def doctor(ctx: typer.Context) -> None:
 
 
 @session_app.command("status")
-def session_status(
-    ctx: typer.Context, account: AccountOption = None, source: Source = None
-) -> None:
+def session_status(ctx: typer.Context, account: AccountOption = None, source: Source = None) -> None:
     """Report whether an account is signed in. Without --account, the destination."""
     finish(
         browser_session.status(
@@ -770,9 +747,7 @@ def session_status(
 
 
 @session_app.command("logout")
-def session_logout(
-    ctx: typer.Context, account: AccountOption = None, source: Source = None
-) -> None:
+def session_logout(ctx: typer.Context, account: AccountOption = None, source: Source = None) -> None:
     """Clear a browser profile. Without --account, the destination's."""
     finish(
         browser_session.logout(
@@ -817,7 +792,7 @@ def emit_helper(
     `--quiet` cannot suppress this line — the object *is* the result.
     """
     emission = browser_helpers.run(app_context(ctx).settings, name, work)
-    print(emission.text)
+    print(emission.text)  # ruff: ignore[print] - the object *is* the result (`08`)
     raise typer.Exit(emission.exit_code)
 
 
@@ -826,6 +801,7 @@ def browser_probe(
     ctx: typer.Context,
     target: TargetOption = None,
     expect: ExpectOption = None,
+    *,
     messages: Annotated[
         bool,
         typer.Option(
@@ -870,6 +846,7 @@ def browser_paste(
         browser_helpers.PasteMethod,
         typer.Option("--method", help="How to insert the text."),
     ] = browser_helpers.PasteMethod.INSERT_TEXT,
+    *,
     append: Annotated[
         bool,
         typer.Option("--append", help="Insert after what the composer holds."),
@@ -899,9 +876,7 @@ def browser_attach(
     emit_helper(
         ctx,
         "attach",
-        lambda client, settings: browser_helpers.attach_file(
-            client, settings, file=file, target=target
-        ),
+        lambda client, settings: browser_helpers.attach_file(client, settings, file=file, target=target),
     )
 
 
@@ -964,5 +939,5 @@ def browser_close_extra_tabs(ctx: typer.Context) -> None:
     emit_helper(
         ctx,
         "close-extra-tabs",
-        lambda client, settings: browser_helpers.close_extra_tabs(client, settings),
+        browser_helpers.close_extra_tabs,
     )

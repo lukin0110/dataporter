@@ -67,33 +67,29 @@ def message(
     files: list[dict[str, str]] | None = None,
     attachments: list[dict[str, str]] | None = None,
 ) -> ChatMessage:
-    return ChatMessage.model_validate(
-        {
-            "uuid": uuid,
-            "sender": "human",
-            "text": text,
-            "created_at": WHEN,
-            "parent_message_uuid": parent,
-            "files": files or [],
-            "attachments": attachments or [],
-        }
-    )
+    return ChatMessage.model_validate({
+        "uuid": uuid,
+        "sender": "human",
+        "text": text,
+        "created_at": WHEN,
+        "parent_message_uuid": parent,
+        "files": files or [],
+        "attachments": attachments or [],
+    })
 
 
 def conversation(*messages: ChatMessage) -> Export:
     """One conversation whose active path is every message given, in order."""
     return Export(
         conversations=[
-            Conversation.model_validate(
-                {
-                    "uuid": CONVERSATION,
-                    "name": "A chat",
-                    "created_at": WHEN,
-                    "updated_at": WHEN,
-                    "chat_messages": list(messages),
-                    "current_leaf_message_uuid": messages[-1].uuid,
-                }
-            )
+            Conversation.model_validate({
+                "uuid": CONVERSATION,
+                "name": "A chat",
+                "created_at": WHEN,
+                "updated_at": WHEN,
+                "chat_messages": list(messages),
+                "current_leaf_message_uuid": messages[-1].uuid,
+            })
         ],
         fingerprint="0" * 64,
     )
@@ -117,15 +113,13 @@ def rendered_seed(export: Export, settings: Settings) -> str:
 
 
 def hermes_result(**fields: Any) -> HermesResult:
-    return HermesResult.model_validate(
-        {
-            "outcome": "completed",
-            "conversation_id": "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91",
-            "last_step": str(Step.DONE),
-            "chunks_acked": 1,
-            **fields,
-        }
-    )
+    return HermesResult.model_validate({
+        "outcome": "completed",
+        "conversation_id": "b6f0a2d4-1c88-4e3a-9a1f-2f0e5d7c8b91",
+        "last_step": str(Step.DONE),
+        "chunks_acked": 1,
+        **fields,
+    })
 
 
 # --------------------------------------------------------------------------- #
@@ -160,11 +154,8 @@ def test_a_skipped_file_is_not_promised_by_the_seed(attachments_dir: Path) -> No
 
 
 def test_skipping_does_not_touch_an_inline_attachment(attachments_dir: Path) -> None:
-    """Class 1 is text in the seed, not an upload: the flag has nothing to say
-    about it."""
-    export = conversation(
-        message(attachments=[{"file_name": "notes.txt", "extracted_content": "seen"}])
-    )
+    """Class 1 is text in the seed, not an upload: the flag has nothing to say about it."""
+    export = conversation(message(attachments=[{"file_name": "notes.txt", "extracted_content": "seen"}]))
 
     item = planned(export, settings_for(attachments_dir, skip=True))
 
@@ -199,8 +190,11 @@ def test_the_same_bytes_on_two_messages_are_uploaded_once(
 def test_a_duplicate_is_named_in_the_seed_as_it_was_uploaded(
     attachments_dir: Path,
 ) -> None:
-    """Two names, identical bytes, one chip. The second message refers to the
-    chip the chat has rather than to one nobody uploaded."""
+    """Two names, identical bytes, one chip.
+
+    The second message refers to the chip the chat has rather than to one nobody
+    uploaded.
+    """
     (attachments_dir / "chart.png").write_bytes(b"bytes")
     (attachments_dir / "copy.png").write_bytes(b"bytes")
     export = conversation(
@@ -240,9 +234,11 @@ def test_a_duplicate_does_not_consume_the_per_chat_cap(attachments_dir: Path) ->
 def test_a_file_that_cannot_be_read_is_bytes_we_do_not_have(
     attachments_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Between `stat` and the digest, a file can go — a permission, a race with
-    whoever is filling the directory, a disk. It is still the reason an operator
-    can act on."""
+    """Between `stat` and the digest, a file can go.
+
+    A permission, a race with whoever is filling the directory, a disk. It is still the
+    reason an operator can act on.
+    """
     (attachments_dir / "chart.png").write_bytes(b"bytes")
     export = conversation(message(files=[{"file_name": "chart.png"}]))
     monkeypatch.setattr(planning, "_digest", lambda path: None)
@@ -273,9 +269,7 @@ def test_every_attachment_lands_in_exactly_one_count(attachments_dir: Path) -> N
     )
     item = planned(export, settings_for(attachments_dir))
 
-    counts = importing.attachments_of(
-        item, hermes_result(attachments_uploaded=["chart.png"])
-    )
+    counts = importing.attachments_of(item, hermes_result(attachments_uploaded=["chart.png"]))
 
     assert (counts.uploaded, counts.inline, counts.unsupported, counts.failed) == (
         1,
@@ -283,12 +277,8 @@ def test_every_attachment_lands_in_exactly_one_count(attachments_dir: Path) -> N
         1,
         0,
     )
-    assert counts.uploaded + counts.inline + counts.unsupported + counts.failed == len(
-        item.attachments
-    )
-    assert [
-        (entry.file_name, entry.klass, entry.reason) for entry in counts.detail
-    ] == [
+    assert counts.uploaded + counts.inline + counts.unsupported + counts.failed == len(item.attachments)
+    assert [(entry.file_name, entry.klass, entry.reason) for entry in counts.detail] == [
         ("notes.txt", "inline", None),
         ("video.mov", "unsupported", planning.TYPE_NOT_ACCEPTED),
     ]
@@ -317,8 +307,10 @@ def test_a_refused_upload_is_recorded_with_what_refused_it(
 def test_an_upload_nobody_confirmed_is_not_counted_as_done(
     attachments_dir: Path,
 ) -> None:
-    """Evidence, not intention: a run that says nothing about a file it was
-    given has not told us the chat has it."""
+    """Evidence, not intention.
+
+    A run that says nothing about a file it was given has not told us the chat has it.
+    """
     (attachments_dir / "chart.png").write_bytes(b"bytes")
     export = conversation(message(files=[{"file_name": "chart.png"}]))
     item = planned(export, settings_for(attachments_dir))
@@ -354,9 +346,7 @@ def test_a_duplicate_is_counted_under_the_name_that_was_uploaded(
     )
     item = planned(export, settings_for(attachments_dir))
 
-    counts = importing.attachments_of(
-        item, hermes_result(attachments_uploaded=["chart.png"])
-    )
+    counts = importing.attachments_of(item, hermes_result(attachments_uploaded=["chart.png"]))
 
     assert counts.uploaded == 2
     assert counts.detail == []
@@ -369,9 +359,7 @@ def test_a_duplicate_is_counted_under_the_name_that_was_uploaded(
 
 def test_a_completed_run_that_could_not_attach_is_partial() -> None:
     mapped = importing.interpret(
-        hermes_result(
-            attachments_failed=[{"file_name": CHART, "error": "upload_rejected"}]
-        ),
+        hermes_result(attachments_failed=[{"file_name": CHART, "error": "upload_rejected"}]),
         landed=True,
     )
 
@@ -385,17 +373,17 @@ def test_a_completed_run_that_could_not_attach_is_partial() -> None:
 
 
 def test_a_completed_run_with_nothing_failed_is_completed() -> None:
-    mapped = importing.interpret(
-        hermes_result(attachments_uploaded=[CHART]), landed=True
-    )
+    mapped = importing.interpret(hermes_result(attachments_uploaded=[CHART]), landed=True)
 
     assert mapped.status is Status.COMPLETED
     assert mapped.error is None
 
 
 def test_a_file_name_from_the_agent_cannot_forge_a_line() -> None:
-    """The names in the result come from a page and reach `state.json` and the
-    report, so they go through the same reduction every borrowed string does."""
+    """The names in the result come from a page and reach `state.json` and the report.
+
+    They go through the same reduction every borrowed string does.
+    """
     mapped = importing.interpret(
         hermes_result(attachments_failed=[{"file_name": "a\nb", "error": "x"}]),
         landed=True,
@@ -411,7 +399,7 @@ def test_a_file_name_from_the_agent_cannot_forge_a_line() -> None:
 
 
 def drop_the_chart(world: World, name: str = CHART) -> Path:
-    """The bytes an operator supplied, where `03` looks for them."""
+    """Return the bytes an operator supplied, where `03` looks for them."""
     target = world.settings.attachments_dir / ATTACHED
     target.mkdir(parents=True, exist_ok=True)
     path = target / name
@@ -420,9 +408,7 @@ def drop_the_chart(world: World, name: str = CHART) -> Path:
 
 
 def seed_text(world: World) -> str:
-    return (world.settings.seeds_dir / ATTACHED / "part-01.txt").read_text(
-        encoding="utf-8"
-    )
+    return (world.settings.seeds_dir / ATTACHED / "part-01.txt").read_text(encoding="utf-8")
 
 
 def test_a_file_that_is_there_is_uploaded_and_recorded(world: World) -> None:
@@ -491,9 +477,11 @@ def test_an_upload_that_failed_leaves_a_partial_naming_the_file(world: World) ->
 
 
 def test_a_failed_upload_is_tried_again(world: World) -> None:
-    """`16` asks for `retry_recommended: true`, and `13` reads that field as the
-    decision: the same conversation is attempted again, in the chat it already
-    has, and the file can land the second time."""
+    """`16` asks for `retry_recommended: true`, and `13` reads that field as the decision.
+
+    The same conversation is attempted again, in the chat it already has, and the file
+    can land the second time.
+    """
     drop_the_chart(world)
     world.retries(max_attempts=2, backoff_s=[0])
     world.answers(
@@ -511,24 +499,21 @@ def test_a_failed_upload_is_tried_again(world: World) -> None:
 
 
 def test_the_counts_reconcile_with_the_plan(world: World) -> None:
-    """Every attachment the plan found is in exactly one of the four counts, for
-    every conversation the run wrote an entry for."""
+    """Every attachment the plan found is in exactly one of the four counts.
+
+    For every conversation the run wrote an entry for.
+    """
     drop_the_chart(world)
     world.answers(completed(attachments_uploaded=[CHART]))
 
     world.run()
 
-    plan = json.loads(
-        (world.settings.workspace / importing.PLAN_FILENAME).read_text(encoding="utf-8")
-    )
+    plan = json.loads((world.settings.workspace / importing.PLAN_FILENAME).read_text(encoding="utf-8"))
     found = {item["uuid"]: len(item["attachments"]) for item in plan["conversations"]}
     migration = world.store().load()
     for uuid, entry in migration.items():
         counts = entry.attachments
-        assert (
-            counts.uploaded + counts.inline + counts.unsupported + counts.failed
-            == found[uuid]
-        ), uuid
+        assert counts.uploaded + counts.inline + counts.unsupported + counts.failed == found[uuid], uuid
     assert sum(found.values()) == plan["totals"]["attachments"]
 
 
@@ -536,15 +521,12 @@ def test_the_workspace_explains_where_attachment_bytes_go(world: World) -> None:
     """The directory is empty and the convention is in a spec nobody read."""
     world.run(limit=1)
 
-    readme = (
-        world.settings.attachments_dir / importing.ATTACHMENTS_README_FILENAME
-    ).read_text(encoding="utf-8")
+    readme = (world.settings.attachments_dir / importing.ATTACHMENTS_README_FILENAME).read_text(encoding="utf-8")
     assert "attachments/<conversation-uuid>/<file name>" in readme
 
 
 def test_a_directory_that_cannot_be_made_does_not_end_the_run(world: World) -> None:
-    """A migration without attachments is still a migration, and `03` reports
-    every file it could not find either way."""
+    """A migration without attachments is still a migration, and `03` reports every file it could not find either way."""
     world.settings.workspace.mkdir(parents=True, exist_ok=True)
     (world.settings.workspace / "attachments").write_text("not a directory")
 
@@ -553,11 +535,8 @@ def test_a_directory_that_cannot_be_made_does_not_end_the_run(world: World) -> N
     assert summary.exit_code == ExitCode.OK
 
 
-def test_a_directory_the_operator_named_is_left_alone(
-    world: World, tmp_path: Path
-) -> None:
-    """`--attachments-dir` points at somebody else's folder, and we do not
-    litter in it."""
+def test_a_directory_the_operator_named_is_left_alone(world: World, tmp_path: Path) -> None:
+    """`--attachments-dir` points at somebody else's folder, and we do not litter in it."""
     theirs = tmp_path / "theirs"
     theirs.mkdir()
     world.settings.attachments = AttachmentSettings(dir=theirs)
@@ -570,8 +549,10 @@ def test_a_directory_the_operator_named_is_left_alone(
 def test_a_conversation_that_is_not_migrated_still_accounts_for_its_files(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An entry `_create_entries` wrote as `failed` is not an entry with no
-    attachments — it is one whose attachments are going nowhere."""
+    """An entry `_create_entries` wrote as `failed` is not an entry with no attachments.
+
+    It is one whose attachments are going nowhere.
+    """
     monkeypatch.setattr(
         importing.Importer,
         "_migrate_all",
@@ -648,16 +629,16 @@ def test_without_the_flag_the_same_run_uploads(
 def test_a_dry_run_takes_the_flag_and_still_counts_the_files(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`--dry-run` answers what a run would do, so the flag has to reach the
-    plan it builds — and skipping changes what becomes of an attachment, never
-    how many the export has."""
+    """`--dry-run` answers what a run would do.
+
+    The flag has to reach the plan it builds — and skipping changes what becomes of an
+    attachment, never how many the export has.
+    """
     cli_env(world, monkeypatch)
     drop_the_chart(world)
     arguments = ["import", str(world.export), "--dry-run", "--only", ATTACHED]
 
-    with_flag = runner.invoke(
-        cli.app, [*arguments, "--skip-attachments"], catch_exceptions=False
-    )
+    with_flag = runner.invoke(cli.app, [*arguments, "--skip-attachments"], catch_exceptions=False)
     without = runner.invoke(cli.app, arguments, catch_exceptions=False)
 
     assert with_flag.exit_code == ExitCode.OK
@@ -670,8 +651,7 @@ def test_a_dry_run_takes_the_flag_and_still_counts_the_files(
 def test_inspect_reports_a_file_the_operator_supplied(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`--attachments-dir` is what turns class 3 into class 2, and `inspect` is
-    the command whose job is to say so."""
+    """`--attachments-dir` is what turns class 3 into class 2, and `inspect` is the command whose job is to say so."""
     cli_env(world, monkeypatch)
     drop_the_chart(world)
 
@@ -687,8 +667,10 @@ def test_inspect_reports_a_file_the_operator_supplied(
 
 
 def test_a_result_that_mentions_no_attachments_still_runs(world: World) -> None:
-    """The two lists are optional in the contract: a run that had no files to
-    attach has nothing to say about them."""
+    """The two lists are optional in the contract.
+
+    A run that had no files to attach has nothing to say about them.
+    """
     # A real uuid, because `17` reads the chat back off `/chat/<uuid>`: an id
     # that is not one is a chat the verification cannot find.
     world.answers(result(outcome="completed", conversation_id=OTHER_CHAT))

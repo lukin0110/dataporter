@@ -54,23 +54,19 @@ MEASURED = re.compile(r"\*measured on \d{4}-\d{2}-\d{2}\*")
 
 
 def section(heading: str) -> list[str]:
-    """The lines under `heading`, up to the next heading of the same level."""
+    """Return the lines under `heading`, up to the next heading of the same level."""
     lines = TEXT.splitlines()
     level = heading.split(" ", 1)[0] + " "
     start = lines.index(heading)
     end = next(
-        (
-            position
-            for position, line in enumerate(lines[start + 1 :], start + 1)
-            if line.startswith(level)
-        ),
+        (position for position, line in enumerate(lines[start + 1 :], start + 1) if line.startswith(level)),
         len(lines),
     )
     return lines[start + 1 : end]
 
 
 def rows(lines: list[str]) -> list[list[str]]:
-    """The body rows of the first table in `lines`, cell by cell."""
+    """Return the body rows of the first table in `lines`, cell by cell."""
     found: list[list[str]] = []
     for line in lines:
         if not line.startswith("|"):
@@ -88,9 +84,7 @@ def test_every_question_it_owns_has_a_section(label: str, question: str) -> None
 
 
 @pytest.mark.parametrize(("label", "question"), QUESTIONS)
-def test_every_question_has_a_measure_evidence_and_one_marked_number(
-    label: str, question: str
-) -> None:
+def test_every_question_has_a_measure_evidence_and_one_marked_number(label: str, question: str) -> None:
     lines = section(f"### {label} — {question}")
     body = " ".join(lines)
     assert "**Measure:**" in body, f"{label} says how it is not measured"
@@ -109,14 +103,15 @@ def test_every_mark_in_the_document_is_one_of_the_two() -> None:
 def test_nothing_claims_a_measurement_while_no_extraction_has_run() -> None:
     if NOT_RUN not in TEXT:
         return
-    assert MEASURED.search(PROSE) is None, (
-        "a number claims a measurement while the status line still says none"
-    )
+    assert MEASURED.search(PROSE) is None, "a number claims a measurement while the status line still says none"
 
 
 def test_it_says_which_three_of_the_six_questions_are_somebody_else_s() -> None:
-    """§39 asks six and the ask answers three; a document that quietly dropped
-    the other three would read as if extraction were finished."""
+    """§39 asks six and the ask answers three.
+
+    A document that quietly dropped the other three would read as if extraction were
+    finished.
+    """
     lines = TEXT.splitlines()
     found = rows(lines[: lines.index("## How it is run")])
     assert [row[0] for row in found] == [str(number) for number in range(1, 7)]

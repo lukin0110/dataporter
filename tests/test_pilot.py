@@ -39,13 +39,8 @@ EMPTY = "ff000006-6666-4666-8666-666666666666"
 def choices(export_dir: Path, *, max_chars: int = 50_000) -> dict[int, str | None]:
     """`{category number: the uuid it chose}` for the fixture export."""
     export = load_export(export_dir)
-    settings = Settings(
-        workspace=Path("/nowhere"), seed=SeedSettings(max_chars=max_chars)
-    )
-    return {
-        record.category: record.uuid
-        for record in pilot.choose(export, build_plan(export, settings))
-    }
+    settings = Settings(workspace=Path("/nowhere"), seed=SeedSettings(max_chars=max_chars))
+    return {record.category: record.uuid for record in pilot.choose(export, build_plan(export, settings))}
 
 
 # --------------------------------------------------------------------------- #
@@ -77,16 +72,21 @@ def test_every_category_chooses_what_20_says_it_should(export_dir: Path) -> None
 
 
 def test_at_the_default_seed_size_nothing_needs_two_parts(export_dir: Path) -> None:
-    """So category 3 has nothing to choose and category 2 takes the longest
-    conversation in the export rather than the longest short one."""
+    """So category 3 has nothing to choose.
+
+    Category 2 takes the longest conversation in the export rather than the longest
+    short one.
+    """
     found = choices(export_dir)
     assert found[2] == LONG
     assert found[3] is None
 
 
 def test_the_unmigratable_conversation_is_never_chosen(export_dir: Path) -> None:
-    """`ff000006` has no messages. A pilot measures what the tool does to
-    conversations it can do something with."""
+    """`ff000006` has no messages.
+
+    A pilot measures what the tool does to conversations it can do something with.
+    """
     assert EMPTY not in set(choices(export_dir).values())
 
 
@@ -129,8 +129,10 @@ def picks(found: list[pilot.Candidate]) -> dict[int, str | None]:
 
 
 def test_a_one_message_conversation_is_too_short_to_be_the_shortest() -> None:
-    """§20 writes "fewest active-path messages, ≥ 2": a question nobody answered
-    says nothing about whether a history was understood."""
+    """§20 writes "fewest active-path messages, ≥ 2".
+
+    A question nobody answered says nothing about whether a history was understood.
+    """
     found = [
         candidate("one", position=0, messages=1),
         candidate("two", position=1, messages=3),
@@ -158,8 +160,10 @@ def test_the_second_attachment_category_wants_a_class_2_first() -> None:
 
 
 def test_with_no_class_2_it_falls_back_to_another_class_1() -> None:
-    """ "Another": the point of the category is a second attachment
-    conversation, and naming category 5's again would put nothing in the pilot."""
+    """The point of "another" is a second attachment conversation.
+
+    Naming category 5's again would put nothing in the pilot.
+    """
     found = [
         candidate("inline", position=0, inline_attachments=1),
         candidate("also-inline", position=1, inline_attachments=2),
@@ -168,8 +172,11 @@ def test_with_no_class_2_it_falls_back_to_another_class_1() -> None:
 
 
 def test_a_category_names_a_conversation_an_earlier_one_already_took() -> None:
-    """Eight of the ten answer for themselves. One conversation that is both the
-    longest and the one with ten turns is a fact a write-up needs."""
+    """Eight of the ten answer for themselves.
+
+    One conversation that is both the longest and the one with ten turns is a fact a
+    write-up needs.
+    """
     found = [candidate("both", messages=12, seed_chars=5_000)]
     picked = picks(found)
     assert picked[2] == "both"
@@ -218,9 +225,7 @@ def test_the_block_is_a_line_per_category_aligned_on_the_widest_name() -> None:
         PilotChoice(category=1, name="shortest", uuid=FIRST),
         PilotChoice(category=10, name="newest", uuid=None),
     ]
-    assert pilot.block(records) == (
-        "Pilot selection:\n 1  shortest  aa000001\n10  newest    -\n"
-    )
+    assert pilot.block(records) == ("Pilot selection:\n 1  shortest  aa000001\n10  newest    -\n")
 
 
 def test_the_block_carries_no_title(export_dir: Path, workspace: Path) -> None:
@@ -240,8 +245,10 @@ def test_the_block_carries_no_title(export_dir: Path, workspace: Path) -> None:
 def test_a_dry_run_prints_the_selection_and_then_the_block(
     runner: CliRunner, workspace: Path, export_dir: Path
 ) -> None:
-    """The whole pilot selection, with no account touched and no workspace
-    written: §9's promise holds under `--pilot` like any other dry run."""
+    """The whole pilot selection, with no account touched and no workspace written.
+
+    §9's promise holds under `--pilot` like any other dry run.
+    """
     result = runner.invoke(
         cli.app,
         ["import", str(export_dir), "--dry-run", "--pilot"],
@@ -309,13 +316,14 @@ def test_the_choices_round_trip_through_run_json(workspace: Path) -> None:
 def test_a_pilot_run_migrates_its_selection_and_records_why(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`--pilot` end to end: the block, the five fixture conversations, and the
-    categories that chose them, kept in `run.json` for the write-up to cite."""
+    """`--pilot` end to end.
+
+    The block, the five fixture conversations, and the categories that chose them, kept
+    in `run.json` for the write-up to cite.
+    """
     cli_env(world, monkeypatch)
 
-    outcome = runner.invoke(
-        cli.app, ["import", str(world.export), "--pilot"], catch_exceptions=False
-    )
+    outcome = runner.invoke(cli.app, ["import", str(world.export), "--pilot"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.OK
     assert outcome.stdout.startswith("Pilot selection:\n")

@@ -25,6 +25,7 @@ from dataporter.browser.cdp import CdpClient
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import SafetyError, UIError
 from dataporter.exit_codes import ExitCode
+from dataporter.seed import sha256_of
 from fake_chrome import Call, free_port
 from fake_composer import Browser, FakePage, Turn
 from fake_pages import (
@@ -102,16 +103,17 @@ def test_the_extraction_surface_admits_the_two_pages_an_ask_uses(url: str) -> No
 
 @pytest.mark.parametrize("url", [NEW_URL, CHAT_URL, "https://claude.ai/settings"])
 def test_the_extraction_surface_admits_no_chat(url: str) -> None:
-    """§36: the source session never imports, and a page it cannot open is a
-    chat it cannot create."""
+    """§36: the source session never imports, and a page it cannot open is a chat it cannot create."""
     assert not export_page.EXTRACTION_SURFACE.permits(url)
     with pytest.raises(SafetyError):
         helpers.guard(url, export_page.EXTRACTION_SURFACE)
 
 
 def test_the_migration_surface_admits_no_export_page() -> None:
-    """And the other way round, which is what makes the two lists a wall rather
-    than a preference: every helper Hermes can run refuses the export page."""
+    """And the other way round, which makes the two lists a wall rather than a preference.
+
+    Every helper Hermes can run refuses the export page.
+    """
     assert not helpers.CLAUDE.permits(export_page.EXPORT_PAGE_URL)
     with pytest.raises(SafetyError):
         helpers.guard(export_page.EXPORT_PAGE_URL)
@@ -123,7 +125,7 @@ def test_the_migration_surface_admits_no_export_page() -> None:
         ("plain", "plain"),
         ("two\r\nlines", "two\nlines"),
         ("old\rmac", "old\nmac"),
-        (" leading", "leading"),
+        ("\u00a0leading", "leading"),
         ("mid\u00a0space", "mid space"),  # the NBSP ProseMirror writes
         ("trailing   \nspace  ", "trailing\nspace"),
         ("\n\n  padded  \n\n", "padded"),
@@ -131,8 +133,7 @@ def test_the_migration_surface_admits_no_export_page() -> None:
     ],
 )
 def test_normalise(raw: str, expected: str) -> None:
-    """Written down so that a mismatch means the seed changed, and not that
-    ProseMirror rewrote a space."""
+    """Written down so that a mismatch means the seed changed, and not that ProseMirror rewrote a space."""
     assert helpers.normalise(raw) == expected
 
 
@@ -155,7 +156,7 @@ def test_no_claude_tab(tmp_path: Path) -> None:
     with Browser(FakePage(url="https://example.com/")) as browser:
         outcome = helpers.probe_page(browser.client, browser.settings(tmp_path))
     assert outcome.result.model_dump() == {"ok": False, "error": "no_claude_tab"} | {
-        key: None for key in helpers.Failure.model_fields if key not in ("ok", "error")
+        key: None for key in helpers.Failure.model_fields if key not in {"ok", "error"}
     }
     assert outcome.exit_code == ExitCode.FAILED
 
@@ -175,31 +176,21 @@ def test_two_claude_tabs_are_ambiguous(tmp_path: Path) -> None:
 
 
 def test_target_resolves_an_ambiguous_browser(tmp_path: Path) -> None:
-    with Browser(
-        FakePage(url=NEW_URL), FakePage(url=CHAT_URL, last_role="assistant")
-    ) as browser:
-        outcome = helpers.probe_page(
-            browser.client, browser.settings(tmp_path), target="page-2"
-        )
+    with Browser(FakePage(url=NEW_URL), FakePage(url=CHAT_URL, last_role="assistant")) as browser:
+        outcome = helpers.probe_page(browser.client, browser.settings(tmp_path), target="page-2")
     assert outcome.ok
     assert outcome.conversation_id == CHAT_ID
 
 
 def test_an_unknown_target_is_named_as_such(new_chat: Browser, tmp_path: Path) -> None:
-    outcome = helpers.probe_page(
-        new_chat.client, new_chat.settings(tmp_path), target="page-9"
-    )
+    outcome = helpers.probe_page(new_chat.client, new_chat.settings(tmp_path), target="page-9")
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "unknown_target"
     assert outcome.result.detail == "page-9"
 
 
-def test_a_control_character_in_target_cannot_forge_output(
-    new_chat: Browser, tmp_path: Path
-) -> None:
-    outcome = helpers.probe_page(
-        new_chat.client, new_chat.settings(tmp_path), target="page\n9"
-    )
+def test_a_control_character_in_target_cannot_forge_output(new_chat: Browser, tmp_path: Path) -> None:
+    outcome = helpers.probe_page(new_chat.client, new_chat.settings(tmp_path), target="page\n9")
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.detail == "page?9"
 
@@ -210,11 +201,10 @@ OUTSIDE = "https://claude.ai/settings/profile"
 
 
 def helper_calls(tmp_path: Path, url: str) -> list[tuple[str, list[Call]]]:
-    """Run every helper against a tab at `url`, and collect what each printed
-    and what it asked the browser."""
+    """Run every helper against a tab at `url`, and collect what each printed and what it asked the browser."""
     collected: list[tuple[str, list[Call]]] = []
     for name, work in (
-        ("probe", lambda c, s: helpers.probe_page(c, s)),
+        ("probe", helpers.probe_page),
         (
             "paste",
             lambda c, s: helpers.paste_seed(c, s, seed=_seed_file(tmp_path, "x")),
@@ -231,8 +221,10 @@ def helper_calls(tmp_path: Path, url: str) -> list[tuple[str, list[Call]]]:
 def test_every_helper_refuses_a_page_outside_the_migration_surface(
     tmp_path: Path,
 ) -> None:
-    """And makes no CDP call while refusing: the URL in the target list is
-    enough to know, and attaching would already be acting."""
+    """And makes no CDP call while refusing.
+
+    The URL in the target list is enough to know, and attaching would already be acting.
+    """
     for text, calls in helper_calls(tmp_path, OUTSIDE):
         assert json.loads(text) == {
             "ok": False,
@@ -253,9 +245,7 @@ def test_a_tab_that_has_moved_since_the_target_list_is_refused(
     with Browser(FakePage(url=NEW_URL)) as browser:
         browser.chrome.targets[0].url = NEW_URL
         browser.page().url = "https://claude.ai/login"
-        emission = helpers.run(
-            browser.settings(tmp_path), "probe", lambda c, s: helpers.probe_page(c, s)
-        )
+        emission = helpers.run(browser.settings(tmp_path), "probe", helpers.probe_page)
         methods = browser.chrome.methods()
     assert json.loads(emission.text)["error"] == "outside_migration_surface"
     assert json.loads(emission.text)["url"] == "https://claude.ai/login"
@@ -297,21 +287,13 @@ def test_probe_prints_the_page_state_and_the_last_message(
     assert "done" not in json.dumps(printed)
 
 
-def test_probe_reports_a_page_with_no_messages(
-    new_chat: Browser, tmp_path: Path
-) -> None:
-    outcome = helpers.probe_page(
-        new_chat.client, new_chat.settings(tmp_path), expect=["ACK"]
-    )
+def test_probe_reports_a_page_with_no_messages(new_chat: Browser, tmp_path: Path) -> None:
+    outcome = helpers.probe_page(new_chat.client, new_chat.settings(tmp_path), expect=["ACK"])
     assert isinstance(outcome.result, helpers.ProbeResult)
-    assert outcome.result.last_message == probe.LastMessage(
-        role=None, chars=0, contains=()
-    )
+    assert outcome.result.last_message == probe.LastMessage(role=None, chars=0, contains=())
 
 
-def test_an_ordinary_probe_says_nothing_about_messages_or_the_title(
-    new_chat: Browser, tmp_path: Path
-) -> None:
+def test_an_ordinary_probe_says_nothing_about_messages_or_the_title(new_chat: Browser, tmp_path: Path) -> None:
     """`17` widened the object; `08`'s poll loop still gets the narrow one."""
     outcome = helpers.probe_page(new_chat.client, new_chat.settings(tmp_path))
     printed = json.loads(outcome.result.model_dump_json(exclude_none=True))
@@ -322,8 +304,7 @@ def test_an_ordinary_probe_says_nothing_about_messages_or_the_title(
 def test_probe_messages_reports_every_turn_and_never_a_message(
     tmp_path: Path,
 ) -> None:
-    """`17`'s probe: one object per turn, each one a role, a length and which of
-    the caller's own strings were in it."""
+    """`17`'s probe: one object per turn, each one a role, a length and which of the caller's own strings were in it."""
     with Browser(
         FakePage(
             url=CHAT_URL,
@@ -347,16 +328,11 @@ def test_probe_messages_reports_every_turn_and_never_a_message(
 
 
 def test_probe_answers_about_a_title_and_never_with_one(tmp_path: Path) -> None:
-    """§10 again: the question is the caller's string, and the answer is a
-    boolean and a length."""
+    """§10 again: the question is the caller's string, and the answer is a boolean and a length."""
     with Browser(FakePage(url=CHAT_URL, title="Notes on pooling")) as browser:
         settings = browser.settings(tmp_path)
-        asked = helpers.probe_page(
-            browser.client, settings, expect_title="  Notes   on pooling "
-        )
-        wrong = helpers.probe_page(
-            browser.client, settings, expect_title="Something else"
-        )
+        asked = helpers.probe_page(browser.client, settings, expect_title="  Notes   on pooling ")
+        wrong = helpers.probe_page(browser.client, settings, expect_title="Something else")
     printed = json.loads(asked.result.model_dump_json(exclude_none=True))
     # Whitespace is squashed on both sides before the comparison.
     assert printed["title"] == {
@@ -373,10 +349,9 @@ def test_probe_result_is_the_page_state_plus_four_fields() -> None:
 
     `messages` and `title` are `17`'s, and are the two that are `None` unless
     `--messages` asked for them — `exclude_none` is what keeps the ordinary
-    probe's object the shape `08` printed."""
-    assert set(helpers.ProbeResult.model_fields) == set(
-        probe.PageState.model_fields
-    ) | {
+    probe's object the shape `08` printed.
+    """
+    assert set(helpers.ProbeResult.model_fields) == set(probe.PageState.model_fields) | {
         "ok",
         "last_message",
         "messages",
@@ -401,13 +376,9 @@ def _any_file(tmp_path: Path, name: str = "notes.txt") -> Path:
     return path
 
 
-def test_paste_inserts_the_seed_and_hashes_what_the_composer_holds(
-    new_chat: Browser, tmp_path: Path
-) -> None:
+def test_paste_inserts_the_seed_and_hashes_what_the_composer_holds(new_chat: Browser, tmp_path: Path) -> None:
     seed = "MIGRATION PART 1 OF 2\n\nHello\n"
-    outcome = helpers.paste_seed(
-        new_chat.client, new_chat.settings(tmp_path), seed=_seed_file(tmp_path, seed)
-    )
+    outcome = helpers.paste_seed(new_chat.client, new_chat.settings(tmp_path), seed=_seed_file(tmp_path, seed))
     result = outcome.result
     assert isinstance(result, helpers.PasteResult)
     assert result.ok
@@ -434,9 +405,7 @@ def test_paste_can_go_through_exec_command(new_chat: Browser, tmp_path: Path) ->
 
 def test_paste_refuses_a_composer_that_is_not_empty(tmp_path: Path) -> None:
     with Browser(FakePage(url=NEW_URL, composer="half a prompt")) as browser:
-        outcome = helpers.paste_seed(
-            browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x")
-        )
+        outcome = helpers.paste_seed(browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x"))
         assert browser.page().composer == "half a prompt"
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "composer_not_empty"
@@ -461,9 +430,7 @@ def test_append_adds_to_what_is_there(tmp_path: Path) -> None:
 
 def test_paste_refuses_a_page_with_no_composer(tmp_path: Path) -> None:
     with Browser(FakePage(url=NEW_URL, composer=None)) as browser:
-        outcome = helpers.paste_seed(
-            browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x")
-        )
+        outcome = helpers.paste_seed(browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x"))
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "composer_missing"
 
@@ -471,11 +438,11 @@ def test_paste_refuses_a_page_with_no_composer(tmp_path: Path) -> None:
 def test_a_composer_that_goes_away_before_the_insert_is_not_typed_into(
     tmp_path: Path,
 ) -> None:
-    """`--append` reads the composer between the probe and the insert. A page
-    that navigates in that window must not be typed into anyway."""
-    with Browser(
-        FakePage(url=NEW_URL, composer="first half", vanish_text_at=1)
-    ) as browser:
+    """`--append` reads the composer between the probe and the insert.
+
+    A page that navigates in that window must not be typed into anyway.
+    """
+    with Browser(FakePage(url=NEW_URL, composer="first half", vanish_text_at=1)) as browser:
         outcome = helpers.paste_seed(
             browser.client,
             browser.settings(tmp_path),
@@ -491,9 +458,7 @@ def test_a_composer_that_goes_away_after_the_insert_is_reported(
     tmp_path: Path,
 ) -> None:
     with Browser(FakePage(url=NEW_URL, vanish_text_at=1)) as browser:
-        outcome = helpers.paste_seed(
-            browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x")
-        )
+        outcome = helpers.paste_seed(browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x"))
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "composer_missing"
 
@@ -502,9 +467,7 @@ def test_a_composer_that_will_not_take_the_caret_is_not_typed_into(
     tmp_path: Path,
 ) -> None:
     with Browser(FakePage(url=NEW_URL, focusable=False)) as browser:
-        outcome = helpers.paste_seed(
-            browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x")
-        )
+        outcome = helpers.paste_seed(browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x"))
         assert "Input.insertText" not in browser.chrome.methods()
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "composer_missing"
@@ -514,9 +477,7 @@ def test_an_editor_that_mangles_the_seed_is_caught_by_the_hash(
     tmp_path: Path,
 ) -> None:
     """The reason the helper hashes rather than trusting the CDP call."""
-    with Browser(
-        FakePage(url=NEW_URL, insert=lambda text: text.replace("l", "1"))
-    ) as browser:
+    with Browser(FakePage(url=NEW_URL, insert=lambda text: text.replace("l", "1"))) as browser:
         outcome = helpers.paste_seed(
             browser.client,
             browser.settings(tmp_path),
@@ -533,12 +494,14 @@ def test_an_editor_that_mangles_the_seed_is_caught_by_the_hash(
 def test_an_editor_that_only_rewrites_whitespace_is_not_a_mismatch(
     tmp_path: Path,
 ) -> None:
-    """ProseMirror turns a leading space into a non-breaking one and drops the
-    trailing whitespace of a line. Neither is the seed changing."""
+    """ProseMirror turns a leading space into a non-breaking one and drops the trailing whitespace of a line.
+
+    Neither is the seed changing.
+    """
     with Browser(
         FakePage(
             url=NEW_URL,
-            insert=lambda text: text.replace("\n ", "\n ").replace("end", "end   "),
+            insert=lambda text: text.replace("\n ", "\n\u00a0").replace("end", "end   "),
         )
     ) as browser:
         outcome = helpers.paste_seed(
@@ -549,12 +512,8 @@ def test_an_editor_that_only_rewrites_whitespace_is_not_a_mismatch(
     assert isinstance(outcome.result, helpers.PasteResult)
 
 
-def test_a_seed_that_is_not_there_is_a_usage_error(
-    new_chat: Browser, tmp_path: Path
-) -> None:
-    outcome = helpers.paste_seed(
-        new_chat.client, new_chat.settings(tmp_path), seed=tmp_path / "nowhere.txt"
-    )
+def test_a_seed_that_is_not_there_is_a_usage_error(new_chat: Browser, tmp_path: Path) -> None:
+    outcome = helpers.paste_seed(new_chat.client, new_chat.settings(tmp_path), seed=tmp_path / "nowhere.txt")
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "seed_not_found"
     assert outcome.exit_code == ExitCode.USAGE
@@ -562,14 +521,10 @@ def test_a_seed_that_is_not_there_is_a_usage_error(
     assert new_chat.chrome.calls == []
 
 
-def test_a_seed_that_is_not_utf8_is_reported_rather_than_crashing(
-    new_chat: Browser, tmp_path: Path
-) -> None:
+def test_a_seed_that_is_not_utf8_is_reported_rather_than_crashing(new_chat: Browser, tmp_path: Path) -> None:
     path = tmp_path / "part-01.txt"
     path.write_bytes(b"\xff\xfe not text")
-    outcome = helpers.paste_seed(
-        new_chat.client, new_chat.settings(tmp_path), seed=path
-    )
+    outcome = helpers.paste_seed(new_chat.client, new_chat.settings(tmp_path), seed=path)
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "seed_unreadable"
     assert outcome.exit_code == ExitCode.USAGE
@@ -577,9 +532,7 @@ def test_a_seed_that_is_not_utf8_is_reported_rather_than_crashing(
 
 def test_paste_reports_the_tab_it_could_not_choose(tmp_path: Path) -> None:
     with Browser(FakePage(url=NEW_URL), FakePage(url=NEW_URL)) as browser:
-        outcome = helpers.paste_seed(
-            browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x")
-        )
+        outcome = helpers.paste_seed(browser.client, browser.settings(tmp_path), seed=_seed_file(tmp_path, "x"))
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "ambiguous_tab"
 
@@ -618,9 +571,7 @@ def test_attach_reports_a_chip_that_never_appears(tmp_path: Path) -> None:
 
 def test_attach_reports_a_page_with_nowhere_to_put_a_file(tmp_path: Path) -> None:
     with Browser(FakePage(url=CHAT_URL, file_input=False)) as browser:
-        outcome = helpers.attach_file(
-            browser.client, browser.settings(tmp_path), file=_any_file(tmp_path)
-        )
+        outcome = helpers.attach_file(browser.client, browser.settings(tmp_path), file=_any_file(tmp_path))
         assert "DOM.setFileInputFiles" not in browser.chrome.methods()
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "input_not_found"
@@ -628,19 +579,13 @@ def test_attach_reports_a_page_with_nowhere_to_put_a_file(tmp_path: Path) -> Non
 
 def test_attach_reports_a_file_the_browser_refuses(tmp_path: Path) -> None:
     with Browser(FakePage(url=CHAT_URL, accept_files=False)) as browser:
-        outcome = helpers.attach_file(
-            browser.client, browser.settings(tmp_path), file=_any_file(tmp_path)
-        )
+        outcome = helpers.attach_file(browser.client, browser.settings(tmp_path), file=_any_file(tmp_path))
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "upload_rejected"
 
 
-def test_a_file_that_is_not_there_is_a_usage_error(
-    new_chat: Browser, tmp_path: Path
-) -> None:
-    outcome = helpers.attach_file(
-        new_chat.client, new_chat.settings(tmp_path), file=tmp_path / "nowhere.png"
-    )
+def test_a_file_that_is_not_there_is_a_usage_error(new_chat: Browser, tmp_path: Path) -> None:
+    outcome = helpers.attach_file(new_chat.client, new_chat.settings(tmp_path), file=tmp_path / "nowhere.png")
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "file_not_found"
     assert outcome.exit_code == ExitCode.USAGE
@@ -649,9 +594,7 @@ def test_a_file_that_is_not_there_is_a_usage_error(
 
 def test_attach_reports_the_tab_it_could_not_choose(tmp_path: Path) -> None:
     with Browser(FakePage(url=NEW_URL), FakePage(url=NEW_URL)) as browser:
-        outcome = helpers.attach_file(
-            browser.client, browser.settings(tmp_path), file=_any_file(tmp_path)
-        )
+        outcome = helpers.attach_file(browser.client, browser.settings(tmp_path), file=_any_file(tmp_path))
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "ambiguous_tab"
 
@@ -662,17 +605,11 @@ def test_attach_reports_the_tab_it_could_not_choose(tmp_path: Path) -> None:
 def test_attachments_finds_every_chip_in_one_look(tmp_path: Path) -> None:
     """`16`'s check before the first paste: all of them, at one moment."""
     files = [_any_file(tmp_path, "notes.txt"), _any_file(tmp_path, "chart.png")]
-    with Browser(
-        FakePage(url=CHAT_URL, uploaded=["notes.txt", "chart.png"])
-    ) as browser:
-        outcome = helpers.attached_files(
-            browser.client, browser.settings(tmp_path), files=files
-        )
+    with Browser(FakePage(url=CHAT_URL, uploaded=["notes.txt", "chart.png"])) as browser:
+        outcome = helpers.attached_files(browser.client, browser.settings(tmp_path), files=files)
         # One evaluate for the chips, not one per file: a chip that appeared
         # between two round trips would describe a page that never existed.
-        expressions = [
-            str(call.params.get("expression", "")) for call in browser.chrome.calls
-        ]
+        expressions = [str(call.params.get("expression", "")) for call in browser.chrome.calls]
         assert sum(helpers.CHIPS_TAG in item for item in expressions) == 1
     result = outcome.result
     assert isinstance(result, helpers.ChipsResult)
@@ -684,9 +621,7 @@ def test_attachments_finds_every_chip_in_one_look(tmp_path: Path) -> None:
 def test_attachments_names_the_file_with_no_chip(tmp_path: Path) -> None:
     files = [_any_file(tmp_path, "notes.txt"), _any_file(tmp_path, "chart.png")]
     with Browser(FakePage(url=CHAT_URL, uploaded=["notes.txt"])) as browser:
-        outcome = helpers.attached_files(
-            browser.client, browser.settings(tmp_path), files=files
-        )
+        outcome = helpers.attached_files(browser.client, browser.settings(tmp_path), files=files)
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "chip_not_found"
     assert outcome.result.detail == "chart.png"
@@ -706,9 +641,7 @@ def test_attachments_reports_the_tab_it_could_not_choose(tmp_path: Path) -> None
 def test_attachments_with_no_files_asks_the_page_nothing(tmp_path: Path) -> None:
     """A conversation with no attachments asks a question with a true answer."""
     with Browser(FakePage(url=CHAT_URL)) as browser:
-        outcome = helpers.attached_files(
-            browser.client, browser.settings(tmp_path), files=[]
-        )
+        outcome = helpers.attached_files(browser.client, browser.settings(tmp_path), files=[])
         assert browser.chrome.calls == []
     result = outcome.result
     assert isinstance(result, helpers.ChipsResult)
@@ -720,7 +653,7 @@ def test_attachments_with_no_files_asks_the_page_nothing(tmp_path: Path) -> None
 
 
 def streaming(page: FakePage, view: int) -> None:
-    """A reply that streams for three polls and then stops."""
+    """Stage a reply that streams for three polls and then stops."""
     if view == 1:
         page.generating = True
     elif view <= 3:
@@ -751,8 +684,10 @@ def test_await_response_waits_for_three_polls_that_agree(tmp_path: Path) -> None
 
 
 def test_a_response_that_is_still_growing_is_not_finished(tmp_path: Path) -> None:
-    """The Stop button goes away before the last token lands, so "not
-    generating" alone would return a truncated answer."""
+    """The Stop button goes away before the last token lands.
+
+    "not generating" alone would return a truncated answer.
+    """
 
     def forever(page: FakePage, view: int) -> None:
         page.generating = False
@@ -760,9 +695,7 @@ def test_a_response_that_is_still_growing_is_not_finished(tmp_path: Path) -> Non
         page.last_text = "a" * view
 
     with Browser(FakePage(url=CHAT_URL, on_view=forever)) as browser:
-        outcome = helpers.await_response(
-            browser.client, browser.settings(tmp_path), timeout=0.05, poll_s=0.01
-        )
+        outcome = helpers.await_response(browser.client, browser.settings(tmp_path), timeout=0.05, poll_s=0.01)
     failure = outcome.result
     assert isinstance(failure, helpers.Failure)
     assert failure.error == "response_timeout"
@@ -772,15 +705,14 @@ def test_a_response_that_is_still_growing_is_not_finished(tmp_path: Path) -> Non
 
 def test_await_response_times_out_on_a_page_that_never_stops(tmp_path: Path) -> None:
     with Browser(FakePage(url=CHAT_URL, generating=True)) as browser:
-        outcome = helpers.await_response(
-            browser.client, browser.settings(tmp_path), poll_s=0.01
-        )
+        outcome = helpers.await_response(browser.client, browser.settings(tmp_path), poll_s=0.01)
     failure = outcome.result
     assert isinstance(failure, helpers.Failure)
     assert failure.error == "response_timeout"
     assert failure.generating is True
     # The default came from the configured timeout, which the fixture set low.
-    assert failure.elapsed_s is not None and failure.elapsed_s < 5
+    assert failure.elapsed_s is not None
+    assert failure.elapsed_s < 5
 
 
 def test_await_response_stops_watching_a_page_that_navigates_away(
@@ -790,18 +722,13 @@ def test_await_response_stops_watching_a_page_that_navigates_away(
         if view > 1:
             page.url = "https://claude.ai/login"
 
-    with Browser(FakePage(url=CHAT_URL, on_view=redirect)) as browser:
-        with pytest.raises(SafetyError):
-            helpers.await_response(
-                browser.client, browser.settings(tmp_path), timeout=5.0, poll_s=0.01
-            )
+    with Browser(FakePage(url=CHAT_URL, on_view=redirect)) as browser, pytest.raises(SafetyError):
+        helpers.await_response(browser.client, browser.settings(tmp_path), timeout=5.0, poll_s=0.01)
 
 
 def test_await_response_reports_the_tab_it_could_not_choose(tmp_path: Path) -> None:
     with Browser(FakePage(url="https://example.com/")) as browser:
-        outcome = helpers.await_response(
-            browser.client, browser.settings(tmp_path), poll_s=0.01
-        )
+        outcome = helpers.await_response(browser.client, browser.settings(tmp_path), poll_s=0.01)
     assert isinstance(outcome.result, helpers.Failure)
     assert outcome.result.error == "no_claude_tab"
 
@@ -827,9 +754,7 @@ def test_close_extra_tabs_keeps_one_new_chat_and_every_conversation(
     assert left == [NEW_URL, CHAT_URL, "https://example.com/"]
 
 
-def test_close_extra_tabs_with_nothing_to_close(
-    new_chat: Browser, tmp_path: Path
-) -> None:
+def test_close_extra_tabs_with_nothing_to_close(new_chat: Browser, tmp_path: Path) -> None:
     outcome = helpers.close_extra_tabs(new_chat.client, new_chat.settings(tmp_path))
     assert isinstance(outcome.result, helpers.CloseResult)
     assert outcome.result.closed == 0
@@ -846,7 +771,7 @@ def test_a_browser_that_is_not_there_is_still_one_json_object(tmp_path: Path) ->
         browser=BrowserSettings(cdp_port=free_port()),
         timeouts=TimeoutSettings(cdp_call_s=0.5),
     )
-    emission = helpers.run(settings, "probe", lambda c, s: helpers.probe_page(c, s))
+    emission = helpers.run(settings, "probe", helpers.probe_page)
     printed = json.loads(emission.text)
     assert printed["ok"] is False
     assert printed["error"] == "browser"
@@ -869,13 +794,10 @@ def test_any_failure_in_the_taxonomy_becomes_its_category(tmp_path: Path) -> Non
 def test_every_run_appends_one_action_line(tmp_path: Path) -> None:
     with Browser(FakePage(url=CHAT_URL, last_role="assistant")) as browser:
         settings = browser.settings(tmp_path)
-        helpers.run(settings, "probe", lambda c, s: helpers.probe_page(c, s))
+        helpers.run(settings, "probe", helpers.probe_page)
         helpers.run(settings, "close-extra-tabs", helpers.close_extra_tabs)
     lines = [
-        json.loads(line)
-        for line in helpers.actions_path(settings.workspace)
-        .read_text(encoding="utf-8")
-        .splitlines()
+        json.loads(line) for line in helpers.actions_path(settings.workspace).read_text(encoding="utf-8").splitlines()
     ]
     assert [item["helper"] for item in lines] == ["probe", "close-extra-tabs"]
     assert [item["ok"] for item in lines] == [True, True]
@@ -889,7 +811,7 @@ def test_a_refusal_is_recorded_too(tmp_path: Path) -> None:
     """`19` counts browser actions, and a refused one is still an action."""
     with Browser(FakePage(url=OUTSIDE)) as browser:
         settings = browser.settings(tmp_path)
-        helpers.run(settings, "probe", lambda c, s: helpers.probe_page(c, s))
+        helpers.run(settings, "probe", helpers.probe_page)
     line = json.loads(helpers.actions_path(settings.workspace).read_text("utf-8"))
     assert line == {
         "ts": line["ts"],
@@ -903,17 +825,17 @@ def test_a_refusal_is_recorded_too(tmp_path: Path) -> None:
 def test_a_workspace_that_cannot_be_written_to_does_not_lose_the_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The helper has already acted on the page by then. Hermes needs to know
-    what happened more than `19` needs the tally."""
+    """The helper has already acted on the page by then.
+
+    Hermes needs to know what happened more than `19` needs the tally.
+    """
 
     def refuse(*args: object, **kwargs: object) -> None:
         raise OSError(30, "Read-only file system")
 
     monkeypatch.setattr(helpers.Path, "mkdir", refuse)
     with Browser(FakePage(url=NEW_URL)) as browser:
-        emission = helpers.run(
-            browser.settings(tmp_path), "probe", lambda c, s: helpers.probe_page(c, s)
-        )
+        emission = helpers.run(browser.settings(tmp_path), "probe", helpers.probe_page)
     assert json.loads(emission.text)["ok"] is True
     assert emission.exit_code == ExitCode.OK
 
@@ -923,9 +845,7 @@ def test_a_workspace_that_cannot_be_written_to_does_not_lose_the_result(
 # --------------------------------------------------------------------------- #
 
 
-def adoptable(
-    browser: Browser, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Settings:
+def adoptable(browser: Browser, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     """Point the CLI at the fake browser, as `07`'s command tests do."""
     settings = browser.settings(tmp_path)
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
@@ -939,9 +859,7 @@ def adoptable(
 def test_browser_probe_prints_one_object_and_exits_zero(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    with Browser(
-        FakePage(url=CHAT_URL, last_role="assistant", last_text="ACK part 1 of 1")
-    ) as browser:
+    with Browser(FakePage(url=CHAT_URL, last_role="assistant", last_text="ACK part 1 of 1")) as browser:
         adoptable(browser, tmp_path, monkeypatch)
         result = runner.invoke(
             cli.app,
@@ -949,7 +867,7 @@ def test_browser_probe_prints_one_object_and_exits_zero(
             catch_exceptions=False,
         )
     assert result.exit_code == ExitCode.OK
-    assert result.stderr == ""
+    assert not result.stderr
     # Exactly one object, on one line, and nothing else.
     assert len(result.stdout.splitlines()) == 1
     printed = json.loads(result.stdout)
@@ -1002,7 +920,7 @@ def test_browser_paste_without_a_seed_exits_two(
         adoptable(browser, tmp_path, monkeypatch)
         result = runner.invoke(cli.app, ["browser", "paste"], catch_exceptions=False)
     assert result.exit_code == ExitCode.USAGE
-    assert result.stdout == ""
+    assert not result.stdout
 
 
 def test_browser_paste_with_a_seed_that_is_not_there_exits_two(
@@ -1092,13 +1010,9 @@ def test_browser_await_response_returns_when_the_page_settles(
 def test_browser_close_extra_tabs_reports_what_it_closed(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    with Browser(
-        FakePage(url="about:blank"), FakePage(url=NEW_URL), FakePage(url=NEW_URL)
-    ) as browser:
+    with Browser(FakePage(url="about:blank"), FakePage(url=NEW_URL), FakePage(url=NEW_URL)) as browser:
         adoptable(browser, tmp_path, monkeypatch)
-        result = runner.invoke(
-            cli.app, ["browser", "close-extra-tabs"], catch_exceptions=False
-        )
+        result = runner.invoke(cli.app, ["browser", "close-extra-tabs"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
     assert json.loads(result.stdout) == {"ok": True, "closed": 2}
 
@@ -1106,19 +1020,14 @@ def test_browser_close_extra_tabs_reports_what_it_closed(
 def test_a_helper_run_writes_the_actions_log_and_nothing_else(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No run log: a helper is called dozens of times per conversation, and
-    `actions.jsonl` is the record `19` reads."""
+    """No run log: a helper is called dozens of times per conversation, and `actions.jsonl` is the record `19` reads."""
     with Browser(FakePage(url=NEW_URL)) as browser:
         settings = adoptable(browser, tmp_path, monkeypatch)
         runner.invoke(cli.app, ["browser", "probe"], catch_exceptions=False)
-    assert [item.name for item in (settings.workspace / "logs").iterdir()] == [
-        "actions.jsonl"
-    ]
+    assert [item.name for item in (settings.workspace / "logs").iterdir()] == ["actions.jsonl"]
 
 
 def _sha(text: str) -> str:
-    from dataporter.seed import sha256_of
-
     return sha256_of(text)
 
 
@@ -1128,7 +1037,7 @@ def _sha(text: str) -> str:
 
 
 def big_seed(turns: int = 40) -> str:
-    """A seed the size of a real one: 40 turns, a little over 45 kB.
+    """Return a seed the size of a real one: 40 turns, a little over 45 kB.
 
     Generated rather than checked in, because what matters is the size and the
     shape — blank lines, indentation, punctuation a paste handler might
@@ -1155,7 +1064,7 @@ def live() -> Iterator[tuple[launcher.BrowserSession, PageServer]]:
 
 
 def fixture_surface(server: PageServer) -> helpers.Surface:
-    """The same wall, moved to the fixture server.
+    """Return the same wall, moved to the fixture server.
 
     The only caller in the tool passes `helpers.CLAUDE`; this is the one place
     another surface exists, which is what keeps the gate a wall rather than a
@@ -1163,9 +1072,7 @@ def fixture_surface(server: PageServer) -> helpers.Surface:
     """
     return helpers.Surface(
         host="127.0.0.1",
-        allowed=re.compile(
-            rf"^http://127\.0\.0\.1:{server.port}/(new|chat/[0-9a-f-]{{36}})(\?.*)?$"
-        ),
+        allowed=re.compile(rf"^http://127\.0\.0\.1:{server.port}/(new|chat/[0-9a-f-]{{36}})(\?.*)?$"),
     )
 
 
@@ -1178,9 +1085,7 @@ def live_settings(session: launcher.BrowserSession, workspace: Path) -> Settings
 
 
 @requires_a_browser
-@pytest.mark.parametrize(
-    "method", [helpers.PasteMethod.INSERT_TEXT, helpers.PasteMethod.EXEC_COMMAND]
-)
+@pytest.mark.parametrize("method", [helpers.PasteMethod.INSERT_TEXT, helpers.PasteMethod.EXEC_COMMAND])
 def test_live_paste_of_a_45kb_seed(
     live: tuple[launcher.BrowserSession, PageServer],
     tmp_path: Path,
@@ -1224,9 +1129,7 @@ def test_live_paste_refuses_a_composer_that_is_not_empty(
 
 
 @requires_a_browser
-def test_live_probe_reads_the_last_message(
-    live: tuple[launcher.BrowserSession, PageServer], tmp_path: Path
-) -> None:
+def test_live_probe_reads_the_last_message(live: tuple[launcher.BrowserSession, PageServer], tmp_path: Path) -> None:
     session, server = live
     visit(session, server.url(f"/chat/{CHAT_ID}"))
     outcome = helpers.probe_page(
@@ -1263,8 +1166,7 @@ def test_live_attach_finds_the_chip_for_a_hidden_input(
 def test_live_await_response_returns_when_generation_stops(
     live: tuple[launcher.BrowserSession, PageServer], tmp_path: Path
 ) -> None:
-    """The fixture drops its Stop button after four seconds, having written the
-    last of the reply a beat earlier."""
+    """The fixture drops its Stop button after four seconds, having written the last of the reply a beat earlier."""
     session, server = live
     visit(session, server.url(f"/chat/{RESPONDING_CHAT_ID}"))
     outcome = helpers.await_response(
@@ -1348,15 +1250,15 @@ def test_live_the_export_page_walks_its_three_stages(
 def test_live_a_click_finds_nothing_to_click(
     live: tuple[launcher.BrowserSession, PageServer],
 ) -> None:
-    """`false`, not an exception: "there was nothing there" is an answer the ask
-    reports rather than a page expression that threw."""
+    """`false`, not an exception.
+
+    "there was nothing there" is an answer the ask reports rather than a page expression
+    that threw.
+    """
     session, server = live
     visit(session, server.url(export_page.EXPORT_PAGE_PATH))
     page = session.client.attach(session.client.pages()[0].id)
     try:
-        assert (
-            page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR))
-            is False
-        )
+        assert page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR)) is False
     finally:
         page.close()

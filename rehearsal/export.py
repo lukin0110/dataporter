@@ -26,6 +26,7 @@ two-part path is exercised, and everything else is small.
 import argparse
 import json
 import sys
+import textwrap
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,7 +159,8 @@ class Builder:
 
 def _short() -> dict[str, object]:
     return (
-        Builder.start(SHORT, 1)
+        Builder
+        .start(SHORT, 1)
         .say("human", "What is a rehearsal for?")
         .say(
             "assistant",
@@ -185,22 +187,21 @@ def _long() -> dict[str, object]:
 
 
 def _code() -> dict[str, object]:
-    body = "\n".join(
-        [
-            "```python",
-            "def parts(text: str, budget: int) -> list[str]:",
-            '    """Split a seed the way the tool does, more or less."""',
-            "    return [text[at : at + budget] for at in range(0, len(text), budget)]",
-            "```",
-        ]
+    body = textwrap.dedent(
+        '''\
+        ```python
+        def parts(text: str, budget: int) -> list[str]:
+            """Split a seed the way the tool does, more or less."""
+            return [text[at : at + budget] for at in range(0, len(text), budget)]
+        ```'''
     )
     return (
-        Builder.start(CODE, 3)
+        Builder
+        .start(CODE, 3)
         .say("human", f"Does a fenced block survive the composer?\n\n{body}")
         .say(
             "assistant",
-            "It should: the helper inserts the seed as text and hashes what the "
-            f"composer holds.\n\n{body}",
+            f"It should: the helper inserts the seed as text and hashes what the composer holds.\n\n{body}",
         )
         .done("A conversation with code in it")
     )
@@ -224,7 +225,8 @@ def _attached() -> dict[str, object]:
     }
     upload = {"file_name": UPLOAD_FILE, "file_uuid": f"{ATTACHED[:8]}-file-0001"}
     return (
-        Builder.start(ATTACHED, 4)
+        Builder
+        .start(ATTACHED, 4)
         .say(
             "human",
             "Here are three files: one the export inlined, one whose bytes are "
@@ -257,7 +259,8 @@ def _unsupported() -> dict[str, object]:
 
 def _spare(uuid: str, index: int) -> dict[str, object]:
     return (
-        Builder.start(uuid, 7 + index)
+        Builder
+        .start(uuid, 7 + index)
         .say("human", f"Spare {index}: is there still work after the pilot?")
         .say(
             "assistant",
@@ -312,9 +315,7 @@ def _write(path: Path, payload: object) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "root", type=Path, help="where to write export/ and attachments/"
-    )
+    parser.add_argument("root", type=Path, help="where to write export/ and attachments/")
     arguments = parser.parse_args(argv)
     export, attachments = build(arguments.root)
     print(f"export:      {export}")

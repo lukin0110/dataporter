@@ -27,16 +27,14 @@ them (`` `attach` (per file, `16`) ``)."""
 
 
 def table_steps(path: Path) -> list[str]:
-    """The step names of the `| Step |` table in a Markdown document.
+    """Return the step names of the `| Step |` table in a Markdown document.
 
     Lines are stripped first: the spec's copy of the table is indented inside a
     bullet and the skill's is not, and that is a difference in Markdown, not in
     the procedure.
     """
-    lines = [line.strip() for line in path.read_text().splitlines()]
-    start = next(
-        position for position, line in enumerate(lines) if line.startswith("| Step |")
-    )
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+    start = next(position for position, line in enumerate(lines) if line.startswith("| Step |"))
     names = []
     for line in lines[start:]:
         if not line.startswith("|"):

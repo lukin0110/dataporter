@@ -73,9 +73,7 @@ def packaged_dir() -> Path:
     root = resources.files("dataporter") / SKILLS_DIRNAME / SKILL_NAME
     path = Path(str(root))
     if not (path / SKILL_FILENAME).is_file():  # pragma: no cover - packaging
-        raise HermesUsageError(
-            detail=f"the {SKILL_NAME} skill is missing from this install: {path}"
-        )
+        raise HermesUsageError(detail=f"the {SKILL_NAME} skill is missing from this install: {path}")
     return path
 
 
@@ -90,7 +88,7 @@ def install_dir(settings: Settings) -> Path:
 
 
 def frontmatter(text: str) -> dict[str, str]:
-    """The top-level scalar keys of a `---` fenced header, or `{}`.
+    """Return the top-level scalar keys of a `---` fenced header, or `{}`.
 
     Nested keys are skipped rather than flattened: `metadata.hermes.tags` is for
     Hermes to read, and flattening it here would invite somebody to start
@@ -126,7 +124,7 @@ def read_meta(directory: Path) -> SkillMeta | None:
 
 
 def installed(settings: Settings) -> SkillMeta | None:
-    """What `doctor`'s `skill installed` line reports."""
+    """Return what `doctor`'s `skill installed` line reports."""
     return read_meta(install_dir(settings))
 
 
@@ -145,13 +143,9 @@ def install(settings: Settings) -> SkillMeta:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, target, dirs_exist_ok=True)
     except OSError as exc:
-        raise HermesUsageError(
-            detail=f"cannot install the skill to {target}: {exc}"
-        ) from exc
+        raise HermesUsageError(detail=f"cannot install the skill to {target}: {exc}") from exc
     meta = read_meta(target)
     if meta is None:  # pragma: no cover - the packaged file is checked by a test
-        raise HermesUsageError(
-            detail=f"the installed skill at {target} has no name and version"
-        )
+        raise HermesUsageError(detail=f"the installed skill at {target} has no name and version")
     _logger.info("skill installed", extra={"skill": str(meta)})
     return meta

@@ -1,4 +1,4 @@
-"""§10's block: what a migration looks like while it is running.
+r"""§10's block: what a migration looks like while it is running.
 
 Everything the loop needs in order to *say* something already existed — `12`
 gave it a `Progress` seam and a line per conversation, `06` gave it the four
@@ -18,7 +18,7 @@ Four decisions are the whole module:
   module adds the bar above them and the header above that, and reads both from
   `state.json` on every redraw, which is what makes a resumed run continue from
   its real numbers instead of restarting at zero.
-- **The block is six lines high and stays that way.** `CURSOR_UP` is `\\x1b[6F`
+- **The block is six lines high and stays that way.** `CURSOR_UP` is `\x1b[6F`
   and the redraw depends on the cursor sitting one line below the block, so the
   transient wait line is written without a newline and rubbed out with
   `CLEAR_LINE` before anything else is printed. Anything that writes below the
@@ -151,12 +151,12 @@ def bar_line(counts: Mapping[str, int]) -> str:
 
 
 def block_lines(counts: Mapping[str, int]) -> list[str]:
-    """The six lines that change: the bar, a blank, `06`'s four counters."""
+    """Return the six lines that change: the bar, a blank, `06`'s four counters."""
     return [bar_line(counts), "", *summary.counters_lines(counts)]
 
 
 def block(counts: Mapping[str, int]) -> str:
-    """The whole §10 block, header and all, newline-terminated.
+    """Return the whole §10 block, header and all, newline-terminated.
 
     What a golden test compares against the brief, and what no mode prints in one
     piece: a terminal prints the header once and the rest many times, a pipe
@@ -167,7 +167,7 @@ def block(counts: Mapping[str, int]) -> str:
 
 
 def detail_of(error: ErrorRecord | None) -> str:
-    """`generation: response never completed` — the category, then what it said.
+    """Return `generation: response never completed` — the category, then what it said.
 
     One line and at most `DETAIL_MAX` characters of it: the detail is Hermes's
     description of a failure, and a run's progress output is a place where an
@@ -215,11 +215,14 @@ def stop_line(failures: int, category: Category) -> str:
 
 
 class Progress(Protocol):
-    """Where a run's progress goes. `Reporter` is the implementation `12` waited
-    for; a test can pass anything with these methods and read a list instead."""
+    """Where a run's progress goes.
+
+    `Reporter` is the implementation `12` waited for; a test can pass anything with
+    these methods and read a list instead.
+    """
 
     def start(self, counts: Mapping[str, int]) -> None:
-        """The header, once, before the first conversation."""
+        """Print the header, once, before the first conversation."""
         ...
 
     def conversation(
@@ -231,7 +234,7 @@ class Progress(Protocol):
     ) -> None: ...
 
     def waiting(self, seconds: float, reason: str) -> None:
-        """A wait the run is about to make: `13`'s backoff, `15`'s rate limit."""
+        """Announce a wait the run is about to make: `13`'s backoff, `15`'s rate limit."""
         ...
 
     def interrupted(self) -> None:
@@ -239,7 +242,7 @@ class Progress(Protocol):
         ...
 
     def resumed(self) -> None:
-        """It has finished writing; put the block back under it."""
+        """Put the block back under it, now that it has finished writing."""
         ...
 
     def stopping(self, failures: int, category: Category) -> None:
@@ -295,7 +298,7 @@ class Reporter:
     # -- the seam ----------------------------------------------------------- #
 
     def start(self, counts: Mapping[str, int]) -> None:
-        """The header, and on a terminal the first block under it.
+        """Print the header, and on a terminal the first block under it.
 
         Suppressed entirely by `--quiet`: a header is not an event line, but a
         run asked to be quiet that announces itself and then says nothing for an
@@ -322,7 +325,7 @@ class Reporter:
         self._line(event_line(short_id, status, counts, error))
 
     def waiting(self, seconds: float, reason: str) -> None:
-        """The seventh line, on a terminal; an ordinary line down a pipe.
+        """Print the seventh line, on a terminal; an ordinary line down a pipe.
 
         Progress, so `-q` suppresses it — but it is the reason the line exists: a
         run that is quiet because it is waiting has to look different from one
@@ -354,15 +357,17 @@ class Reporter:
             self._draw(self._counts)
 
     def stopping(self, failures: int, category: Category) -> None:
-        """`13`'s stop line, under the block. Printed under `--quiet` for the
-        reason `finish` is: it is not a report of progress, it is what became of
-        the run."""
+        """`13`'s stop line, under the block.
+
+        Printed under `--quiet` for the reason `finish` is: it is not a report of
+        progress, it is what became of the run.
+        """
         self._clear_wait()
         self._line(stop_line(failures, category))
         self._block = False
 
     def finish(self, counts: Mapping[str, int]) -> None:
-        """The last numbers: redrawn in place, or printed once at the end.
+        """Report the last numbers: redrawn in place, or printed once at the end.
 
         Printed under `--quiet` for the reason `status` is: `-q` suppresses
         progress, and this is what the run amounts to.
@@ -372,7 +377,7 @@ class Reporter:
     # -- the terminal ------------------------------------------------------- #
 
     def _draw(self, counts: Mapping[str, int]) -> None:
-        """The six lines: over the ones already there, or under everything else.
+        """Draw the six lines: over the ones already there, or under everything else.
 
         The wait line goes first wherever one is still up: it sits on the line
         the cursor has to come back to, and drawing over it would leave its tail

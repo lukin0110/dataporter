@@ -75,7 +75,7 @@ each one reads."""
 
 
 def number(value: int) -> str:
-    """A count as the block prints it: `,` thousands separators.
+    """Return a count as the block prints it: `,` thousands separators.
 
     Public because `18` prints counts this module does not own — the bar's
     `done/total`, the event line's — and a second spelling of the separator rule
@@ -104,7 +104,7 @@ def aligned(rows: Sequence[tuple[str, str]], width: int) -> list[str]:
 
 
 def _groups(totals: PlanTotals) -> list[list[tuple[str, str]]]:
-    """The five §9 rows, in their two groups, as label and rendered value."""
+    """Return the five §9 rows, in their two groups, as label and rendered value."""
     return [
         [
             ("Conversations found:", number(totals.conversations)),
@@ -119,8 +119,9 @@ def _groups(totals: PlanTotals) -> list[list[tuple[str, str]]]:
 
 
 def totals_lines(totals: PlanTotals) -> list[str]:
-    """The §9 block: `label`, spaces, right-aligned value; a blank line between
-    the two groups.
+    """Return the §9 block: `label`, spaces, right-aligned value.
+
+    A blank line between the two groups.
 
     Every line is `max(MIN_WIDTH, longest label + 1 + longest value)` columns
     wide, computed across both groups so the two align with each other. One rule
@@ -130,9 +131,7 @@ def totals_lines(totals: PlanTotals) -> list[str]:
     return aligned_groups(_groups(totals), MIN_WIDTH)
 
 
-def aligned_groups(
-    groups: Sequence[Sequence[tuple[str, str]]], minimum: int
-) -> list[str]:
+def aligned_groups(groups: Sequence[Sequence[tuple[str, str]]], minimum: int) -> list[str]:
     """Aligned rows in groups, one blank line between each pair of groups.
 
     One width across every group, so the groups align with each other and not
@@ -149,7 +148,7 @@ def aligned_groups(
 
 
 def breakdown_lines(header: str, rows: Sequence[tuple[str, int]]) -> list[str]:
-    """A header and one indented `label  count` line per row.
+    """Return a header and one indented `label  count` line per row.
 
     The label column is the longest label plus `GUTTER`; counts are right-aligned
     in `COUNT_WIDTH`, which is a minimum rather than a field — a six-figure count
@@ -158,10 +157,7 @@ def breakdown_lines(header: str, rows: Sequence[tuple[str, int]]) -> list[str]:
     width = max(len(label) for label, _ in rows) + GUTTER
     return [
         header,
-        *(
-            f"{INDENT}{label:<{width}}{number(count):>{COUNT_WIDTH}}"
-            for label, count in rows
-        ),
+        *(f"{INDENT}{label:<{width}}{number(count):>{COUNT_WIDTH}}" for label, count in rows),
     ]
 
 
@@ -175,30 +171,24 @@ def unsupported_reasons(plan: MigrationPlan) -> list[tuple[str, int]]:
     command print the same lines.
     """
     counts = Counter(
-        item.reasons[0] if item.reasons else "unknown"
-        for item in plan.conversations
-        if not item.migratable
+        item.reasons[0] if item.reasons else "unknown" for item in plan.conversations if not item.migratable
     )
     return sorted(counts.items(), key=lambda row: (-row[1], row[0]))
 
 
 def attachment_classes(plan: MigrationPlan) -> list[tuple[str, int]]:
     """How many files fall in each of §14's three classes, in class order."""
-    counts = Counter(
-        attachment.klass
-        for item in plan.conversations
-        for attachment in item.attachments
-    )
+    counts = Counter(attachment.klass for item in plan.conversations for attachment in item.attachments)
     return [(klass, counts.get(klass, 0)) for klass in ATTACHMENT_CLASSES]
 
 
 def dry_run_report(totals: PlanTotals) -> str:
-    """What `import --dry-run` prints, newline-terminated."""
+    """Return what `import --dry-run` prints, newline-terminated."""
     return "".join(f"{line}\n" for line in totals_lines(totals))
 
 
 def inspect_report(plan: MigrationPlan) -> str:
-    """What `inspect` prints: the §9 block, the reasons, the attachment classes.
+    """Return what `inspect` prints: the §9 block, the reasons, the attachment classes.
 
     The reasons section is omitted entirely when nothing is unsupported — an empty
     list under a header would be a question the operator has to answer ("did it
@@ -224,7 +214,7 @@ def counters_lines(counts: Mapping[str, int]) -> list[str]:
 
 
 def status_report(state: MigrationState) -> str:
-    """What `status` prints, newline-terminated.
+    """Return what `status` prints, newline-terminated.
 
     Titles are in `state.json` because §7 puts them there. They never reach this
     block: §10 says no conversation content during normal operation, and a title

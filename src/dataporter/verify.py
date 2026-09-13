@@ -44,8 +44,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from dataporter import log, render, state
+from dataporter import log, render, signin, state
 from dataporter.browser import helpers as browser_helpers
+from dataporter.browser import launcher
 from dataporter.browser import probe as probing
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import Settings
@@ -139,10 +140,7 @@ class Expected:
 
     @property
     def acks(self) -> tuple[str, ...]:
-        return tuple(
-            render.ack_line(self.short_id, part, self.parts)
-            for part in range(1, self.parts + 1)
-        )
+        return tuple(render.ack_line(self.short_id, part, self.parts) for part in range(1, self.parts + 1))
 
     @property
     def expect(self) -> tuple[str, ...]:
@@ -159,13 +157,16 @@ class Expected:
 
 
 def chat_url(conversation_id: str) -> str:
-    """Where a destination chat lives. One spelling, because two places build it:
-    this module navigates to it and `20`'s probe sends an agent to it."""
+    """Where a destination chat lives.
+
+    One spelling, because two places build it: this module navigates to it and `20`'s
+    probe sends an agent to it.
+    """
     return f"https://{probing.CLAUDE_HOST}/chat/{conversation_id}"
 
 
 def capped_title(title: str, limit: int) -> str:
-    """A source title as it will be typed, and therefore as it is compared.
+    """Return a source title as it will be typed, and therefore as it is compared.
 
     Squashed first (`probe.normalise_title`), because that is how the page will
     spell it back, and truncated with an ellipsis rather than cut, so that a chat
@@ -178,7 +179,7 @@ def capped_title(title: str, limit: int) -> str:
 
 
 def intended_title(settings: Settings, title: str) -> str:
-    """What this conversation's chat should be called, or `""` for "leave it".
+    """Return what this conversation's chat should be called, or `""` for "leave it".
 
     The one function that decides, so the title `11` tells Hermes to type and the
     title this module compares the page against cannot be two different strings.
@@ -188,10 +189,8 @@ def intended_title(settings: Settings, title: str) -> str:
     return capped_title(title, settings.fidelity.title_max_chars)
 
 
-def expected_for(
-    settings: Settings, uuid: str, entry: ConversationState
-) -> Expected | None:
-    """What to check for this entry, or `None` when there is nothing to check.
+def expected_for(settings: Settings, uuid: str, entry: ConversationState) -> Expected | None:
+    """Return what to check for this entry, or `None` when there is nothing to check.
 
     `None` for an entry with no destination chat — nothing landed, so there is no
     page to read — and for one the run never split into parts, which is an entry
@@ -208,16 +207,14 @@ def expected_for(
     )
 
 
-def verifiable(
-    settings: Settings, migration: state.MigrationState
-) -> Iterator[tuple[str, Expected]]:
+def verifiable(settings: Settings, migration: state.MigrationState) -> Iterator[tuple[str, Expected]]:
     """Every entry `verify` re-reads: `completed` or `partial`, with an id.
 
     In `state.json`'s own order, which is the export's, so two runs of `verify`
     print the same lines in the same order.
     """
     for uuid, entry in migration.items():
-        if entry.status not in (Status.COMPLETED, Status.PARTIAL):
+        if entry.status not in {Status.COMPLETED, Status.PARTIAL}:
             continue
         expected = expected_for(settings, uuid, entry)
         if expected is not None:
@@ -272,17 +269,14 @@ class Verification(BaseModel):
 
 
 def checks(report: probing.PageReport, expected: Expected) -> Verification:
-    """The four checks, against one look at one page. No browser in sight.
+    """Return the four checks, against one look at one page. No browser in sight.
 
     Pure on purpose: what a page has to show for a conversation to count as
     migrated is the whole of `17`, and it is testable against a `PageReport`
     built by hand — no Chrome, no fixtures, no timing.
     """
     page = report.state
-    found = (
-        page.kind is probing.PageKind.CHAT
-        and page.conversation_id == expected.conversation_id
-    )
+    found = page.kind is probing.PageKind.CHAT and page.conversation_id == expected.conversation_id
     # Title first in the reading, identity first in the logic: what a page that
     # is not this chat says it is called is not evidence about this chat. A
     # redirect to a chat somebody renamed the same way would otherwise be
@@ -290,7 +284,7 @@ def checks(report: probing.PageReport, expected: Expected) -> Verification:
     # limitation must never say wrongly — and `_unreadable` already answers the
     # same question the same way for a page that could not be read at all.
     limitations = [TIMESTAMPS_NOT_PRESERVED]
-    title_set = found and expected.title != "" and report.title.matches is True
+    title_set = found and bool(expected.title) and report.title.matches is True
     if not title_set:
         limitations.append(TITLE_NOT_SET)
 
@@ -455,7 +449,7 @@ class Verifier:
 
 
 def error_for(found: Verification) -> ErrorRecord:
-    """A failed verification as §7's error record.
+    """Return a failed verification as §7's error record.
 
     `retry_recommended` is always `True` and is written here rather than read off
     the category, which is the third place in this tool where the two disagree
@@ -473,10 +467,8 @@ def error_for(found: Verification) -> ErrorRecord:
     )
 
 
-def applied(
-    found: Verification, status: Status, error: ErrorRecord | None
-) -> tuple[Status, ErrorRecord | None]:
-    """What a verification makes of the status and error a run reached.
+def applied(found: Verification, status: Status, error: ErrorRecord | None) -> tuple[Status, ErrorRecord | None]:
+    """Return what a verification makes of the status and error a run reached.
 
     Two rules, and the second is the one worth writing down:
 
@@ -513,10 +505,8 @@ def merged_limitations(entry: ConversationState, found: Sequence[str]) -> list[s
     return merged
 
 
-def fields(
-    entry: ConversationState, found: Verification, *, at: datetime | None = None
-) -> dict[str, object]:
-    """What a verification writes about itself, and nothing else.
+def fields(entry: ConversationState, found: Verification, *, at: datetime | None = None) -> dict[str, object]:
+    """Return what a verification writes about itself, and nothing else.
 
     The status and the error are `applied`'s, because they belong to the run as
     much as to the check; these two fields belong to the check alone. `12` folds
@@ -535,9 +525,7 @@ def fields(
     }
 
 
-def record(
-    store: state.StateStore, uuid: str, found: Verification
-) -> ConversationState:
+def record(store: state.StateStore, uuid: str, found: Verification) -> ConversationState:
     """Apply one verification to `state.json`. The whole of what `verify` writes.
 
     Never repairs anything: a failed check changes a status, an error and a
@@ -556,16 +544,16 @@ def record(
 
 @dataclass(frozen=True)
 class VerifyOutcome:
-    """Every chat re-read, with what was found; exit `1` if any check failed and
-    `4` if there was nothing to check."""
+    """Every chat re-read, with what was found.
+
+    Exit `1` if any check failed and `4` if there was nothing to check.
+    """
 
     found: tuple[tuple[str, Verification], ...]
     exit_code: ExitCode
 
 
-def verify_all(
-    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD
-) -> VerifyOutcome:
+def verify_all(settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD) -> VerifyOutcome:
     """Check that migrated conversations exist in the destination account (`17`).
 
     Nothing migrated, or nothing selected, is exit `4` rather than the `0` that
@@ -574,9 +562,6 @@ def verify_all(
     an `import` would overwrite the status of a conversation being migrated as it
     reads it.
     """
-    from dataporter import signin
-    from dataporter.browser import launcher
-
     if settings.non_interactive:
         signin.require_credentials(settings)
     log.enable_run_log(settings.workspace)

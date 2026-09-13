@@ -7,10 +7,10 @@ what is on disk and in what order it got there, and the one golden string is the
 §33 block.
 """
 
+import hashlib
 import json
 import os
-from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +35,7 @@ BLOCK = (
 
 
 def archive(tmp_path: Path, body: bytes = b"PK\x03\x04 pretend") -> Path:
-    """A file to be filed. The store never looks inside one."""
+    """Return a file to be filed. The store never looks inside one."""
     target = tmp_path / "export.zip"
     target.write_bytes(body)
     return target
@@ -57,15 +57,11 @@ def filing(path: Path, **overrides: Any) -> store.Filing:
 
 
 def _sha256(path: Path) -> str:
-    import hashlib
-
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def snapshot_at(
-    root: Path, source: str, account: str, stamp: str, **fields: object
-) -> Path:
-    """A finished snapshot written by hand, for the listing to read back."""
+def snapshot_at(root: Path, source: str, account: str, stamp: str, **fields: object) -> Path:
+    """Return a finished snapshot written by hand, for the listing to read back."""
     directory = root / source / account / stamp
     directory.mkdir(parents=True)
     (directory / store.ARCHIVE_NAME).write_bytes(b"PK\x03\x04")
@@ -84,7 +80,7 @@ def snapshot_at(
 
 
 @pytest.fixture
-def no_renames(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def no_renames(monkeypatch: pytest.MonkeyPatch) -> None:
     """`os.replace` and `os.rename` raise for the duration of a filing.
 
     §33 shapes the disk layout so that an object store — which has no rename —
@@ -98,7 +94,6 @@ def no_renames(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
     monkeypatch.setattr(os, "replace", refuse)
     monkeypatch.setattr(os, "rename", refuse)
-    yield
 
 
 # --------------------------------------------------------------------------- #
@@ -115,8 +110,6 @@ def test_a_stamp_round_trips() -> None:
 
 
 def test_a_local_time_is_stamped_as_the_utc_it_names() -> None:
-    from datetime import timedelta, timezone
-
     local = MOMENT.astimezone(timezone(timedelta(hours=2)))
     assert store.stamp_of(local) == STAMP
 
@@ -138,27 +131,19 @@ def test_every_source_has_a_name_to_print_it_with() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_a_snapshot_is_three_files_in_one_directory(
-    tmp_path: Path, no_renames: None
-) -> None:
+def test_a_snapshot_is_three_files_in_one_directory(tmp_path: Path, no_renames: None) -> None:
     source = archive(tmp_path)
-    directory, snapshot = store.Store(tmp_path / "store").file_archive(
-        source, filing(source)
-    )
+    directory, snapshot = store.Store(tmp_path / "store").file_archive(source, filing(source))
 
     assert directory == tmp_path / "store" / "claude" / "old-personal" / STAMP
-    assert sorted(item.name for item in directory.iterdir()) == sorted(
-        store.SNAPSHOT_FILES
-    )
+    assert sorted(item.name for item in directory.iterdir()) == sorted(store.SNAPSHOT_FILES)
     assert (directory / store.ARCHIVE_NAME).read_bytes() == source.read_bytes()
     assert (directory / store.COMPLETE_NAME).read_bytes() == b""
     assert snapshot.archive.sha256 == _sha256(source)
     assert snapshot.archive.bytes == source.stat().st_size
 
 
-def test_the_marker_is_created_last(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_marker_is_created_last(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A marker that lands before the bytes are durable is a marker that lies."""
     created: list[str] = []
     real = os.open
@@ -202,9 +187,7 @@ def test_a_copy_that_does_not_match_stops_before_the_marker(tmp_path: Path) -> N
     assert not (directory / store.MANIFEST_NAME).exists()
 
 
-def test_a_store_that_cannot_be_written_to_says_so(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_store_that_cannot_be_written_to_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse(*args: object, **kwargs: object) -> None:
         raise PermissionError(13, "Permission denied")
 
@@ -219,9 +202,7 @@ def test_a_store_that_cannot_be_written_to_says_so(
 
 def test_the_manifest_carries_the_provenance(tmp_path: Path) -> None:
     source = archive(tmp_path)
-    directory, _ = store.Store(tmp_path / "store").file_archive(
-        source, filing(source, origin="ask", asked_at=MOMENT)
-    )
+    directory, _ = store.Store(tmp_path / "store").file_archive(source, filing(source, origin="ask", asked_at=MOMENT))
     manifest = json.loads((directory / store.MANIFEST_NAME).read_text())
 
     assert manifest["version"] == 1
@@ -276,9 +257,7 @@ def test_the_listing_is_the_brief_block(tmp_path: Path) -> None:
 
 def test_an_unfinished_snapshot_is_incomplete(tmp_path: Path) -> None:
     root = tmp_path / "store"
-    directory = snapshot_at(
-        root, "claude", "a", STAMP, counts=store.Counts(conversations=3)
-    )
+    directory = snapshot_at(root, "claude", "a", STAMP, counts=store.Counts(conversations=3))
     (directory / store.COMPLETE_NAME).unlink()
 
     row = store.Store(root).rows()[0]
@@ -315,9 +294,7 @@ def test_rows_are_ordered_by_account_then_source_then_stamp(tmp_path: Path) -> N
     snapshot_at(root, "claude", "personal", "2026-02-02T00-00-00Z")
     snapshot_at(root, "claude", "personal", "2026-01-01T00-00-00Z")
 
-    assert [
-        (row.account, row.source, row.stamp) for row in store.Store(root).rows()
-    ] == [
+    assert [(row.account, row.source, row.stamp) for row in store.Store(root).rows()] == [
         ("personal", "claude", "2026-01-01T00-00-00Z"),
         ("personal", "claude", "2026-02-02T00-00-00Z"),
         ("work", "chatgpt", "2026-01-01T00-00-00Z"),
@@ -342,10 +319,7 @@ def test_the_json_rows_round_trip(tmp_path: Path, workspace: Path) -> None:
     sink = Collected()
     store.list_command(settings, json_output=True, sink=sink)
 
-    rows = [
-        store.SnapshotRow.model_validate_json(json.dumps(item))
-        for item in json.loads(sink.stdout)
-    ]
+    rows = [store.SnapshotRow.model_validate_json(json.dumps(item)) for item in json.loads(sink.stdout)]
     assert rows == store.Store(root).rows()
 
 
@@ -360,14 +334,27 @@ def test_a_workspace_inside_a_snapshot_is_refused(tmp_path: Path) -> None:
     with pytest.raises(UsageError) as raised:
         store.refuse_workspace_inside(snapshot, snapshot / "migration")
 
-    assert str(raised.value) == (
-        f"the workspace cannot be inside a snapshot: {snapshot / 'migration'}"
-    )
+    assert str(raised.value) == (f"the workspace cannot be inside a snapshot: {snapshot / 'migration'}")
 
 
 def test_a_workspace_beside_a_snapshot_is_fine(tmp_path: Path) -> None:
     snapshot = snapshot_at(tmp_path / "store", "claude", "a", STAMP)
     store.refuse_workspace_inside(snapshot, tmp_path / "migration")
+
+
+def test_the_guard_normalises_before_it_compares(tmp_path: Path) -> None:
+    """Both directions of `..`, which is what `abspath` is here for and `absolute` is not.
+
+    A path that walks out of the snapshot is beside it; a path that walks back in is
+    inside it. Compared without normalising, `is_relative_to` answers both wrongly.
+    """
+    snapshot = snapshot_at(tmp_path / "store", "claude", "a", STAMP)
+
+    store.refuse_workspace_inside(snapshot, snapshot / ".." / "migration")
+
+    sideways = tmp_path / "elsewhere" / ".." / snapshot.relative_to(tmp_path) / "migration"
+    with pytest.raises(UsageError):
+        store.refuse_workspace_inside(snapshot, sideways)
 
 
 def test_an_export_is_not_guarded(tmp_path: Path, export_dir: Path) -> None:
@@ -384,12 +371,8 @@ def test_inspect_reads_a_snapshot_as_it_reads_an_archive(
     runner: CliRunner, workspace: Path, snapshot_dir: Path, export_zip: Path
 ) -> None:
     for flags in ([], ["--json"]):
-        of_snapshot = runner.invoke(
-            cli.app, ["inspect", str(snapshot_dir), *flags], catch_exceptions=False
-        )
-        of_archive = runner.invoke(
-            cli.app, ["inspect", str(export_zip), *flags], catch_exceptions=False
-        )
+        of_snapshot = runner.invoke(cli.app, ["inspect", str(snapshot_dir), *flags], catch_exceptions=False)
+        of_archive = runner.invoke(cli.app, ["inspect", str(export_zip), *flags], catch_exceptions=False)
 
         assert of_snapshot.exit_code == of_archive.exit_code == 0
         assert of_snapshot.stdout == of_archive.stdout
@@ -399,23 +382,15 @@ def test_a_dry_run_of_a_snapshot_matches_the_archive(
     runner: CliRunner, workspace: Path, snapshot_dir: Path, export_zip: Path
 ) -> None:
     """§39's question 3, at the command an operator would actually type."""
-    of_snapshot = runner.invoke(
-        cli.app, ["import", str(snapshot_dir), "--dry-run"], catch_exceptions=False
-    )
-    of_archive = runner.invoke(
-        cli.app, ["import", str(export_zip), "--dry-run"], catch_exceptions=False
-    )
+    of_snapshot = runner.invoke(cli.app, ["import", str(snapshot_dir), "--dry-run"], catch_exceptions=False)
+    of_archive = runner.invoke(cli.app, ["import", str(export_zip), "--dry-run"], catch_exceptions=False)
 
     assert of_snapshot.stdout == of_archive.stdout
 
 
-def test_an_incomplete_snapshot_is_refused_by_inspect(
-    runner: CliRunner, workspace: Path, snapshot_dir: Path
-) -> None:
+def test_an_incomplete_snapshot_is_refused_by_inspect(runner: CliRunner, workspace: Path, snapshot_dir: Path) -> None:
     (snapshot_dir / store.COMPLETE_NAME).unlink()
-    result = runner.invoke(
-        cli.app, ["inspect", str(snapshot_dir)], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["inspect", str(snapshot_dir)], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr == f"error: snapshot is incomplete: {snapshot_dir}\n"
@@ -436,9 +411,7 @@ def test_a_run_may_not_write_its_workspace_into_a_snapshot(
     assert sorted(item.name for item in snapshot_dir.iterdir()) == before
 
 
-def test_seeds_may_not_write_into_a_snapshot_either(
-    runner: CliRunner, workspace: Path, snapshot_dir: Path
-) -> None:
+def test_seeds_may_not_write_into_a_snapshot_either(runner: CliRunner, workspace: Path, snapshot_dir: Path) -> None:
     result = runner.invoke(
         cli.app,
         ["--workspace", str(snapshot_dir / "migration"), "seeds", str(snapshot_dir)],
@@ -474,9 +447,7 @@ def test_a_file_that_cannot_be_created_names_the_store(tmp_path: Path) -> None:
         store._create(tmp_path / "no-such-directory" / "f", b"x")
 
 
-def test_a_write_that_fails_is_a_store_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_write_that_fails_is_a_store_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def full(handle: int) -> None:
         raise OSError(28, "No space left on device")
 
@@ -490,7 +461,10 @@ def test_a_write_that_fails_is_a_store_error(
 
 
 def test_one_gap_is_not_one_gaps(tmp_path: Path) -> None:
-    """The last column is read by a person. (Raised by Copilot in review on #43.)"""
+    """The last column is read by a person.
+
+    (Raised by Copilot in review on #43.)
+    """
     root = tmp_path / "store"
     snapshot_at(
         root,
@@ -505,8 +479,10 @@ def test_one_gap_is_not_one_gaps(tmp_path: Path) -> None:
 
 
 def test_a_snapshot_is_the_owners_to_read(tmp_path: Path) -> None:
-    """A snapshot holds the account's conversations, in a long-lived store shared
-    between accounts. (Raised by Copilot in review on #43.)"""
+    """A snapshot holds the account's conversations, in a long-lived store shared between accounts.
+
+    (Raised by Copilot in review on #43.)
+    """
     source = archive(tmp_path)
     directory, _ = store.Store(tmp_path / "store").file_archive(source, filing(source))
 

@@ -74,9 +74,7 @@ HEADER = "Human intervention required"
 PROMPT = "Press Enter to resume, or Ctrl-C to stop."
 BROWSER_HELP = "the Chrome window is open — complete the step there"
 
-UNATTENDED_BROWSER_HELP = (
-    f"no window — non-interactive run; clear it, then run: {PROGRAM_NAME} resume"
-)
+UNATTENDED_BROWSER_HELP = f"no window — non-interactive run; clear it, then run: {PROGRAM_NAME} resume"
 UNATTENDED_PROMPT = f"Paused for a person (non-interactive); run: {PROGRAM_NAME} resume"
 """`24`'s two lines, in place of `BROWSER_HELP` and `PROMPT` when there is no
 window to point at and nobody to press Enter. The other four lines of the block
@@ -121,7 +119,7 @@ and a run cannot tell a human who is taking their time from one who has left.
 
 
 def offer(short_id: str) -> str:
-    """What an `import` says when it finds a pause somebody left behind."""
+    """Return what an `import` says when it finds a pause somebody left behind."""
     return f"paused at {short_id} — run: {PROGRAM_NAME} resume"
 
 
@@ -158,7 +156,7 @@ class Request:
         return phrase
 
     def rows_for(self, *, unattended: bool) -> Sequence[tuple[str, str]]:
-        """The four labelled lines, for a terminal or for `24`'s no terminal."""
+        """Return the four labelled lines, for a terminal or for `24`'s no terminal."""
         return (
             ("Reason:", self.phrase),
             ("Conversation:", f"{self.short_id} ({self.position} of {self.total})"),
@@ -168,7 +166,7 @@ class Request:
 
 
 def block(request: Request, *, unattended: bool = False) -> str:
-    """The §12 ask, newline-terminated, exactly as `14` writes it.
+    """Return the §12 ask, newline-terminated, exactly as `14` writes it.
 
     `unattended` is `24`'s variant: the same block with the two lines that
     presume a window and a keyboard replaced by the two that do not.
@@ -176,10 +174,7 @@ def block(request: Request, *, unattended: bool = False) -> str:
     lines = [
         HEADER,
         "",
-        *(
-            f"{label:<{LABEL_WIDTH}}{value}"
-            for label, value in request.rows_for(unattended=unattended)
-        ),
+        *(f"{label:<{LABEL_WIDTH}}{value}" for label, value in request.rows_for(unattended=unattended)),
         "",
         UNATTENDED_PROMPT if unattended else PROMPT,
     ]
@@ -248,7 +243,7 @@ class Console:
         try:
             if not stream.isatty():
                 return False
-            return stream.readline() != ""
+            return bool(stream.readline())
         except KeyboardInterrupt:
             # Ctrl-C at the prompt ends the run the same way a pipe does: the
             # pause is already on disk, so this is "stop", not "crash". A blank

@@ -29,6 +29,7 @@ from dataporter.state import (
     ConversationState,
     Destination,
     MigrationState,
+    StateError,
     Status,
 )
 from world import CHAT, CONTENT, FIRST, OTHER_CHAT, World, cli_env
@@ -41,9 +42,7 @@ def settings_for(tmp_path: Path) -> Settings:
     return Settings(workspace=tmp_path / "migration")
 
 
-def entry(
-    status: Status = Status.COMPLETED, chat: str | None = CHAT
-) -> ConversationState:
+def entry(status: Status = Status.COMPLETED, chat: str | None = CHAT) -> ConversationState:
     return ConversationState(
         title="never printed",
         status=status,
@@ -52,7 +51,7 @@ def entry(
 
 
 def answer(**fields: object) -> str:
-    """What a probe run prints last, inside a transcript that says other things."""
+    """Return what a probe run prints last, inside a transcript that says other things."""
     payload: dict[str, object] = {
         "outcome": "answered",
         "conversation_id": CHAT,
@@ -74,9 +73,7 @@ class StubRunner:
         self.prompts: list[str] = []
         self.run_ids: list[str] = []
 
-    def run_raw(
-        self, prompt: str, *, run_id: str, timeout_s: float
-    ) -> hermes_running.RawRun:
+    def run_raw(self, prompt: str, *, run_id: str, timeout_s: float) -> hermes_running.RawRun:
         self.prompts.append(prompt)
         self.run_ids.append(run_id)
         if self.error is not None:
@@ -104,8 +101,11 @@ def prober(tmp_path: Path, stub: StubRunner) -> following.Prober:
 
 
 def test_only_completed_conversations_with_a_chat_are_probed() -> None:
-    """`20` writes "each `completed` conversation": a `partial` chat is missing
-    part of the conversation, so what Claude remembers of it measures nothing."""
+    """`20` writes "each `completed` conversation".
+
+    A `partial` chat is missing part of the conversation, so what Claude remembers of it
+    measures nothing.
+    """
     migration = MigrationState(
         root={
             "completed": entry(),
@@ -154,8 +154,10 @@ def test_the_prompt_names_the_chat_the_question_file_and_the_helper(
 def test_the_prompt_carries_neither_the_question_nor_any_content(
     tmp_path: Path,
 ) -> None:
-    """The question reaches the composer as bytes through the helper, exactly as
-    a seed does; the prompt names the file and never its contents (`11`)."""
+    """The question reaches the composer as bytes through the helper, as a seed does.
+
+    The prompt names the file and never its contents (`11`).
+    """
     text = following.prompt(
         short_id="aa000001",
         conversation_id=CHAT,
@@ -196,8 +198,10 @@ def test_a_reply_becomes_a_probe_record(tmp_path: Path) -> None:
 def test_an_agent_that_could_not_ask_is_recorded_and_not_raised(
     tmp_path: Path,
 ) -> None:
-    """Nine conversations are waiting behind this one, and a probe that failed
-    is a row of the write-up rather than the end of the run."""
+    """Nine conversations are waiting behind this one.
+
+    A probe that failed is a row of the write-up rather than the end of the run.
+    """
     stub = StubRunner(answer(outcome="needs_human", reply="", error="captcha"))
 
     found = prober(tmp_path, stub).ask(FIRST, entry())
@@ -237,8 +241,10 @@ def test_a_result_object_that_is_not_one_is_a_failed_probe(tmp_path: Path) -> No
 
 
 def test_the_last_result_object_wins_over_a_helpers_own(tmp_path: Path) -> None:
-    """A transcript holds our own `browser probe` objects too, and `09` already
-    decided which one is the answer: the last one carrying `outcome`."""
+    """A transcript holds our own `browser probe` objects too.
+
+    `09` already decided which one is the answer: the last one carrying `outcome`.
+    """
     stub = StubRunner('{"ok": true, "outcome": "ignored"}\n' + answer())
 
     assert prober(tmp_path, stub).ask(FIRST, entry()).reply == REPLY
@@ -247,16 +253,18 @@ def test_the_last_result_object_wins_over_a_helpers_own(tmp_path: Path) -> None:
 def test_a_reply_from_another_chat_is_not_recorded_as_this_ones(
     tmp_path: Path,
 ) -> None:
-    """The agent is told which chat to ask in and reports which chat it asked
-    in; those disagreeing is the one way a probe produces evidence about the
-    wrong conversation, which is worse than none because nothing downstream
-    could tell. (Raised by Copilot in review on #29.)"""
+    """The agent is told which chat to ask in and reports which chat it asked in.
+
+    Those disagreeing is the one way a probe produces evidence about the wrong
+    conversation, which is worse than none because nothing downstream could tell.
+    (Raised by Copilot in review on #29.)
+    """
     stub = StubRunner(answer(conversation_id=OTHER_CHAT))
 
     found = prober(tmp_path, stub).ask(FIRST, entry())
 
     assert found.outcome == "failed"
-    assert found.reply == ""
+    assert not found.reply
     assert found.error == following.WRONG_CHAT.format(reported=OTHER_CHAT)
     # The record still describes the chat this conversation was migrated into,
     # which is the one the row is about.
@@ -300,9 +308,11 @@ def test_probes_round_trip_through_the_file(tmp_path: Path) -> None:
 
 
 def test_the_file_is_newline_terminated(tmp_path: Path) -> None:
-    """`state._dump` and `19`'s `report.json` end in one; one convention for the
-    workspace's JSON keeps its diffs quiet. (Raised by Copilot in review on
-    #29.)"""
+    """`state._dump` and `19`'s `report.json` end in one.
+
+    One convention for the workspace's JSON keeps its diffs quiet. (Raised by Copilot in
+    review on #29.)
+    """
     settings = settings_for(tmp_path)
 
     path = following.write(settings, following.ProbeFile())
@@ -321,15 +331,15 @@ def test_a_file_that_is_not_a_probe_file_is_an_operator_error(
     settings.pilot_dir.mkdir(parents=True)
     following.probes_path(settings).write_text('{"probes": 7}', encoding="utf-8")
 
-    with pytest.raises(Exception) as raised:
+    with pytest.raises(StateError, match="is not a probe file"):
         following.read(settings)
-
-    assert "is not a probe file" in str(raised.value)
 
 
 def test_asking_again_replaces_the_answer_in_place(tmp_path: Path) -> None:
-    """Two answers to one question would leave a write-up to choose between
-    them, and re-asking one of ten must not reorder the other nine."""
+    """Two answers to one question would leave a write-up to choose between them.
+
+    Re-asking one of ten must not reorder the other nine.
+    """
     stub = StubRunner(answer())
     asking = prober(tmp_path, stub)
     first = asking.ask(FIRST, entry())
@@ -347,60 +357,53 @@ def test_asking_again_replaces_the_answer_in_place(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_followup_on_a_workspace_with_nothing_migrated_exits_4(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_followup_on_a_workspace_with_nothing_migrated_exits_4(runner: CliRunner, workspace: Path) -> None:
     result = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.NOTHING_TO_DO
-    assert result.stdout == ""
+    assert not result.stdout
 
 
-def test_followup_without_a_hermes_exits_6(
-    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Every probe is a Hermes task, so the machine is checked once rather than
-    ten identical failures being reported one conversation at a time."""
+def test_followup_without_a_hermes_exits_6(runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every probe is a Hermes task.
+
+    The machine is checked once rather than ten identical failures being reported one
+    conversation at a time.
+    """
     settings = Settings(workspace=workspace / "migration")
     store = state.StateStore(settings.workspace)
     store.bind_export("fingerprint", workspace)
     store.ensure(FIRST, title="never printed", chunks_total=1)
     store.update(FIRST, status=Status.RUNNING)
-    store.update(
-        FIRST, status=Status.COMPLETED, destination=Destination(conversation_id=CHAT)
-    )
+    store.update(FIRST, status=Status.COMPLETED, destination=Destination(conversation_id=CHAT))
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv(
-        "DATAPORTER_HERMES__EXECUTABLE", str(workspace / "no-hermes-here")
-    )
+    monkeypatch.setenv("DATAPORTER_HERMES__EXECUTABLE", str(workspace / "no-hermes-here"))
 
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.ENVIRONMENT
     assert outcome.stderr.startswith("error: ")
-    assert outcome.stdout == ""
+    assert not outcome.stdout
 
 
 def test_followup_asks_every_migrated_chat_and_keeps_the_replies(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The command, against the fake Hermes and the fake page: one migration,
-    then one probe, then a reply on disk and a count on the terminal."""
+    """The command, against the fake Hermes and the fake page.
+
+    One migration, then one probe, then a reply on disk and a count on the terminal.
+    """
     cli_env(world, monkeypatch)
     world.answers(
-        json.dumps(
-            {
-                "outcome": "completed",
-                "conversation_id": CHAT,
-                "last_step": "done",
-                "chunks_acked": 1,
-            }
-        ),
+        json.dumps({
+            "outcome": "completed",
+            "conversation_id": CHAT,
+            "last_step": "done",
+            "chunks_acked": 1,
+        }),
         answer(),
     )
-    runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 
@@ -410,27 +413,25 @@ def test_followup_asks_every_migrated_chat_and_keeps_the_replies(
     assert [item.reply for item in probes] == [REPLY]
 
 
-MIGRATED = json.dumps(
-    {
-        "outcome": "completed",
-        "conversation_id": CHAT,
-        "last_step": "done",
-        "chunks_acked": 1,
-    }
-)
+MIGRATED = json.dumps({
+    "outcome": "completed",
+    "conversation_id": CHAT,
+    "last_step": "done",
+    "chunks_acked": 1,
+})
 """What the fake Hermes answers for a conversation that migrated."""
 
 
 def test_followup_spaces_the_probes_out_as_a_migration_spaces_conversations(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """§13's gap, for §13's reason: each probe is one more message into a real
-    account, sent by the same browser."""
+    """§13's gap, for §13's reason.
+
+    Each probe is one more message into a real account, sent by the same browser.
+    """
     cli_env(world, monkeypatch)
     world.answers(MIGRATED, MIGRATED, answer(), answer())
-    runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False)
     world.pauses.clear()
 
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
@@ -446,57 +447,45 @@ def test_followup_only_asks_the_conversation_it_names(
 ) -> None:
     cli_env(world, monkeypatch)
     world.answers(MIGRATED, MIGRATED, answer())
-    runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "2"], catch_exceptions=False)
 
-    outcome = runner.invoke(
-        cli.app, ["followup", "--only", "aa000001"], catch_exceptions=False
-    )
+    outcome = runner.invoke(cli.app, ["followup", "--only", "aa000001"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.OK
     assert outcome.stdout.startswith("aa000001  answered")
-    assert [item.short_id for item in following.read(world.settings).probes] == [
-        "aa000001"
-    ]
+    assert [item.short_id for item in following.read(world.settings).probes] == ["aa000001"]
 
 
 def test_followup_on_a_signed_out_session_exits_3(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Every probe would fail the same way, and `login` is the fix — the rule
-    `12` and `17` both follow."""
+    """Every probe would fail the same way, and `login` is the fix.
+
+    The rule `12` and `17` both follow.
+    """
     cli_env(world, monkeypatch)
     world.answers(MIGRATED, answer())
-    runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
     world.page.composer = None
 
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert outcome.stdout == ""
+    assert not outcome.stdout
 
 
-def test_a_probe_that_went_nowhere_exits_1(
-    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_probe_that_went_nowhere_exits_1(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     cli_env(world, monkeypatch)
     world.answers(
-        json.dumps(
-            {
-                "outcome": "completed",
-                "conversation_id": CHAT,
-                "last_step": "done",
-                "chunks_acked": 1,
-            }
-        ),
+        json.dumps({
+            "outcome": "completed",
+            "conversation_id": CHAT,
+            "last_step": "done",
+            "chunks_acked": 1,
+        }),
         answer(outcome="failed", reply="", error="response_timeout"),
     )
-    runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 
@@ -510,19 +499,15 @@ def test_neither_the_terminal_nor_the_log_carries_a_reply(
     """§10 holds for the one command that handles a message on purpose."""
     cli_env(world, monkeypatch)
     world.answers(
-        json.dumps(
-            {
-                "outcome": "completed",
-                "conversation_id": CHAT,
-                "last_step": "done",
-                "chunks_acked": 1,
-            }
-        ),
+        json.dumps({
+            "outcome": "completed",
+            "conversation_id": CHAT,
+            "last_step": "done",
+            "chunks_acked": 1,
+        }),
         answer(),
     )
-    runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 

@@ -54,7 +54,7 @@ ESCAPE = re.compile(r"\x1b")
 
 
 def counts(total: int, **tally: int) -> Mapping[str, int]:
-    """Counts as `state.status_counts` shapes them, from the terminal ones.
+    """Return Counts as `state.status_counts` shapes them, from the terminal ones.
 
     `pending` is derived here the way it is derived there, so a test cannot
     describe a workspace that could not exist.
@@ -90,9 +90,7 @@ def test_a_run_that_has_started_nothing_fills_none() -> None:
 
 def test_a_six_figure_total_widens_the_block_consistently() -> None:
     """The counters widen together (`06`'s rule) and the bar keeps its 20 cells."""
-    lines = progress.block(
-        counts(200_000, completed=123_456, failed=7, partial=0)
-    ).splitlines()
+    lines = progress.block(counts(200_000, completed=123_456, failed=7, partial=0)).splitlines()
 
     assert lines[2] == "200,000 conversations found"
     assert lines[4] == "[████████████░░░░░░░░] 123,463/200,000"
@@ -111,10 +109,10 @@ def test_a_six_figure_total_widens_the_block_consistently() -> None:
 
 @contextmanager
 def terminal() -> Iterator[tuple[IO[str], Callable[[], str]]]:
-    """A real pseudo-terminal to write to, and a way to read back what arrived.
+    r"""Yield a real pseudo-terminal to write to, and a way to read back what arrived.
 
     `ONLCR` is switched off first: a terminal in its default mode rewrites every
-    `\\n` on its way through as `\\r\\n`, and this slice's whole subject is which
+    `\n` on its way through as `\r\n`, and this slice's whole subject is which
     bytes reach a screen.
 
     Both ends are UTF-8 by name rather than by locale. The block is drawn in
@@ -162,12 +160,7 @@ def test_a_terminal_gets_one_header_and_a_redraw_per_change() -> None:
     assert printed.count("3 conversations found") == 1
     # The first block is printed under the header; the three after it go over it.
     assert printed.count(progress.CURSOR_UP) == 3
-    assert printed.endswith(
-        "".join(
-            f"{line}\n"
-            for line in progress.block_lines(counts(3, completed=2, failed=1))
-        )
-    )
+    assert printed.endswith("".join(f"{line}\n" for line in progress.block_lines(counts(3, completed=2, failed=1))))
 
 
 def test_a_pipe_gets_no_escape_sequence() -> None:
@@ -187,22 +180,16 @@ def test_a_pipe_gets_no_escape_sequence() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_neither_mode_prints_anything_from_the_export(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_neither_mode_prints_anything_from_the_export(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """`18`'s fourth criterion, over a real run in each mode.
 
     A failure as well as a completion, so the detail column is in the output
     being scanned and not only the ids and the counts.
     """
     world.retries(max_attempts=1)
-    world.answers(
-        completed(), result(outcome="failed", error={"category": "ui", "detail": "x"})
-    )
+    world.answers(completed(), result(outcome="failed", error={"category": "ui", "detail": "x"}))
     piped = StringIO()
-    world.importer(progress=progress.Reporter(stream=piped)).run(
-        world.export, state.Selection(limit=2)
-    )
+    world.importer(progress=progress.Reporter(stream=piped)).run(world.export, state.Selection(limit=2))
     with terminal() as (stream, read):
         world.importer(progress=progress.Reporter(stream=stream)).run(
             world.export, state.Selection(limit=2, force=True)
@@ -230,15 +217,13 @@ def test_the_first_block_of_a_second_run_counts_what_the_first_one_did() -> None
     """
     entries = {
         f"{index}": ConversationState(status=status)
-        for index, status in enumerate(
-            [
-                Status.COMPLETED,
-                Status.COMPLETED,
-                Status.PARTIAL,
-                Status.PENDING,
-                Status.PENDING,
-            ]
-        )
+        for index, status in enumerate([
+            Status.COMPLETED,
+            Status.COMPLETED,
+            Status.PARTIAL,
+            Status.PENDING,
+            Status.PENDING,
+        ])
     }
     on_disk = state.status_counts(MigrationState(root=entries))
 
@@ -278,8 +263,11 @@ def test_a_thousand_conversations_carry_a_separator() -> None:
 
 
 def test_an_empty_plan_draws_an_empty_bar() -> None:
-    """Nothing to divide by, and nothing to fill. `06` allows the state file
-    that gets here: a workspace whose export had no conversations in it."""
+    """Nothing to divide by, and nothing to fill.
+
+    `06` allows the state file that gets here: a workspace whose export had no
+    conversations in it.
+    """
     assert progress.bar_line(counts(0)) == f"[{'░' * 20}] 0/0"
 
 
@@ -291,10 +279,7 @@ def test_an_empty_plan_draws_an_empty_bar() -> None:
 def test_the_status_column_is_padded() -> None:
     """`18`'s two example lines, which differ only in the status word."""
     done = counts(127, completed=12)
-    assert (
-        progress.event_line("3f9c2a1e", Status.COMPLETED, done)
-        == "3f9c2a1e  completed  (12/127)"
-    )
+    assert progress.event_line("3f9c2a1e", Status.COMPLETED, done) == "3f9c2a1e  completed  (12/127)"
     assert progress.event_line(
         "8a02c7d1",
         Status.PARTIAL,
@@ -304,8 +289,10 @@ def test_the_status_column_is_padded() -> None:
 
 
 def test_only_a_partial_or_a_failure_carries_a_detail() -> None:
-    """A `completed` line has nothing to explain, whatever the entry still holds
-    from an attempt that was retried into success."""
+    """A `completed` line has nothing to explain.
+
+    Not even what the entry still holds from an attempt that was retried into success.
+    """
     line = progress.event_line(
         "3f9c2a1e",
         Status.COMPLETED,
@@ -316,9 +303,11 @@ def test_only_a_partial_or_a_failure_carries_a_detail() -> None:
 
 
 def test_a_partial_with_no_record_behind_it_says_only_that() -> None:
-    """`17`'s edge: a chat the page says is missing a part is `partial` whether
-    or not an attempt recorded an error, and a column with nothing in it is not
-    a column."""
+    """`17`'s edge: a chat the page says is missing a part is `partial`.
+
+    Whether or not an attempt recorded an error — and a column with nothing in it is not
+    a column.
+    """
     line = progress.event_line("3f9c2a1e", Status.PARTIAL, counts(2, partial=1))
 
     assert line == "3f9c2a1e  partial    (1/2)"
@@ -390,8 +379,11 @@ def test_a_pipe_gets_the_header_the_events_and_one_block() -> None:
 
 
 def test_quiet_keeps_the_block_and_nothing_else() -> None:
-    """`-q` suppresses progress; the stop line and the final block are not
-    progress — one is what became of the run and the other is what it amounts to."""
+    """`-q` suppresses progress.
+
+    The stop line and the final block are not progress — one is what became of the run
+    and the other is what it amounts to.
+    """
     stream = StringIO()
     reporter = progress.Reporter(stream=stream, quiet=True)
     reporter.start(counts(3))
@@ -430,8 +422,11 @@ def test_quiet_emits_no_escape_sequence_on_a_terminal() -> None:
 
 
 def test_a_wait_is_a_seventh_line_that_is_rubbed_out() -> None:
-    """It carries no newline: the redraw above it counts on the cursor being
-    one line under the block, and `\\x1b[2K` is what gives that back."""
+    r"""It carries no newline.
+
+    The redraw above it counts on the cursor being one line under the block, and
+    `\x1b[2K` is what gives that back.
+    """
     with terminal() as (stream, read):
         reporter = progress.Reporter(stream=stream)
         reporter.start(counts(2))
@@ -462,14 +457,15 @@ def test_an_ask_takes_the_screen_and_the_block_comes_back_under_it() -> None:
 
     after = printed[len(before) :]
     assert progress.CURSOR_UP not in after
-    assert after.endswith(
-        "".join(f"{line}\n" for line in progress.block_lines(counts(2)))
-    )
+    assert after.endswith("".join(f"{line}\n" for line in progress.block_lines(counts(2))))
 
 
 def test_the_stop_line_goes_under_the_block_and_the_last_one_under_it() -> None:
-    """`13`'s line is printed, not drawn over: what is above it is the state the
-    run stopped in, and the block under it is the same numbers, standing still."""
+    """`13`'s line is printed, not drawn over.
+
+    What is above it is the state the run stopped in, and the block under it is the same
+    numbers, standing still.
+    """
     with terminal() as (stream, read):
         reporter = progress.Reporter(stream=stream)
         reporter.start(counts(3))
@@ -510,11 +506,11 @@ def test_the_default_stream_is_stdout_as_it_is_at_the_time(
 # --------------------------------------------------------------------------- #
 
 
-def test_a_failed_conversation_names_its_category_on_the_line(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The detail column, from `state.json`'s own record rather than from the
-    attempt: what the line says is what `19` will report."""
+def test_a_failed_conversation_names_its_category_on_the_line(world: World, capsys: pytest.CaptureFixture[str]) -> None:
+    """The detail column, from `state.json`'s own record rather than from the attempt.
+
+    What the line says is what `19` will report.
+    """
     world.retries(max_attempts=1)
     world.answers(result(outcome="failed", error={"category": "ui", "detail": "x"}))
 
@@ -528,17 +524,14 @@ def test_a_failed_conversation_names_its_category_on_the_line(
 def test_the_unsupported_conversation_is_counted_before_anything_runs(
     world: World, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The header is printed from the entries `12` writes first, so the block a
-    run opens with already knows about §14's refusals."""
+    """The header is printed from the entries `12` writes first.
+
+    The block a run opens with already knows about §14's refusals.
+    """
     world.run(only=[LONG])
     printed = capsys.readouterr().out
 
     assert printed.startswith("Claude migration\n\n6 conversations found\n\n")
     assert printed.endswith(
-        "[██████░░░░░░░░░░░░░░] 2/6\n"
-        "\n"
-        "Completed:  1\n"
-        "Partial:    0\n"
-        "Failed:     1\n"
-        "Pending:    4\n"
+        "[██████░░░░░░░░░░░░░░] 2/6\n\nCompleted:  1\nPartial:    0\nFailed:     1\nPending:    4\n"
     )

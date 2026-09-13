@@ -9,13 +9,15 @@ import json
 import ssl
 import urllib.request
 from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError
 
 import pytest
 from claudemock import certificate, server
 from claudemock.site import Site
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 EMAIL = "rehearsal@example.invalid"
 PASSWORD = "rehearsal-not-a-real-password"
@@ -49,12 +51,8 @@ class Client:
         for name, value in (headers or {}).items():
             request.add_header(name, value)
         if self.cookies:
-            request.add_header(
-                "Cookie", "; ".join(f"{k}={v}" for k, v in self.cookies.items())
-            )
-        handlers: list[urllib.request.BaseHandler] = [
-            urllib.request.HTTPSHandler(context=self.context)
-        ]
+            request.add_header("Cookie", "; ".join(f"{k}={v}" for k, v in self.cookies.items()))
+        handlers: list[urllib.request.BaseHandler] = [urllib.request.HTTPSHandler(context=self.context)]
         if not follow:
             handlers.append(_NoRedirect())
         opener = urllib.request.build_opener(*handlers)
@@ -76,9 +74,7 @@ class Client:
 
     def post_json(self, path: str, payload: object) -> tuple[int, str, str]:
         """As the page's own script posts: JSON, and a header that says so."""
-        return self.post(
-            path, json.dumps(payload).encode(), **{"Content-Type": "application/json"}
-        )
+        return self.post(path, json.dumps(payload).encode(), **{"Content-Type": "application/json"})
 
     def _remember(self, headers: list[str]) -> None:
         for header in headers:

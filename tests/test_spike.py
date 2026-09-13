@@ -18,10 +18,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "spikes"))
 
-import spike  # noqa: E402 - the path above is what makes this importable
+import spike
 
-from dataporter.browser import launcher  # noqa: E402
-from dataporter.errors import BrowserError  # noqa: E402
+from dataporter.browser import launcher
+from dataporter.errors import BrowserError
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def notes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_the_spike_asks_exactly_ten_questions() -> None:
-    assert spike.QUESTIONS == tuple(f"Q{number}" for number in range(1, 11))
+    assert tuple(f"Q{number}" for number in range(1, 11)) == spike.QUESTIONS
 
 
 @pytest.mark.parametrize("question", ["Q0", "Q11", "q1", "", "Q1 "])
@@ -146,9 +146,7 @@ def test_a_context_is_stamped_with_a_utc_timestamp() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_the_context_command_prints_json(
-    notes: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_context_command_prints_json(notes: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert spike.main(["context"]) == 0
     printed = json.loads(capsys.readouterr().out)
     assert set(printed) == {
@@ -160,9 +158,7 @@ def test_the_context_command_prints_json(
     assert not notes.exists(), "`context` must record nothing"
 
 
-def test_the_note_command_records_and_prints(
-    notes: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_note_command_records_and_prints(notes: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert spike.main(["note", "Q7", "rename is a menu item"]) == 0
     printed = json.loads(capsys.readouterr().out)
     assert printed["question"] == "Q7"
@@ -170,7 +166,7 @@ def test_the_note_command_records_and_prints(
 
 
 def test_the_note_command_rejects_an_unknown_question(notes: Path) -> None:
-    """argparse `choices` refuses before `record` is reached."""
+    """Argparse `choices` refuses before `record` is reached."""
     with pytest.raises(SystemExit):
         spike.main(["note", "Q99", "a note"])
 

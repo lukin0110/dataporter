@@ -211,7 +211,8 @@ class FakeHermes:
         self.spec = dict(spec)
         self.spec_path.write_text(json.dumps(self.spec), encoding="utf-8")
         body = (
-            _BODY.replace("__SPEC__", str(self.spec_path))
+            _BODY
+            .replace("__SPEC__", str(self.spec_path))
             .replace("__STATE__", str(self.state_path))
             .replace("__CALLS__", str(self.calls_path))
         )
@@ -221,9 +222,7 @@ class FakeHermes:
 
     def with_profile(self, name: str, **config: str) -> "FakeHermes":
         """Pretend `setup` has already run once."""
-        self.state_path.write_text(
-            json.dumps({"profiles": [name], "config": dict(config)}), encoding="utf-8"
-        )
+        self.state_path.write_text(json.dumps({"profiles": [name], "config": dict(config)}), encoding="utf-8")
         return self
 
     @property

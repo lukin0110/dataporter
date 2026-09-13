@@ -76,7 +76,7 @@ def pin_of(certificate: x509.Certificate) -> str:
 
 
 def ensure(directory: Path | None = None) -> Material:
-    """The key pair in `directory`, minting one if there is none or it expired."""
+    """Return the key pair in `directory`, minting one if there is none or it expired."""
     root = directory if directory is not None else default_directory()
     root.mkdir(parents=True, exist_ok=True)
     cert_path, key_path = root / CERT_NAME, root / KEY_NAME
@@ -97,7 +97,7 @@ def ensure(directory: Path | None = None) -> Material:
 
 
 def _load(cert_path: Path, key_path: Path) -> x509.Certificate | None:
-    """The certificate on disk, or `None` when there is none worth serving."""
+    """Return the certificate on disk, or `None` when there is none worth serving."""
     if not cert_path.exists() or not key_path.exists():
         return None
     try:
@@ -110,21 +110,20 @@ def _load(cert_path: Path, key_path: Path) -> x509.Certificate | None:
 
 
 def _mint() -> tuple[x509.Certificate, ec.EllipticCurvePrivateKey]:
-    """A self-signed certificate for `claude.ai`, and the key under it.
+    """Return a self-signed certificate for `claude.ai`, and the key under it.
 
     P-256 rather than RSA: it is a few milliseconds to generate rather than a
     second, and Chrome is as happy with it.
     """
     key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name(
-        [
-            x509.NameAttribute(NameOID.COMMON_NAME, HOST),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "claude-mock"),
-        ]
-    )
+    name = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, HOST),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "claude-mock"),
+    ])
     now = dt.datetime.now(dt.UTC)
     certificate = (
-        x509.CertificateBuilder()
+        x509
+        .CertificateBuilder()
         .subject_name(name)
         .issuer_name(name)
         .public_key(key.public_key())
@@ -132,13 +131,11 @@ def _mint() -> tuple[x509.Certificate, ec.EllipticCurvePrivateKey]:
         .not_valid_before(now - dt.timedelta(minutes=5))
         .not_valid_after(now + dt.timedelta(days=VALID_DAYS))
         .add_extension(
-            x509.SubjectAlternativeName(
-                [
-                    x509.DNSName(HOST),
-                    x509.DNSName(f"*.{HOST}"),
-                    x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
-                ]
-            ),
+            x509.SubjectAlternativeName([
+                x509.DNSName(HOST),
+                x509.DNSName(f"*.{HOST}"),
+                x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+            ]),
             critical=False,
         )
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)

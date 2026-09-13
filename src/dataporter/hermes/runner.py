@@ -201,7 +201,7 @@ def json_objects(text: str) -> list[dict[str, Any]]:
 
 
 def last_result_object(text: str) -> dict[str, Any] | None:
-    """The last object that claims to be a result, or `None`."""
+    """Return the last object that claims to be a result, or `None`."""
     candidates = [item for item in json_objects(text) if RESULT_KEY in item]
     return candidates[-1] if candidates else None
 
@@ -237,13 +237,17 @@ _OUTPUT_KEYS = ("output_tokens", "completion_tokens", "tokens_out", "output")
 _COST_KEYS = ("cost_usd", "total_cost_usd", "cost", "total_cost")
 
 
+MAX_SEARCH_DEPTH = 5
+"""How far into a runtime's JSON to look before calling the number absent."""
+
+
 def _find_number(payload: Any, names: Sequence[str], depth: int = 0) -> float:
-    """The first number under any of `names`, searched breadth-first-ish.
+    """Return the first number under any of `names`, searched breadth-first-ish.
 
     Breadth before depth because a runtime that reports both a per-step and a
     total puts the total nearer the top, and the first match wins.
     """
-    if depth > 5 or not isinstance(payload, Mapping):
+    if depth > MAX_SEARCH_DEPTH or not isinstance(payload, Mapping):
         return 0.0
     for name in names:
         value = payload.get(name)
@@ -344,15 +348,13 @@ class HermesRunner:
         stderr_path = self.stderr_path(run_id)
         command = self.command(prompt, run_id=run_id)
         started = time.monotonic()
-        _logger.info(
-            "hermes run", extra={"run_id": run_id, "timeout_s": round(timeout_s, 1)}
-        )
+        _logger.info("hermes run", extra={"run_id": run_id, "timeout_s": round(timeout_s, 1)})
         try:
             with (
-                open(stdout_path, "wb") as out,
-                open(stderr_path, "wb") as err,
+                Path(stdout_path).open("wb") as out,
+                Path(stderr_path).open("wb") as err,
             ):
-                process = subprocess.Popen(
+                process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] - the Hermes command we built
                     command,
                     cwd=self.settings.workspace,
                     env=hermes_env(self.settings),
@@ -370,9 +372,7 @@ class HermesRunner:
             returncode = process.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired as exc:
             _kill_group(process)
-            raise HermesError(
-                detail=f"timeout after {timeout_s:g}s; stdout: {stdout_path}"
-            ) from exc
+            raise HermesError(detail=f"timeout after {timeout_s:g}s; stdout: {stdout_path}") from exc
         elapsed = time.monotonic() - started
         _logger.info(
             "hermes finished",
@@ -404,8 +404,7 @@ class HermesRunner:
         raw = self.run_raw(prompt, run_id=run_id, timeout_s=timeout_s)
         if raw.returncode == REJECTED_EXIT_CODE:
             raise HermesUsageError(
-                detail=f"hermes rejected the invocation (exit "
-                f"{REJECTED_EXIT_CODE}); stderr: {raw.stderr_path}"
+                detail=f"hermes rejected the invocation (exit {REJECTED_EXIT_CODE}); stderr: {raw.stderr_path}"
             )
         payload = last_result_object(raw.stdout)
         if payload is None:
@@ -416,10 +415,7 @@ class HermesRunner:
         try:
             result = HermesResult.model_validate(payload)
         except ValidationError as exc:
-            raise HermesError(
-                detail=f"invalid result json: {_first_problem(exc)}; "
-                f"stdout: {raw.stdout_path}"
-            ) from exc
+            raise HermesError(detail=f"invalid result json: {_first_problem(exc)}; stdout: {raw.stdout_path}") from exc
         _logger.info(
             "hermes result",
             extra={
@@ -433,7 +429,7 @@ class HermesRunner:
 
 
 def check_run_id(run_id: str) -> str:
-    """The run id, if it is one. It becomes a filename, so it is checked."""
+    """Return the run id, if it is one. It becomes a filename, so it is checked."""
     if RUN_ID.fullmatch(run_id) is None:
         raise ValueError(f"not a usable run id: {run_id!r}")
     return run_id

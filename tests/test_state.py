@@ -8,6 +8,7 @@ that `state.json` holds exactly what §7 says and nothing else.
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -68,13 +69,12 @@ def read(path: Path) -> dict:
 
 
 def state_with(**statuses: Status) -> MigrationState:
-    """A state built from `short id → status`, in the order given."""
+    """Return a state built from `short id → status`, in the order given."""
     return MigrationState(
         root={
             uuid: ConversationState(status=status)
             for uuid, status in (
-                (next(item for item in ORDER if item.startswith(short)), status)
-                for short, status in statuses.items()
+                (next(item for item in ORDER if item.startswith(short)), status) for short, status in statuses.items()
             )
         }
     )
@@ -119,7 +119,8 @@ def test_updated_at_is_stamped_on_every_write_as_zulu_seconds(tmp_path: Path) ->
     store = StateStore(tmp_path)
     store.update(ORDER[0], title="")
     stamp = read(store.state_path)[ORDER[0]]["updated_at"]
-    assert stamp.endswith("Z") and "+00:00" not in stamp
+    assert stamp.endswith("Z")
+    assert "+00:00" not in stamp
     assert len(stamp) == len("2026-09-10T14:03:11Z")
 
 
@@ -136,13 +137,13 @@ def test_an_unknown_key_is_refused_on_the_way_in(tmp_path: Path) -> None:
     payload = read(store.state_path)
     payload[ORDER[0]]["notes"] = "hand-edited"
     store.state_path.write_text(json.dumps(payload), encoding="utf-8")
-    with pytest.raises(state.StateError, match="invalid state.json"):
+    with pytest.raises(state.StateError, match=re.escape("invalid state.json")):
         StateStore(tmp_path).load()
 
 
 def test_an_unknown_status_is_refused(tmp_path: Path) -> None:
     store = StateStore(tmp_path)
-    with pytest.raises(state.IllegalUpdate):
+    with pytest.raises(state.IllegalUpdateError):
         store.update(ORDER[0], status="finished")
 
 
@@ -161,7 +162,7 @@ def test_a_state_file_that_cannot_be_read_at_all_is_reported(tmp_path: Path) -> 
 
 def test_a_naive_timestamp_is_read_as_utc(tmp_path: Path) -> None:
     """Every timestamp this tool writes is UTC, so that is what a naive one is."""
-    entry = ConversationState(updated_at=datetime(2026, 9, 10, 14, 3, 11))
+    entry = ConversationState(updated_at=datetime(2026, 9, 10, 14, 3, 11))  # ruff: ignore[call-datetime-without-tzinfo] - a naive timestamp is this test's subject
     assert entry.updated_at.tzinfo is UTC
     assert json.loads(entry.model_dump_json())["updated_at"] == "2026-09-10T14:03:11Z"
 
@@ -179,9 +180,7 @@ def test_the_state_answers_the_questions_a_dict_does(tmp_path: Path) -> None:
 
 def test_no_message_body_reaches_the_state_file(tmp_path: Path) -> None:
     """Titles are stored because §7 shows them. Nothing else from the export is."""
-    conversations = json.loads(
-        (FIXTURES / "export-small" / "conversations.json").read_text(encoding="utf-8")
-    )
+    conversations = json.loads((FIXTURES / "export-small" / "conversations.json").read_text(encoding="utf-8"))
     store = StateStore(tmp_path)
     for conversation in conversations:
         store.update(
@@ -201,9 +200,7 @@ def test_no_message_body_reaches_the_state_file(tmp_path: Path) -> None:
     assert [body for body in bodies if body[:40] in written] == []
 
 
-def test_every_mutation_goes_through_a_tmp_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_every_mutation_goes_through_a_tmp_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     replaced: list[tuple[str, str]] = []
     original = os.replace
 
@@ -221,11 +218,12 @@ def test_every_mutation_goes_through_a_tmp_file(
     ]
 
 
-def test_the_directory_entry_is_flushed_too(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Flushing the file's bytes is half of it: without the directory, a power
-    loss can leave the new contents on disk under the old name."""
+def test_the_directory_entry_is_flushed_too(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Flushing the file's bytes is half of it.
+
+    Without the directory, a power loss can leave the new contents on disk under the old
+    name.
+    """
     synced: list[int] = []
     original = os.fsync
 
@@ -236,8 +234,8 @@ def test_the_directory_entry_is_flushed_too(
     monkeypatch.setattr(os, "fsync", record)
     store = StateStore(tmp_path)
     store.update(ORDER[0], title="")
-    assert os.stat(tmp_path).st_ino in synced
-    assert os.stat(store.state_path).st_ino in synced
+    assert Path(tmp_path).stat().st_ino in synced
+    assert Path(store.state_path).stat().st_ino in synced
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="POSIX only")
@@ -258,7 +256,8 @@ def test_a_kill_between_tmp_and_replace_leaves_the_previous_file(
             os._exit(1)
     _, status = os.waitpid(child, 0)
 
-    assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+    assert os.WIFSIGNALED(status)
+    assert os.WTERMSIG(status) == signal.SIGKILL
     assert store.state_path.read_bytes() == before
     assert read(store.state_path)[ORDER[0]]["chunks_total"] == 1
     # The temporary file is what the kill interrupted, so it is there and it is
@@ -279,8 +278,10 @@ def test_update_creates_an_entry_that_is_not_there_yet(tmp_path: Path) -> None:
 
 
 def test_ensure_leaves_an_existing_entry_alone(tmp_path: Path) -> None:
-    """`12` re-creates every planned conversation on every run; a resume must not
-    reset one that finished."""
+    """`12` re-creates every planned conversation on every run.
+
+    A resume must not reset one that finished.
+    """
     store = StateStore(tmp_path)
     store.update(ORDER[0], title="Listing files", status=Status.COMPLETED)
     kept = store.ensure(ORDER[0], title="Listing files")
@@ -320,7 +321,7 @@ def test_the_store_reads_back_what_it_wrote(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "old, new",
+    ("old", "new"),
     [
         (Status.PENDING, Status.RUNNING),
         (Status.RUNNING, Status.COMPLETED),
@@ -332,9 +333,7 @@ def test_the_store_reads_back_what_it_wrote(tmp_path: Path) -> None:
         (Status.COMPLETED, Status.RUNNING),
     ],
 )
-def test_the_spec_table_is_what_is_allowed(
-    tmp_path: Path, old: Status, new: Status
-) -> None:
+def test_the_spec_table_is_what_is_allowed(tmp_path: Path, old: Status, new: Status) -> None:
     store = StateStore(tmp_path)
     store.update(ORDER[0], status=old)
     assert store.update(ORDER[0], status=new).status is new
@@ -355,13 +354,13 @@ def test_a_step_that_is_not_one_cannot_be_recorded(tmp_path: Path) -> None:
     the "last successful step" `19` prints.
     """
     store = StateStore(tmp_path)
-    with pytest.raises(state.IllegalUpdate):
+    with pytest.raises(state.IllegalUpdateError):
         store.update(ORDER[0], last_step="await_response_part_2")
     assert store.update(ORDER[0], last_step=Step.AWAIT).last_step is Step.AWAIT
 
 
 @pytest.mark.parametrize(
-    "old, new",
+    ("old", "new"),
     [
         (Status.PENDING, Status.COMPLETED),
         (Status.COMPLETED, Status.FAILED),
@@ -369,14 +368,15 @@ def test_a_step_that_is_not_one_cannot_be_recorded(tmp_path: Path) -> None:
         (Status.PARTIAL, Status.PENDING),
     ],
 )
-def test_a_transition_outside_the_table_is_an_internal_error(
-    tmp_path: Path, old: Status, new: Status
-) -> None:
-    """A `ValueError`, not a `StateError`: no operator input can cause one, so it
-    is exit `70` rather than a message telling them to fix something."""
+def test_a_transition_outside_the_table_is_an_internal_error(tmp_path: Path, old: Status, new: Status) -> None:
+    """A `ValueError`, not a `StateError`.
+
+    No operator input can cause one, so it is exit `70` rather than a message telling
+    them to fix something.
+    """
     store = StateStore(tmp_path)
     store.update(ORDER[0], status=old)
-    with pytest.raises(state.IllegalTransition):
+    with pytest.raises(state.IllegalTransitionError):
         store.update(ORDER[0], status=new)
 
 
@@ -427,7 +427,7 @@ def test_recovery_writes_nothing_when_there_was_no_crash(tmp_path: Path) -> None
 
 def test_counters_start_at_zero_and_bump(tmp_path: Path) -> None:
     store = StateStore(tmp_path)
-    assert store.run().counters() == {name: 0 for name in state.COUNTERS}
+    assert store.run().counters() == dict.fromkeys(state.COUNTERS, 0)
     assert store.bump_counter("retries") == 1
     assert store.bump_counter("browser_actions", 12) == 12
     assert StateStore(tmp_path).run().retries == 1
@@ -485,7 +485,8 @@ def test_a_pause_record_round_trips(tmp_path: Path) -> None:
         )
     )
     paused = StateStore(tmp_path).run().paused
-    assert paused is not None and paused.reason == "auth_required"
+    assert paused is not None
+    assert paused.reason == "auth_required"
     store.set_paused(None)
     assert StateStore(tmp_path).run().paused is None
 
@@ -493,7 +494,7 @@ def test_a_pause_record_round_trips(tmp_path: Path) -> None:
 def test_a_workspace_from_another_export_is_refused(tmp_path: Path) -> None:
     store = StateStore(tmp_path)
     store.bind_export("aaaa")
-    with pytest.raises(state.FingerprintMismatch, match="different export"):
+    with pytest.raises(state.FingerprintMismatchError, match="different export"):
         StateStore(tmp_path).check_export("bbbb")
 
 
@@ -520,7 +521,7 @@ def test_a_run_file_of_the_right_version_but_the_wrong_shape_is_refused(
         json.dumps({"schema_version": state.SCHEMA_VERSION, "retries": "many"}),
         encoding="utf-8",
     )
-    with pytest.raises(state.StateError, match="invalid run.json"):
+    with pytest.raises(state.StateError, match=re.escape("invalid run.json")):
         StateStore(tmp_path).run()
 
 
@@ -530,7 +531,7 @@ def test_a_future_schema_version_stops_the_run(tmp_path: Path) -> None:
         json.dumps({"schema_version": state.SCHEMA_VERSION + 1, "unknown": []}),
         encoding="utf-8",
     )
-    with pytest.raises(state.SchemaMismatch, match="migrate the workspace"):
+    with pytest.raises(state.SchemaMismatchError, match="migrate the workspace"):
         StateStore(tmp_path).run()
 
 
@@ -566,14 +567,13 @@ def test_a_second_run_on_one_workspace_is_refused(tmp_path: Path) -> None:
         text=True,
     )
     try:
-        assert child.stdout is not None and child.stdin is not None
+        assert child.stdout is not None
+        assert child.stdin is not None
         assert child.stdout.readline() == "ready\n"
-        with pytest.raises(state.WorkspaceLocked) as caught:
+        with pytest.raises(state.WorkspaceLockedError) as caught:
             WorkspaceLock(tmp_path).acquire()
         assert str(caught.value).startswith(f"workspace locked by pid {child.pid} ")
-        assert str(caught.value).endswith(
-            " — use --force-unlock if that process is gone"
-        )
+        assert str(caught.value).endswith(" — use --force-unlock if that process is gone")
         child.stdin.write("\n")
         child.stdin.close()
         assert child.wait(timeout=10) == 0
@@ -587,7 +587,7 @@ def test_the_locked_message_names_the_pid_and_the_time(tmp_path: Path) -> None:
     held = WorkspaceLock(tmp_path).acquire()
     info = held.read()
     assert info is not None
-    with pytest.raises(state.WorkspaceLocked) as caught:
+    with pytest.raises(state.WorkspaceLockedError) as caught:
         WorkspaceLock(tmp_path).acquire()
     assert str(caught.value) == (
         f"workspace locked by pid {os.getpid()} since "
@@ -614,16 +614,15 @@ def test_force_unlock_removes_a_lock_whose_process_is_gone(tmp_path: Path) -> No
 
 
 def test_force_unlock_refuses_a_lock_somebody_is_still_using(tmp_path: Path) -> None:
-    """Breaking a live lock would let two runs write one workspace, which is the
-    one thing the lock exists to prevent."""
+    """Breaking a live lock would let two runs write one workspace, which is the one thing the lock exists to prevent."""
     WorkspaceLock(tmp_path).acquire()
-    with pytest.raises(state.WorkspaceLocked, match="still running"):
+    with pytest.raises(state.WorkspaceLockedError, match="still running"):
         WorkspaceLock(tmp_path).acquire(force_unlock=True)
 
 
 def test_an_unreadable_lock_file_can_be_broken(tmp_path: Path) -> None:
     (tmp_path / state.LOCK_FILENAME).write_text("not json", encoding="utf-8")
-    with pytest.raises(state.WorkspaceLocked, match="unreadable"):
+    with pytest.raises(state.WorkspaceLockedError, match="unreadable"):
         WorkspaceLock(tmp_path).acquire()
     WorkspaceLock(tmp_path).acquire(force_unlock=True).release()
 
@@ -649,7 +648,9 @@ def test_a_process_owned_by_another_user_is_alive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`os.kill(pid, 0)` says `EPERM` for a live process we may not signal.
-    Reading that as "gone" would let `--force-unlock` break somebody's lock."""
+
+    Reading that as "gone" would let `--force-unlock` break somebody's lock.
+    """
 
     def refuse(pid: int, signal_number: int) -> None:
         raise PermissionError
@@ -669,9 +670,7 @@ def test_pending_is_the_default_selection() -> None:
 
 
 def test_retry_failed_selects_only_failed() -> None:
-    migration = state_with(
-        aa=Status.COMPLETED, bb=Status.FAILED, cc=Status.PARTIAL, dd=Status.COMPLETED
-    )
+    migration = state_with(aa=Status.COMPLETED, bb=Status.FAILED, cc=Status.PARTIAL, dd=Status.COMPLETED)
     assert state.select(ORDER, migration, Selection(retry_failed=True)) == [ORDER[1]]
 
 
@@ -693,15 +692,11 @@ def test_a_running_entry_is_not_selected_until_recovery_converts_it() -> None:
 
 
 def test_only_accepts_a_short_id() -> None:
-    assert state.select(ORDER, MigrationState(), Selection(only=["cc000003"])) == [
-        ORDER[2]
-    ]
+    assert state.select(ORDER, MigrationState(), Selection(only=["cc000003"])) == [ORDER[2]]
 
 
 def test_only_accepts_a_full_uuid_and_keeps_export_order() -> None:
-    chosen = state.select(
-        ORDER, MigrationState(), Selection(only=[ORDER[3], "aa000001"])
-    )
+    chosen = state.select(ORDER, MigrationState(), Selection(only=[ORDER[3], "aa000001"]))
     assert chosen == [ORDER[0], ORDER[3]]
 
 
@@ -727,9 +722,7 @@ def test_limit_truncates_in_export_order() -> None:
 
 def test_limit_applies_after_only() -> None:
     """`--only` picks which, `--limit` picks how many."""
-    chosen = state.select(
-        ORDER, MigrationState(), Selection(only=[ORDER[2], ORDER[1]], limit=1)
-    )
+    chosen = state.select(ORDER, MigrationState(), Selection(only=[ORDER[2], ORDER[1]], limit=1))
     assert chosen == [ORDER[1]]
 
 
@@ -745,9 +738,7 @@ def test_a_negative_limit_is_refused() -> None:
 
 def test_pending_is_everything_that_is_not_done() -> None:
     """`18`'s rule. A `running` entry counts as pending rather than as nothing."""
-    counts = state.status_counts(
-        state_with(aa=Status.COMPLETED, bb=Status.RUNNING, cc=Status.FAILED)
-    )
+    counts = state.status_counts(state_with(aa=Status.COMPLETED, bb=Status.RUNNING, cc=Status.FAILED))
     assert counts == {
         "total": 3,
         "completed": 1,
@@ -769,23 +760,16 @@ def seed_state(workspace: Path, statuses: Sequence[Status]) -> None:
     counters does not need 127 whole-file writes to get them.
     """
     migration = MigrationState(
-        root={
-            f"uuid-{index:04d}": ConversationState(status=status)
-            for index, status in enumerate(statuses)
-        }
+        root={f"uuid-{index:04d}": ConversationState(status=status) for index, status in enumerate(statuses)}
     )
-    state.write_atomically(
-        workspace / state.STATE_FILENAME, migration.model_dump_json(indent=2) + "\n"
-    )
+    state.write_atomically(workspace / state.STATE_FILENAME, migration.model_dump_json(indent=2) + "\n")
 
 
 def test_status_prints_the_counters_block(runner: CliRunner, workspace: Path) -> None:
     """The brief's own §10 numbers: 89 / 1 / 1 of 127."""
     seed_state(
         workspace / "migration",
-        [Status.COMPLETED] * 89
-        + [Status.PARTIAL, Status.FAILED]
-        + [Status.PENDING] * 36,
+        [Status.COMPLETED] * 89 + [Status.PARTIAL, Status.FAILED] + [Status.PENDING] * 36,
     )
     code, out, _ = run(runner, "status")
     assert code == ExitCode.OK
@@ -799,9 +783,7 @@ def test_status_widens_every_line_together(runner: CliRunner, workspace: Path) -
     assert {len(line) for line in out.splitlines()} == {len("Completed: 1,234")}
 
 
-def test_status_on_a_workspace_nothing_has_run_in_is_zeros(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_status_on_a_workspace_nothing_has_run_in_is_zeros(runner: CliRunner, workspace: Path) -> None:
     """`status` answers a question; "nothing has happened here" is an answer."""
     code, out, _ = run(runner, "status")
     assert code == ExitCode.OK
@@ -814,9 +796,7 @@ def test_status_prints_no_title(runner: CliRunner, workspace: Path) -> None:
     assert "Listing files" not in out + err
 
 
-def test_status_json_is_the_state_file_plus_the_run_counters(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_status_json_is_the_state_file_plus_the_run_counters(runner: CliRunner, workspace: Path) -> None:
     store = StateStore(workspace / "migration")
     store.update(ORDER[0], title="Listing files", status=Status.RUNNING)
     store.update(ORDER[0], status=Status.COMPLETED)
@@ -840,14 +820,10 @@ def test_status_json_is_the_state_file_plus_the_run_counters(
     }
 
 
-def test_status_reports_a_schema_mismatch_as_exit_2(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_status_reports_a_schema_mismatch_as_exit_2(runner: CliRunner, workspace: Path) -> None:
     target = workspace / "migration"
     target.mkdir()
-    (target / state.RUN_FILENAME).write_text(
-        json.dumps({"schema_version": 99}), encoding="utf-8"
-    )
+    (target / state.RUN_FILENAME).write_text(json.dumps({"schema_version": 99}), encoding="utf-8")
     code, _, err = run(runner, "status")
     assert code == ExitCode.USAGE
     assert err.startswith("error: workspace was written with state schema 99")
@@ -863,9 +839,7 @@ def test_status_writes_nothing(runner: CliRunner, workspace: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_a_dry_run_counts_only_what_this_run_would_do(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_a_dry_run_counts_only_what_this_run_would_do(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     store = StateStore(workspace / "migration")
     for uuid in ORDER[:3]:
         store.update(uuid, status=Status.RUNNING)
@@ -880,29 +854,23 @@ def test_the_retry_flags_widen_a_dry_run_once_there_is_state(
     store = StateStore(workspace / "migration")
     for uuid in ORDER:
         store.update(uuid, status=Status.RUNNING)
-    for uuid, status in zip(ORDER, [Status.COMPLETED] * 3 + [Status.FAILED]):
+    for uuid, status in zip(ORDER, [Status.COMPLETED] * 3 + [Status.FAILED], strict=False):
         store.update(uuid, status=status)
     # Two of the fixture's six were never attempted; the failed one joins them.
     _, plain, _ = run(runner, "import", str(export_dir), "--dry-run")
     assert plain.startswith("Conversations found:      2\n")
-    _, widened, _ = run(
-        runner, "import", str(export_dir), "--dry-run", "--retry-failed"
-    )
+    _, widened, _ = run(runner, "import", str(export_dir), "--dry-run", "--retry-failed")
     assert widened.startswith("Conversations found:      3\n")
 
 
-def test_everything_completed_and_no_force_is_exit_4(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_everything_completed_and_no_force_is_exit_4(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     store = StateStore(workspace / "migration")
-    for conversation in json.loads(
-        (export_dir / "conversations.json").read_text(encoding="utf-8")
-    ):
+    for conversation in json.loads((export_dir / "conversations.json").read_text(encoding="utf-8")):
         store.update(conversation["uuid"], status=Status.RUNNING)
         store.update(conversation["uuid"], status=Status.COMPLETED)
     code, out, _ = run(runner, "import", str(export_dir), "--dry-run")
     assert code == ExitCode.NOTHING_TO_DO
-    assert out == ""
+    assert not out
 
 
 def test_the_default_limit_is_run_max_conversations(
@@ -916,27 +884,21 @@ def test_the_default_limit_is_run_max_conversations(
     assert out.startswith("Conversations found:      2\n")
 
 
-def test_a_dry_run_against_another_export_is_exit_2(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_a_dry_run_against_another_export_is_exit_2(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     StateStore(workspace / "migration").bind_export("not-this-export")
     code, _, err = run(runner, "import", str(export_dir), "--dry-run")
     assert code == ExitCode.USAGE
     assert err == "error: workspace belongs to a different export\n"
 
 
-def test_a_dry_run_still_writes_nothing(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_a_dry_run_still_writes_nothing(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """§9: no account is modified, and no workspace appears next to the export."""
     code, _, _ = run(runner, "import", str(export_dir), "--dry-run")
     assert code == ExitCode.OK
     assert not (workspace / "migration").exists()
 
 
-def test_seeds_accepts_a_short_id_too(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_seeds_accepts_a_short_id_too(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     """One resolver for every `--only`, so the two commands cannot drift."""
     code, out, _ = run(runner, "seeds", str(export_dir), "--only", "aa000001")
     assert code == ExitCode.OK

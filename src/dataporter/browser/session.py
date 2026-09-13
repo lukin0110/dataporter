@@ -10,18 +10,21 @@ calls, and the CLI adds nothing but the flag parsing and the exit.
 import shutil
 import time
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from dataporter import PROGRAM_NAME, log
+from dataporter import PROGRAM_NAME, log, signin
 from dataporter.browser import launcher
 from dataporter.browser.cdp import CdpClient, Page, Target
-from dataporter.browser.launcher import BrowserSession, PortInUse
+from dataporter.browser.launcher import BrowserSession, PortInUseError
 from dataporter.browser.probe import CLAUDE_HOST, NEW_CHAT_URL, PageState, probe
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import AuthError, BrowserError
 from dataporter.exit_codes import ExitCode
 from dataporter.state import StateError
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _logger = log.get_logger(__name__)
 
@@ -49,7 +52,7 @@ def claude_tabs(client: CdpClient) -> list[Target]:
 
 
 def open_claude_tab(session: BrowserSession, url: str = NEW_CHAT_URL) -> Page:
-    """The tab to drive: an existing claude.ai tab, or one made to be it.
+    """Return the tab to drive: an existing claude.ai tab, or one made to be it.
 
     A blank tab is reused before a new one is created, because that is what a
     just-launched browser looks like while its first page is still loading —
@@ -125,9 +128,7 @@ def settled(page: Page, *, timeout_s: float = SETTLE_S) -> bool:
         time.sleep(SETTLE_POLL_S)
 
 
-def current_state(
-    session: BrowserSession, url: str = NEW_CHAT_URL, *, settle_s: float = SETTLE_S
-) -> PageState:
+def current_state(session: BrowserSession, url: str = NEW_CHAT_URL, *, settle_s: float = SETTLE_S) -> PageState:
     """Probe the claude.ai tab, opening one if there is not one yet.
 
     The connection is closed again on the way out. That costs a WebSocket
@@ -156,8 +157,9 @@ def wait_for_login(
     poll_s: float = LOGIN_POLL_S,
     url: str = NEW_CHAT_URL,
 ) -> PageState | None:
-    """Poll until the operator has signed in, or until the timeout. `None` on
-    timeout.
+    """Poll until the operator has signed in, or until the timeout.
+
+    `None` on timeout.
 
     A failed probe is not a failed login: the page is being navigated, the tab is
     being replaced, the identity provider is redirecting. Only a browser that has
@@ -208,11 +210,9 @@ def remove_profile(settings: Settings) -> bool:
     the directory under a running Chrome leaves a half-written profile and a
     browser that still holds the session in memory.
     """
-    client = CdpClient(
-        port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s
-    )
+    client = CdpClient(port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s)
     if client.responding():
-        raise PortInUse(
+        raise PortInUseError(
             detail=f"a browser is still running on port {settings.browser.cdp_port} — "
             f"close it, then run session logout again",
             transient=False,
@@ -273,8 +273,6 @@ def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
     instruction to the person at the keyboard, and it is the only thing this
     command asks of them. A wait that runs out is `AuthError`, exit `3`.
     """
-    from dataporter import signin
-
     if settings.non_interactive:
         signin.require_credentials(settings)
     # `settings.logs_dir`, which is the workspace for the destination and the
@@ -294,9 +292,7 @@ def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
             sink.line(LOGIN_PROMPT)
             arrived = wait_for_login(browser, timeout_s=settings.timeouts.login_s)
             if arrived is None:
-                raise AuthError(
-                    detail=LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s)
-                )
+                raise AuthError(detail=LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
         sink.line(LOGGED_IN.format(profile=settings.browser_profile_dir))
     finally:
         # Always, on every path: Chrome writes its cookie jar and session store
@@ -317,10 +313,8 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
     directory is the whole of it.
     """
     log.enable_run_log(settings.logs_dir)
-    client = CdpClient(
-        port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s
-    )
-    # Raises `PortInUse` when the port answers and the browser on it is not
+    client = CdpClient(port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s)
+    # Raises `PortInUseError` when the port answers and the browser on it is not
     # ours, which is the right answer to "what is my session doing" as well.
     running = launcher.adopt(client, settings.browser_profile_dir)
     if running is None and not settings.browser_profile_dir.exists():
@@ -345,14 +339,13 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
 
 
 def logout(settings: Settings, *, sink: Sink = DISCARD) -> LogoutOutcome:
-    """Remove the browser profile. Local only, and said so: the account itself is
-    untouched, and a session on another machine is not ended by this."""
+    """Remove the browser profile.
+
+    Local only, and said so: the account itself is untouched, and a session on another
+    machine is not ended by this.
+    """
     log.enable_run_log(settings.logs_dir)
     removed = remove_profile(settings)
     profile = settings.browser_profile_dir
-    sink.line(
-        REMOVED.format(profile=profile)
-        if removed
-        else NOTHING_TO_REMOVE.format(profile=profile)
-    )
+    sink.line(REMOVED.format(profile=profile) if removed else NOTHING_TO_REMOVE.format(profile=profile))
     return LogoutOutcome(removed=removed)

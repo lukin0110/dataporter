@@ -1,5 +1,6 @@
 """The CDP client: what it asks, what it refuses, and what it never carries."""
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -26,9 +27,7 @@ def chrome() -> Iterator[FakeChrome]:
     with FakeChrome(
         targets=[
             FakeTarget(id="page-1", url="https://claude.ai/new", evaluate={"ok": 1}),
-            FakeTarget(
-                id="worker-1", url="https://claude.ai/sw.js", type="service_worker"
-            ),
+            FakeTarget(id="worker-1", url="https://claude.ai/sw.js", type="service_worker"),
         ]
     ) as fake:
         yield fake
@@ -60,8 +59,10 @@ def test_a_dead_port_is_a_browser_error() -> None:
 
 
 def test_targets_drop_the_title(client: cdp.CdpClient) -> None:
-    """A claude.ai tab's title is a conversation title (§10). There is no field
-    for it, so no helper and no log line can grow one by accident."""
+    """A claude.ai tab's title is a conversation title (§10).
+
+    There is no field for it, so no helper and no log line can grow one by accident.
+    """
     targets = client.targets()
     assert [item.id for item in targets] == ["page-1", "worker-1"]
     assert not any(hasattr(item, "title") for item in targets)
@@ -72,7 +73,7 @@ def test_targets_carry_host_and_kind(client: cdp.CdpClient) -> None:
     page = client.pages()[0]
     assert page.host == "claude.ai"
     assert page.is_page
-    assert cdp.Target.from_json({}).host == ""
+    assert not cdp.Target.from_json({}).host
 
 
 def test_close_target_removes_the_tab(client: cdp.CdpClient) -> None:
@@ -161,15 +162,13 @@ def test_evaluate_surfaces_a_page_exception(chrome: FakeChrome) -> None:
 
     chrome.responder = responder
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
-    with client.attach("page-1") as page:
-        with pytest.raises(BrowserError, match="ReferenceError"):
-            page.evaluate("boom")
+    with client.attach("page-1") as page, pytest.raises(BrowserError, match="ReferenceError"):
+        page.evaluate("boom")
 
 
 def test_a_cdp_error_is_a_browser_error(client: cdp.CdpClient) -> None:
-    with client.attach("page-1") as page:
-        with pytest.raises(BrowserError, match="wasn't found"):
-            page.send("Nonsense.method")
+    with client.attach("page-1") as page, pytest.raises(BrowserError, match="wasn't found"):
+        page.send("Nonsense.method")
 
 
 def test_navigate_reports_an_error_text(chrome: FakeChrome) -> None:
@@ -180,9 +179,8 @@ def test_navigate_reports_an_error_text(chrome: FakeChrome) -> None:
 
     chrome.responder = responder
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
-    with client.attach("page-1") as page:
-        with pytest.raises(BrowserError, match="ERR_NAME_NOT_RESOLVED"):
-            page.navigate("https://claude.invalid/")
+    with client.attach("page-1") as page, pytest.raises(BrowserError, match="ERR_NAME_NOT_RESOLVED"):
+        page.navigate("https://claude.invalid/")
 
 
 def test_navigate_moves_the_tab(client: cdp.CdpClient, chrome: FakeChrome) -> None:
@@ -191,11 +189,11 @@ def test_navigate_moves_the_tab(client: cdp.CdpClient, chrome: FakeChrome) -> No
     assert chrome.targets[0].url == "https://claude.ai/chat/x"
 
 
-def test_insert_text_sends_the_whole_string(
-    client: cdp.CdpClient, chrome: FakeChrome
-) -> None:
-    """`08` pastes 40 kB seeds through this and compares hashes; the string must
-    arrive as one `Input.insertText` and not as keystrokes."""
+def test_insert_text_sends_the_whole_string(client: cdp.CdpClient, chrome: FakeChrome) -> None:
+    """`08` pastes 40 kB seeds through this and compares hashes.
+
+    The string must arrive as one `Input.insertText` and not as keystrokes.
+    """
     seed = "a" * 40_000
     with client.attach("page-1") as page:
         page.insert_text(seed)
@@ -204,9 +202,7 @@ def test_insert_text_sends_the_whole_string(
     assert inserted[0].params["text"] == seed
 
 
-def test_set_file_input_files(
-    client: cdp.CdpClient, chrome: FakeChrome, tmp_path: Path
-) -> None:
+def test_set_file_input_files(client: cdp.CdpClient, chrome: FakeChrome, tmp_path: Path) -> None:
     upload = tmp_path / "notes.md"
     upload.write_text("hello", encoding="utf-8")
     with client.attach("page-1") as page:
@@ -217,9 +213,8 @@ def test_set_file_input_files(
 
 
 def test_set_file_input_files_without_a_match(client: cdp.CdpClient) -> None:
-    with client.attach("page-1") as page:
-        with pytest.raises(BrowserError, match="no element matches"):
-            page.set_file_input_files("input.missing", [])
+    with client.attach("page-1") as page, pytest.raises(BrowserError, match="no element matches"):
+        page.set_file_input_files("input.missing", [])
 
 
 def test_set_file_input_files_without_a_document_node(chrome: FakeChrome) -> None:
@@ -241,28 +236,23 @@ def test_set_file_input_files_without_a_document_node(chrome: FakeChrome) -> Non
 
     chrome.responder = responder
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
-    with client.attach("page-1") as page:
-        with pytest.raises(BrowserError, match="no document node"):
-            page.set_file_input_files('input[type="file"]', [])
+    with client.attach("page-1") as page, pytest.raises(BrowserError, match="no document node"):
+        page.set_file_input_files('input[type="file"]', [])
 
 
 def test_url_is_read_from_the_page(chrome: FakeChrome) -> None:
-    """`/json/list` is a snapshot; a redirect to /login between then and now is
-    exactly what `probe` exists to notice."""
-    chrome.targets = [
-        FakeTarget(
-            id="page-1", url="https://claude.ai/new", evaluate="https://claude.ai/login"
-        )
-    ]
+    """`/json/list` is a snapshot.
+
+    A redirect to /login between then and now is exactly what `probe` exists to notice.
+    """
+    chrome.targets = [FakeTarget(id="page-1", url="https://claude.ai/new", evaluate="https://claude.ai/login")]
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
     with client.attach("page-1") as page:
         assert page.url == "https://claude.ai/login"
 
 
 def test_url_falls_back_to_the_target(chrome: FakeChrome) -> None:
-    chrome.targets = [
-        FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=None)
-    ]
+    chrome.targets = [FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=None)]
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
     with client.attach("page-1") as page:
         assert page.url == "https://claude.ai/new"
@@ -289,8 +279,10 @@ def test_drain_collects_events_that_arrive_unprompted(chrome: FakeChrome) -> Non
 def test_drain_collects_an_event_that_arrives_between_commands(
     chrome: FakeChrome,
 ) -> None:
-    """A dialog can open while nothing is being asked. `12` holds a connection
-    open for a whole conversation and finds out this way."""
+    """A dialog can open while nothing is being asked.
+
+    `12` holds a connection open for a whole conversation and finds out this way.
+    """
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
     with client.attach("page-1") as page:
         chrome.push(dialog_event("beforeunload"))
@@ -328,9 +320,8 @@ def test_a_command_that_is_never_answered_times_out(chrome: FakeChrome) -> None:
 
     chrome.responder = responder
     client = cdp.CdpClient(port=chrome.port, timeout=0.4)
-    with client.attach("page-1") as page:
-        with pytest.raises(BrowserError, match="timed out after 0.4s"):
-            page.evaluate("1")
+    with client.attach("page-1") as page, pytest.raises(BrowserError, match=re.escape("timed out after 0.4s")):
+        page.evaluate("1")
 
 
 def test_a_connection_that_goes_away_mid_command(chrome: FakeChrome) -> None:
@@ -349,6 +340,5 @@ def test_connecting_to_a_dead_socket() -> None:
 def test_browser_connection_needs_a_debugger_url(chrome: FakeChrome) -> None:
     client = cdp.CdpClient(port=chrome.port, timeout=5.0)
     chrome._version = lambda: {"Browser": "Chrome/141"}  # type: ignore[method-assign]
-    with pytest.raises(BrowserError, match="no debugger URL"):
-        with client.browser_connection():
-            pass  # pragma: no cover - the context manager raises on entry
+    with pytest.raises(BrowserError, match="no debugger URL"), client.browser_connection():
+        pass  # pragma: no cover - the context manager raises on entry

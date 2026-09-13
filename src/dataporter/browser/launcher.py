@@ -21,7 +21,6 @@ profile. Unattended, `browser.login_form` types into the same Chrome from this
 process, and what is stored is still only the profile.
 """
 
-import os
 import shutil
 import subprocess
 import time
@@ -89,7 +88,7 @@ CLOSE_TIMEOUT_S = 10.0
 POLL_INTERVAL_S = 0.2
 
 
-class PortInUse(BrowserError):
+class PortInUseError(BrowserError):
     """The debug port is occupied by a browser this tool must not touch.
 
     Raised when the port answers and the browser on it is not the one we
@@ -174,9 +173,7 @@ class BrowserSession:
                 process.wait(timeout=timeout)
                 return
             except subprocess.TimeoutExpired:
-                _logger.warning(
-                    "browser did not exit; terminating", extra={"pid": process.pid}
-                )
+                _logger.warning("browser did not exit; terminating", extra={"pid": process.pid})
         elif process.poll() is not None:
             return  # already gone, and reaped by `poll`
         process.terminate()
@@ -198,13 +195,11 @@ class BrowserSession:
             if not self.client.responding():
                 return
             time.sleep(POLL_INTERVAL_S)
-        _logger.warning(
-            "adopted browser is still on the port", extra={"port": self.client.port}
-        )
+        _logger.warning("adopted browser is still on the port", extra={"port": self.client.port})
 
 
 def find_executable(configured: Path | None = None) -> Path:
-    """The browser binary to run.
+    """Return the browser binary to run.
 
     `shutil.which` for both the configured value and the candidates, so a bare
     name (`chromium`) and an absolute path (the macOS bundle) are looked up the
@@ -213,17 +208,14 @@ def find_executable(configured: Path | None = None) -> Path:
     if configured is not None:
         found = shutil.which(str(Path(configured).expanduser()))
         if found is None:
-            raise BrowserError(
-                detail=f"configured browser executable not found: {configured}"
-            )
+            raise BrowserError(detail=f"configured browser executable not found: {configured}")
         return Path(found)
     for candidate in CANDIDATE_EXECUTABLES:
         found = shutil.which(candidate)
         if found is not None:
             return Path(found)
     raise BrowserError(
-        detail="no browser found — install Google Chrome, or set browser.executable "
-        "in the workspace config.toml"
+        detail="no browser found — install Google Chrome, or set browser.executable in the workspace config.toml"
     )
 
 
@@ -232,7 +224,7 @@ def marker_path(profile: Path) -> Path:
 
 
 def read_marker(profile: Path) -> ProfileMarker | None:
-    """The marker, or `None` if it is missing, unreadable or not ours."""
+    """Return the marker, or `None` if it is missing, unreadable or not ours."""
     path = marker_path(profile)
     try:
         raw = path.read_text(encoding="utf-8")
@@ -263,7 +255,7 @@ def ensure_profile(settings: Settings) -> Path:
     """
     profile = settings.browser_profile_dir
     profile.mkdir(parents=True, exist_ok=True)
-    os.chmod(profile, 0o700)
+    Path(profile).chmod(0o700)
     if profile.is_relative_to(settings.workspace):
         ensure_gitignore(settings.workspace)
     return profile
@@ -289,7 +281,7 @@ def ensure_gitignore(workspace: Path) -> Path:
 def adopt(client: CdpClient, profile: Path) -> BrowserSession | None:
     """Reuse the browser already on the debug port, if it is ours.
 
-    `None` means the port is free. A browser that is *not* ours is `PortInUse`
+    `None` means the port is free. A browser that is *not* ours is `PortInUseError`
     and never adopted: attaching to somebody's everyday Chrome would put a
     migration run inside the profile §17 exists to stay out of, and closing it
     afterwards would shut their windows.
@@ -297,21 +289,16 @@ def adopt(client: CdpClient, profile: Path) -> BrowserSession | None:
     if not client.responding():
         return None
     marker = read_marker(profile)
-    if marker is not None and marker.port == client.port:
-        if marker.browser_id and marker.browser_id == client.browser_id():
-            _logger.debug("adopted running browser", extra={"port": client.port})
-            return BrowserSession(client=client, profile=profile, adopted=True)
-    raise PortInUse(
-        detail=f"port {client.port} is used by another browser", transient=False
-    )
+    if marker is not None and marker.port == client.port and marker.browser_id == client.browser_id():
+        _logger.debug("adopted running browser", extra={"port": client.port})
+        return BrowserSession(client=client, profile=profile, adopted=True)
+    raise PortInUseError(detail=f"port {client.port} is used by another browser", transient=False)
 
 
 def launch(settings: Settings, url: str) -> BrowserSession:
-    """A browser at `url`, launched or adopted, with the debug port answering."""
+    """Return a browser at `url`, launched or adopted, with the debug port answering."""
     profile = ensure_profile(settings)
-    client = CdpClient(
-        port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s
-    )
+    client = CdpClient(port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s)
     running = adopt(client, profile)
     if running is not None:
         return running
@@ -334,7 +321,7 @@ def launch(settings: Settings, url: str) -> BrowserSession:
         # Output is discarded rather than captured: Chrome writes a steady
         # stream of GPU and DBus noise on Linux, none of it ours, and a pipe
         # nobody reads fills up and blocks the browser.
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] - the browser command we built
             command,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -381,13 +368,9 @@ def wait_for_port(session: BrowserSession, timeout: float) -> None:
             return
         process = session.process
         if process is not None and process.poll() is not None:
-            raise BrowserError(
-                detail=f"browser exited immediately with code {process.returncode}"
-            )
+            raise BrowserError(detail=f"browser exited immediately with code {process.returncode}")
         time.sleep(POLL_INTERVAL_S)
     # The browser is not closed here: `launch` owns the process it started and
     # closes it on any failure, so doing it twice would only get the ordering
     # wrong in one of the two places.
-    raise BrowserError(
-        detail=f"browser did not open its debug port within {timeout:g}s"
-    )
+    raise BrowserError(detail=f"browser did not open its debug port within {timeout:g}s")

@@ -13,18 +13,14 @@ MARKS = ("*observed*", "*assumed*", "*decided in `02`*")
 
 
 def claims() -> list[str]:
-    """The bullets and table rows under `## Claims`, up to the next `## `.
+    """Return the bullets and table rows under `## Claims`, up to the next `## `.
 
     A bullet is joined with its wrapped continuation lines: the mark is often on
     the last line of one, and a per-line check would read that as unmarked.
     """
     lines = DOC.read_text().splitlines()
     start = lines.index("## Claims")
-    end = next(
-        position
-        for position, line in enumerate(lines[start + 1 :], start + 1)
-        if line.startswith("## ")
-    )
+    end = next(position for position, line in enumerate(lines[start + 1 :], start + 1) if line.startswith("## "))
     found: list[str] = []
     open_bullet = False
     for line in lines[start:end]:

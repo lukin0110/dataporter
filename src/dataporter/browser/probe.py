@@ -76,10 +76,7 @@ MESSAGE_SELECTOR = f"{HUMAN_MESSAGE_SELECTOR}, {ASSISTANT_MESSAGE_SELECTOR}"
 """A turn in the transcript. Role is read by which of the two an element
 matches, so the union must stay the union of exactly those two."""
 
-TITLE_SELECTOR = (
-    '[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], '
-    "header h1, header h2"
-)
+TITLE_SELECTOR = '[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], header h1, header h2'
 """Where the chat's displayed title is shown (`17`).
 
 A union, widest guess last, because the title is the one element of the page we
@@ -258,8 +255,11 @@ PAGE_STATE_JS = expression(PAGE_STATE_TAG, f"  return {_STATE_OBJECT};")
 
 
 def _expect_const(expect: Sequence[str]) -> str:
-    """`expect` as a JavaScript const. Empty strings are dropped: `indexOf('')`
-    is 0 on every string, so one would report itself as found in anything."""
+    """`expect` as a JavaScript const.
+
+    Empty strings are dropped: `indexOf('')` is 0 on every string, so one would report
+    itself as found in anything.
+    """
     return f"  const expect = {json.dumps([item for item in expect if item])};\n"
 
 
@@ -293,7 +293,7 @@ def page_report_js(expect: Sequence[str] = (), expect_title: str | None = None) 
 
 
 def normalise_title(value: str) -> str:
-    """A title, as both sides of the comparison spell it.
+    """Return a title, as both sides of the comparison spell it.
 
     The rule is one line and it lives here rather than in `17` because the other
     half of it is `_TITLE_OBJECT`, three lines up: whatever changes here changes
@@ -365,11 +365,9 @@ class LastMessage(BaseModel):
         role = raw.get("role")
         found = raw.get("contains")
         return cls(
-            role=role if role in ("human", "assistant") else None,
+            role=role if role in {"human", "assistant"} else None,
             chars=int(raw.get("chars") or 0),
-            contains=tuple(str(item) for item in found)
-            if isinstance(found, list)
-            else (),
+            contains=tuple(str(item) for item in found) if isinstance(found, list) else (),
         )
 
 
@@ -429,7 +427,7 @@ class PageReport(PageView):
     title: TitleMatch
 
     def with_role(self, role: str) -> tuple[LastMessage, ...]:
-        """The turns one side of the conversation took, in page order."""
+        """Return the turns one side of the conversation took, in page order."""
         return tuple(item for item in self.messages if item.role == role)
 
 
@@ -439,13 +437,13 @@ class PageReport(PageView):
 
 
 def path_of(url: str) -> str:
-    """The path of an http(s) URL, without the query.
+    """Return the path of an http(s) URL, without the query.
 
     `""` for everything else — `about:blank`, `chrome://newtab/`, a `file:` URL —
     so that a browser sitting on a blank tab is `other` and never `new_chat`.
     """
     parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme not in {"http", "https"}:
         return ""
     return parsed.path or "/"
 
@@ -468,7 +466,7 @@ def kind_of(url: str) -> PageKind:
 
 
 def conversation_id_of(url: str) -> str | None:
-    """The uuid in `/chat/<uuid>`, or `None`."""
+    """Return the uuid in `/chat/<uuid>`, or `None`."""
     match = _CHAT_PATH.match(path_of(url))
     return match.group(1) if match else None
 
@@ -479,7 +477,7 @@ def conversation_id_of(url: str) -> str | None:
 
 
 def pending_dialogs(page: Page) -> list[str]:
-    """The JavaScript dialogs that have opened and not yet closed.
+    """Return the JavaScript dialogs that have opened and not yet closed.
 
     Kinds only — `alert`, `confirm`, `prompt`, `beforeunload` — never the
     message, which is page text and therefore content. Openings and closings are
@@ -491,8 +489,7 @@ def pending_dialogs(page: Page) -> list[str]:
     opened = page.events(DIALOG_OPENING)
     closed = page.events(DIALOG_CLOSED)
     return [
-        "javascript:" + log.safe_token(str(deep_get(item, "params.type", "dialog")))
-        for item in opened[len(closed) :]
+        "javascript:" + log.safe_token(str(deep_get(item, "params.type", "dialog"))) for item in opened[len(closed) :]
     ]
 
 
@@ -567,7 +564,7 @@ def probe(page: Page, *, tab_count: int = 1) -> PageState:
 
 
 def _messages_from(raw: Any) -> tuple[LastMessage, ...]:
-    """The `messages` array as models, or nothing at all.
+    """Return the `messages` array as models, or nothing at all.
 
     Tolerant for the reason `LastMessage.from_raw` is: a page that answered with
     something other than a list has no readable transcript, and `17` reports
@@ -598,17 +595,13 @@ def page_report(
     )
 
 
-def page_view(
-    page: Page, *, tab_count: int = 1, expect: Sequence[str] = ()
-) -> PageView:
-    """The same, plus the last message. Still one evaluate.
+def page_view(page: Page, *, tab_count: int = 1, expect: Sequence[str] = ()) -> PageView:
+    """Return the same, plus the last message. Still one evaluate.
 
     `08`'s `probe` and `await-response` both need the pair, and asking twice
     would let generation finish between the two questions.
     """
     raw = page.evaluate(page_view_js(expect))
     state = _state_from(page, raw, tab_count)
-    last = LastMessage.from_raw(
-        raw.get("last_message") if isinstance(raw, dict) else None
-    )
+    last = LastMessage.from_raw(raw.get("last_message") if isinstance(raw, dict) else None)
     return PageView(state=state, last_message=last)

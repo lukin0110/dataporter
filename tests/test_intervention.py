@@ -21,6 +21,7 @@ import io
 import json
 import os
 import pty
+import shutil
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -111,18 +112,12 @@ def test_a_confirmation_says_what_is_being_confirmed() -> None:
     )
     assert request.phrase == "confirmation required: delete the draft in the composer"
     # Without a detail there is nothing to append, and no dangling colon.
-    assert (
-        intervening.Request(short_id="3f9c2a1e", reason="confirmation_required").phrase
-        == "confirmation required"
-    )
+    assert intervening.Request(short_id="3f9c2a1e", reason="confirmation_required").phrase == "confirmation required"
 
 
 def test_a_reason_nobody_has_heard_of_reads_as_an_ambiguous_ui() -> None:
     """The same fallback `12` uses for the category, for the same reason."""
-    assert (
-        intervening.Request(short_id="3f9c2a1e", reason="meteor").phrase
-        == "ambiguous UI state"
-    )
+    assert intervening.Request(short_id="3f9c2a1e", reason="meteor").phrase == "ambiguous UI state"
 
 
 def test_every_needs_human_reason_has_a_phrase() -> None:
@@ -131,9 +126,7 @@ def test_every_needs_human_reason_has_a_phrase() -> None:
 
 
 def test_the_offer_names_the_command_an_operator_types() -> None:
-    assert (
-        intervening.offer("aa000001") == "paused at aa000001 — run: dataporter resume"
-    )
+    assert intervening.offer("aa000001") == "paused at aa000001 — run: dataporter resume"
 
 
 # --------------------------------------------------------------------------- #
@@ -143,7 +136,7 @@ def test_the_offer_names_the_command_an_operator_types() -> None:
 
 @contextmanager
 def terminal(keystrokes: str) -> Iterator[IO[str]]:
-    """A real pseudo-terminal with `keystrokes` already typed into it.
+    """Yield a real pseudo-terminal with `keystrokes` already typed into it.
 
     A real one rather than an object with `isatty` hardcoded: the difference
     between a terminal and a pipe is exactly what decides whether this tool waits
@@ -162,9 +155,7 @@ def terminal(keystrokes: str) -> Iterator[IO[str]]:
 
 
 def test_enter_on_a_terminal_resumes(capsys: pytest.CaptureFixture[str]) -> None:
-    request = intervening.Request(
-        short_id="3f9c2a1e", reason="auth_required", position=12, total=127
-    )
+    request = intervening.Request(short_id="3f9c2a1e", reason="auth_required", position=12, total=127)
     with terminal("\n") as stdin:
         assert intervening.Console(stdin=stdin).ask(request) is True
     assert capsys.readouterr().out == SPEC_BLOCK
@@ -172,21 +163,24 @@ def test_enter_on_a_terminal_resumes(capsys: pytest.CaptureFixture[str]) -> None
 
 def test_a_terminal_that_goes_away_stops_the_run() -> None:
     """The master end is closed before the read: EOF, or EIO, or a closed file.
-    All three mean the same thing — there is nobody at the keyboard."""
+
+    All three mean the same thing — there is nobody at the keyboard.
+    """
     main, follower = pty.openpty()
     os.close(main)
     stdin = os.fdopen(follower, "r")
     try:
-        assert intervening.Console(stdin=stdin).ask(
-            intervening.Request("3f9c2a1e")
-        ) is (False)
+        assert intervening.Console(stdin=stdin).ask(intervening.Request("3f9c2a1e")) is (False)
     finally:
         stdin.close()
 
 
 def test_a_pipe_is_never_asked_anything(capsys: pytest.CaptureFixture[str]) -> None:
-    """Non-TTY: the block is still printed — it is what the operator reads when
-    they come back to the exit `5` — and nothing blocks on a stream nobody holds."""
+    """Non-TTY: the block is still printed.
+
+    It is what the operator reads when they come back to the exit `5` — and nothing
+    blocks on a stream nobody holds.
+    """
     console = intervening.Console(stdin=io.StringIO("\n"))
     assert console.ask(intervening.Request("3f9c2a1e")) is False
     assert capsys.readouterr().out.startswith("Human intervention required\n")
@@ -194,17 +188,17 @@ def test_a_pipe_is_never_asked_anything(capsys: pytest.CaptureFixture[str]) -> N
 
 def test_end_of_input_on_a_terminal_stops_the_run() -> None:
     stdin = io.StringIO("")
-    setattr(stdin, "isatty", lambda: True)
-    assert (
-        intervening.Console(stdin=stdin).ask(intervening.Request("3f9c2a1e")) is False
-    )
+    stdin.isatty = lambda: True
+    assert intervening.Console(stdin=stdin).ask(intervening.Request("3f9c2a1e")) is False
 
 
 def test_ctrl_c_at_the_prompt_stops_the_run(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Ctrl-C reaches a blocking read as an exception, and ends the run the way a
-    pipe does: the pause is already on disk, so this is "stop", not "crash"."""
+    """Ctrl-C reaches a blocking read as an exception, and ends the run the way a pipe does.
+
+    The pause is already on disk, so this is "stop", not "crash".
+    """
 
     class Interrupted(io.StringIO):
         def isatty(self) -> bool:
@@ -213,16 +207,13 @@ def test_ctrl_c_at_the_prompt_stops_the_run(
         def readline(self, *args: Any) -> str:
             raise KeyboardInterrupt
 
-    assert (
-        intervening.Console(stdin=Interrupted()).ask(intervening.Request("3f9c2a1e"))
-        is False
-    )
+    assert intervening.Console(stdin=Interrupted()).ask(intervening.Request("3f9c2a1e")) is False
     assert capsys.readouterr().out.endswith("Ctrl-C to stop.\n\n")
 
 
 def test_a_closed_stdin_is_nobody_to_ask() -> None:
     stdin = io.StringIO("\n")
-    setattr(stdin, "isatty", lambda: True)
+    stdin.isatty = lambda: True
     stdin.close()
     assert intervening.Console(stdin=stdin).retry("still not logged in") is False
 
@@ -240,7 +231,7 @@ def test_a_note_goes_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
     intervening.Console().note("paused at aa000001")
     captured = capsys.readouterr()
     assert captured.err == "paused at aa000001\n"
-    assert captured.out == ""
+    assert not captured.out
 
 
 # --------------------------------------------------------------------------- #
@@ -297,9 +288,7 @@ class Distracted(Scripted):
 # --------------------------------------------------------------------------- #
 
 
-def test_an_enter_resumes_the_same_conversation(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_an_enter_resumes_the_same_conversation(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """`14`'s first acceptance criterion, on a pseudo-terminal."""
     world.answers(needs_human(), completed())
 
@@ -349,9 +338,7 @@ def test_the_pause_record_says_what_is_being_waited_for(world: World) -> None:
     """The §7 file keeps its five statuses; `run.json` holds the sixth thing."""
     world.answers(needs_human())
 
-    summary = world.importer(intervention=Scripted(answer=False)).run(
-        world.export, state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=Scripted(answer=False)).run(world.export, state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.PAUSED
     paused = world.store().run().paused
@@ -374,9 +361,7 @@ def test_an_enter_that_did_not_log_in_is_not_enough(world: World) -> None:
     world.answers(needs_human(), completed())
     operator = Distracted(world=world)
 
-    summary = world.importer(intervention=operator).run(
-        world.export, state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=operator).run(world.export, state.Selection(limit=1))
 
     assert operator.retries == [intervening.STILL_NOT_LOGGED_IN]
     assert summary.exit_code is ExitCode.OK
@@ -410,9 +395,9 @@ def test_without_a_terminal_the_run_pauses_to_disk_and_resume_finishes_it(
     """`14`'s second acceptance criterion."""
     world.answers(needs_human(), completed())
 
-    paused_run = world.importer(
-        intervention=intervening.Console(stdin=io.StringIO(""))
-    ).run(world.export, state.Selection(limit=2))
+    paused_run = world.importer(intervention=intervening.Console(stdin=io.StringIO(""))).run(
+        world.export, state.Selection(limit=2)
+    )
 
     assert paused_run.exit_code is ExitCode.PAUSED
     assert world.store().run().paused is not None
@@ -457,16 +442,12 @@ def test_a_resume_reports_where_it_is_in_the_paused_run(world: World) -> None:
 def test_a_resume_that_finds_the_page_still_blocked_stays_paused(
     world: World, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """ "Exactly as the TTY path does": re-probe, say so, and keep the record."""
+    """Exactly as the TTY path does: re-probe, say so, and keep the record."""
     world.answers(needs_human())
-    world.importer(intervention=Scripted(answer=False)).run(
-        world.export, state.Selection(limit=1)
-    )
+    world.importer(intervention=Scripted(answer=False)).run(world.export, state.Selection(limit=1))
     world.page.composer = None  # the human ran `resume` without logging in
 
-    resumed = world.importer(
-        intervention=intervening.Console(stdin=io.StringIO(""))
-    ).resume()
+    resumed = world.importer(intervention=intervening.Console(stdin=io.StringIO(""))).resume()
 
     assert resumed.exit_code is ExitCode.PAUSED
     assert world.store().run().paused is not None
@@ -475,9 +456,7 @@ def test_a_resume_that_finds_the_page_still_blocked_stays_paused(
     assert len(world.hermes.one_shots) == 1
 
 
-def test_ctrl_c_leaves_the_pause_for_the_next_run(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_ctrl_c_leaves_the_pause_for_the_next_run(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """`14`'s third acceptance criterion."""
 
     class Interrupted(io.StringIO):
@@ -497,9 +476,7 @@ def test_ctrl_c_leaves_the_pause_for_the_next_run(
     assert world.entry(FIRST).status is Status.RUNNING
 
     operator = Scripted()
-    again = world.importer(intervention=operator).run(
-        world.export, state.Selection(only=[FIRST])
-    )
+    again = world.importer(intervention=operator).run(world.export, state.Selection(only=[FIRST]))
 
     assert again.exit_code is ExitCode.OK
     # `06` converted the interrupted entry, and the run said where the pause was.
@@ -525,9 +502,7 @@ def test_a_pause_does_not_spend_the_retry_budget(world: World) -> None:
     world.retries(max_attempts=3, backoff_s=(1.0, 2.0))
     world.answers(needs_human(), FAILED_NETWORK, FAILED_NETWORK, completed())
 
-    summary = world.importer(intervention=Scripted()).run(
-        world.export, state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=Scripted()).run(world.export, state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.OK
     entry = world.entry(FIRST)
@@ -541,9 +516,7 @@ def test_a_pause_does_not_spend_the_retry_budget(world: World) -> None:
     assert world.pauses == [1.0, 2.0]
 
 
-def test_the_waiting_line_counts_retries_not_attempts(
-    world: World, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_waiting_line_counts_retries_not_attempts(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """`13`'s line reads `retry n/max`, and an ask must not advance `n`.
 
     The visible half of the same bug: with the ask counted, a conversation helped
@@ -554,9 +527,7 @@ def test_the_waiting_line_counts_retries_not_attempts(
 
     world.importer(intervention=Scripted()).run(world.export, state.Selection(limit=1))
 
-    waits = [
-        line for line in capsys.readouterr().out.splitlines() if line.startswith("wait")
-    ]
+    waits = [line for line in capsys.readouterr().out.splitlines() if line.startswith("wait")]
     assert waits == [
         "waiting 1s (retry 2/3, network)",
         "waiting 2s (retry 3/3, network)",
@@ -581,9 +552,7 @@ def test_a_conversation_that_pauses_and_then_exhausts_its_retries(
     world.retries(max_attempts=2, backoff_s=(1.0,))
     world.answers(needs_human(), FAILED_NETWORK)
 
-    summary = world.importer(intervention=Scripted()).run(
-        world.export, state.Selection(limit=1)
-    )
+    summary = world.importer(intervention=Scripted()).run(world.export, state.Selection(limit=1))
 
     assert summary.exit_code is ExitCode.FAILED
     entry = world.entry(FIRST)
@@ -604,9 +573,7 @@ def test_a_run_that_keeps_asking_stops(world: World) -> None:
     world.answers(needs_human())
     operator = Scripted()
 
-    summary = world.importer(intervention=operator).run(
-        world.export, state.Selection(limit=2)
-    )
+    summary = world.importer(intervention=operator).run(world.export, state.Selection(limit=2))
 
     assert summary.exit_code is ExitCode.FAILED
     assert operator.notes[-1] == intervening.TOO_MANY_INTERVENTIONS
@@ -623,9 +590,7 @@ def test_the_budget_is_per_run_not_per_workspace(world: World) -> None:
     """`19` reports the cumulative number; the budget is about one sitting."""
     world.answers(needs_human(), completed(), needs_human(), completed())
     world.importer(intervention=Scripted()).run(world.export, state.Selection(limit=1))
-    world.importer(intervention=Scripted()).run(
-        world.export, state.Selection(only=[LONG])
-    )
+    world.importer(intervention=Scripted()).run(world.export, state.Selection(only=[LONG]))
 
     assert world.store().run().human_interventions == 2
     assert world.entry(LONG).status is Status.COMPLETED
@@ -637,27 +602,20 @@ def test_the_budget_is_per_run_not_per_workspace(world: World) -> None:
 
 
 def test_a_workspace_with_nothing_paused_has_nothing_to_resume(world: World) -> None:
-    with pytest.raises(importing.NothingToResume):
+    with pytest.raises(importing.NothingToResumeError):
         world.importer().resume()
 
 
 def test_a_conversation_that_finished_another_way_is_not_resumed(
     world: World,
 ) -> None:
-    """Resuming would open a second chat for a conversation that has one, and
-    §17 has no way to undo that."""
+    """Resuming would open a second chat for a conversation that has one, and §17 has no way to undo that."""
     world.answers(needs_human(), completed())
-    world.importer(intervention=Scripted(answer=False)).run(
-        world.export, state.Selection(limit=1)
-    )
-    world.importer(intervention=Scripted()).run(
-        world.export, state.Selection(only=[FIRST])
-    )
-    world.store().set_paused(
-        state.PauseRecord(conversation_uuid=FIRST, reason="captcha", since=state.now())
-    )
+    world.importer(intervention=Scripted(answer=False)).run(world.export, state.Selection(limit=1))
+    world.importer(intervention=Scripted()).run(world.export, state.Selection(only=[FIRST]))
+    world.store().set_paused(state.PauseRecord(conversation_uuid=FIRST, reason="captcha", since=state.now()))
 
-    with pytest.raises(importing.NothingToResume):
+    with pytest.raises(importing.NothingToResumeError):
         world.importer().resume()
 
     # And the record is gone, so the next `import` does not offer it again.
@@ -670,9 +628,7 @@ def test_a_pause_the_selection_never_knew_about_is_still_continued(
     """A `run.json` edited by hand, or a record that outlived its run."""
     world.answers(completed())
     world.importer().run(world.export, state.Selection(only=[FIRST]))
-    world.store().set_paused(
-        state.PauseRecord(conversation_uuid=LONG, reason="captcha", since=state.now())
-    )
+    world.store().set_paused(state.PauseRecord(conversation_uuid=LONG, reason="captcha", since=state.now()))
 
     resumed = world.importer(intervention=Scripted()).resume()
 
@@ -684,9 +640,7 @@ def test_a_workspace_that_does_not_say_which_export_it_came_from(
     world: World,
 ) -> None:
     world.answers(needs_human())
-    world.importer(intervention=Scripted(answer=False)).run(
-        world.export, state.Selection(limit=1)
-    )
+    world.importer(intervention=Scripted(answer=False)).run(world.export, state.Selection(limit=1))
     run_path = world.settings.workspace / state.RUN_FILENAME
     raw = json.loads(run_path.read_text(encoding="utf-8"))
     raw["export_path"] = ""
@@ -696,18 +650,12 @@ def test_a_workspace_that_does_not_say_which_export_it_came_from(
         world.importer().resume()
 
 
-def test_an_export_that_has_moved_since_the_pause(
-    world: World, tmp_path: Path, export_dir: Path
-) -> None:
-    import shutil
-
+def test_an_export_that_has_moved_since_the_pause(world: World, tmp_path: Path, export_dir: Path) -> None:
     moved = tmp_path / "somewhere-else"
     shutil.copytree(export_dir, moved)
     world.export = moved
     world.answers(needs_human())
-    world.importer(intervention=Scripted(answer=False)).run(
-        world.export, state.Selection(limit=1)
-    )
+    world.importer(intervention=Scripted(answer=False)).run(world.export, state.Selection(limit=1))
     shutil.rmtree(moved)
 
     with pytest.raises(state.StateError, match="export not found"):
@@ -728,7 +676,7 @@ def test_resume_exits_4_when_there_is_nothing_to_resume(
 
     assert outcome.exit_code == ExitCode.NOTHING_TO_DO
     assert outcome.stdout == f"{importing.NOTHING_TO_RESUME}\n"
-    assert outcome.stderr == ""
+    assert not outcome.stderr
 
 
 def test_import_exits_5_and_resume_finishes_the_run(
@@ -738,9 +686,7 @@ def test_import_exits_5_and_resume_finishes_the_run(
     cli_env(world, monkeypatch)
     world.answers(needs_human(), completed())
 
-    paused = runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    paused = runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     assert paused.exit_code == ExitCode.PAUSED
     # `18`'s header, then `14`'s ask underneath it.
@@ -755,18 +701,12 @@ def test_import_exits_5_and_resume_finishes_the_run(
     assert "\nPending:    4\n\nClaude migration complete\n" in resumed.stdout
 
 
-def test_the_paused_block_carries_no_content(
-    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_paused_block_carries_no_content(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     """§10 applies to the ask as much as to the progress line."""
     cli_env(world, monkeypatch)
-    world.answers(
-        needs_human(error={"category": "auth", "detail": "sign-in form shown"})
-    )
+    world.answers(needs_human(error={"category": "auth", "detail": "sign-in form shown"}))
 
-    paused = runner.invoke(
-        cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False
-    )
+    paused = runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
 
     assert "Listing files" not in paused.output
     assert world.entry(FIRST).title == "Listing files"

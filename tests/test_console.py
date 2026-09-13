@@ -27,8 +27,10 @@ def test_collected_keeps_the_bytes_a_terminal_would_show() -> None:
 def test_terminal_resolves_the_streams_at_write_time(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`CliRunner` swaps `sys.stdout` per invocation; a handle taken earlier
-    would write past it."""
+    """`CliRunner` swaps `sys.stdout` per invocation.
+
+    A handle taken earlier would write past it.
+    """
     sink = console.Terminal()
     out, err = StringIO(), StringIO()
     monkeypatch.setattr(sys, "stdout", out)
@@ -47,5 +49,5 @@ def test_discard_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
     console.DISCARD.block("two\n")
     console.DISCARD.note("three")
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == ""
+    assert not captured.out
+    assert not captured.err

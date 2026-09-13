@@ -199,9 +199,7 @@ class Planner:
         self._attachments_dir = settings.attachments_dir
 
     def plan(self, export: Export) -> MigrationPlan:
-        conversations = [
-            self._conversation(conversation) for conversation in export.conversations
-        ]
+        conversations = [self._conversation(conversation) for conversation in export.conversations]
         totals = PlanTotals(
             conversations=len(conversations),
             messages=sum(item.message_count for item in conversations),
@@ -227,11 +225,8 @@ class Planner:
 
     # -- one conversation --------------------------------------------------- #
 
-    def render_conversation(
-        self, conversation: Conversation
-    ) -> render.RenderedConversation | None:
-        """The seed rendering for one conversation, or `None` when it has no
-        messages on its active path.
+    def render_conversation(self, conversation: Conversation) -> render.RenderedConversation | None:
+        """Return the seed rendering for one conversation, or `None` when it has no messages on its active path.
 
         Named for what it wraps rather than plain `render`: a method of that name
         would shadow the `render` module inside this class body, where several
@@ -249,9 +244,7 @@ class Planner:
         if not active:
             return None
         _, by_message = self._attachments(conversation, active)
-        return self._render(
-            conversation, active, by_message, len(conversation.off_path())
-        )
+        return self._render(conversation, active, by_message, len(conversation.off_path()))
 
     def _render(
         self,
@@ -349,9 +342,7 @@ class Planner:
                     if self._settings.attachments.skip:
                         item = _refused(item, SKIPPED_BY_FLAG)
                     elif item.sha256 in planned:
-                        item = item.model_copy(
-                            update={"duplicate_of": planned[item.sha256 or ""]}
-                        )
+                        item = item.model_copy(update={"duplicate_of": planned[item.sha256 or ""]})
                     elif uploads >= limit:
                         item = _refused(item, TOO_MANY_FOR_CHAT)
                     else:
@@ -368,11 +359,7 @@ class Planner:
                         file_size=item.file_size,
                         klass=item.klass,
                         reason=item.reason,
-                        extracted_content=(
-                            entry.extracted_content
-                            if isinstance(entry, Attachment)
-                            else None
-                        ),
+                        extracted_content=(entry.extracted_content if isinstance(entry, Attachment) else None),
                     )
                 )
         return out, by_message
@@ -407,11 +394,7 @@ class Planner:
                 message_uuid=message.uuid,
                 file_name=file_name,
                 file_type=declared.file_type if declared else None,
-                file_size=(
-                    file_size
-                    if file_size is not None
-                    else (declared.file_size if declared else None)
-                ),
+                file_size=(file_size if file_size is not None else (declared.file_size if declared else None)),
                 klass=klass,
                 reason=reason,
                 source_path=source_path,
@@ -480,10 +463,8 @@ class Planner:
         return None
 
 
-def blocking_reason(
-    rendered: render.RenderedConversation | None, settings: Settings
-) -> str | None:
-    """The first migratability rule that fails, or `None` when none does.
+def blocking_reason(rendered: render.RenderedConversation | None, settings: Settings) -> str | None:
+    """Return the first migratability rule that fails, or `None` when none does.
 
     `None` for `rendered` is the empty conversation: there is no rendering to
     judge. Shared with `04` rather than reimplemented there, so that a
@@ -500,12 +481,12 @@ def blocking_reason(
 
 
 def build_plan(export: Export, settings: Settings) -> MigrationPlan:
-    """The spec's call shape: `plan(export, settings)`."""
+    """Return the spec's call shape: `plan(export, settings)`."""
     return Planner(settings).plan(export)
 
 
 def upload_paths(item: ConversationPlan) -> list[Path]:
-    """The files `16` hands the prompt, in message order, each one once.
+    """Return the files `16` hands the prompt, in message order, each one once.
 
     The duplicates are already marked (`Planner._attachments`), so this is a
     filter and not a second deduplication: two places deciding which file is the
@@ -515,9 +496,7 @@ def upload_paths(item: ConversationPlan) -> list[Path]:
     return [
         attachment.source_path
         for attachment in item.attachments
-        if attachment.klass == "upload"
-        and attachment.duplicate_of is None
-        and attachment.source_path is not None
+        if attachment.klass == "upload" and attachment.duplicate_of is None and attachment.source_path is not None
     ]
 
 
@@ -553,7 +532,7 @@ def _distinct(message: ChatMessage) -> Iterator[Attachment | FileRef]:
 
 
 def _refused(item: AttachmentPlan, reason: str) -> AttachmentPlan:
-    """A class 2 entry the chat will not take, as the class 3 entry it becomes.
+    """Return a class 2 entry the chat will not take, as the class 3 entry it becomes.
 
     The source path and the digest go with it: they describe a file that is going
     to be uploaded, and this one is not.
@@ -578,7 +557,7 @@ def _digest(path: Path) -> str | None:
     """
     digest = hashlib.sha256()
     try:
-        with open(path, "rb") as handle:
+        with Path(path).open("rb") as handle:
             while chunk := handle.read(DIGEST_CHUNK):
                 digest.update(chunk)
     except OSError:
@@ -587,7 +566,7 @@ def _digest(path: Path) -> str | None:
 
 
 def _extension(file_name: str, file_type: str | None) -> str:
-    """The file's type as an extension, lowercase, without the dot."""
+    """Return the file's type as an extension, lowercase, without the dot."""
     suffix = Path(file_name).suffix.lstrip(".").casefold()
     if suffix:
         return suffix
@@ -596,12 +575,12 @@ def _extension(file_name: str, file_type: str | None) -> str:
 
 
 def safe_component(value: str) -> bool:
-    """True when `value` is a single, ordinary path component.
+    """Return `True` when `value` is a single, ordinary path component.
 
     Public because `04` joins a conversation uuid to a directory as well, and one
     export can only be trusted or distrusted once.
     """
-    if not value or value in (".", ".."):
+    if not value or value in {".", ".."}:
         return False
     if strip_control(value) != value:
         return False
@@ -609,7 +588,7 @@ def safe_component(value: str) -> bool:
 
 
 def _within(root: Path, candidate: Path) -> bool:
-    """True when `candidate` really sits under `root` once symlinks resolve."""
+    """Return `True` when `candidate` really sits under `root` once symlinks resolve."""
     try:
         candidate.resolve().relative_to(root.resolve())
     except (OSError, ValueError):

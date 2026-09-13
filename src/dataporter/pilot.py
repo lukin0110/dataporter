@@ -111,9 +111,7 @@ def candidates(export: Export, plan: MigrationPlan) -> list[Candidate]:
     conversations it can do something with, and `05`'s block already counts the
     ones it cannot.
     """
-    planned: Mapping[str, ConversationPlan] = {
-        item.uuid: item for item in plan.conversations if item.migratable
-    }
+    planned: Mapping[str, ConversationPlan] = {item.uuid: item for item in plan.conversations if item.migratable}
     found: list[Candidate] = []
     for position, conversation in enumerate(export.conversations):
         item = planned.get(conversation.uuid)
@@ -128,13 +126,9 @@ def candidates(export: Export, plan: MigrationPlan) -> list[Candidate]:
                 off_path=item.off_path_count,
                 seed_chars=item.estimated_seed_chars,
                 parts=item.chunk_count,
-                inline_attachments=sum(
-                    1 for entry in item.attachments if entry.klass == "inline"
-                ),
+                inline_attachments=sum(1 for entry in item.attachments if entry.klass == "inline"),
                 upload_attachments=sum(
-                    1
-                    for entry in item.attachments
-                    if entry.klass == "upload" and entry.duplicate_of is None
+                    1 for entry in item.attachments if entry.klass == "upload" and entry.duplicate_of is None
                 ),
                 code_in_both_roles=_code_in_both_roles(active),
                 has_artifact=_has_artifact(active),
@@ -148,7 +142,7 @@ def candidates(export: Export, plan: MigrationPlan) -> list[Candidate]:
 
 
 def _code_in_both_roles(messages: Sequence[ChatMessage]) -> bool:
-    """A fenced code block in a human message *and* in an assistant one.
+    """Return a fenced code block in a human message *and* in an assistant one.
 
     Both roles, because the question this category is for is whether a
     reconstructed transcript keeps the shape of a conversation about code: a
@@ -162,25 +156,18 @@ def _code_in_both_roles(messages: Sequence[ChatMessage]) -> bool:
     roles = {
         message.sender
         for message in messages
-        if any(
-            isinstance(block, TextBlock) and FENCE in block.text
-            for block in message.content
-        )
+        if any(isinstance(block, TextBlock) and FENCE in block.text for block in message.content)
     }
     return {"human", "assistant"} <= roles
 
 
 def _has_artifact(messages: Sequence[ChatMessage]) -> bool:
-    """An `artifacts` tool call on the active path (`render.ARTIFACT_TOOL`).
+    """Return an `artifacts` tool call on the active path (`render.ARTIFACT_TOOL`).
 
     The same test `03` renders on, so a conversation this category chooses is one
     whose seed really carries an `[Artifact: …]` block.
     """
-    return any(
-        getattr(block, "name", "") == render.ARTIFACT_TOOL
-        for message in messages
-        for block in message.content
-    )
+    return any(getattr(block, "name", "") == render.ARTIFACT_TOOL for message in messages for block in message.content)
 
 
 # --------------------------------------------------------------------------- #
@@ -212,8 +199,10 @@ first of equal keys and export order is every category's tie-break."""
 
 
 def _first(found: Iterable[Candidate], key: Ranking | None = None) -> Candidate | None:
-    """The best of `found` by `key`, the first of them when there is no key, or
-    `None` when there are none at all."""
+    """Return the best of `found` by `key`.
+
+    The first of them when there is no key, and `None` when there are none at all.
+    """
     items = list(found)
     if not items:
         return None
@@ -225,41 +214,36 @@ def _shortest(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | 
     return _first(eligible, key=lambda item: (-item.messages, -item.position))
 
 
-def _longest_one_part(
-    found: Sequence[Candidate], chosen: Sequence[str]
-) -> Candidate | None:
+def _longest_one_part(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | None:
     return _first(
         [item for item in found if item.parts == 1],
         key=lambda item: (item.seed_chars, -item.position),
     )
 
 
-def _longest_multi_part(
-    found: Sequence[Candidate], chosen: Sequence[str]
-) -> Candidate | None:
+MULTI_PART = 2
+"""What "multi-part" means: a seed the budget split at least once."""
+
+
+def _longest_multi_part(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | None:
     return _first(
-        [item for item in found if item.parts >= 2],
+        [item for item in found if item.parts >= MULTI_PART],
         key=lambda item: (item.seed_chars, -item.position),
     )
 
 
-def _code_both_roles(
-    found: Sequence[Candidate], chosen: Sequence[str]
-) -> Candidate | None:
+def _code_both_roles(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | None:
     return _first(item for item in found if item.code_in_both_roles)
 
 
-def _inline_attachment(
-    found: Sequence[Candidate], chosen: Sequence[str]
-) -> Candidate | None:
+def _inline_attachment(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | None:
     return _first(item for item in found if item.inline_attachments)
 
 
-def _upload_attachment(
-    found: Sequence[Candidate], chosen: Sequence[str]
-) -> Candidate | None:
-    """A class 2 attachment, or *another* class 1 — §20's one written-down
-    fallback, and the reason this chooser reads `chosen` at all.
+def _upload_attachment(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | None:
+    """Return a class 2 attachment, or *another* class 1.
+
+    §20's one written-down fallback, and the reason this chooser reads `chosen` at all.
 
     "Another" is the whole of it: the category exists to put a second attachment
     conversation in the pilot, and naming the one category 5 already named would
@@ -278,9 +262,7 @@ def _many_turns(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate 
     return _first(item for item in found if item.messages >= MANY_TURNS)
 
 
-def _dropped_branch(
-    found: Sequence[Candidate], chosen: Sequence[str]
-) -> Candidate | None:
+def _dropped_branch(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | None:
     return _first(item for item in found if item.off_path)
 
 
@@ -289,7 +271,7 @@ def _artifact(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | 
 
 
 def _newest(found: Sequence[Candidate], chosen: Sequence[str]) -> Candidate | None:
-    """The newest conversation nothing has chosen yet.
+    """Return the newest conversation nothing has chosen yet.
 
     The one category with no property of its own to look for: it is here to fill
     the tenth slot, so a conversation an earlier category already named would
@@ -347,7 +329,7 @@ def choose(export: Export, plan: MigrationPlan) -> list[PilotChoice]:
 
 
 def uuids(records: Sequence[PilotChoice]) -> list[str]:
-    """What the selection runs, each conversation once, in category order.
+    """Return what the selection runs, each conversation once, in category order.
 
     Category order and not export order, because that is the order in which the
     pilot's reasons were decided; `state.select` puts them back into export order
@@ -361,7 +343,7 @@ def uuids(records: Sequence[PilotChoice]) -> list[str]:
 
 
 def lines(records: Sequence[PilotChoice]) -> list[str]:
-    """The block `--pilot` prints: a category per line, widest name padded.
+    """Return the block `--pilot` prints: a category per line, widest name padded.
 
     Two spaces between columns, as `seeds`, `verify` and `18`'s event lines space
     them. The conversation is its short id and never its title (§10), and a
@@ -381,9 +363,7 @@ def block(records: Sequence[PilotChoice]) -> str:
     return "".join(f"{line}\n" for line in lines(records))
 
 
-PILOT_CHOOSES = (
-    "--pilot chooses the conversations itself: drop --only, --limit and --all"
-)
+PILOT_CHOOSES = "--pilot chooses the conversations itself: drop --only, --limit and --all"
 """`20`'s usage error. The pilot selection is the experiment's design — ten
 categories, in order — so a flag that would narrow, widen or reorder it is
 refused rather than silently losing to it, whichever way round that went."""

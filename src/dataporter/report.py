@@ -166,7 +166,7 @@ class FailureRecord(ReportModel):
     holds."""
 
     def describe(self) -> str:
-        """`generation: response never completed`, uncut.
+        """Return `generation: response never completed`, uncut.
 
         `18`'s progress line shows at most 60 characters of the same string
         because a terminal redraw depends on a line's height; a report has no
@@ -216,7 +216,7 @@ class Report(ReportModel):
 
 
 def _describe(exc: ValidationError) -> str:
-    """A pydantic error as `loc: msg`, with the offending value left out.
+    """Return a pydantic error as `loc: msg`, with the offending value left out.
 
     Same shape as `config._describe` and `state._describe`, deliberately
     re-written rather than imported for the reason `02` gives: a private name is
@@ -246,17 +246,13 @@ def read_plan(workspace: Path) -> MigrationPlan:
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        raise state.StateError(
-            f"no {PLAN_FILENAME} in {workspace} — run `import` first"
-        ) from None
+        raise state.StateError(f"no {PLAN_FILENAME} in {workspace} — run `import` first") from None
     except OSError as exc:
         raise state.StateError(f"cannot read {path}: {exc.strerror or exc}") from exc
     try:
         return MigrationPlan.model_validate_json(raw)
     except ValidationError as exc:
-        raise state.StateError(
-            f"invalid {PLAN_FILENAME}: {path}: {_describe(exc)}"
-        ) from exc
+        raise state.StateError(f"invalid {PLAN_FILENAME}: {path}: {_describe(exc)}") from exc
 
 
 def browser_actions(workspace: Path, run: RunFile) -> int:
@@ -275,9 +271,7 @@ def browser_actions(workspace: Path, run: RunFile) -> int:
 # --------------------------------------------------------------------------- #
 
 
-def totals_of(
-    plan: MigrationPlan, migration: MigrationState, run: RunFile, actions: int
-) -> ReportTotals:
+def totals_of(plan: MigrationPlan, migration: MigrationState, run: RunFile, actions: int) -> ReportTotals:
     """§16's numbers.
 
     `Pending` is the remainder rather than a tally, for `18`'s reason and one of
@@ -296,13 +290,10 @@ def totals_of(
         pending=source - counts["completed"] - counts["partial"] - counts["failed"],
         messages_represented=sum(
             entry.messages_represented
-            for _, entry in migration.items()
-            if entry.status in (Status.COMPLETED, Status.PARTIAL)
+            for entry in migration.values()
+            if entry.status in {Status.COMPLETED, Status.PARTIAL}
         ),
-        attachments_migrated=sum(
-            entry.attachments.uploaded + entry.attachments.inline
-            for _, entry in migration.items()
-        ),
+        attachments_migrated=sum(entry.attachments.uploaded + entry.attachments.inline for entry in migration.values()),
         browser_actions=actions,
         retries=run.retries,
         human_interventions=run.human_interventions,
@@ -330,7 +321,7 @@ def failures_of(migration: MigrationState) -> list[FailureRecord]:
             destination_conversation_id=entry.destination.conversation_id,
         )
         for uuid, entry in migration.items()
-        if entry.status in (Status.PARTIAL, Status.FAILED)
+        if entry.status in {Status.PARTIAL, Status.FAILED}
     ]
 
 
@@ -356,7 +347,7 @@ def limitations_of(migration: MigrationState) -> dict[str, int]:
         # By name and not by slug: one conversation with `thinking_omitted:3`
         # and `thinking_omitted:1` against it is one conversation.
         name
-        for _, entry in migration.items()
+        for entry in migration.values()
         for name in dict.fromkeys(limitation_name(slug) for slug in entry.limitations)
     )
     return dict(sorted(counts.items(), key=lambda row: (-row[1], row[0])))
@@ -369,7 +360,7 @@ def attachments_of(plan: MigrationPlan, migration: MigrationState) -> Attachment
     operator asked for it on *some* run, and the detail entry says this file was
     refused for that reason rather than for want of bytes.
     """
-    entries = [entry for _, entry in migration.items()]
+    entries = list(migration.values())
     return AttachmentTotals(
         found=plan.totals.attachments,
         inline=sum(entry.attachments.inline for entry in entries),
@@ -398,11 +389,7 @@ def verification_failed(entry: ConversationState) -> bool:
     conversations whose recorded reason is the check, which is what "verified,
     failed, not run" can honestly say from the file.
     """
-    return (
-        not verified(entry)
-        and entry.error is not None
-        and entry.error.category is Category.VERIFICATION
-    )
+    return not verified(entry) and entry.error is not None and entry.error.category is Category.VERIFICATION
 
 
 def verification_of(migration: MigrationState) -> dict[str, int]:
@@ -413,11 +400,7 @@ def verification_of(migration: MigrationState) -> dict[str, int]:
     nothing to verify rather than a verification that has not happened. The
     three numbers sum to it, so `not_run` is the remainder.
     """
-    landed = [
-        entry
-        for _, entry in migration.items()
-        if entry.destination.conversation_id is not None
-    ]
+    landed = [entry for entry in migration.values() if entry.destination.conversation_id is not None]
     passed = sum(1 for entry in landed if verified(entry))
     failed = sum(1 for entry in landed if verification_failed(entry))
     return {
@@ -433,7 +416,7 @@ def verification_of(migration: MigrationState) -> dict[str, int]:
 
 
 def build(workspace: Path) -> Report:
-    """The whole report, from the four files and nothing else.
+    """Return the whole report, from the four files and nothing else.
 
     `generated_at` is the one thing in it that is not read off the workspace,
     and it is deliberately not rendered into the text: that is what lets two
@@ -483,9 +466,7 @@ def totals_groups(totals: ReportTotals) -> list[list[tuple[str, str]]]:
     `Pending` joins the first group only when there is any, which is the one
     thing about the block that changes shape.
     """
-    statuses = [
-        (label, summary.number(getattr(totals, key))) for label, key in STATUS_LABELS
-    ]
+    statuses = [(label, summary.number(getattr(totals, key))) for label, key in STATUS_LABELS]
     if totals.pending:
         statuses.append((PENDING_LABEL, summary.number(totals.pending)))
     activity = [
@@ -506,7 +487,7 @@ def totals_groups(totals: ReportTotals) -> list[list[tuple[str, str]]]:
 
 
 def totals_lines(totals: ReportTotals) -> list[str]:
-    """The title, a blank, and §16's three groups under `06`'s alignment rule."""
+    """Return the title, a blank, and §16's three groups under `06`'s alignment rule."""
     return [
         TITLE,
         "",
@@ -515,7 +496,7 @@ def totals_lines(totals: ReportTotals) -> list[str]:
 
 
 def block(totals: ReportTotals) -> str:
-    """The §16 block on its own, newline-terminated.
+    """Return the §16 block on its own, newline-terminated.
 
     What a golden test compares against the brief, and the first lines of every
     report. `render` is the whole of one; this is the part §16 fixes.
@@ -552,7 +533,7 @@ def failure_lines(failures: Sequence[FailureRecord]) -> list[str]:
 
 
 def limitation_lines(limitations: Mapping[str, int]) -> list[str]:
-    """What the destination could not hold, by name and by conversation.
+    """Return what the destination could not hold, by name and by conversation.
 
     `06`'s breakdown rule, the same one `inspect` prints its reasons with: the
     name column is the longest name plus a gutter and the count is right-aligned
@@ -582,7 +563,7 @@ def lines(report: Report) -> list[str]:
 
 
 def render(report: Report) -> str:
-    """The §16 block and what follows it, newline-terminated.
+    """Return the §16 block and what follows it, newline-terminated.
 
     A pure function of the model, which is the criterion: the text `import`
     prints, the text `report` prints and the text a `report.json` read back
@@ -613,9 +594,7 @@ class ReportOutcome:
     exit_code: ExitCode = ExitCode.OK
 
 
-def status(
-    settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD
-) -> StatusOutcome:
+def status(settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD) -> StatusOutcome:
     """Show migration progress recorded in the workspace.
 
     Both files are read before anything is printed: this is where a workspace
@@ -640,9 +619,7 @@ def status(
     return StatusOutcome(migration=migration, counters=counters)
 
 
-def show(
-    settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD
-) -> ReportOutcome:
+def show(settings: Settings, *, json_output: bool = False, sink: Sink = DISCARD) -> ReportOutcome:
     """Print the end-of-migration report.
 
     Reads `state.json`, `run.json`, `plan.json` and `logs/actions.jsonl`, and

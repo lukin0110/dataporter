@@ -33,14 +33,11 @@ def labels() -> set[str]:
     return found
 
 
-@pytest.mark.skipif(
-    not MAP.exists(), reason="the UI map lives in the tool's repository"
-)
+@pytest.mark.skipif(not MAP.exists(), reason="the UI map lives in the tool's repository")
 def test_every_row_the_mock_cites_is_in_the_map() -> None:
     missing = sorted(set(uimap.cited()) - labels())
     assert not missing, (
-        f"the mock shows states the UI map has no row for: {missing}. "
-        "Add the row first, marked *unknown*."
+        f"the mock shows states the UI map has no row for: {missing}. Add the row first, marked *unknown*."
     )
 
 

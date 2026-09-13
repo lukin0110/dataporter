@@ -25,9 +25,13 @@ from dataporter import report as reporting
 from dataporter import seed as seeding
 from dataporter import selection as selecting
 from dataporter import store as storing
+from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
+from dataporter.browser.cdp import CdpClient
 from dataporter.config import (
+    BrowserSettings,
     Settings,
+    TimeoutSettings,
     load_settings,
     with_account,
     with_store_dir,
@@ -48,9 +52,7 @@ def invoke(runner: CliRunner, *args: str) -> tuple[int, str, str]:
 # --------------------------------------------------------------------------- #
 
 
-def test_inspect_is_the_same_through_the_library(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_inspect_is_the_same_through_the_library(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     sink = console.Collected()
     outcome = selecting.inspect_export(load_settings(), str(export_dir), sink=sink)
     code, out, err = invoke(runner, "inspect", str(export_dir))
@@ -59,22 +61,16 @@ def test_inspect_is_the_same_through_the_library(
     assert outcome.plan.totals.conversations > 0
 
 
-def test_inspect_json_is_the_plan_itself(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_inspect_json_is_the_plan_itself(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     sink = console.Collected()
-    outcome = selecting.inspect_export(
-        load_settings(), str(export_dir), json_output=True, sink=sink
-    )
+    outcome = selecting.inspect_export(load_settings(), str(export_dir), json_output=True, sink=sink)
     _, out, _ = invoke(runner, "inspect", str(export_dir), "--json")
 
     assert sink.stdout == out
     assert json.loads(sink.stdout) == outcome.plan.model_dump(mode="json")
 
 
-def test_a_dry_run_is_the_same_through_the_library(
-    runner: CliRunner, workspace: Path, export_dir: Path
-) -> None:
+def test_a_dry_run_is_the_same_through_the_library(runner: CliRunner, workspace: Path, export_dir: Path) -> None:
     sink = console.Collected()
     outcome = importing.import_command(
         load_settings(),
@@ -110,12 +106,8 @@ def test_seeds_are_the_same_through_the_library(
     runner: CliRunner, workspace: Path, export_dir: Path, tmp_path: Path
 ) -> None:
     sink = console.Collected()
-    outcome = seeding.write_seeds(
-        load_settings(), str(export_dir), out=tmp_path / "one", sink=sink
-    )
-    code, out, err = invoke(
-        runner, "seeds", str(export_dir), "--out", str(tmp_path / "two")
-    )
+    outcome = seeding.write_seeds(load_settings(), str(export_dir), out=tmp_path / "one", sink=sink)
+    code, out, err = invoke(runner, "seeds", str(export_dir), "--out", str(tmp_path / "two"))
 
     assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
     assert outcome.written == len(sink.out)
@@ -139,10 +131,8 @@ def test_seeds_of_nothing_is_exit_4(workspace: Path, tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def extract_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str = "store"
-) -> tuple[Settings, list[str]]:
-    """Settings for the library call, and the flags that produce the same ones.
+def extract_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str = "store") -> tuple[Settings, list[str]]:
+    """Return Settings for the library call, and the flags that produce the same ones.
 
     A store per caller: the two file the same archive moments apart, and §33's
     "the store never overwrites" is exactly what would refuse the second one
@@ -222,8 +212,6 @@ def test_extract_the_ask_is_the_same_through_the_library(
 
 def ask_settings(tmp_path: Path, port: int, account: str) -> Settings:
     """One invocation about one source account, pointed at the fake browser."""
-    from dataporter.config import BrowserSettings, TimeoutSettings
-
     loaded = load_settings().model_copy(
         update={
             "browser": BrowserSettings(cdp_port=port),
@@ -235,9 +223,6 @@ def ask_settings(tmp_path: Path, port: int, account: str) -> Settings:
 
 def fake_launch(monkeypatch: pytest.MonkeyPatch, port: int) -> None:
     """`07`'s adoption, without a Chrome — `world.py`'s seam, one test at a time."""
-    from dataporter.browser import launcher
-    from dataporter.browser.cdp import CdpClient
-
     monkeypatch.setattr(
         launcher,
         "launch",
@@ -250,7 +235,7 @@ def fake_launch(monkeypatch: pytest.MonkeyPatch, port: int) -> None:
 
 
 def without_account(text: str, account: str) -> str:
-    """The ask's block with the label and the minute taken out of it.
+    """Return the ask's block with the label and the minute taken out of it.
 
     Two asks are two accounts and two moments; every other byte has to match.
     """
@@ -271,9 +256,7 @@ def test_snapshots_is_the_same_through_the_library(
     for json_output in (False, True):
         sink = console.Collected()
         outcome = storing.list_command(settings, json_output=json_output, sink=sink)
-        code, out, err = invoke(
-            runner, "snapshots", *flags[2:], *(["--json"] if json_output else [])
-        )
+        code, out, err = invoke(runner, "snapshots", *flags[2:], *(["--json"] if json_output else []))
 
         assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
         assert len(outcome.rows) == 1
@@ -292,15 +275,13 @@ def test_snapshots_of_an_empty_store_is_the_same_through_the_library(
 
 
 def blanked(text: str, tmp_path: Path) -> str:
-    """A block with the stamp and the store's name taken out of it.
+    """Return a block with the stamp and the store's name taken out of it.
 
     Two filings of the same archive are two moments into two stores, and every
     other byte of the two blocks has to match.
     """
     without_stamp = re.sub(r"\d{4}-\d\d-\d\dT\d\d-\d\d-\d\dZ", "<stamp>", text)
-    return without_stamp.replace(f"{tmp_path}/store-library", "<store>").replace(
-        f"{tmp_path}/store-cli", "<store>"
-    )
+    return without_stamp.replace(f"{tmp_path}/store-library", "<store>").replace(f"{tmp_path}/store-cli", "<store>")
 
 
 # --------------------------------------------------------------------------- #
@@ -308,9 +289,7 @@ def blanked(text: str, tmp_path: Path) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def test_status_of_an_empty_workspace_is_the_same_through_the_library(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_status_of_an_empty_workspace_is_the_same_through_the_library(runner: CliRunner, workspace: Path) -> None:
     for json_output in (False, True):
         sink = console.Collected()
         outcome = reporting.status(load_settings(), json_output=json_output, sink=sink)
@@ -321,9 +300,7 @@ def test_status_of_an_empty_workspace_is_the_same_through_the_library(
         assert dict(outcome.migration.items()) == {}
 
 
-def test_logout_with_no_profile_is_the_same_through_the_library(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_logout_with_no_profile_is_the_same_through_the_library(runner: CliRunner, workspace: Path) -> None:
     sink = console.Collected()
     outcome = browser_session.logout(load_settings(), sink=sink)
     code, out, _ = invoke(runner, "session", "logout")
@@ -338,8 +315,11 @@ def test_logout_of_a_source_account_is_the_same_through_the_library(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`31`'s label, through both doors. The path in the line is the account
-    home's, which is the whole of what naming an account changes."""
+    """`31`'s label, through both doors.
+
+    The path in the line is the account home's, which is the whole of what naming an
+    account changes.
+    """
     monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     settings = with_account(load_settings(), "claude", "a")
     sink = console.Collected()
@@ -350,9 +330,7 @@ def test_logout_of_a_source_account_is_the_same_through_the_library(
     assert str(settings.accounts_dir) in out
 
 
-def test_resume_with_nothing_to_resume_is_the_same_through_the_library(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_resume_with_nothing_to_resume_is_the_same_through_the_library(runner: CliRunner, workspace: Path) -> None:
     sink = console.Collected()
     outcome = importing.resume_command(load_settings(), sink=sink)
     code, out, _ = invoke(runner, "resume")
@@ -362,10 +340,8 @@ def test_resume_with_nothing_to_resume_is_the_same_through_the_library(
 
 
 def test_a_summary_with_no_report_has_no_text() -> None:
-    summary = importing.RunSummary(
-        total=0, selected=(), outcomes={}, counts={}, exit_code=ExitCode.OK
-    )
-    assert importing.report_text(summary) == ""
+    summary = importing.RunSummary(total=0, selected=(), outcomes={}, counts={}, exit_code=ExitCode.OK)
+    assert not importing.report_text(summary)
 
 
 # --------------------------------------------------------------------------- #
@@ -376,9 +352,11 @@ def test_a_summary_with_no_report_has_no_text() -> None:
 def test_a_run_is_the_same_through_the_library(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A run's progress is `18`'s and goes to the terminal through `Reporter`
-    whichever way the run was started; what the sink gets is §16's block, and
-    it is the same block the CLI prints last."""
+    """A run's progress goes to the terminal through `Reporter`, however the run was started.
+
+    It is `18`'s. What the sink gets is §16's block, and it is the same block the CLI
+    prints last.
+    """
     sink = console.Collected()
     outcome = importing.import_command(
         world.settings,
@@ -394,17 +372,13 @@ def test_a_run_is_the_same_through_the_library(
     cli_env(world, monkeypatch)
     code, out, _ = invoke(runner, "import", str(world.export), "--only", FIRST)
     assert code == ExitCode.OK
-    assert out.endswith(
-        f"\n{reporting.render(reporting.build(world.settings.workspace))}"
-    )
+    assert out.endswith(f"\n{reporting.render(reporting.build(world.settings.workspace))}")
 
 
 def test_report_after_a_run_is_the_same_through_the_library(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    importing.import_command(
-        world.settings, importing.ImportRequest(export=str(world.export), limit=1)
-    )
+    importing.import_command(world.settings, importing.ImportRequest(export=str(world.export), limit=1))
     cli_env(world, monkeypatch)
     for json_output in (False, True):
         sink = console.Collected()

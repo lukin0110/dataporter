@@ -87,8 +87,7 @@ class Limitations:
         return Limitations(
             branches_dropped=self.branches_dropped + other.branches_dropped,
             thinking_omitted=self.thinking_omitted + other.thinking_omitted,
-            tool_calls_summarised=self.tool_calls_summarised
-            + other.tool_calls_summarised,
+            tool_calls_summarised=self.tool_calls_summarised + other.tool_calls_summarised,
             unknown_blocks=self.unknown_blocks + other.unknown_blocks,
         )
 
@@ -131,7 +130,7 @@ class RenderedConversation:
 
 
 def short_id(conversation_uuid: str) -> str:
-    """The token the acknowledgement line carries."""
+    """Return the token the acknowledgement line carries."""
     return conversation_uuid.replace("-", "")[:SHORT_ID_CHARS]
 
 
@@ -140,9 +139,7 @@ def format_timestamp(value: datetime) -> str:
     return f"{value:%Y-%m-%d %H:%M} UTC"
 
 
-def render_message(
-    message: ChatMessage, attachments: Sequence[AttachmentRender] = ()
-) -> RenderedMessage:
+def render_message(message: ChatMessage, attachments: Sequence[AttachmentRender] = ()) -> RenderedMessage:
     """One message: its role header, its body, then its attachments."""
     body_parts, limitations, has_content = _render_blocks(message)
     if not any(part.strip() for part in body_parts):
@@ -228,18 +225,14 @@ def _render_artifact(block: ToolUseBlock) -> tuple[str, bool]:
 
 
 def _render_attachment(attachment: AttachmentRender) -> tuple[str, bool]:
-    """The line (or block) that stands in for a file."""
+    """Return the line (or block) that stands in for a file."""
     if attachment.klass == "inline":
         content = attachment.extracted_content or ""
         file_type = attachment.file_type or "unknown"
         # A missing size is unknown, not zero. `04` writes `{file_size} bytes`,
         # but a file the export never sized would then be described as empty
         # directly above its own contents.
-        size = (
-            f"{attachment.file_size} bytes"
-            if attachment.file_size is not None
-            else "unknown size"
-        )
+        size = f"{attachment.file_size} bytes" if attachment.file_size is not None else "unknown size"
         header = f"[Attachment: {attachment.file_name} ({file_type}, {size})]"
         return f"{header}\n<<<\n{content}\n>>>", bool(content.strip())
     if attachment.klass == "upload":
@@ -249,12 +242,12 @@ def _render_attachment(attachment: AttachmentRender) -> tuple[str, bool]:
 
 
 def _as_text(value: object) -> str:
-    """An artifact input field, whatever the export put there."""
+    """Return an artifact input field, whatever the export put there."""
     return value if isinstance(value, str) else ""
 
 
 def _fence_for(content: str) -> str:
-    """A fence long enough that the artifact cannot close it early.
+    """Return a fence long enough that the artifact cannot close it early.
 
     An artifact whose own text contains ``` would otherwise terminate the block
     and spill the rest into the transcript as prose.
@@ -272,9 +265,7 @@ def _fence_for(content: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _header(
-    conversation: Conversation, message_count: int, part: int, total: int
-) -> str:
+def _header(conversation: Conversation, message_count: int, part: int, total: int) -> str:
     title = conversation.name.strip() or "(untitled)"
     return (
         "This is a migrated conversation.\n"
@@ -292,7 +283,7 @@ def _header(
 
 
 def source_id_line(uuid: str) -> str:
-    """The header line that ties a migrated chat back to its source (§7, §15).
+    """Return the header line that ties a migrated chat back to its source (§7, §15).
 
     Built here rather than spelled twice for the reason `ack_line` is: `17`
     verifies a reloaded chat by looking for this exact line in its first human
@@ -307,7 +298,7 @@ def _continuation(token: str, part: int, total: int) -> str:
 
 
 def ack_line(token: str, part: int, total: int) -> str:
-    """The one line a chat is asked to reply with, without its newline.
+    """Return the one line a chat is asked to reply with, without its newline.
 
     `04` stores it on `SeedChunk.ack` and `17` matches a response against it, so
     it is built here rather than spelled twice — a footer and a matcher that
@@ -325,8 +316,7 @@ def _footer(token: str, part: int, total: int, *, final: bool) -> str:
         )
     else:
         lead = (
-            "More parts of this conversation follow. Do not respond to the content "
-            "yet. Reply with\nexactly one line:"
+            "More parts of this conversation follow. Do not respond to the content yet. Reply with\nexactly one line:"
         )
     return f"{lead}\n{ack_line(token, part, total)}"
 
@@ -341,18 +331,14 @@ def _assemble(
     *,
     final: bool | None = None,
 ) -> str:
-    """One part: opening, separated message blocks, footer, one trailing `\\n`.
+    r"""One part: opening, separated message blocks, footer, one trailing `\n`.
 
     `final` overrides which footer is used. Packing needs that: the last part's
     footer is the longer of the two, and while parts are still being filled
     nobody yet knows which part will be last. Left `None`, the part count
     decides, which is what assembling a real part wants.
     """
-    opening = (
-        _header(conversation, message_count, part, total)
-        if part == 1
-        else _continuation(token, part, total)
-    )
+    opening = _header(conversation, message_count, part, total) if part == 1 else _continuation(token, part, total)
     is_final = part == total if final is None else final
     sections = [opening, *bodies, _footer(token, part, total, final=is_final)]
     return f"\n\n{SEPARATOR}\n\n".join(sections) + "\n"
@@ -378,12 +364,10 @@ def render_conversation(
     deliberately uncached.
     """
     by_uuid = attachments or {}
-    rendered = [
-        render_message(message, by_uuid.get(message.uuid, ())) for message in messages
-    ]
+    rendered = [render_message(message, by_uuid.get(message.uuid, ())) for message in messages]
     limitations = Limitations(branches_dropped=branches_dropped)
     for item in rendered:
-        limitations = limitations + item.limitations
+        limitations += item.limitations
 
     token = short_id(conversation.uuid)
     fragments = _fragments(rendered, conversation, len(messages), token, max_chars)
@@ -440,10 +424,7 @@ def _fragments(
             out.append(_Fragment(message.uuid, message.text, whole=True))
             continue
         pieces = _split_paragraphs(message.text, budget)
-        out.extend(
-            _Fragment(message.uuid, piece, whole=False)
-            for piece in _mark_continued(pieces)
-        )
+        out.extend(_Fragment(message.uuid, piece, whole=False) for piece in _mark_continued(pieces))
     return out
 
 
@@ -457,9 +438,7 @@ cost of the assumption is two characters of slack, not a wrong split.
 """
 
 
-def _budget(
-    conversation: Conversation, message_count: int, token: str, max_chars: int
-) -> int:
+def _budget(conversation: Conversation, message_count: int, token: str, max_chars: int) -> int:
     """How many characters of message body the largest envelope leaves room for.
 
     Measured against the widest of the three envelope shapes — first part of one
@@ -469,10 +448,7 @@ def _budget(
     """
     shapes = ((1, 1), (1, _WIDEST_TOTAL), (_WIDEST_TOTAL, _WIDEST_TOTAL))
     envelope = max(
-        len(
-            _assemble(conversation, message_count, token, [""], part, total, final=True)
-        )
-        for part, total in shapes
+        len(_assemble(conversation, message_count, token, [""], part, total, final=True)) for part, total in shapes
     )
     return max(1, max_chars - envelope)
 
@@ -496,10 +472,11 @@ def _split_paragraphs(text: str, budget: int) -> list[str]:
         if current:
             pieces.append(current)
             current = ""
-        while len(paragraph) > budget:
-            pieces.append(paragraph[:budget])
-            paragraph = paragraph[budget:]
-        current = paragraph
+        rest = paragraph
+        while len(rest) > budget:
+            pieces.append(rest[:budget])
+            rest = rest[budget:]
+        current = rest
     if current or not pieces:
         pieces.append(current)
     return pieces

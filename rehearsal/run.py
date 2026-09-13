@@ -43,6 +43,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
+
 from dataporter import PROGRAM_NAME
 from rehearsal import export as exporting
 from rehearsal.hermes import VERSION as AGENT_VERSION
@@ -76,7 +79,7 @@ before killing it, and how often to look."""
 
 
 def spki_pin(host: str, port: int) -> str:
-    """The mock's key, as Chrome's `--ignore-certificate-errors-spki-list` wants.
+    """Return the mock's key, as Chrome's `--ignore-certificate-errors-spki-list` wants.
 
     Computed from the certificate the mock is actually serving rather than read
     out of the mock's own files, so that this stays true when the mock moves to
@@ -90,15 +93,12 @@ def spki_pin(host: str, port: int) -> str:
 
 
 def _public_key_der(certificate_der: bytes) -> bytes:
-    """The SubjectPublicKeyInfo out of a DER certificate.
+    """Return the SubjectPublicKeyInfo out of a DER certificate.
 
     `cryptography` is the mock's dependency, not this package's, and it is
     already installed in the workspace it rehearses; importing it here rather
     than at the top keeps a rehearsal's other commands runnable without it.
     """
-    from cryptography import x509
-    from cryptography.hazmat.primitives import serialization
-
     loaded = x509.load_der_x509_certificate(certificate_der)
     return loaded.public_key().public_bytes(
         serialization.Encoding.DER,
@@ -107,7 +107,7 @@ def _public_key_der(certificate_der: bytes) -> bytes:
 
 
 def ledger(host: str, port: int) -> dict[str, int]:
-    """The mock's count, now."""
+    """Return the mock's count, now."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -182,8 +182,11 @@ class Settings:
 
 
 def free_port() -> int:
-    """A port nothing is listening on, now. Racy by nature and good enough: the
-    alternative is meeting the Chrome an earlier rehearsal left on 9222."""
+    """Return a port nothing is listening on, now.
+
+    Racy by nature and good enough: the alternative is meeting the Chrome an earlier
+    rehearsal left on 9222.
+    """
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
         return int(held.getsockname()[1])
@@ -194,7 +197,7 @@ def repo_root() -> Path:
 
 
 def chrome_args(settings: Settings, pin: str) -> list[str]:
-    """The `extra_args` the mock told the operator to paste, plus this machine's.
+    """Return the `extra_args` the mock told the operator to paste, plus this machine's.
 
     The first two are the mock's own block. The rest are what a headless,
     sandbox-less, proxied machine needs in order to run *any* browser, and are
@@ -214,17 +217,19 @@ def chrome_args(settings: Settings, pin: str) -> list[str]:
     return arguments
 
 
-class NotFresh(RuntimeError):
-    """The mock has already been used. §25 reconciles the report against the
-    *whole* of the ledger, so a rehearsal starts against a mock that has counted
-    nothing — which is one restart away."""
+class NotFreshError(RuntimeError):
+    """The mock has already been used.
+
+    §25 reconciles the report against the *whole* of the ledger, so a rehearsal starts
+    against a mock that has counted nothing — which is one restart away.
+    """
 
 
 def prepare(settings: Settings) -> dict[str, Any]:
     """Build the export, write the configuration, put a `hermes` on the path."""
     counted = ledger(settings.host, settings.port)
     if any(counted.values()):
-        raise NotFresh(
+        raise NotFreshError(
             "the mock has already counted "
             + ", ".join(f"{key}={value}" for key, value in counted.items() if value)
             + " — restart it, so that its ledger is the whole of this rehearsal"
@@ -235,14 +240,12 @@ def prepare(settings: Settings) -> dict[str, Any]:
     (settings.workspace / "config.toml").write_text(
         config_text(settings, pin=pin, attachments=attachments), encoding="utf-8"
     )
-    write_executable(
-        settings.bin, repo=repo_root(), state=settings.bin / "profile.json"
-    )
+    write_executable(settings.bin, repo=repo_root(), state=settings.bin / "profile.json")
     return {"export": export, "attachments": attachments, "pin": pin}
 
 
 def config_text(settings: Settings, *, pin: str, attachments: Path) -> str:
-    """The `config.toml` an operator could have written.
+    """Return the `config.toml` an operator could have written.
 
     `browser.executable` is written only when `--chrome` named one. Left out, the
     tool runs its own discovery over the browsers it knows; written empty, it
@@ -251,17 +254,13 @@ def config_text(settings: Settings, *, pin: str, attachments: Path) -> str:
     Chrome is on the path under a name this runner never had to know. (Raised by
     Copilot in review on #36.)
     """
-    executable = (
-        f"executable = {json.dumps(settings.chrome)}\n" if settings.chrome else ""
-    )
+    executable = f"executable = {json.dumps(settings.chrome)}\n" if settings.chrome else ""
     arguments = chrome_args(settings, pin)
     return CONFIG.format(
         executable=executable,
         headless=json.dumps(settings.headless),
         cdp_port=settings.cdp_port or free_port(),
-        extra_args="".join(f"  {json.dumps(item)},\n" for item in arguments).rstrip(
-            "\n"
-        ),
+        extra_args="".join(f"  {json.dumps(item)},\n" for item in arguments).rstrip("\n"),
         hermes_home=json.dumps(str(settings.root / "hermes-home")),
         attachments=json.dumps(str(attachments)),
         delay=settings.delay_s,
@@ -271,7 +270,7 @@ def config_text(settings: Settings, *, pin: str, attachments: Path) -> str:
 
 
 def environment(settings: Settings) -> dict[str, str]:
-    """What every step of the protocol runs with.
+    """Return what every step of the protocol runs with.
 
     The credentials are here and nowhere else: never in `config.toml`, which the
     tool refuses to read them from, and never on a command line.
@@ -333,29 +332,27 @@ class Runner:
         """
         directory = self.settings.root / "protocol"
         directory.mkdir(parents=True, exist_ok=True)
-        slug = "".join(
-            character if character.isalnum() else "-" for character in outcome.name
-        ).strip("-")
+        slug = "".join(character if character.isalnum() else "-" for character in outcome.name).strip("-")
         self.kept += 1
         stem = directory / f"{self.kept:02d}-{slug}"
         stem.with_suffix(".out").write_text(outcome.stdout, encoding="utf-8")
         stem.with_suffix(".err").write_text(outcome.stderr, encoding="utf-8")
 
     def command(self, *arguments: str) -> list[str]:
-        """The installed command, with the workspace and the mode it was asked
-        for. `python -m dataporter` when the console script is not on the path,
-        which `25` guarantees is the same program."""
+        """Return the installed command, with the workspace and the mode it was asked for.
+
+        `python -m dataporter` when the console script is not on the path, which `25`
+        guarantees is the same program.
+        """
         head = shutil.which(PROGRAM, path=str(self.env.get("PATH", "")))
         base = [head] if head else [sys.executable, "-m", "dataporter"]
         mode = ["--non-interactive"] if self.settings.unattended else []
         return [*base, "--workspace", str(self.settings.workspace), *mode, *arguments]
 
-    def run(
-        self, name: str, *arguments: str, note: str = "", deliberate: bool = False
-    ) -> Outcome:
+    def run(self, name: str, *arguments: str, note: str = "", deliberate: bool = False) -> Outcome:
         argv = self.command(*arguments)
         started = time.monotonic()
-        finished = subprocess.run(  # noqa: S603 - our own command line
+        finished = subprocess.run(
             argv,
             capture_output=True,
             text=True,
@@ -375,10 +372,7 @@ class Runner:
         )
         self.steps.append(outcome)
         self.keep(outcome)
-        print(
-            f"  {name:<34} exit {outcome.exit_code}  {outcome.seconds:>6.1f}s"
-            + (f"  — {note}" if note else "")
-        )
+        print(f"  {name:<34} exit {outcome.exit_code}  {outcome.seconds:>6.1f}s" + (f"  — {note}" if note else ""))
         return outcome
 
     def interrupt(self, name: str, *arguments: str) -> Outcome:
@@ -392,7 +386,7 @@ class Runner:
         argv = self.command(*arguments)
         before = ledger(self.settings.host, self.settings.port)
         started = time.monotonic()
-        process = subprocess.Popen(  # noqa: S603 - our own command line
+        process = subprocess.Popen(
             argv,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -435,16 +429,11 @@ class Runner:
         self.keep(outcome)
         after = ledger(self.settings.host, self.settings.port)
         self.drill = {key: after[key] - before.get(key, 0) for key in after}
-        print(
-            f"  {name:<34} killed={killed}  {outcome.seconds:>6.1f}s"
-            f"  — the killed run: {_counts(self.drill)}"
-        )
+        print(f"  {name:<34} killed={killed}  {outcome.seconds:>6.1f}s  — the killed run: {_counts(self.drill)}")
         return outcome
 
 
-def finish(
-    process: subprocess.Popen[str], *, timeout_s: float
-) -> tuple[str, str, bool]:
+def finish(process: subprocess.Popen[str], *, timeout_s: float) -> tuple[str, str, bool]:
     """Collect a process's output, and never wait longer than `timeout_s`.
 
     A run the drill did not get to kill — nothing reached the mock inside the
@@ -502,7 +491,7 @@ def protocol(runner: Runner, export: Path) -> dict[str, Any]:
 
 
 def instruments(runner: Runner, export: Path) -> dict[str, Outcome]:
-    """The sign-off instruments (§23), run over the rehearsal's own workspace."""
+    """Return the sign-off instruments (§23), run over the rehearsal's own workspace."""
     workspace = str(runner.settings.workspace)
     script = str(repo_root() / "spikes" / "sign_off.py")
     answers: dict[str, Outcome] = {}
@@ -512,7 +501,7 @@ def instruments(runner: Runner, export: Path) -> dict[str, Outcome]:
         ("safety", ["safety", "--workspace", workspace, "--export", str(export)]),
     ):
         started = time.monotonic()
-        finished = subprocess.run(  # noqa: S603 - our own script
+        finished = subprocess.run(
             [sys.executable, script, *arguments],
             capture_output=True,
             text=True,
@@ -563,7 +552,7 @@ def load(path: Path) -> dict[str, Any]:
     return loaded if isinstance(loaded, dict) else {}
 
 
-def criteria(
+def criteria(  # ruff: ignore[too-many-locals] - one local per §25 criterion
     settings: Settings,
     *,
     counted: Mapping[str, int],
@@ -592,14 +581,11 @@ def criteria(
     run = load(workspace / "run.json")
     report = load(workspace / "report.json")
     entries = {uuid: entry for uuid, entry in state.items() if isinstance(entry, dict)}
-    migratable = {
-        uuid: entry for uuid, entry in entries.items() if uuid in exporting.MIGRATABLE
-    }
+    migratable = {uuid: entry for uuid, entry in entries.items() if uuid in exporting.MIGRATABLE}
     first_time = {
         uuid: entry
         for uuid, entry in migratable.items()
-        if entry.get("status") == "completed"
-        and (entry.get("attempts") == 1 or uuid in interrupted)
+        if entry.get("status") == "completed" and (entry.get("attempts") == 1 or uuid in interrupted)
     }
     totals = report.get("totals", {}) if isinstance(report, dict) else {}
     created = int(totals.get("created", 0))
@@ -613,15 +599,11 @@ def criteria(
         if entry.get("destination", {}).get("conversation_id")
     }
     parts_sent = sum(int(entry.get("chunks_acked", 0)) for entry in entries.values())
-    uploaded = sum(
-        int(entry.get("attachments", {}).get("uploaded", 0))
-        for entry in entries.values()
-    )
+    uploaded = sum(int(entry.get("attachments", {}).get("uploaded", 0)) for entry in entries.values())
     titles = sum(
         1
         for entry in migratable.values()
-        if "title_not_set" not in (entry.get("limitations") or [])
-        and entry.get("status") == "completed"
+        if "title_not_set" not in (entry.get("limitations") or []) and entry.get("status") == "completed"
     )
     logins = sum(1 for step in steps if step.name == "login" and step.ok)
     auto = int(run.get("auto_signins", 0))
@@ -713,9 +695,7 @@ def _reconciles(
     detail = f"{ledger_says} == {terms or tool_says}"
     if from_the_drill:
         detail += f" + {from_the_drill} ({what})"
-    return Criterion(
-        f"ledger: {name}", ledger_says == tool_says + from_the_drill, detail
-    )
+    return Criterion(f"ledger: {name}", ledger_says == tool_says + from_the_drill, detail)
 
 
 FOREIGN_HOSTS = "history: other hosts"
@@ -738,15 +718,17 @@ def safety_rows(text: str) -> dict[str, tuple[str, str]]:
 
 
 def _safety(answer: Outcome | None) -> Criterion:
-    """§25's audit: no host but claude.ai, and no chat this workspace did not
-    create. Read off the audit's own rows rather than off its exit code."""
+    """§25's audit: no host but claude.ai, and no chat this workspace did not create.
+
+    Read off the audit's own rows rather than off its exit code.
+    """
     name = "the safety audit finds no host but claude.ai"
     if answer is None:
-        return Criterion(name, False, "not run")
+        return Criterion(name, passed=False, detail="not run")
     rows = safety_rows(answer.stdout)
     wanted = (UNKNOWN_CHATS, FOREIGN_HOSTS)
     if not all(label in rows for label in wanted):
-        return Criterion(name, False, _first_line(answer.stdout) or "no rows")
+        return Criterion(name, passed=False, detail=_first_line(answer.stdout) or "no rows")
     numbers = {label: rows[label][0] for label in wanted}
     others = rows.get(OTHER_PATHS, ("—", ""))[0]
     return Criterion(
@@ -890,13 +872,8 @@ def render(
     extra_args: Sequence[str],
 ) -> str:
     mark = MARK.format(date=date)
-    rows = "\n".join(
-        f"| `{step.name}` | {step.exit_code} | {step.seconds:g} | {step.note or ''} |"
-        for step in steps
-    )
-    criteria_rows = "\n".join(
-        f"| {item.name} | {item.detail} | {item.verdict} | {mark} |" for item in checks
-    )
+    rows = "\n".join(f"| `{step.name}` | {step.exit_code} | {step.seconds:g} | {step.note or ''} |" for step in steps)
+    criteria_rows = "\n".join(f"| {item.name} | {item.detail} | {item.verdict} | {mark} |" for item in checks)
     passed = all(item.passed for item in checks)
     return RECORD.format(
         number=number,
@@ -906,10 +883,7 @@ def render(
         agent=versions.get("agent", "unknown"),
         chrome=versions.get("chrome", "unknown"),
         mock=versions.get("mock", "unknown"),
-        pacing=(
-            f"{settings.delay_s:g}s between conversations, "
-            f"{settings.parts_delay_s:g}s between parts"
-        ),
+        pacing=(f"{settings.delay_s:g}s between conversations, {settings.parts_delay_s:g}s between parts"),
         response_s=f"{settings.response_s:g}",
         headless=json.dumps(settings.headless),
         extra_args=", ".join(f"`{item}`" for item in extra_args),
@@ -925,7 +899,7 @@ def render(
 
 
 def versions_of(settings: Settings, env: Mapping[str, str]) -> dict[str, str]:
-    """The four versions a record names, each read rather than assumed."""
+    """Return the four versions a record names, each read rather than assumed."""
     return {
         "tool": _captured(
             [
@@ -936,17 +910,13 @@ def versions_of(settings: Settings, env: Mapping[str, str]) -> dict[str, str]:
         ),
         "agent": f"scripted agent {AGENT_VERSION}",
         "chrome": _captured([settings.chrome or "google-chrome", "--version"], env),
-        "mock": _captured(
-            [shutil.which("claude-mock") or "claude-mock", "--version"], env
-        ),
+        "mock": _captured([shutil.which("claude-mock") or "claude-mock", "--version"], env),
     }
 
 
 def _captured(argv: Sequence[str], env: Mapping[str, str]) -> str:
     try:
-        finished = subprocess.run(  # noqa: S603 - a --version call
-            list(argv), capture_output=True, text=True, env=dict(env), timeout=60
-        )
+        finished = subprocess.run(list(argv), capture_output=True, text=True, env=dict(env), timeout=60, check=False)
     except (OSError, subprocess.SubprocessError):
         return "unknown"
     printed = (finished.stdout or finished.stderr).strip().splitlines()
@@ -961,15 +931,11 @@ def _captured(argv: Sequence[str], env: Mapping[str, str]) -> str:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="rehearsal.run", description=__doc__)
     root.add_argument("--root", type=Path, required=True, help="where to work")
-    root.add_argument(
-        "--mode", choices=("non-interactive", "interactive"), default="non-interactive"
-    )
+    root.add_argument("--mode", choices=("non-interactive", "interactive"), default="non-interactive")
     root.add_argument("--mock-host", default=DEFAULT_HOST)
     root.add_argument("--mock-port", type=int, default=DEFAULT_PORT)
     root.add_argument("--chrome", default=None, help="the browser to drive")
-    root.add_argument(
-        "--cdp-port", type=int, default=0, help="0 finds a free one (the default)"
-    )
+    root.add_argument("--cdp-port", type=int, default=0, help="0 finds a free one (the default)")
     root.add_argument("--headed", action="store_true", help="give Chrome a window")
     root.add_argument("--delay-s", type=float, default=0.0)
     root.add_argument("--parts-delay-s", type=float, default=0.0)
@@ -1002,10 +968,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         email=arguments.email,
         password=arguments.password,
     )
-    print(
-        f"rehearsal: {settings.mode}, against the mock on {settings.host}:"
-        f"{settings.port}"
-    )
+    print(f"rehearsal: {settings.mode}, against the mock on {settings.host}:{settings.port}")
     prepared = prepare(settings)
     env = environment(settings)
     runner = Runner(settings=settings, env=env)
@@ -1054,7 +1017,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def ledger_block(counted: Mapping[str, int]) -> str:
-    """The mock's block, rebuilt from its numbers.
+    """Return the mock's block, rebuilt from its numbers.
 
     Rebuilt rather than fetched as text so that a record can be rendered from a
     run whose mock has since been stopped — the shape is `26`'s, and the mock's
@@ -1074,25 +1037,33 @@ def ledger_block(counted: Mapping[str, int]) -> str:
 
 
 STANDING_FINDINGS = (
-    "`doctor` before `login` fails `hermes attaches to chrome`: the check asks "
-    "the agent for the URL of the other tab, and a signed-out tab has redirected "
-    "to `/login`. True of claude.ai too, so it is recorded rather than worked "
-    "around; `doctor` is run again after `login`, where it passes.",
-    "The sign-off instruments are run before `session logout` rather than after "
-    "it, as §23's order has them: the safety audit reads the browser profile's "
-    "own History database, and `logout` deletes the profile.",
-    "`sign_off.py gate` and `sign_off.py safety` both exit 1, and neither is a "
-    "failed criterion: the gate's third question needs hand-graded semantic "
-    "probes, which against the mock are *not applicable* (§27), and its fourth "
-    "asks a person to explain the one failure line (the unsupported "
-    "conversation); the audit counts the run's own `/login` visit as an "
-    "`other claude.ai path` for a person to judge. §25's two safety rows — no "
-    "other host, and no chat this workspace did not create — are read off the "
-    "audit's table above.",
-    "The interruption drill leaves a chat the tool never learned the id of, "
-    "because a one-shot agent reports the id when it returns. The retry starts "
-    "another chat, and the mock counts both. The tool's own drill instrument "
-    "cannot see it; the ledger can, and the reconciliation above carries it.",
+    (
+        "`doctor` before `login` fails `hermes attaches to chrome`: the check asks "
+        "the agent for the URL of the other tab, and a signed-out tab has redirected "
+        "to `/login`. True of claude.ai too, so it is recorded rather than worked "
+        "around; `doctor` is run again after `login`, where it passes."
+    ),
+    (
+        "The sign-off instruments are run before `session logout` rather than after "
+        "it, as §23's order has them: the safety audit reads the browser profile's "
+        "own History database, and `logout` deletes the profile."
+    ),
+    (
+        "`sign_off.py gate` and `sign_off.py safety` both exit 1, and neither is a "
+        "failed criterion: the gate's third question needs hand-graded semantic "
+        "probes, which against the mock are *not applicable* (§27), and its fourth "
+        "asks a person to explain the one failure line (the unsupported "
+        "conversation); the audit counts the run's own `/login` visit as an "
+        "`other claude.ai path` for a person to judge. §25's two safety rows — no "
+        "other host, and no chat this workspace did not create — are read off the "
+        "audit's table above."
+    ),
+    (
+        "The interruption drill leaves a chat the tool never learned the id of, "
+        "because a one-shot agent reports the id when it returns. The retry starts "
+        "another chat, and the mock counts both. The tool's own drill instrument "
+        "cannot see it; the ledger can, and the reconciliation above carries it."
+    ),
 )
 """What every rehearsal of this shape has to say, whatever its numbers.
 
@@ -1104,10 +1075,9 @@ stopped doing it.
 
 
 def findings_of(steps: Sequence[Outcome], checks: Sequence[Criterion]) -> list[str]:
-    """What this run has to say, in one line each."""
+    """Return what this run has to say, in one line each."""
     found = [
-        f"`{step.name}` exited {step.exit_code}."
-        + (f" {step.note}" if step.note else "")
+        f"`{step.name}` exited {step.exit_code}." + (f" {step.note}" if step.note else "")
         for step in steps
         if not step.ok and not step.deliberate
     ]

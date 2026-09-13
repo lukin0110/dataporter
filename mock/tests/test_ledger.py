@@ -5,6 +5,8 @@ it to the slice; this is where the slice pins it, and `rehearsal/run.py` rebuild
 the same block from the numbers, so a change here fails there too.
 """
 
+import threading
+
 from claudemock.ledger import Ledger
 
 
@@ -39,16 +41,10 @@ def test_a_fresh_ledger_is_all_zeros() -> None:
 
 
 def test_counting_is_safe_to_do_from_several_threads() -> None:
-    """The server is threaded, and a witness that under-counts is worse than
-    no witness at all."""
-    import threading
-
+    """The server is threaded, and a witness that under-counts is worse than no witness at all."""
     ledger = Ledger()
     workers = [
-        threading.Thread(
-            target=lambda: [ledger.count("messages_received") for _ in range(500)]
-        )
-        for _ in range(8)
+        threading.Thread(target=lambda: [ledger.count("messages_received") for _ in range(500)]) for _ in range(8)
     ]
     for worker in workers:
         worker.start()

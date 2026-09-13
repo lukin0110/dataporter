@@ -33,7 +33,7 @@ from dataporter.state import (
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "spikes"))
 
-import sign_off  # noqa: E402  — after the path insert, as `10`'s scripts are
+import sign_off
 
 FINGERPRINT = "0" * 64
 
@@ -49,17 +49,15 @@ THIRD = "55556666-0000-4000-8000-000000000003"
 
 def entry(**fields: object) -> ConversationState:
     """One entry, defaulted to a conversation that completed unattended."""
-    return ConversationState.model_validate(
-        {
-            "status": Status.COMPLETED,
-            "destination": Destination(conversation_id="chat-1"),
-            "attempts": 1,
-            "chunks_acked": 2,
-            "chunks_total": 2,
-            "messages_represented": 4,
-            **fields,
-        }
-    )
+    return ConversationState.model_validate({
+        "status": Status.COMPLETED,
+        "destination": Destination(conversation_id="chat-1"),
+        "attempts": 1,
+        "chunks_acked": 2,
+        "chunks_total": 2,
+        "messages_represented": 4,
+        **fields,
+    })
 
 
 DEFAULT_ENTRIES: dict[str, ConversationState] = {
@@ -85,7 +83,7 @@ def workspace_of(
     runs: int = 1,
     fingerprint: str = FINGERPRINT,
 ) -> Path:
-    """The three files every subcommand reads, plus a finished run record."""
+    """Return the three files every subcommand reads, plus a finished run record."""
     store = state.StateStore(root)
     for uuid, item in entries.items():
         store.update(uuid, **item.model_dump())
@@ -139,7 +137,7 @@ def seed_part(root: Path, uuid: str, index: int, chars: int) -> None:
 
 
 def verdicts(root: Path, *scores: str) -> None:
-    """A `pilot/probes.json` with one judged probe per score."""
+    """Write a `pilot/probes.json` with one judged probe per score."""
     probes = [
         {
             "conversation_uuid": f"{position}",
@@ -166,8 +164,11 @@ def verdicts(root: Path, *scores: str) -> None:
 
 
 def test_a_workspace_with_no_plan_is_a_usage_error(tmp_path: Path) -> None:
-    """`report.read_plan`'s rule, and the only way in: a directory nothing has
-    run in has no numbers, and inventing zeros would read like a finished run."""
+    """`report.read_plan`'s rule, and the only way in.
+
+    A directory nothing has run in has no numbers, and inventing zeros would read like a
+    finished run.
+    """
     assert sign_off.main(["gate", "--workspace", str(tmp_path)]) == ExitCode.USAGE
 
 
@@ -185,8 +186,11 @@ def test_it_reads_the_four_files(tmp_path: Path) -> None:
 
 
 def test_question_one_counts_chats_against_attempts(tmp_path: Path) -> None:
-    """Two of three attempted conversations have a chat: below the threshold,
-    and therefore a no-go rather than a number somebody has to interpret."""
+    """Two of three attempted conversations have a chat.
+
+    Below the threshold, and therefore a no-go rather than a number somebody has to
+    interpret.
+    """
     checks = sign_off.gate(opened(workspace_of(tmp_path)), failures_understood=False)
 
     assert checks[0].number == "66.7%"
@@ -199,29 +203,29 @@ def test_question_one_passes_when_every_attempt_landed(tmp_path: Path) -> None:
         FIRST: entry(),
         SECOND: entry(destination=Destination(conversation_id="c")),
     }
-    checks = sign_off.gate(
-        opened(workspace_of(tmp_path, entries)), failures_understood=False
-    )
+    checks = sign_off.gate(opened(workspace_of(tmp_path, entries)), failures_understood=False)
 
     assert checks[0].verdict == sign_off.GO
     assert checks[0].number == "100.0%"
 
 
 def test_a_conversation_never_attempted_is_in_neither_term(tmp_path: Path) -> None:
-    """`attempts == 0` is a conversation the run did not reach. Counting it as a
-    failure to create a chat would make `--limit` look like a fault."""
+    """`attempts == 0` is a conversation the run did not reach.
+
+    Counting it as a failure to create a chat would make `--limit` look like a fault.
+    """
     entries = {FIRST: entry(), SECOND: entry(status=Status.PENDING, attempts=0)}
-    checks = sign_off.gate(
-        opened(workspace_of(tmp_path, entries)), failures_understood=False
-    )
+    checks = sign_off.gate(opened(workspace_of(tmp_path, entries)), failures_understood=False)
 
     assert checks[0].terms == "1 ÷ 1"
 
 
 def test_question_two_leaves_out_the_parts_it_does_not_cover(tmp_path: Path) -> None:
-    """`21` sets question 2's threshold "for parts under 50 k characters", so a
-    conversation with a bigger part is in neither term — and is named, because a
-    part nobody has a threshold for is the write-up's business."""
+    """`21` sets question 2's threshold "for parts under 50 k characters".
+
+    A conversation with a bigger part is in neither term — and is named, because a part
+    nobody has a threshold for is the write-up's business.
+    """
     root = workspace_of(tmp_path)
     seed_part(root, FIRST, 1, 1_000)
     seed_part(root, FIRST, 2, 1_000)
@@ -235,14 +239,14 @@ def test_question_two_leaves_out_the_parts_it_does_not_cover(tmp_path: Path) -> 
 
 
 def test_part_sizes_fall_back_to_the_plan(tmp_path: Path) -> None:
-    """A workspace whose seeds were cleaned up still has `plan.json`'s estimate,
-    which is an average — enough to bucket a conversation, and said so."""
+    """A workspace whose seeds were cleaned up still has `plan.json`'s estimate.
+
+    It is an average — enough to bucket a conversation, and said so.
+    """
     root = tmp_path
     plan = MigrationPlan(
         export_fingerprint=FINGERPRINT,
-        totals=PlanTotals(
-            conversations=1, messages=1, attachments=0, migratable=1, unsupported=0
-        ),
+        totals=PlanTotals(conversations=1, messages=1, attachments=0, migratable=1, unsupported=0),
         conversations=[
             {
                 "uuid": FIRST,
@@ -261,8 +265,10 @@ def test_part_sizes_fall_back_to_the_plan(tmp_path: Path) -> None:
 
 
 def test_question_three_is_unknown_until_somebody_grades(tmp_path: Path) -> None:
-    """The hand grades live in the write-up, and the one in this repo is still
-    the unrun template. No grades is not "no failures"."""
+    """The hand grades live in the write-up, and the one in this repo is still the unrun template.
+
+    No grades is not "no failures".
+    """
     checks = sign_off.gate(opened(workspace_of(tmp_path)), failures_understood=False)
 
     assert checks[2].verdict == sign_off.UNKNOWN
@@ -290,15 +296,10 @@ def test_hand_grades_are_read_out_of_the_table(tmp_path: Path) -> None:
     ]
 
 
-def test_one_fail_grade_is_a_no_go(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_one_fail_grade_is_a_no_go(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     document = tmp_path / "experiment.md"
     document.write_text(
-        "## Semantic probe grades\n"
-        "| Conversation | Hand grade |\n"
-        "| --- | --- |\n"
-        "| `11112222` | fail |\n",
+        "## Semantic probe grades\n| Conversation | Hand grade |\n| --- | --- |\n| `11112222` | fail |\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(sign_off, "EXPERIMENT_01", document)
@@ -310,22 +311,20 @@ def test_one_fail_grade_is_a_no_go(
 def test_the_failure_row_needs_a_person_to_say_the_reasons_are_understood(
     tmp_path: Path,
 ) -> None:
-    """ "Every `Failures` line understood" is a judgement, so the gate refuses to
-    make it: it stays `unknown` until the operator passes the flag that says a
-    reason has been written down."""
+    """Whether every `Failures` line is understood is a judgement, so the gate refuses it.
+
+    It stays `unknown` until the operator passes the flag that says a reason has been
+    written down.
+    """
     workspace = opened(workspace_of(tmp_path))
 
-    assert sign_off.gate(workspace, failures_understood=False)[3].verdict == (
-        sign_off.UNKNOWN
-    )
+    assert sign_off.gate(workspace, failures_understood=False)[3].verdict == (sign_off.UNKNOWN)
     assert sign_off.gate(workspace, failures_understood=True)[3].verdict == sign_off.GO
 
 
 def test_a_run_with_no_failures_needs_no_such_promise(tmp_path: Path) -> None:
     entries = {FIRST: entry()}
-    checks = sign_off.gate(
-        opened(workspace_of(tmp_path, entries)), failures_understood=False
-    )
+    checks = sign_off.gate(opened(workspace_of(tmp_path, entries)), failures_understood=False)
 
     assert checks[3].verdict == sign_off.GO
 
@@ -351,8 +350,11 @@ def test_the_primary_metric_is_completed_first_time_and_unpaused(
 def test_a_conversation_a_person_was_asked_about_is_not_unattended(
     tmp_path: Path,
 ) -> None:
-    """Even on the first attempt: the pause is the intervention, and `run.json`
-    has forgotten it by the time `resume` finishes. The run log has not."""
+    """Even on the first attempt.
+
+    The pause is the intervention, and `run.json` has forgotten it by the time `resume`
+    finishes. The run log has not.
+    """
     root = workspace_of(tmp_path, {FIRST: entry()})
     log_line(
         root,
@@ -365,20 +367,20 @@ def test_a_conversation_a_person_was_asked_about_is_not_unattended(
 
 
 def test_an_open_pause_counts_too(tmp_path: Path) -> None:
-    """A run that is still paused has no log line for it in a finished file yet,
-    and `run.json` is where that ask lives."""
+    """A run that is still paused has no log line for it in a finished file yet, and `run.json` is where that ask lives."""
     root = workspace_of(tmp_path, {FIRST: entry()})
     store = state.StateStore(root)
-    store.set_paused(
-        PauseRecord(conversation_uuid=FIRST, reason="auth_required", since=state.now())
-    )
+    store.set_paused(PauseRecord(conversation_uuid=FIRST, reason="auth_required", since=state.now()))
 
     assert sign_off.unattended(opened(root)) == sign_off.Number(0, 1)
 
 
 def test_a_half_written_log_line_is_skipped(tmp_path: Path) -> None:
-    """The drill kills the process mid-run, so the last line of a log is
-    routinely half a record. That is not a reason to refuse to report."""
+    """The drill kills the process mid-run.
+
+    The last line of a log is routinely half a record. That is not a reason to refuse to
+    report.
+    """
     root = workspace_of(tmp_path, {FIRST: entry()})
     path = root / "logs" / "run-20260101T000000Z.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -393,9 +395,12 @@ def test_a_half_written_log_line_is_skipped(tmp_path: Path) -> None:
 
 
 def test_every_19_metric_has_a_row(tmp_path: Path) -> None:
-    """Written out here as well as in `METRIC_NAMES`, so that renaming a metric
-    is a change somebody makes on purpose — `test_scale_up_doc.py` checks the
-    same tuple against the write-up, and the three have to agree."""
+    """Written out here as well as in `METRIC_NAMES`.
+
+    That renaming a metric is a change somebody makes on purpose —
+    `test_scale_up_doc.py` checks the same tuple against the write-up, and the three
+    have to agree.
+    """
     rows = sign_off.metrics(opened(workspace_of(tmp_path)), recoveries=None)
 
     assert [row.name for row in rows] == list(sign_off.METRIC_NAMES)
@@ -411,8 +416,7 @@ def test_every_19_metric_has_a_row(tmp_path: Path) -> None:
 
 
 def test_the_primary_row_carries_its_two_terms(tmp_path: Path) -> None:
-    """`21`: the primary metric is "stated as a percentage with its numerator and
-    denominator"."""
+    """`21`: the primary metric is "stated as a percentage with its numerator and denominator"."""
     rows = sign_off.metrics(opened(workspace_of(tmp_path)), recoveries=None)
 
     assert rows[0].number == "33.3%"
@@ -436,13 +440,14 @@ def test_fidelity_counts_the_judge_s_verdicts(tmp_path: Path) -> None:
 
 
 def test_browser_reliability_says_what_it_is_missing(tmp_path: Path) -> None:
-    """The in-run recovery rows are only in a transcript, so the denominator is
-    incomplete until somebody counts them. It prints `—`, not the half it has."""
+    """The in-run recovery rows are only in a transcript.
+
+    The denominator is incomplete until somebody counts them. It prints `—`, not the
+    half it has.
+    """
     workspace = opened(workspace_of(tmp_path, counters={"retries": 4}))
 
-    assert sign_off.metrics(workspace, recoveries=None)[3].number == (
-        sign_off.UNMEASURED
-    )
+    assert sign_off.metrics(workspace, recoveries=None)[3].number == (sign_off.UNMEASURED)
     assert sign_off.metrics(workspace, recoveries=6)[3].terms == "0 ÷ 10"
 
 
@@ -465,15 +470,16 @@ def test_speed_is_summed_over_finished_sessions(tmp_path: Path) -> None:
 
 
 def test_an_unfinished_session_contributes_no_time(tmp_path: Path) -> None:
-    """The session a SIGKILL ended has no `ended`, and a duration this script
-    guessed for it would be the drill's own damage reported as speed."""
+    """The session a SIGKILL ended has no `ended`.
+
+    A duration this script guessed for it would be the drill's own damage reported as
+    speed.
+    """
     root = workspace_of(tmp_path)
     store = state.StateStore(root)
     store.start_run(state.Selection())
 
-    assert sign_off.elapsed_hours(store.run()) == sign_off.elapsed_hours(
-        state.StateStore(root).run()
-    )
+    assert sign_off.elapsed_hours(store.run()) == sign_off.elapsed_hours(state.StateStore(root).run())
 
 
 def test_intervention_reasons_are_counted_by_name(tmp_path: Path) -> None:
@@ -496,13 +502,13 @@ def test_intervention_reasons_are_counted_by_name(tmp_path: Path) -> None:
     assert rows[6].note == "captcha 2"
 
 
-def test_the_run_logs_are_parsed_once_per_invocation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Three rows need what the logs remember, and a workspace of a thousand
-    conversations has one log per session: reading them per conversation is what
-    would make this command unusable on the run it is for. (Raised by Copilot in
-    review on #30.)"""
+def test_the_run_logs_are_parsed_once_per_invocation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Three rows need what the logs remember, and the logs are read once.
+
+    A workspace of a thousand conversations has one log per session: reading them per
+    conversation is what would make this command unusable on the run it is for. (Raised
+    by Copilot in review on #30.)
+    """
     root = workspace_of(tmp_path)
     log_line(
         root,
@@ -561,8 +567,11 @@ def test_the_drill_passes_on_a_run_with_no_duplicates(tmp_path: Path) -> None:
 def test_two_entries_sharing_a_chat_is_the_failure_the_drill_looks_for(
     tmp_path: Path,
 ) -> None:
-    """A conversation migrated twice after a kill would land as two entries on
-    one chat, or as one entry with a second chat behind it. Both are counted."""
+    """A conversation migrated twice after a kill lands one of two ways.
+
+    Two entries on one chat, or one entry with a second chat behind it. Both are
+    counted.
+    """
     entries = {FIRST: entry(), SECOND: entry()}
     checks = sign_off.drill(opened(workspace_of(tmp_path, entries)))
 
@@ -587,8 +596,10 @@ def test_a_workspace_with_no_interruption_says_the_drill_has_not_run(
 
 
 def test_a_superseded_chat_is_reported_rather_than_hidden(tmp_path: Path) -> None:
-    """`--force` leaves the old chat at the destination (§17 forbids deleting
-    it), so it is a fact about the account the write-up has to carry."""
+    """`--force` leaves the old chat at the destination (§17 forbids deleting it).
+
+    It is a fact about the account the write-up has to carry.
+    """
     root = workspace_of(tmp_path, {FIRST: entry()})
     state.StateStore(root).remember_destination(FIRST, "chat-0")
     state.StateStore(root).bump_counter("interrupted")
@@ -604,8 +615,10 @@ def test_a_superseded_chat_is_reported_rather_than_hidden(tmp_path: Path) -> Non
 
 
 def history_of(profile: Path, *urls: str) -> None:
-    """A Chrome history database with a `urls` table, and a title beside each
-    URL — which is what the audit must not read."""
+    """Write a Chrome history database with a `urls` table, and a title beside each URL.
+
+    Which is what the audit must not read.
+    """
     profile.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(profile / "History")
     with connection:
@@ -628,9 +641,7 @@ def test_the_history_audit_accepts_new_and_the_chats_this_workspace_made(
         "https://claude.ai/chat/chat-1?utm=x",
         "https://claude.ai/chat/chat-2",
     )
-    checks = sign_off.safety(
-        opened(root), export=None, profile=root / "browser-profile"
-    )
+    checks = sign_off.safety(opened(root), export=None, profile=root / "browser-profile")
 
     assert [check.name for check in checks] == list(sign_off.SAFETY_CHECKS)
     assert named(checks, sign_off.HISTORY_CHECKS[0]).number == "3"
@@ -641,9 +652,7 @@ def test_a_chat_this_workspace_never_created_fails_the_audit(tmp_path: Path) -> 
     root = workspace_of(tmp_path)
     profile = root / "browser-profile" / "Default"
     history_of(profile, "https://claude.ai/chat/somebody-elses")
-    checks = sign_off.safety(
-        opened(root), export=None, profile=root / "browser-profile"
-    )
+    checks = sign_off.safety(opened(root), export=None, profile=root / "browser-profile")
 
     assert named(checks, sign_off.HISTORY_CHECKS[1]).verdict == sign_off.NO_GO
 
@@ -651,9 +660,7 @@ def test_a_chat_this_workspace_never_created_fails_the_audit(tmp_path: Path) -> 
 def test_another_host_fails_the_audit(tmp_path: Path) -> None:
     root = workspace_of(tmp_path)
     history_of(root / "browser-profile" / "Default", "https://example.com/anything")
-    checks = sign_off.safety(
-        opened(root), export=None, profile=root / "browser-profile"
-    )
+    checks = sign_off.safety(opened(root), export=None, profile=root / "browser-profile")
 
     foreign = named(checks, sign_off.HISTORY_CHECKS[2])
     assert foreign.verdict == sign_off.NO_GO
@@ -663,13 +670,14 @@ def test_another_host_fails_the_audit(tmp_path: Path) -> None:
 def test_another_claude_path_is_reported_for_a_person_to_judge(
     tmp_path: Path,
 ) -> None:
-    """`login` really does visit `/login`, and a path the tool never asks for is
-    a finding a human makes, not one this script asserts."""
+    """`login` really does visit `/login`.
+
+    A path the tool never asks for is a finding a human makes, not one this script
+    asserts.
+    """
     root = workspace_of(tmp_path)
     history_of(root / "browser-profile" / "Default", "https://claude.ai/login?next=/")
-    checks = sign_off.safety(
-        opened(root), export=None, profile=root / "browser-profile"
-    )
+    checks = sign_off.safety(opened(root), export=None, profile=root / "browser-profile")
 
     other = named(checks, sign_off.HISTORY_CHECKS[3])
     assert other.verdict == sign_off.UNKNOWN
@@ -677,16 +685,13 @@ def test_another_claude_path_is_reported_for_a_person_to_judge(
 
 
 def test_the_audit_never_prints_a_query_string_or_a_title(tmp_path: Path) -> None:
-    """§10: a claude.ai page title is somebody's conversation, and a query can
-    carry anything at all."""
+    """§10: a claude.ai page title is somebody's conversation, and a query can carry anything at all."""
     root = workspace_of(tmp_path)
     history_of(
         root / "browser-profile" / "Default",
         "https://example.com/search?q=a+conversation+title",
     )
-    checks = sign_off.safety(
-        opened(root), export=None, profile=root / "browser-profile"
-    )
+    checks = sign_off.safety(opened(root), export=None, profile=root / "browser-profile")
 
     rendered = " ".join(f"{check.number} {check.terms}" for check in checks)
     assert "conversation" not in rendered
@@ -705,14 +710,14 @@ def test_a_missing_profile_is_unknown_rather_than_clean(tmp_path: Path) -> None:
 
 
 def test_an_unnamed_export_is_a_row_and_not_a_silence(tmp_path: Path) -> None:
-    """`safety` answers "was anything outside this migration touched", so an
-    audit that simply left the export out when nobody named one would read as a
-    §17 pass that had checked it. (Raised by Copilot in review on #30.)"""
+    """`safety` answers "was anything outside this migration touched".
+
+    An audit that simply left the export out when nobody named one would read as a §17
+    pass that had checked it. (Raised by Copilot in review on #30.)
+    """
     root = workspace_of(tmp_path)
     history_of(root / "browser-profile" / "Default", "https://claude.ai/new")
-    checks = sign_off.safety(
-        opened(root), export=None, profile=root / "browser-profile"
-    )
+    checks = sign_off.safety(opened(root), export=None, profile=root / "browser-profile")
     digest = named(checks, sign_off.EXPORT_CHECK)
 
     assert digest.number == sign_off.UNMEASURED
@@ -728,9 +733,7 @@ def test_the_export_digest_is_compared_with_the_one_the_run_recorded(
     export = tmp_path / "export"
     export.mkdir()
     (export / "conversations.json").write_text("[]", encoding="utf-8")
-    checks = sign_off.safety(
-        opened(root), export=export, profile=root / "browser-profile"
-    )
+    checks = sign_off.safety(opened(root), export=export, profile=root / "browser-profile")
 
     assert checks[0].name == "export sha-256 unchanged"
     assert checks[0].verdict == sign_off.NO_GO
@@ -764,12 +767,12 @@ def test_the_sample_is_every_completed_conversation_when_there_are_few(
 
 
 def test_the_sample_is_reproducible(tmp_path: Path) -> None:
-    """Twenty of a hundred, twice, and the same twenty: a write-up that cannot
-    say which conversations it graded cannot be checked by anybody else."""
-    entries = {
-        f"{position:08d}-0000-4000-8000-000000000000": entry()
-        for position in range(100)
-    }
+    """Twenty of a hundred, twice, and the same twenty.
+
+    A write-up that cannot say which conversations it graded cannot be checked by
+    anybody else.
+    """
+    entries = {f"{position:08d}-0000-4000-8000-000000000000": entry() for position in range(100)}
     workspace = opened(workspace_of(tmp_path, entries))
 
     first = sign_off.sample(workspace, size=20, seed=21)
@@ -778,9 +781,7 @@ def test_the_sample_is_reproducible(tmp_path: Path) -> None:
     assert first != sign_off.sample(workspace, size=20, seed=22)
 
 
-def test_the_sample_command_prints_a_short_id_and_a_uuid(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_sample_command_prints_a_short_id_and_a_uuid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     workspace_of(tmp_path)
     code = sign_off.main(["sample", "--workspace", str(tmp_path)])
 
@@ -793,11 +794,12 @@ def test_the_sample_command_prints_a_short_id_and_a_uuid(
 # --------------------------------------------------------------------------- #
 
 
-def test_the_safety_command_runs_end_to_end(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Every row of the §17 audit, passing: the export re-digests to what the
-    run recorded, and the history holds one `/new` and nothing else."""
+def test_the_safety_command_runs_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Every row of the §17 audit, passing.
+
+    The export re-digests to what the run recorded, and the history holds one `/new` and
+    nothing else.
+    """
     export = tmp_path / "export"
     export.mkdir()
     (export / "conversations.json").write_text("[]", encoding="utf-8")

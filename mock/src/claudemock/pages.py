@@ -267,7 +267,7 @@ of quietly passing it."""
 
 
 def login_page(*, step: str, banner: bool, error: str = "") -> bytes:
-    """The login page at whichever of its two steps the session is at.
+    """Return the login page at whichever of its two steps the session is at.
 
     The banner comes first and hides the form until it is dismissed, which is the
     thing §24's agent half exists to get past. Everything below it is the email
@@ -332,20 +332,17 @@ def unsupported_page() -> bytes:
 
 def _turns(turns: Sequence[Turn]) -> str:
     return "\n".join(
-        f'  <div data-testid="{"user" if turn.role == "human" else "assistant"}'
-        f'-message">{html.escape(turn.text)}</div>'
+        f'  <div data-testid="{"user" if turn.role == "human" else "assistant"}-message">{html.escape(turn.text)}</div>'
         for turn in turns
     )
 
 
 def _chips(names: Sequence[str]) -> str:
-    return "".join(
-        f'<div class="attachment-chip">{html.escape(name)}</div>' for name in names
-    )
+    return "".join(f'<div class="attachment-chip">{html.escape(name)}</div>' for name in names)
 
 
 def _header(chat: Chat | None) -> str:
-    """The chat's own menu, which is also where its title is shown."""
+    """Return the chat's own menu, which is also where its title is shown."""
     hidden = "" if chat is not None else " hidden"
     title = html.escape(chat.title) if chat is not None else ""
     return (
@@ -362,7 +359,7 @@ def _header(chat: Chat | None) -> str:
 
 
 def chat_page(chat: Chat | None, turns: Sequence[Turn], *, generating: bool) -> bytes:
-    """`/new` when `chat` is `None`, and `/chat/<uuid>` when it is not.
+    """Return `/new` when `chat` is `None`, and `/chat/<uuid>` when it is not.
 
     One function for both because they are one page: the only difference is
     whether there is a chat behind it yet, which is exactly what a submit
@@ -373,23 +370,18 @@ def chat_page(chat: Chat | None, turns: Sequence[Turn], *, generating: bool) -> 
         if generating
         else '<button id="send" aria-label="Send message" disabled>Send</button>'
     )
-    body = "\n".join(
-        [
-            _header(chat),
-            "<main>",
-            '  <div id="transcript" data-testid="conversation">',
-            _turns(turns),
-            "  </div>",
-            '  <div contenteditable="true" role="textbox" '
-            'aria-label="Write your prompt"><p><br></p></div>',
-            '  <input type="file" multiple style="display: none">',
-            f'  <div id="chips">{_chips(chat.files if chat else ())}</div>',
-            f'  <div id="controls">{control}</div>',
-            "</main>",
-        ]
-    )
+    body = "\n".join([
+        _header(chat),
+        "<main>",
+        '  <div id="transcript" data-testid="conversation">',
+        _turns(turns),
+        "  </div>",
+        '  <div contenteditable="true" role="textbox" aria-label="Write your prompt"><p><br></p></div>',
+        '  <input type="file" multiple style="display: none">',
+        f'  <div id="chips">{_chips(chat.files if chat else ())}</div>',
+        f'  <div id="controls">{control}</div>',
+        "</main>",
+    ])
     title = chat.title if chat is not None else "New chat"
-    script = APP_JS.replace(
-        "__CHAT_ID__", json.dumps(chat.id) if chat is not None else "null"
-    )
+    script = APP_JS.replace("__CHAT_ID__", json.dumps(chat.id) if chat is not None else "null")
     return shell(title, body, script)

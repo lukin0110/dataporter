@@ -44,9 +44,7 @@ LOGIN_URL = "https://claude.ai/login"
 
 LOGIN_SURFACE = Surface(
     host=CLAUDE_HOST,
-    allowed=re.compile(
-        r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
-    ),
+    allowed=re.compile(r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"),
 )
 """§17's wall with one more door: the sign-in page and its sub-pages.
 
@@ -56,7 +54,7 @@ admits it is the code that types into it, which the agent cannot invoke.
 """
 
 EMAIL_SELECTOR = 'input[type="email"], input[autocomplete="username"]'
-PASSWORD_SELECTOR = 'input[type="password"], input[autocomplete="current-password"]'
+PASSWORD_SELECTOR = 'input[type="password"], input[autocomplete="current-password"]'  # ruff: ignore[hardcoded-password-string] - a CSS selector, not a credential
 """Semantic selectors, as §5 prefers. Guesses until `docs/claude-ui-map.md`'s
 `sign-in form` row is observed, like every other selector in this package."""
 
@@ -77,10 +75,12 @@ contents."""
 
 
 def focus_field_js(selector: str) -> str:
-    """Focus the first visible field matching `selector`, selecting what it holds
-    so that the insert replaces a browser-remembered value rather than appending
-    to it. The selector is a `const` on a line of its own for the test suite's
-    fake browser to read back."""
+    """Focus the first visible field matching `selector`, selecting what it holds.
+
+    The selection is what makes the insert replace a browser-remembered value rather
+    than append to it. The selector is a `const` on a line of its own for the test
+    suite's fake browser to read back.
+    """
     return probe.expression(
         FOCUS_FIELD_TAG,
         f"  const selector = {json.dumps(selector)};\n"
@@ -133,8 +133,11 @@ class Fields:
 
 @dataclass(frozen=True)
 class FillResult:
-    """What the fill amounted to. `blocked` names the reason when `signed_in` is
-    false; `filled` lists the fields the credentials went into, in order."""
+    """What the fill amounted to.
+
+    `blocked` names the reason when `signed_in` is false; `filled` lists the fields the
+    credentials went into, in order.
+    """
 
     signed_in: bool
     filled: tuple[str, ...] = ()
@@ -146,9 +149,7 @@ def _fields(page: Page) -> Fields:
     answer = page.evaluate(LOGIN_FIELDS_JS)
     if not isinstance(answer, dict):
         return Fields()
-    return Fields(
-        email=bool(answer.get("email")), password=bool(answer.get("password"))
-    )
+    return Fields(email=bool(answer.get("email")), password=bool(answer.get("password")))
 
 
 def _login_tab(session: BrowserSession, surface: Surface) -> Target | None:
@@ -200,7 +201,7 @@ def _await_change(
         time.sleep(min(poll_s, remaining))
 
 
-def fill_and_submit(
+def fill_and_submit(  # ruff: ignore[too-many-return-statements] - one return per state the form can be in
     session: BrowserSession,
     credentials: Credentials,
     *,
@@ -223,10 +224,10 @@ def fill_and_submit(
     for rounds in range(1, max_rounds + 1):
         target = _login_tab(session, surface)
         if target is None:
-            return FillResult(False, tuple(filled), rounds, NO_TAB)
+            return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=NO_TAB)
         with helpers.driving(session.client, target, surface) as page:
             if probe.probe(page).logged_in:
-                return FillResult(True, tuple(filled), rounds)
+                return FillResult(signed_in=True, filled=tuple(filled), rounds=rounds)
             fields = _fields(page)
             if fields.password:
                 which, selector, value = (
@@ -237,25 +238,23 @@ def fill_and_submit(
             elif fields.email and "email" not in filled:
                 which, selector, value = "email", EMAIL_SELECTOR, credentials.email
             elif fields.email:
-                return FillResult(False, tuple(filled), rounds, NO_PROGRESS)
+                return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=NO_PROGRESS)
             else:
                 blocked = CODE_OR_CHALLENGE if filled else NO_FORM
-                return FillResult(False, tuple(filled), rounds, blocked)
+                return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=blocked)
             if not _type(page, selector, value):
-                return FillResult(False, tuple(filled), rounds, FIELD_NOT_FOCUSED)
+                return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=FIELD_NOT_FOCUSED)
         filled.append(which)
         _logger.info("sign-in field submitted", extra={"field": which})
-        signed_in, fields = _await_change(
-            session, fields, surface=surface, deadline=deadline, poll_s=poll_s
-        )
+        signed_in, fields = _await_change(session, fields, surface=surface, deadline=deadline, poll_s=poll_s)
         if signed_in:
-            return FillResult(True, tuple(filled), rounds)
+            return FillResult(signed_in=True, filled=tuple(filled), rounds=rounds)
         if not fields.any:
             blocked = CODE_OR_CHALLENGE if time.monotonic() < deadline else NO_PROGRESS
-            return FillResult(False, tuple(filled), rounds, blocked)
-    return FillResult(False, tuple(filled), max_rounds, NO_PROGRESS)
+            return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=blocked)
+    return FillResult(signed_in=False, filled=tuple(filled), rounds=max_rounds, blocked=NO_PROGRESS)
 
 
 def filled_names(result: FillResult) -> Sequence[str]:
-    """The fields the credentials went into — names, never values."""
+    """Return the fields the credentials went into — names, never values."""
     return result.filled

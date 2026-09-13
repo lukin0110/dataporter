@@ -21,9 +21,9 @@ import pytest
 from typer.testing import CliRunner
 
 from dataporter import cli
-from dataporter.browser import export_page, launcher
+from dataporter.browser import export_page, helpers, launcher
 from dataporter.browser import session as browser_session
-from dataporter.config import BrowserSettings, Settings, TimeoutSettings
+from dataporter.config import AccountsSettings, BrowserSettings, Settings, TimeoutSettings, with_account
 from dataporter.exit_codes import ExitCode
 from fake_chrome import FakeChrome, FakeTarget, free_port, page_state
 
@@ -43,18 +43,12 @@ def make_settings(tmp_path: Path, port: int) -> Settings:
 
 @pytest.fixture
 def chrome() -> Iterator[FakeChrome]:
-    with FakeChrome(
-        targets=[
-            FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())
-        ]
-    ) as fake:
+    with FakeChrome(targets=[FakeTarget(id="page-1", url="https://claude.ai/new", evaluate=page_state())]) as fake:
         yield fake
 
 
-def account_env(
-    chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Settings:
-    """A source account whose profile carries a marker for this fake browser.
+def account_env(chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
+    """Return a source account whose profile carries a marker for this fake browser.
 
     `07`'s `adoptable`, one directory further down: `launch` adopts rather than
     starting anything, so the command tests exercise the real path — `adopt`,
@@ -69,9 +63,7 @@ def account_env(
 
 
 def source_settings(tmp_path: Path, port: int, account: str = ACCOUNT) -> Settings:
-    """The same settings a `--account` invocation resolves to."""
-    from dataporter.config import AccountsSettings, with_account
-
+    """Return the same settings a `--account` invocation resolves to."""
     settings = make_settings(tmp_path, port).model_copy(
         update={"accounts": AccountsSettings(dir=tmp_path / "accounts")}
     )
@@ -82,9 +74,7 @@ def adopt_for(settings: Settings, chrome: FakeChrome) -> Path:
     profile = launcher.ensure_profile(settings)
     launcher.write_marker(
         profile,
-        launcher.ProfileMarker(
-            port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"
-        ),
+        launcher.ProfileMarker(port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"),
     )
     return profile
 
@@ -97,12 +87,8 @@ def adopt_for(settings: Settings, chrome: FakeChrome) -> Path:
 def test_the_source_profile_is_in_the_account_home(tmp_path: Path) -> None:
     source = source_settings(tmp_path, free_port())
 
-    assert source.browser_profile_dir == (
-        tmp_path / "accounts" / "claude" / ACCOUNT / "browser-profile"
-    )
-    assert make_settings(tmp_path, 0).browser_profile_dir == (
-        tmp_path / "migration" / "browser-profile"
-    )
+    assert source.browser_profile_dir == (tmp_path / "accounts" / "claude" / ACCOUNT / "browser-profile")
+    assert make_settings(tmp_path, 0).browser_profile_dir == (tmp_path / "migration" / "browser-profile")
 
 
 def test_login_with_an_account_never_touches_the_destination_profile(
@@ -115,14 +101,10 @@ def test_login_with_an_account_never_touches_the_destination_profile(
     source = source_settings(tmp_path, chrome.port)
     adopt_for(source, chrome)
 
-    result = runner.invoke(
-        cli.app, ["login", "--account", ACCOUNT], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["login", "--account", ACCOUNT], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.OK
-    assert result.stdout == (
-        f"Logged in. Session stored in {source.browser_profile_dir}/.\n"
-    )
+    assert result.stdout == (f"Logged in. Session stored in {source.browser_profile_dir}/.\n")
     assert source.browser_profile_dir.exists()
     assert not destination.browser_profile_dir.exists()
 
@@ -130,9 +112,10 @@ def test_login_with_an_account_never_touches_the_destination_profile(
 def test_a_source_profile_writes_no_gitignore_into_a_workspace(
     tmp_path: Path,
 ) -> None:
-    """`07` writes one because the destination's profile is inside the operator's
-    own directory. An account home is under `~/.dataporter/accounts`, which is
-    nobody's checkout."""
+    """`07` writes one because the destination's profile is inside the operator's own directory.
+
+    An account home is under `~/.dataporter/accounts`, which is nobody's checkout.
+    """
     source = source_settings(tmp_path, free_port())
     launcher.ensure_profile(source)
 
@@ -159,9 +142,7 @@ def test_session_status_and_logout_act_on_the_account(
     assert status.stdout == "logged in\n"
 
     chrome.stop_http()
-    logout = runner.invoke(
-        cli.app, ["session", "logout", "--account", ACCOUNT], catch_exceptions=False
-    )
+    logout = runner.invoke(cli.app, ["session", "logout", "--account", ACCOUNT], catch_exceptions=False)
     assert logout.exit_code == ExitCode.OK
     assert logout.stdout == f"Removed {source.browser_profile_dir}/.\n"
     assert not source.browser_profile_dir.exists()
@@ -170,8 +151,10 @@ def test_session_status_and_logout_act_on_the_account(
 def test_a_label_is_the_only_difference_in_what_is_printed(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """§35: without `--account` these commands mean the destination, and their
-    output is byte-identical to what `07` printed."""
+    """§35: without `--account` these commands mean the destination.
+
+    Their output is byte-identical to what `07` printed.
+    """
     settings = make_settings(tmp_path, free_port())
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
     monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
@@ -182,9 +165,7 @@ def test_a_label_is_the_only_difference_in_what_is_printed(
 
     assert status.exit_code == ExitCode.NOT_AUTHENTICATED
     assert status.stdout == "not logged in — run: dataporter login\n"
-    assert logout.stdout == (
-        f"Nothing to remove: {settings.browser_profile_dir}/ does not exist.\n"
-    )
+    assert logout.stdout == (f"Nothing to remove: {settings.browser_profile_dir}/ does not exist.\n")
 
 
 def test_a_source_without_a_label_is_refused(
@@ -192,23 +173,17 @@ def test_a_source_without_a_label_is_refused(
 ) -> None:
     """A flag accepted and quietly dropped is what `12` ruled out for `--pilot`."""
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(free_port()))
-    result = runner.invoke(
-        cli.app, ["session", "status", "--source", "claude"], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["session", "status", "--source", "claude"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.USAGE
-    assert result.stderr == (
-        "error: --source names the vendor of an account; give --account LABEL\n"
-    )
+    assert result.stderr == ("error: --source names the vendor of an account; give --account LABEL\n")
 
 
 def test_a_label_that_is_not_one_is_refused(
     runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(free_port()))
-    result = runner.invoke(
-        cli.app, ["login", "--account", "../elsewhere"], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["login", "--account", "../elsewhere"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr.startswith("error: account label must be")
@@ -220,14 +195,15 @@ def test_a_destination_browser_on_the_port_refuses_a_source_login(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One port, sequential sessions (`31`): the destination's Chrome is still on
-    it, so the source's `login` is `PortInUse` and the existing message."""
+    """One port, sequential sessions (`31`).
+
+    The destination's Chrome is still on it, so the source's `login` is `PortInUseError` and
+    the existing message.
+    """
     destination = account_env(chrome, tmp_path, monkeypatch)
     adopt_for(destination, chrome)
 
-    result = runner.invoke(
-        cli.app, ["login", "--account", ACCOUNT], catch_exceptions=False
-    )
+    result = runner.invoke(cli.app, ["login", "--account", ACCOUNT], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr == f"error: port {chrome.port} is used by another browser\n"
@@ -315,7 +291,5 @@ def test_the_session_commands_are_the_only_ones_that_take_an_account() -> None:
 
 def test_neither_surface_admits_the_other_s_pages() -> None:
     """The two walls, held to each other in one place (§36)."""
-    from dataporter.browser import helpers
-
     assert not helpers.CLAUDE.permits(export_page.EXPORT_PAGE_URL)
     assert not export_page.EXTRACTION_SURFACE.permits(browser_session.NEW_CHAT_URL)

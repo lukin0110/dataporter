@@ -48,10 +48,7 @@ API_KEY_ENV = "ANTHROPIC_API_KEY"
 """The key `pydantic-ai` authenticates with — the same variable Hermes's own
 `.env` uses. Checked for presence and never read, printed or recorded (§17)."""
 
-NO_EXTRA = (
-    "the judge extra is not installed: uv sync --extra judge, "
-    "or pip install 'dataporter[judge]'"
-)
+NO_EXTRA = "the judge extra is not installed: uv sync --extra judge, or pip install 'dataporter[judge]'"
 NO_KEY = f"{API_KEY_ENV} is not set; the judge grades with the key Hermes uses"
 NO_SOURCE = "no seed on disk"
 """Why a probe cannot be graded: nothing to compare the reply against. Seeds are
@@ -111,7 +108,7 @@ call site so the loop can be tested without a network, a key or the extra."""
 
 
 def source_text(settings: Settings, conversation_uuid: str) -> str:
-    """The seed this conversation was migrated from, capped, or `""`.
+    """Return the seed this conversation was migrated from, capped, or `""`.
 
     The parts in order, joined the way they were sent. Capped at
     `judge.max_seed_chars` because the question is whether a one-sentence summary
@@ -134,7 +131,7 @@ def _read(path: Path) -> str:
 
 
 def comparison(source: str, reply: str) -> str:
-    """The two halves, labelled. What a person grading by hand reads, too."""
+    """Return the two halves, labelled. What a person grading by hand reads, too."""
     return f"<transcript>\n{source}\n</transcript>\n\n<answer>\n{reply}\n</answer>"
 
 
@@ -144,7 +141,7 @@ def comparison(source: str, reply: str) -> str:
 
 
 def grader(settings: Settings) -> Grader:
-    """A grader backed by `pydantic-ai`, or a `JudgeError` saying what is missing.
+    """Return a grader backed by `pydantic-ai`, or a `JudgeError` saying what is missing.
 
     The import is here and nowhere else, and it is dynamic: `pydantic-ai` is an
     extra, so a module that imported it at the top would make `import
@@ -170,9 +167,7 @@ def grader(settings: Settings) -> Grader:
     )
 
     def grade(text: str) -> FidelityVerdict:
-        return FidelityVerdict.model_validate(
-            agent.run_sync(text).output, from_attributes=True
-        )
+        return FidelityVerdict.model_validate(agent.run_sync(text).output, from_attributes=True)
 
     return grade
 
@@ -224,9 +219,7 @@ class JudgeOutcome:
     exit_code: ExitCode
 
 
-def judge_all(
-    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD
-) -> JudgeOutcome:
+def judge_all(settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD) -> JudgeOutcome:
     """Grade the follow-up replies with a model (the `judge` extra).
 
     The lock is taken before `probes.json` is read, and not only around the
@@ -248,9 +241,7 @@ def judge_all(
         file = following.read(settings)
         wanted = list(file.probes)
         if only:
-            chosen = set(
-                state.resolve_only([item.conversation_uuid for item in wanted], only)
-            )
+            chosen = set(state.resolve_only([item.conversation_uuid for item in wanted], only))
             wanted = [item for item in wanted if item.conversation_uuid in chosen]
         if not wanted:
             return JudgeOutcome(verdicts=(), exit_code=ExitCode.NOTHING_TO_DO)

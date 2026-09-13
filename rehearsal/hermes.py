@@ -44,6 +44,7 @@ from typing import Any
 
 from dataporter.browser.cdp import CdpClient
 from dataporter.hermes.profile import MODEL_KEYS
+from fake_agent import ScriptedAgent, ScriptedProbe, ScriptedSignIn
 from rehearsal.agent import (
     AgentError,
     CdpBrowser,
@@ -105,7 +106,7 @@ class Profiles:
         self.path.write_text(json.dumps(dict(state), indent=2), encoding="utf-8")
 
     def config(self) -> dict[str, str]:
-        """What `config show` reports: what was set, plus the model.
+        """Return what `config show` reports: what was set, plus the model.
 
         The model key is added here rather than by `setup`, because `setup` never
         sets one — `09` leaves it to the operator, and an operator rehearsing has
@@ -117,7 +118,7 @@ class Profiles:
 
 
 def rendered(config: Mapping[str, str]) -> str:
-    """A configuration as `hermes config show` prints it: one dotted key a line.
+    """Return a configuration as `hermes config show` prints it: one dotted key a line.
 
     The flat shape, which is one of the three `client.parse_config` reads. `10`
     records which one the real Hermes uses; until it does, a rehearsal proves the
@@ -152,8 +153,10 @@ def perform(prompt: str, *, config: Mapping[str, str]) -> str:
 
 
 def driver_for(config: Mapping[str, str]) -> Driver:
-    """The Chrome the profile points at — which is how a rehearsal proves that
-    `browser.cdp_url` is what an agent attaches by."""
+    """Return the Chrome the profile points at.
+
+    Which is how a rehearsal proves that `browser.cdp_url` is what an agent attaches by.
+    """
     url = config.get("browser.cdp_url", "")
     found = CDP_URL.search(url)
     if found is None:
@@ -163,27 +166,22 @@ def driver_for(config: Mapping[str, str]) -> Driver:
 
 def migration_task(prompt: str, *, config: Mapping[str, str]) -> dict[str, Any]:
     """`11`'s procedure, against the page the prompt's helper commands read."""
-    from fake_agent import ScriptedAgent
-
     agent = ScriptedAgent(helper=HelperRunner(), browser=CdpBrowser(driver_for(config)))
     return agent.run(prompt)
 
 
 def sign_in_task(prompt: str, *, config: Mapping[str, str]) -> dict[str, Any]:
-    """`24`'s agent half: reach the form, and stop at it. No credential is here,
-    and none is passed to this process — the tool types them itself."""
-    from fake_agent import ScriptedSignIn
+    """`24`'s agent half: reach the form, and stop at it.
 
+    No credential is here, and none is passed to this process — the tool types them
+    itself.
+    """
     return ScriptedSignIn(CdpSignInBrowser(driver_for(config))).run(prompt)
 
 
 def probe_task(prompt: str, *, config: Mapping[str, str]) -> dict[str, Any]:
     """`20`'s follow-up probe: one question, in one chat this run created."""
-    from fake_agent import ScriptedProbe
-
-    prober = ScriptedProbe(
-        helper=HelperRunner(), browser=CdpBrowser(driver_for(config))
-    )
+    prober = ScriptedProbe(helper=HelperRunner(), browser=CdpBrowser(driver_for(config)))
     return prober.run(prompt)
 
 
@@ -216,9 +214,7 @@ def attach_task(prompt: str) -> str:
 def helper_task(prompt: str) -> str:
     """`doctor`'s second: run one helper through the terminal, report its `ok`."""
     command = command_in(prompt)
-    finished = subprocess.run(  # noqa: S603 - the command the prompt named
-        command, capture_output=True, text=True, check=False
-    )
+    finished = subprocess.run(command, capture_output=True, text=True, check=False)
     printed = last_json_object(finished.stdout) or {}
     return f"{nonce_in(prompt)}\n{json.dumps(printed.get('ok'))}\n"
 
@@ -231,7 +227,7 @@ def nonce_in(prompt: str) -> str:
 
 
 def command_in(prompt: str) -> list[str]:
-    """The indented command line `doctor`'s helper prompt holds."""
+    """Return the indented command line `doctor`'s helper prompt holds."""
     for line in prompt.splitlines():
         if line.startswith("  ") and line.strip():
             return shlex.split(line.strip())
@@ -280,12 +276,10 @@ def write_executable(directory: Path, *, repo: Path, state: Path) -> Path:
     return executable
 
 
-def main(argv: Sequence[str]) -> int:
-    """The five calls `09` makes, and the one-shot it makes them for."""
+def main(argv: Sequence[str]) -> int:  # ruff: ignore[too-many-return-statements] - one return per call `09` makes
+    """Return the five calls `09` makes, and the one-shot it makes them for."""
     arguments = list(argv)
-    profiles = Profiles(
-        Path(os.environ.get(STATE_ENV_VAR) or Path.home() / ".hermes-scripted.json")
-    )
+    profiles = Profiles(Path(os.environ.get(STATE_ENV_VAR) or Path.home() / ".hermes-scripted.json"))
 
     if "--version" in arguments:
         sys.stdout.write(f"hermes {VERSION}\n")
@@ -322,9 +316,7 @@ def one_shot(rest: Sequence[str], profiles: Profiles) -> int:
     arguments = list(rest)
     prompt = arguments[arguments.index(ONE_SHOT_FLAG) + 1]
     if USAGE_FILE_FLAG in arguments:
-        Path(arguments[arguments.index(USAGE_FILE_FLAG) + 1]).write_text(
-            json.dumps(NO_TOKENS), encoding="utf-8"
-        )
+        Path(arguments[arguments.index(USAGE_FILE_FLAG) + 1]).write_text(json.dumps(NO_TOKENS), encoding="utf-8")
     started = time.monotonic()
     try:
         answer = perform(prompt, config=profiles.config())
@@ -332,15 +324,13 @@ def one_shot(rest: Sequence[str], profiles: Profiles) -> int:
         # What a Hermes that could not do the task prints: a result object with
         # an outcome the runner's contract knows, and no page text in it.
         sys.stdout.write(
-            json.dumps(
-                {
-                    "outcome": "failed",
-                    "conversation_id": None,
-                    "last_step": "open",
-                    "chunks_acked": 0,
-                    "error": {"category": "hermes", "detail": str(failure)},
-                }
-            )
+            json.dumps({
+                "outcome": "failed",
+                "conversation_id": None,
+                "last_step": "open",
+                "chunks_acked": 0,
+                "error": {"category": "hermes", "detail": str(failure)},
+            })
             + "\n"
         )
         return 0

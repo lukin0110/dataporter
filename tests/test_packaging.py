@@ -72,14 +72,12 @@ Stated as a whitelist rather than a list of directories to keep out: `specs/`,
 `docs/` and `tests/` are the ones somebody would think to exclude, and the next
 directory this repository grows is the one a blacklist would miss."""
 
-requires_uv = pytest.mark.skipif(
-    shutil.which("uv") is None, reason="uv is not installed (it builds the artefacts)"
-)
+requires_uv = pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not installed (it builds the artefacts)")
 
 
 @pytest.fixture(scope="session")
 def built(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
-    """The wheel and the source distribution, built once for the whole module.
+    """Return the wheel and the source distribution, built once for the whole module.
 
     `uv build` builds the sdist and then builds the wheel *from* it, so a file
     the sdist omits cannot reach the wheel — one command exercises both halves of
@@ -88,7 +86,7 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
     """
     out = tmp_path_factory.mktemp("dist")
     subprocess.run(
-        ["uv", "build", "--out-dir", str(out)],
+        ["uv", "build", "--out-dir", str(out)],  # ruff: ignore[start-process-with-partial-path] — the `uv` on the developer's PATH
         cwd=REPO,
         check=True,
         capture_output=True,
@@ -122,11 +120,7 @@ def sdist_names(built: tuple[Path, Path]) -> list[str]:
     """Member names with the `dataporter-<version>/` prefix taken off."""
     prefix = f"dataporter-{__version__}/"
     with tarfile.open(built[1]) as archive:
-        return [
-            name.removeprefix(prefix)
-            for name in archive.getnames()
-            if name.startswith(prefix)
-        ]
+        return [name.removeprefix(prefix) for name in archive.getnames() if name.startswith(prefix)]
 
 
 # --------------------------------------------------------------------------- #
@@ -164,9 +158,7 @@ def test_the_wheel_declares_the_console_script(built: tuple[Path, Path]) -> None
 
 
 @requires_uv
-def test_the_wheel_carries_the_licence(
-    metadata: Message, wheel_names: list[str]
-) -> None:
+def test_the_wheel_carries_the_licence(metadata: Message, wheel_names: list[str]) -> None:
     """The SPDX expression, and the file it names, in the artefact."""
     assert metadata["License-Expression"] == "MIT"
     assert f"{DIST_INFO}/licenses/LICENSE" in wheel_names

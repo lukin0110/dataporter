@@ -149,9 +149,7 @@ def pause(message: str, *, prompt: bool) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def round_trip(
-    command: str, workspace: Path, seed: Path, method: str, *, prompt: bool
-) -> dict[str, Any]:
+def round_trip(command: str, workspace: Path, seed: Path, method: str, *, prompt: bool) -> dict[str, Any]:
     """Paste one sample once, and report everything that can be measured."""
     before = helper(command, workspace, "probe")
     text = seed.read_text(encoding="utf-8")
@@ -166,25 +164,21 @@ def round_trip(
         row["skipped"] = "no composer — is the tab on /new and signed in?"
         return row
 
-    pasted = helper(
-        command, workspace, "paste", "--seed", str(seed), "--method", method
-    )
+    pasted = helper(command, workspace, "paste", "--seed", str(seed), "--method", method)
     after = helper(command, workspace, "probe")
     # A refusal is not a measurement. Asking a human whether a chip appeared for
     # a round that never inserted anything files their guess as an observation,
     # and `table` would then mark it `observed on <date>`.
     inserted = bool(pasted.get("ok")) or pasted.get("error") == TEXT_MISMATCH
-    row.update(
-        {
-            "inserted": inserted,
-            "verbatim": bool(pasted.get("ok")),
-            "error": pasted.get("error"),
-            "paste_chars": pasted.get("chars"),
-            "observed_chars": pasted.get("observed_chars"),
-            "elapsed_ms": pasted.get("elapsed_ms"),
-            "composer_chars_after": after.get("composer_chars"),
-        }
-    )
+    row.update({
+        "inserted": inserted,
+        "verbatim": bool(pasted.get("ok")),
+        "error": pasted.get("error"),
+        "paste_chars": pasted.get("chars"),
+        "observed_chars": pasted.get("observed_chars"),
+        "elapsed_ms": pasted.get("elapsed_ms"),
+        "composer_chars_after": after.get("composer_chars"),
+    })
     if inserted:
         row["chip"] = ask("Did a 'pasted text' attachment appear?", prompt=prompt)
     # Unconditional: a round refused with `composer_not_empty` is precisely one
@@ -215,7 +209,7 @@ so that the rule row cannot drift out of alignment with them."""
 
 
 def verdict(row: dict[str, Any]) -> str:
-    """The `Verbatim` cell: what this round actually established.
+    """Return the `Verbatim` cell: what this round actually established.
 
     A bare `no` would read as "the composer mangled the seed" for a round that
     was refused before the seed ever got there, which is the opposite finding.
@@ -228,7 +222,7 @@ def verdict(row: dict[str, Any]) -> str:
 
 
 def table(rows: list[dict[str, Any]], today: str) -> str:
-    """The rows as the markdown `docs/seed-limits.md` holds, ready to paste."""
+    """Return the rows as the markdown `docs/seed-limits.md` holds, ready to paste."""
 
     def cell(value: Any) -> str:
         return "—" if value is None else str(value)
@@ -241,8 +235,7 @@ def table(rows: list[dict[str, Any]], today: str) -> str:
         # the spike had run.
         observed = bool(row.get("inserted"))
         lines.append(
-            "| {chars} | `{method}` | {verbatim} | {read_back} | {elapsed} "
-            "| {chip} | {mark} |".format(
+            "| {chars} | `{method}` | {verbatim} | {read_back} | {elapsed} | {chip} | {mark} |".format(
                 chars=f"{row['chars']:,}".replace(",", " "),
                 method=row["method"],
                 verbatim=verdict(row),
@@ -264,9 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         default=",".join(str(size) for size in DEFAULT_SIZES),
         help="character counts to try, comma separated",
     )
-    parser.add_argument(
-        "--methods", default=",".join(DEFAULT_METHODS), help="comma separated"
-    )
+    parser.add_argument("--methods", default=",".join(DEFAULT_METHODS), help="comma separated")
     parser.add_argument(
         "--no-prompt",
         action="store_true",
@@ -316,9 +307,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     out = spike.NOTES.parent / "paste-ladder.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     measured = [row for row in rows if "skipped" not in row]
     spike.record(
         "Q3",

@@ -23,31 +23,23 @@ def message(
     content: list[object] | None = None,
     minute: int = 0,
 ) -> ChatMessage:
-    return ChatMessage.model_validate(
-        {
-            "uuid": uuid,
-            "sender": sender,
-            "text": text,
-            "content": content or [],
-            "created_at": WHEN.replace(minute=minute),
-        }
-    )
+    return ChatMessage.model_validate({
+        "uuid": uuid,
+        "sender": sender,
+        "text": text,
+        "content": content or [],
+        "created_at": WHEN.replace(minute=minute),
+    })
 
 
-def conversation(
-    name: str = "A chat", uuid: str = "abcdef01-2222-4222-8222-x"
-) -> Conversation:
-    return Conversation.model_validate(
-        {"uuid": uuid, "name": name, "created_at": WHEN, "updated_at": WHEN}
-    )
+def conversation(name: str = "A chat", uuid: str = "abcdef01-2222-4222-8222-x") -> Conversation:
+    return Conversation.model_validate({"uuid": uuid, "name": name, "created_at": WHEN, "updated_at": WHEN})
 
 
 def render_one(
     messages: list[ChatMessage], *, max_chars: int = 50_000, **kwargs: object
 ) -> render.RenderedConversation:
-    return render.render_conversation(
-        conversation(), messages, max_chars=max_chars, **kwargs
-    )
+    return render.render_conversation(conversation(), messages, max_chars=max_chars, **kwargs)
 
 
 # --------------------------------------------------------------------------- #
@@ -56,9 +48,7 @@ def render_one(
 
 
 def test_a_text_block_renders_verbatim() -> None:
-    rendered = render.render_message(
-        message(content=[{"type": "text", "text": "Hello\n\nthere"}])
-    )
+    rendered = render.render_message(message(content=[{"type": "text", "text": "Hello\n\nthere"}]))
     assert rendered.text == "User (2024-05-03 09:00 UTC):\nHello\n\nthere"
     assert rendered.has_original_content
 
@@ -80,9 +70,7 @@ def test_an_artifact_tool_use_renders_as_a_fenced_block() -> None:
             ],
         )
     )
-    assert (
-        "[Artifact: Shorter sum]\n```python\ntotal = sum(values)\n```" in rendered.text
-    )
+    assert "[Artifact: Shorter sum]\n```python\ntotal = sum(values)\n```" in rendered.text
     assert rendered.has_original_content
 
 
@@ -103,9 +91,7 @@ def test_an_artifact_containing_a_fence_gets_a_longer_one() -> None:
 
 
 def test_other_tool_calls_are_summarised_and_counted() -> None:
-    rendered = render.render_message(
-        message(content=[{"type": "tool_use", "name": "web_search", "input": {}}])
-    )
+    rendered = render.render_message(message(content=[{"type": "tool_use", "name": "web_search", "input": {}}]))
     assert "[Tool call: web_search]" in rendered.text
     assert rendered.limitations.tool_calls_summarised == 1
     assert not rendered.has_original_content
@@ -128,17 +114,13 @@ def test_thinking_is_omitted_and_token_budget_is_not_counted() -> None:
 
 def test_a_tool_result_is_a_placeholder_and_not_original_content() -> None:
     """`03`'s `no_representable_text` example: characters, but nothing the user saw."""
-    rendered = render.render_message(
-        message(content=[{"type": "tool_result", "content": "created"}])
-    )
+    rendered = render.render_message(message(content=[{"type": "tool_result", "content": "created"}]))
     assert "[Tool result omitted]" in rendered.text
     assert not rendered.has_original_content
 
 
 def test_an_unknown_block_is_named_and_counted() -> None:
-    rendered = render.render_message(
-        message(content=[{"type": "mcp_tool_use", "server": "reports"}])
-    )
+    rendered = render.render_message(message(content=[{"type": "mcp_tool_use", "server": "reports"}]))
     assert "[Unsupported content: mcp_tool_use]" in rendered.text
     assert rendered.limitations.unknown_blocks == 1
 
@@ -151,8 +133,10 @@ def test_an_empty_content_list_falls_back_to_the_message_text() -> None:
 
 
 def test_a_whitespace_only_block_does_not_reach_the_seed() -> None:
-    """Its characters are counted against the budget; its content is a gap the
-    join already supplies."""
+    """Its characters are counted against the budget.
+
+    Its content is a gap the join already supplies.
+    """
     rendered = render.render_message(
         message(
             content=[
@@ -183,9 +167,7 @@ INLINE = render.AttachmentRender(
     klass="inline",
     extracted_content="Q3 revenue: flat.",
 )
-UPLOAD = render.AttachmentRender(
-    file_name="q3.png", file_type=None, file_size=None, klass="upload"
-)
+UPLOAD = render.AttachmentRender(file_name="q3.png", file_type=None, file_size=None, klass="upload")
 MISSING = render.AttachmentRender(
     file_name="q3.png",
     file_type=None,
@@ -197,10 +179,7 @@ MISSING = render.AttachmentRender(
 
 def test_an_inline_attachment_reproduces_its_text() -> None:
     rendered = render.render_message(message(text="See this"), [INLINE])
-    assert (
-        "[Attachment: q3.txt (text/plain, 61 bytes)]\n<<<\nQ3 revenue: flat.\n>>>"
-        in rendered.text
-    )
+    assert "[Attachment: q3.txt (text/plain, 61 bytes)]\n<<<\nQ3 revenue: flat.\n>>>" in rendered.text
 
 
 def test_an_inline_attachment_of_unknown_size_says_so() -> None:
@@ -236,18 +215,14 @@ def test_an_inline_attachment_alone_is_original_content() -> None:
 def test_a_single_part_seed_has_the_header_and_the_final_footer() -> None:
     rendered = render_one([message(text="Hi")])
     text = rendered.chunks[0]
-    assert text.startswith(
-        "This is a migrated conversation.\n\nOriginal conversation:\nA chat\n"
-    )
+    assert text.startswith("This is a migrated conversation.\n\nOriginal conversation:\nA chat\n")
     assert "Part 1 of 1\n" in text
     assert "Do not summarise it. Reply with exactly one line:\n" in text
     assert text.endswith("MIGRATION-ACK abcdef01 1/1\n")
 
 
 def test_an_untitled_conversation_says_so() -> None:
-    blank = Conversation.model_validate(
-        {"uuid": "abcdef01-x", "name": "  ", "created_at": WHEN, "updated_at": WHEN}
-    )
+    blank = Conversation.model_validate({"uuid": "abcdef01-x", "name": "  ", "created_at": WHEN, "updated_at": WHEN})
     text = render.render_conversation(blank, [message(text="Hi")], max_chars=50_000)
     assert "Original conversation:\n(untitled)\n" in text.chunks[0]
 
@@ -285,11 +260,13 @@ def test_parts_stay_within_the_budget() -> None:
 
 
 def test_the_last_part_is_packed_against_its_own_footer() -> None:
-    """The final footer is 62 characters longer than "more parts follow", so a
-    part packed against the shorter one goes over budget the moment it turns out
-    to be the last. `04`'s golden files and its budget criterion both depend on
-    this not happening; the sweep is what catches it, since it only bites when a
-    part lands within those 62 characters of the budget."""
+    """The final footer is 62 characters longer than "more parts follow".
+
+    A part packed against the shorter one goes over budget the moment it turns out to be
+    the last. `04`'s golden files and its budget criterion both depend on this not
+    happening; the sweep is what catches it, since it only bites when a part lands
+    within those 62 characters of the budget.
+    """
     for length in range(110, 260):
         messages = [message(f"m{i}", text="x" * length, minute=i) for i in range(9)]
         rendered = render_one(messages, max_chars=1_000)
@@ -304,8 +281,11 @@ def test_a_message_larger_than_a_part_splits_at_paragraphs() -> None:
 
 
 def test_a_split_message_belongs_to_no_part() -> None:
-    """`04` puts `chunk_message_uuids` on `SeedChunk.message_uuids`; a fragment is
-    not the message, so a half-delivered message is claimed by neither part."""
+    """`04` puts `chunk_message_uuids` on `SeedChunk.message_uuids`.
+
+    A fragment is not the message, so a half-delivered message is claimed by neither
+    part.
+    """
     body = "\n\n".join("para " + "y" * 200 for _ in range(10))
     rendered = render_one([message("split", text=body)], max_chars=1_200)
     assert all(uuids == [] for uuids in rendered.chunk_message_uuids)
@@ -376,8 +356,6 @@ SHORT_IDS = [
 ]
 
 
-@pytest.mark.parametrize(("uuid", "expected"), SHORT_IDS, ids=lambda value: str(value))
-def test_the_short_id_is_the_first_eight_characters_without_dashes(
-    uuid: str, expected: str
-) -> None:
+@pytest.mark.parametrize(("uuid", "expected"), SHORT_IDS, ids=str)
+def test_the_short_id_is_the_first_eight_characters_without_dashes(uuid: str, expected: str) -> None:
     assert render.short_id(uuid) == expected

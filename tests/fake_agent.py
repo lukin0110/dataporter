@@ -30,7 +30,7 @@ What it is worth, and what it is not:
   is judgement and not a script, and they are out of reach here. `10`'s throwaway
   prompts and `20` are where all of that is measured.
 
-Where the table says classify and stop, this stops: `Stopped` carries the result
+Where the table says classify and stop, this stops: `StoppedError` carries the result
 object out, so each step reads as the step rather than as a chain of returns.
 """
 
@@ -138,7 +138,7 @@ def parse(prompt: str) -> Task:
     )
 
 
-class Stopped(Exception):
+class StoppedError(Exception):
     """The procedure cannot go on. Carries the result object to print."""
 
     def __init__(self, printed: dict[str, Any]) -> None:
@@ -152,16 +152,20 @@ class Browser(Protocol):
     def navigate(self, url: str) -> None: ...
 
     def submit(self, expected_ack: str) -> None:
-        """Press Enter in the composer. `expected_ack` is what the chat will
-        eventually answer with — the test's page needs it, the agent does not,
-        and passing it here keeps the agent from ever holding a seed."""
+        """Press Enter in the composer.
+
+        `expected_ack` is what the chat will eventually answer with — the test's page
+        needs it, the agent does not, and passing it here keeps the agent from ever
+        holding a seed.
+        """
 
     def rename(self, title: str) -> None:
         """Open the chat's menu and give it this name (`17`).
 
         The one thing an agent types that a helper does not, and the one piece
         of a conversation's metadata that reaches the page through the model —
-        which is why the whole of it is one call a stub can perform."""
+        which is why the whole of it is one call a stub can perform.
+        """
 
 
 Helper = Callable[[Sequence[str]], tuple[int, dict[str, Any]]]
@@ -236,17 +240,13 @@ class ScriptedAgent:
             # nothing, and none of these pages changes with time.
             self.recoveries.append("network")
             self.browser.navigate(self.url(task))
-            state = self.probe(
-                task, *expect, messages=messages, expect_title=expect_title
-            )
+            state = self.probe(task, *expect, messages=messages, expect_title=expect_title)
             if state.get("error") in UNREADABLE:
                 self.give_up("network", "the page could not be read")
         if state.get("error") == helpers.AMBIGUOUS_TAB:
             self.recoveries.append("ambiguous_tab")
             self.call(task, "close-extra-tabs")
-            state = self.probe(
-                task, *expect, messages=messages, expect_title=expect_title
-            )
+            state = self.probe(task, *expect, messages=messages, expect_title=expect_title)
         if self.signed_out(state):
             self.halt("needs_human", "auth", "a sign-in page", "auth_required")
         if state.get("error") == helpers.OUTSIDE_MIGRATION_SURFACE:
@@ -266,9 +266,9 @@ class ScriptedAgent:
         """
         if state.get("kind") == "login":
             return True
-        return state.get("error") == helpers.OUTSIDE_MIGRATION_SURFACE and str(
-            state.get("url", "")
-        ).startswith(LOGIN_URL)
+        return state.get("error") == helpers.OUTSIDE_MIGRATION_SURFACE and str(state.get("url", "")).startswith(
+            LOGIN_URL
+        )
 
     def url(self, task: Task) -> str:
         """Where this run belongs: its chat, or `/new` while it has no id."""
@@ -282,7 +282,7 @@ class ScriptedAgent:
         task = parse(prompt)
         try:
             return self.migrate(task)
-        except Stopped as stopped:
+        except StoppedError as stopped:
             return stopped.printed
 
     def migrate(self, task: Task) -> dict[str, Any]:
@@ -310,9 +310,7 @@ class ScriptedAgent:
                 "partial",
                 error={
                     "category": "unsupported",
-                    "detail": ATTACHMENT_FAILED.format(
-                        file_name=self.failed_attachments[0]["file_name"]
-                    ),
+                    "detail": ATTACHMENT_FAILED.format(file_name=self.failed_attachments[0]["file_name"]),
                 },
             )
         return self.result("completed")
@@ -382,7 +380,7 @@ class ScriptedAgent:
         self.last = Step.NEW_CHAT
 
     def check_resumable(self, task: Task) -> None:
-        """The chat really does hold the acknowledgement it is said to hold.
+        """Check the chat really does hold the acknowledgement it is said to hold.
 
         One probe, one `--expect`, no snapshot: the count in the prompt is
         `12`'s, and this is the cheapest evidence that it still describes the
@@ -457,7 +455,7 @@ class ScriptedAgent:
             self.give_up("navigation", "the tab left this run's chat")
 
     def on_track(self, state: dict[str, Any]) -> bool:
-        if state.get("kind") not in ("new_chat", "chat"):
+        if state.get("kind") not in {"new_chat", "chat"}:
             return False
         found = state.get("conversation_id")
         return not (self.conversation_id and found and found != self.conversation_id)
@@ -509,11 +507,7 @@ class ScriptedAgent:
     def verify(self, task: Task) -> None:
         """`verify`: every part's acknowledgement is on the page, in one probe."""
         state = self.look(task, *task.acknowledgements, messages=True)
-        seen = {
-            item
-            for message in state.get("messages", [])
-            for item in message.get("contains", [])
-        }
+        seen = {item for message in state.get("messages", []) for item in message.get("contains", [])}
         for index, ack in enumerate(task.acknowledgements, start=1):
             if ack not in seen:
                 self.give_up("generation", f"part {index} is not in the chat")
@@ -525,13 +519,11 @@ class ScriptedAgent:
         """Stop, as `partial` when a chat exists and `failed` when none does."""
         self.halt("partial" if self.conversation_id else "failed", category, detail)
 
-    def halt(
-        self, outcome: str, category: str, detail: str, reason: str | None = None
-    ) -> NoReturn:
+    def halt(self, outcome: str, category: str, detail: str, reason: str | None = None) -> NoReturn:
         extra: dict[str, Any] = {"error": {"category": category, "detail": detail}}
         if reason is not None:
             extra["needs_human_reason"] = reason
-        raise Stopped(self.result(outcome, **extra))
+        raise StoppedError(self.result(outcome, **extra))
 
     def result(self, outcome: str, **extra: Any) -> dict[str, Any]:
         printed: dict[str, Any] = {
@@ -551,13 +543,14 @@ class ScriptedAgent:
 
 
 def name_of(path: str) -> str:
-    """The file name in a path the prompt gave. The chip carries this, not the
-    directory it came out of.
+    r"""Return the file name in a path the prompt gave.
+
+    The chip carries this, not the directory it came out of.
 
     `PurePath`, whose separators follow the host, rather than `PurePosixPath`:
     the prompt is rendered by `12` on the same machine that runs this, so a
     Windows path arrives with backslashes and posix semantics would read the
-    whole of `C:\\…\\notes.txt` as the name. (Raised by Copilot in review on #25.)
+    whole of `C:\…\notes.txt` as the name. (Raised by Copilot in review on #25.)
     """
     return PurePath(path).name
 
@@ -577,8 +570,10 @@ class SignInBrowser(Protocol):
     def navigate(self, url: str) -> None: ...
 
     def visible_fields(self) -> Sequence[str]:
-        """Which of `email` and `password` the page is showing, and — for a
-        page that wants something else — `code`, `captcha` or `challenge`."""
+        """Which of `email` and `password` the page is showing, and.
+
+        For a page that wants something else — `code`, `captcha` or `challenge`.
+        """
         ...
 
 
@@ -616,7 +611,7 @@ class ScriptedSignIn:
         self.browser.navigate(url)
         self.actions += 1
         seen = list(self.browser.visible_fields())
-        form = [item for item in seen if item in ("email", "password")]
+        form = [item for item in seen if item in {"email", "password"}]
         if form:
             return {"outcome": "form_ready", "fields": form, "url": url}
         blocking = next((BLOCKING[item] for item in seen if item in BLOCKING), None)
@@ -638,9 +633,11 @@ class ProbeBrowser(Protocol):
     def submit(self, expected_ack: str) -> None: ...
 
     def last_assistant_message(self) -> str:
-        """The snapshot the probe prompt asks for, reduced to the one message it
-        is allowed to quote (`20`: the single exception to `11`'s rule that no
-        message reaches an agent's output tokens)."""
+        """Return the snapshot the probe prompt asks for, reduced to the one message it may quote.
+
+        `20`: the single exception to `11`'s rule that no message reaches an agent's
+        output tokens.
+        """
         ...
 
 

@@ -13,12 +13,14 @@ from dataporter import cli, log
 def read_lines(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
 def test_every_handler_carries_the_guard(workspace: Path) -> None:
-    """The filter is only as good as the promise that no handler escapes the
-    factory, so assert the promise rather than the filter."""
+    """The filter is only as good as the promise that no handler escapes the factory.
+
+    Assert the promise rather than the filter.
+    """
     log.configure_logging(verbose=True)
     log.enable_run_log(workspace)
     handlers = logging.getLogger(log.LOGGER_NAME).handlers
@@ -33,16 +35,11 @@ def test_a_null_handler_is_always_present() -> None:
     """Without one, logging.lastResort prints records straight to stderr."""
     log.reset_logging()
     logger = log.get_logger("test")
-    assert any(
-        isinstance(h, logging.NullHandler)
-        for h in logging.getLogger(log.LOGGER_NAME).handlers
-    )
+    assert any(isinstance(h, logging.NullHandler) for h in logging.getLogger(log.LOGGER_NAME).handlers)
     assert logger.name == "dataporter.test"
 
 
-def test_content_field_reaches_neither_sink(
-    workspace: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_content_field_reaches_neither_sink(workspace: Path, capsys: pytest.CaptureFixture[str]) -> None:
     log.configure_logging(verbose=True, strict=False)
     path = log.enable_run_log(workspace, strict=False)
     logger = log.get_logger("test")
@@ -62,19 +59,20 @@ def test_content_field_reaches_neither_sink(
 
 
 @pytest.mark.parametrize("field", sorted(log.FORBIDDEN_FIELDS))
-def test_strict_mode_raises_for_every_forbidden_field(
-    workspace: Path, field: str
-) -> None:
+def test_strict_mode_raises_for_every_forbidden_field(workspace: Path, field: str) -> None:
     log.configure_logging(verbose=True, strict=True)
-    with pytest.raises(log.ContentLeak, match=field):
+    with pytest.raises(log.ContentLeakError, match=field):
         log.get_logger("test").info("oops", extra={field: "secret"})
 
 
 def test_nested_content_is_caught_too(workspace: Path) -> None:
-    """`extra={"result": {"text": ...}}` leaks just as effectively as a top-level
-    field, and the JSON formatter would serialise it happily."""
+    """A nested `extra` leaks just as effectively as a top-level field.
+
+    `extra={"result": {"text": ...}}` is what the JSON formatter would serialise
+    happily.
+    """
     log.configure_logging(verbose=True, strict=True)
-    with pytest.raises(log.ContentLeak, match="snapshot"):
+    with pytest.raises(log.ContentLeakError, match="snapshot"):
         log.get_logger("test").info("oops", extra={"result": {"snapshot": "<html>"}})
 
 
@@ -108,13 +106,16 @@ def test_allowed_fields_survive(workspace: Path) -> None:
 @pytest.mark.parametrize("field", sorted(log.SCHEMA_FIELDS))
 def test_strict_mode_raises_on_a_schema_collision(workspace: Path, field: str) -> None:
     log.configure_logging(verbose=True, strict=True)
-    with pytest.raises(log.SchemaClash, match=field):
+    with pytest.raises(log.SchemaClashError, match=field):
         log.get_logger("test").info("oops", extra={field: "BOGUS"})
 
 
 def test_extras_never_overwrite_the_schema(workspace: Path) -> None:
-    """`13` plans `{event: "retry", uuid, ...}`; without this, `event` would stop
-    meaning the message and `19`'s parser would silently misread every record."""
+    """`13` plans `{event: "retry", uuid, ...}`.
+
+    Without this, `event` would stop meaning the message and `19`'s parser would
+    silently misread every record.
+    """
     log.configure_logging(verbose=False, strict=False)
     path = log.enable_run_log(workspace, strict=False)
     log.get_logger("test").info(
@@ -164,9 +165,7 @@ def test_the_strict_env_var_reads_the_way_an_operator_writes_it(
     assert log.strict_by_default() is strict
 
 
-def test_a_falsy_strict_env_var_drops_rather_than_raises(
-    monkeypatch: pytest.MonkeyPatch, workspace: Path
-) -> None:
+def test_a_falsy_strict_env_var_drops_rather_than_raises(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
     """The value has to reach the handler, not just `strict_by_default`."""
     monkeypatch.setattr(log, "_strict_default", False)
     monkeypatch.setenv(log.STRICT_ENV_VAR, "off")
@@ -177,14 +176,12 @@ def test_a_falsy_strict_env_var_drops_rather_than_raises(
     assert read_lines(path) == []
 
 
-def test_a_truthy_strict_env_var_raises(
-    monkeypatch: pytest.MonkeyPatch, workspace: Path
-) -> None:
+def test_a_truthy_strict_env_var_raises(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
     monkeypatch.setattr(log, "_strict_default", False)
     monkeypatch.setenv(log.STRICT_ENV_VAR, "yes")
     log.configure_logging(verbose=False)
     log.enable_run_log(workspace)
-    with pytest.raises(log.ContentLeak, match="text"):
+    with pytest.raises(log.ContentLeakError, match="text"):
         log.get_logger("test").info("leak", extra={"text": "conversation content"})
 
 
@@ -199,14 +196,10 @@ def test_nothing_is_created_until_a_record_is_written(workspace: Path) -> None:
     assert (target / log.LOGS_DIRNAME).is_dir()
 
 
-def test_dry_run_leaves_no_workspace_directory(
-    runner: CliRunner, workspace: Path
-) -> None:
+def test_dry_run_leaves_no_workspace_directory(runner: CliRunner, workspace: Path) -> None:
     export = workspace / "export"
     export.mkdir()
-    runner.invoke(
-        cli.app, ["-v", "import", str(export), "--dry-run"], catch_exceptions=False
-    )
+    runner.invoke(cli.app, ["-v", "import", str(export), "--dry-run"], catch_exceptions=False)
     # The file sink is opt-in per command, so a verbose dry run writes nothing.
     assert not (workspace / "migration").exists()
 
@@ -250,8 +243,11 @@ def test_get_logger_stays_under_the_package_root() -> None:
 
 
 def test_safe_token_cannot_forge_a_second_line() -> None:
-    """The guard rejects a content *field*; it says nothing about a newline inside
-    a legal value, which is what would split one record into two."""
+    """The guard rejects a content *field*.
+
+    It says nothing about a newline inside a legal value, which is what would split one
+    record into two.
+    """
     assert log.safe_token("chart\n.png") == "chart?.png"
     assert log.safe_token("a\x00b\x7fc") == "a?b?c"
     assert log.safe_token("ordinary-name.png") == "ordinary-name.png"
@@ -260,6 +256,8 @@ def test_safe_token_cannot_forge_a_second_line() -> None:
 
 
 def test_the_link_is_a_forbidden_field(workspace: Path) -> None:
-    """`30`: the vendor's download link is a credential to the whole archive
-    while it lasts (brief `03` §32), so no record may carry one."""
+    """`30`: no record may carry the vendor's download link.
+
+    The link is a credential to the whole archive while it lasts (brief `03` §32).
+    """
     assert "link" in log.FORBIDDEN_FIELDS

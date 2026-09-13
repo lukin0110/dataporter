@@ -1,4 +1,4 @@
-"""Structured logging that cannot leak conversation content.
+r"""Structured logging that cannot leak conversation content.
 
 Two sinks, both optional:
 
@@ -70,20 +70,18 @@ LOGGER_NAME = "dataporter"
 LOGS_DIRNAME = "logs"
 STRICT_ENV_VAR = "DATAPORTER_LOG_STRICT"
 
-FORBIDDEN_FIELDS = frozenset(
-    {
-        "text",
-        "seed",
-        "title",
-        "content",
-        "snapshot",
-        "stdout",
-        "email",
-        "secret",
-        "credentials",
-        "link",
-    }
-)
+FORBIDDEN_FIELDS = frozenset({
+    "text",
+    "seed",
+    "title",
+    "content",
+    "snapshot",
+    "stdout",
+    "email",
+    "secret",
+    "credentials",
+    "link",
+})
 """Field names that would carry conversation content — see `01` and §10 of the
 brief — or, since `24`, a credential: the account's email and whatever `auth`
 holds beside it are never a log field either.
@@ -109,7 +107,7 @@ _TOKEN_LIMIT = 120
 
 
 def safe_token(value: str, limit: int = _TOKEN_LIMIT) -> str:
-    """An export-derived string, reduced to something that cannot forge a line.
+    """Return an export-derived string, reduced to something that cannot forge a line.
 
     A name, an id or a reason may legally contain a newline — the export is not
     ours — and neither the content guard nor `JsonlFormatter` stops one from
@@ -121,9 +119,7 @@ def safe_token(value: str, limit: int = _TOKEN_LIMIT) -> str:
     return strip_control(value, "?")[:limit] or "(empty)"
 
 
-_RESERVED_RECORD_ATTRS = frozenset(
-    logging.LogRecord("", 0, "", 0, "", (), None).__dict__
-) | {"message", "asctime"}
+_RESERVED_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime"}
 """Derived, not hardcoded, so stdlib additions (`taskName` in 3.12) stay reserved."""
 
 _strict_default = False
@@ -134,21 +130,17 @@ traceback and all — straight to stderr, which is exactly what exit code 70 exi
 to avoid. A NullHandler discards everything, so it needs no content guard."""
 
 
-class ContentLeak(AssertionError):
+class ContentLeakError(AssertionError):
     """A log record carried a field that could contain conversation content."""
 
 
-class SchemaClash(AssertionError):
+class SchemaClashError(AssertionError):
     """A log record carried a field that would redefine a JSON-lines schema key."""
 
 
 def _extras(record: logging.LogRecord) -> dict[str, Any]:
-    """The caller-supplied `extra` fields, with stdlib record attributes removed."""
-    return {
-        key: value
-        for key, value in record.__dict__.items()
-        if key not in _RESERVED_RECORD_ATTRS
-    }
+    """Return the caller-supplied `extra` fields, with stdlib record attributes removed."""
+    return {key: value for key, value in record.__dict__.items() if key not in _RESERVED_RECORD_ATTRS}
 
 
 def _forbidden_names(fields: Mapping[str, Any], depth: int = 0) -> set[str]:
@@ -188,17 +180,13 @@ class ContentGuard(logging.Filter):
             if self.strict:
                 # Raised outside Handler.emit's try/except, so it reaches the caller
                 # rather than being swallowed by logging.handleError.
-                raise ContentLeak(
-                    f"log record carries content field(s): "
-                    f"{', '.join(sorted(offending))}"
-                )
+                raise ContentLeakError(f"log record carries content field(s): {', '.join(sorted(offending))}")
             return False
 
         clashing = SCHEMA_FIELDS & set(fields)
         if clashing and self.strict:
-            raise SchemaClash(
-                f"log record redefines schema field(s): {', '.join(sorted(clashing))}; "
-                f"the message is the event name"
+            raise SchemaClashError(
+                f"log record redefines schema field(s): {', '.join(sorted(clashing))}; the message is the event name"
             )
         return True
 
@@ -208,9 +196,7 @@ class JsonlFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
-            "ts": datetime.fromtimestamp(record.created, UTC)
-            .isoformat(timespec="milliseconds")
-            .replace("+00:00", "Z"),
+            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "level": record.levelname.lower(),
             "logger": record.name,
             "event": record.getMessage(),
@@ -220,15 +206,16 @@ class JsonlFormatter(logging.Formatter):
             payload["exception"] = record.exc_info[0].__name__
         # Extras never overwrite a schema key: `extra={"level": ...}` would make
         # `level` stop meaning the log level, silently, for every downstream parser.
-        for key, value in _extras(record).items():
-            if key not in SCHEMA_FIELDS:
-                payload[key] = value
+        payload.update({key: value for key, value in _extras(record).items() if key not in SCHEMA_FIELDS})
         return json.dumps(payload, default=str)
 
 
 class HumanFormatter(logging.Formatter):
-    """One plain line per record. No colour: `--verbose` output is read by people
-    and by tests, and terminal decoration breaks byte comparison."""
+    """One plain line per record.
+
+    No colour: `--verbose` output is read by people and by tests, and terminal
+    decoration breaks byte comparison.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
         stamp = datetime.fromtimestamp(record.created, UTC).strftime("%H:%M:%S")
@@ -248,13 +235,13 @@ class _JsonlFileHandler(logging.FileHandler):
 
 
 def _guarded(handler: logging.Handler, *, strict: bool) -> logging.Handler:
-    """The only place an emitting handler is added to this package's logger."""
+    """Attach the content guard — the only place an emitting handler is added here."""
     handler.addFilter(ContentGuard(strict=strict))
     return handler
 
 
 def package_logger() -> logging.Logger:
-    """The `dataporter` logger, guaranteed to have at least a NullHandler."""
+    """Return the `dataporter` logger, guaranteed to have at least a NullHandler."""
     logger = logging.getLogger(LOGGER_NAME)
     if _NULL_HANDLER not in logger.handlers:
         logger.addHandler(_NULL_HANDLER)
@@ -289,7 +276,7 @@ def configure_logging(*, verbose: bool = False, strict: bool | None = None) -> N
     and has nothing to say about diagnostics on stderr, so `-v -q` is a coherent
     combination rather than a contradiction.
     """
-    global _strict_default
+    global _strict_default  # ruff: ignore[global-statement] — the module default is what this sets
     _strict_default = strict_by_default() if strict is None else strict
 
     reset_logging()
@@ -338,7 +325,7 @@ def reset_logging() -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """A logger under the package root, e.g. `get_logger(__name__)`."""
+    """Return a logger under the package root, e.g. `get_logger(__name__)`."""
     package_logger()
     if name == LOGGER_NAME or name.startswith(f"{LOGGER_NAME}."):
         return logging.getLogger(name)

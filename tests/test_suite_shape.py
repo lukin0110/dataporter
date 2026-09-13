@@ -26,7 +26,7 @@ owns the budget; this module owns the shape.
 import pytest
 
 from conftest import EXPENSIVE
-from fake_chrome import FakeChrome
+from fake_chrome import FakeChrome, entered
 from fake_hermes import FakeHermes
 from fake_pages import PageServer
 from live_browser import requires_a_browser
@@ -44,8 +44,10 @@ its port is not."""
 
 @pytest.mark.parametrize("expensive", EXPENSIVE_CLASSES)
 def test_an_unmarked_test_cannot_build_an_expensive_fake(expensive: type) -> None:
-    """This test is not `slow`, so the guard is live inside it. That is the
-    proof: no `pytester`, no subprocess, no second copy of the rule."""
+    """Not `slow`, so the guard is live inside it.
+
+    That is the proof: no `pytester`, no subprocess, no second copy of the rule.
+    """
     with pytest.raises(AssertionError) as raised:
         expensive()
 
@@ -55,15 +57,14 @@ def test_an_unmarked_test_cannot_build_an_expensive_fake(expensive: type) -> Non
 def test_an_unmarked_test_cannot_start_the_page_server() -> None:
     """The third one, and the one that would launch a real browser behind it."""
     with pytest.raises(AssertionError) as raised:
-        PageServer().__enter__()
+        entered(PageServer())
 
     assert raised.value.args[0] == EXPENSIVE.format(name="PageServer")
 
 
 @pytest.mark.slow
 def test_a_slow_test_may_build_one() -> None:
-    """The other half: a guard that refused everywhere would be a broken suite,
-    not a fast one."""
+    """The other half: a guard that refused everywhere would be a broken suite, not a fast one."""
     with FakeChrome() as chrome:
         assert chrome.port > 0
 

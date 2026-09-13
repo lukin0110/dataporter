@@ -76,16 +76,12 @@ def test_version_is_the_golden_string(runner: CliRunner) -> None:
     assert result.stdout == "dataporter 0.1.0\n"
 
 
-def test_missing_export_exits_usage_with_no_traceback(
-    runner: CliRunner, workspace: Path
-) -> None:
-    result = runner.invoke(
-        cli.app, ["import", "./nowhere", "--dry-run"], catch_exceptions=False
-    )
+def test_missing_export_exits_usage_with_no_traceback(runner: CliRunner, workspace: Path) -> None:
+    result = runner.invoke(cli.app, ["import", "./nowhere", "--dry-run"], catch_exceptions=False)
     assert result.exit_code == ExitCode.USAGE
     # The path is echoed exactly as typed: str(Path("./nowhere")) would be "nowhere".
     assert result.stderr == "error: export not found: ./nowhere\n"
-    assert result.stdout == ""
+    assert not result.stdout
     assert "Traceback" not in result.output
 
 
@@ -128,22 +124,23 @@ def test_extract_help_carries_every_flag(runner: CliRunner) -> None:
         assert flag in result.stdout
 
 
-@pytest.mark.parametrize(
-    "command", [["login"], ["session", "status"], ["session", "logout"]]
-)
-def test_the_session_commands_carry_the_account_options(
-    runner: CliRunner, command: list[str]
-) -> None:
-    """`31`: each of `07`'s three commands gains a label and the source it
-    belongs to, and means the destination without one."""
+@pytest.mark.parametrize("command", [["login"], ["session", "status"], ["session", "logout"]])
+def test_the_session_commands_carry_the_account_options(runner: CliRunner, command: list[str]) -> None:
+    """`31`: each of `07`'s three commands gains a label and the source it belongs to.
+
+    Without one, the command means the destination.
+    """
     result = runner.invoke(cli.app, [*command, "--help"], catch_exceptions=False)
     for flag in ("--source", "--account"):
         assert flag in result.stdout
 
 
 def test_the_account_options_are_optional_on_the_session_commands() -> None:
-    """A literal `None` rather than a required option: §35's "absent means the
-    destination" is a property of the signature, not of a code path."""
+    """A literal `None` rather than a required option.
+
+    §35's "absent means the destination" is a property of the signature, not of a code
+    path.
+    """
     for command in (cli.login, cli.session_status, cli.session_logout):
         parameters = inspect.signature(command).parameters
         assert parameters["account"].default is None
@@ -151,14 +148,19 @@ def test_the_account_options_are_optional_on_the_session_commands() -> None:
 
 
 def test_source_has_no_literal_default(runner: CliRunner, workspace: Path) -> None:
-    """`claude` is the default in `Settings`, not on the flag: a literal here
-    would outrank `DATAPORTER_SOURCE`, the way `--limit` would outrank config."""
+    """`claude` is the default in `Settings`, not on the flag.
+
+    A literal here would outrank `DATAPORTER_SOURCE`, the way `--limit` would outrank
+    config.
+    """
     assert inspect.signature(cli.extract).parameters["source"].default is None
 
 
 def test_limit_has_no_literal_default(runner: CliRunner, workspace: Path) -> None:
-    """`15` tells an explicit `--limit 10` from an unset flag, and so do the
-    three pacing flags it added: a literal default here would outrank config."""
+    """`15` tells an explicit `--limit 10` from an unset flag, and so do its three pacing flags.
+
+    A literal default here would outrank config.
+    """
     signature = inspect.signature(cli.import_cmd)
     for name in ("limit", "delay", "max_retries", "timeout"):
         assert signature.parameters[name].default is None
@@ -181,8 +183,10 @@ def test_unhandled_exception_becomes_exit_70(
     export_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Through `--pilot`, whose selection is the newest thing in the surface:
-    what this is about is any command that raises something nobody caught."""
+    """Through `--pilot`, whose selection is the newest thing in the surface.
+
+    What this is about is any command that raises something nobody caught.
+    """
 
     def explode(*args: object, **kwargs: object) -> None:
         raise ZeroDivisionError("boom")
@@ -203,11 +207,11 @@ def test_unhandled_exception_becomes_exit_70(
 def test_invoked_name_skips_the_program_name(
     runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`08` implemented every nested command, so the case is exercised by
-    pointing one of them back at `not_implemented`."""
-    monkeypatch.setattr(
-        cli, "emit_helper", lambda ctx, name, work: cli.not_implemented(ctx)
-    )
+    """`08` implemented every nested command.
+
+    The case is exercised by pointing one of them back at `not_implemented`.
+    """
+    monkeypatch.setattr(cli, "emit_helper", lambda ctx, name, work: cli.not_implemented(ctx))
     result = runner.invoke(cli.app, ["browser", "probe"], catch_exceptions=False)
     assert result.stderr == "not implemented in this build: browser probe\n"
 
@@ -215,8 +219,11 @@ def test_invoked_name_skips_the_program_name(
 def test_a_malformed_export_is_exit_2_not_an_internal_error(
     runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`02` raises `ExportError`; without a clause of its own it would reach the
-    operator as `internal error: ExportError` and exit `70`."""
+    """`02` raises `ExportError`.
+
+    Without a clause of its own it would reach the operator as `internal error:
+    ExportError` and exit `70`.
+    """
 
     def explode(export: str) -> Path:
         raise ExportError(detail="conversations.json is not a JSON array: ./export.zip")
@@ -224,9 +231,7 @@ def test_a_malformed_export_is_exit_2_not_an_internal_error(
     monkeypatch.setattr(selecting, "export_path", explode)
     result = runner.invoke(cli.app, ["inspect", "."], catch_exceptions=False)
     assert result.exit_code == ExitCode.USAGE
-    assert result.stderr == (
-        "error: conversations.json is not a JSON array: ./export.zip\n"
-    )
+    assert result.stderr == ("error: conversations.json is not a JSON array: ./export.zip\n")
     assert "Traceback" not in result.output
 
 
@@ -259,8 +264,11 @@ def command_functions(tree: ast.Module) -> list[ast.FunctionDef]:
 
 
 def test_every_command_is_an_interface() -> None:
-    """`23`'s acceptance criterion, made checkable: a command parses, calls one
-    library function, and exits. No loop, no branch, no lock, no browser."""
+    """`23`'s acceptance criterion, made checkable.
+
+    A command parses, calls one library function, and exits. No loop, no branch, no
+    lock, no browser.
+    """
     tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
     commands = command_functions(tree)
     assert {item.name for item in commands} >= {
@@ -305,9 +313,7 @@ def test_a_usage_error_from_the_library_is_exit_2(
     assert result.stderr == "error: two flags that cannot both be honoured\n"
 
 
-def test_a_judge_error_is_exit_6(
-    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_judge_error_is_exit_6(runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse(*args: object, **kwargs: object) -> None:
         raise judging.JudgeError("the judge extra is not installed")
 

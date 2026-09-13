@@ -25,8 +25,10 @@ MIGRATION-ACK aa000001 1/1
 
 
 def test_the_line_a_seed_asks_for_is_the_last_one() -> None:
-    """A conversation being migrated may quote the phrase; the instruction at
-    the foot of the message is the one that counts."""
+    """A conversation being migrated may quote the phrase.
+
+    The instruction at the foot of the message is the one that counts.
+    """
     assert asked_line(SEED) == "MIGRATION-ACK aa000001 1/1"
 
 
@@ -40,9 +42,11 @@ MIGRATION-ACK b2000002 1/2
 
 
 def test_the_instruction_is_found_even_when_it_is_wrapped() -> None:
-    """The seed's footer is wrapped to a column, so the phrase can straddle two
-    lines — which is what a first rehearsal found by answering a canned sentence
-    to every part of its only multi-part conversation."""
+    """The seed's footer is wrapped to a column, so the phrase can straddle two lines.
+
+    Which is what a first rehearsal found by answering a canned sentence to every part
+    of its only multi-part conversation.
+    """
     assert asked_line(WRAPPED) == "MIGRATION-ACK b2000002 1/2"
 
 
@@ -51,8 +55,10 @@ def test_a_message_that_asks_for_no_line_gets_the_canned_sentence() -> None:
 
 
 def test_a_reply_grows_in_steps_and_only_then_holds_the_line() -> None:
-    """§21: the reply appears after a delay and grows, so that "it stopped
-    growing" is something a rehearsal really waits for."""
+    """§21: the reply appears after a delay and grows.
+
+    That "it stopped growing" is something a rehearsal really waits for.
+    """
     clock = [100.0]
     site = Site(
         email="a@example.invalid",
@@ -101,9 +107,7 @@ def test_every_turn_survives_the_next_message(site: Site) -> None:
 
 
 def test_exactly_one_pair_signs_in(site: Site) -> None:
-    assert site.credentials_match(
-        "rehearsal@example.invalid", "rehearsal-not-a-real-password"
-    )
+    assert site.credentials_match("rehearsal@example.invalid", "rehearsal-not-a-real-password")
     assert not site.credentials_match("rehearsal@example.invalid", "guess")
     assert not site.credentials_match("someone@example.invalid", "guess")
 

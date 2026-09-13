@@ -126,24 +126,104 @@ exclude = [
 # is the only thing that would have to go with it.
 members = ["mock"]
 
-[tool.ruff]
-line-length = 88
+[tool.ruff]  # https://github.com/lukin0110/uv-copier/blob/main/template/pyproject.toml.jinja
+fix = true
+line-length = 120
 src = ["src", "tests"]
+# `py312`, not the template's `py313`: `requires-python` is `>=3.12`, and `UP`
+# rewriting to syntax 3.12 does not have would break the floor the classifiers claim.
+target-version = "py312"
+force-exclude = true  # https://docs.astral.sh/ruff/settings/#force-exclude
+preview = true  # https://docs.astral.sh/ruff/preview/
 # The specs are normative prose. ruff formats Python blocks inside Markdown, which
 # would rewrite them; they are documents, not code.
 extend-exclude = ["specs", "docs"]
 
 [tool.ruff.lint]
-# ANN replaces the one thing `mypy --strict` enforced that ty does not: every def
-# annotated. ANN401 (no explicit `Any`) is stricter than mypy --strict ever was;
-# the export parser genuinely reads `Any` off untrusted JSON.
-# W605 alone out of the `W` group, because the formatter already owns the rest of
-# it: an invalid escape sequence in a docstring is a `SyntaxWarning` a reader sees
-# in CI output and a future Python will make an error, and the bytecode cache
-# means `pytest -W error` catches it only on the run that compiles the file.
-# (`26` wrote `\s+` in prose and CI printed the warning.)
-select = ["E", "F", "I", "UP", "ANN", "W605"]
-ignore = ["ANN401"]
+select = [
+    "A", "ANN", "ASYNC", "B", "BLE", "C4", "C90", "D", "DTZ", "E", "EM", "ERA", "F",
+    "FBT", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY",
+    "PERF", "PGH", "PIE", "PLC", "PLE", "PLR", "PLW", "PT", "PTH", "PYI", "RET",
+    "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP",
+    "W", "YTT",
+]
+# `ANN` is this project's own addition to the template's set: it replaces the one
+# thing `mypy --strict` enforced that ty does not, which is that every def is
+# annotated. Everything else above is the template's list, verbatim.
+ignore = [
+    # The template's list, verbatim.
+    "D10", "D203", "D213", "E501", "EM101", "EM102", "FBT001", "ISC001", "RET504",
+    "RUF201", "S101", "TRY003", "TRY300", "W505",
+    # This project's, each with the reason it is here.
+    # ANN401 is stricter than mypy --strict ever was; the export parser genuinely
+    # reads `Any` off untrusted JSON.
+    "ANN401",
+    # A Typer command's options are its parameters — `import` has sixteen — and a
+    # pytest test's fixtures are its parameters too. Neither count is a design smell,
+    # and neither is fixable without making the code worse. The rules that measure
+    # what a function *does* (C901, PLR0911, PLR0912, PLR0914, PLR0915) stay on.
+    "PLR0904", "PLR0913", "PLR0917",
+    # An implementation of a Protocol or of a base class is a method whether or not
+    # this particular one needs `self`: `console.Sink`, `progress.Progress` and
+    # `intervention.Intervention` are all satisfied by shape.
+    "PLR6301",
+    # `dataporter/__init__.py` is where `__version__` and `PROGRAM_NAME` live, and
+    # `[tool.hatch.version]` reads the first of them out of that file by regex.
+    "RUF067",
+    # Importing `subprocess` is what a tool that drives Hermes and Chrome does. The
+    # calls themselves are still checked (S602, S603, S607).
+    "S404",
+]
+unfixable = ["ERA001", "F401", "F841", "T201", "T203"]  # https://docs.astral.sh/ruff/settings/#unfixable
+# En dash, minus sign and multiplication sign are typography in this project's prose
+# (`12`–`14`, `total − done`, `done / total × 20`), not homoglyphs.
+allowed-confusables = ["–", "−", "×"]
+
+[tool.ruff.lint.extend-per-file-ignores]  # https://docs.astral.sh/ruff/settings/#extend-per-file-ignores
+# Ignore missing __init__.py files in tests.
+"tests/*" = [
+    "INP001",
+    "PLR2004",
+    # The suite asserts configured values — `30.0`, `0.5` — never the result of
+    # arithmetic, so an exact comparison is the assertion being made.
+    "RUF069",
+    # Fixture credentials and `/tmp` paths are what a test of a credential or a path
+    # is made of.
+    "S105", "S106", "S108",
+    # Every subprocess a test starts is one of our own commands, with argv it built.
+    "S603",
+    # A test reaches into what it is testing; that is the difference between a test
+    # and a caller.
+    "SLF001",
+]
+# `26`'s mock is a served stand-in for claude.ai: its CLI prints, its fixtures carry
+# passwords, and its tests are a directory rather than a package.
+"mock/*" = ["INP001", "PLR2004", "S105", "S106", "S310", "T201"]
+# `10`'s spikes and `29`'s rehearsal are instruments a person runs and reads: what
+# they print is their output, and the processes they start are our own commands.
+"spikes/*" = ["INP001", "PLR2004", "S603", "T201"]
+"rehearsal/*" = ["INP001", "PLR2004", "S105", "S603", "T201"]
+# The one place the tool writes to stdout (`23`), and the one place it asks the
+# person at the keyboard a question (`14`). Everything else routes through them.
+"src/dataporter/console.py" = ["T201"]
+"src/dataporter/intervention.py" = ["T201"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Disallow all relative imports.
+ban-relative-imports = "all"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pep8-naming]
+# Allow Pydantic's `@validator` decorator to trigger class method treatment.
+classmethod-decorators = ["classmethod", "pydantic.validator", "pydantic.root_validator"]
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 100
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.ty.environment]  # https://docs.astral.sh/ty/configuration/
 python-version = "3.12"

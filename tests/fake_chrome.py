@@ -16,7 +16,7 @@ import json
 import socket
 import threading
 from collections.abc import Callable, Iterator
-from contextlib import closing
+from contextlib import AbstractContextManager, ExitStack, closing
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +24,16 @@ from types import TracebackType
 from typing import Any, Self
 
 from websockets.sync.server import Server, ServerConnection, serve
+
+
+def entered[T](manager: AbstractContextManager[T]) -> T:
+    """Enter `manager` and leave it open, for a rig the test closes itself.
+
+    `__enter__` called directly is what the linter objects to, and an `ExitStack`
+    nobody closes does exactly the same thing by its own interface.
+    """
+    return ExitStack().enter_context(manager)
+
 
 BROKEN_TARGET = "boom"
 """A target id the fake answers with a 500, for the failure that is not a race."""
@@ -45,7 +55,7 @@ idle fake costs a hundred syscalls a second instead of a busy spin.
 
 
 def free_port() -> int:
-    """A port that was free a moment ago. As good as this gets without binding."""
+    """Return a port that was free a moment ago. As good as this gets without binding."""
     with closing(socket.socket()) as probe:
         probe.bind(("127.0.0.1", 0))
         return int(probe.getsockname()[1])
@@ -94,11 +104,7 @@ class FakeChrome:
         responder: Callable[["FakeChrome", Call], dict[str, Any] | None] | None = None,
     ) -> None:
         self.browser_id = browser_id
-        self.targets = (
-            targets
-            if targets is not None
-            else [FakeTarget(id="page-1", url="https://claude.ai/new")]
-        )
+        self.targets = targets if targets is not None else [FakeTarget(id="page-1", url="https://claude.ai/new")]
         self.calls: list[Call] = []
         self.responder = responder
         self.events: list[dict[str, Any]] = []
@@ -181,9 +187,7 @@ class FakeChrome:
         return {
             "Browser": "Chrome/141.0.0.0",
             "Protocol-Version": "1.3",
-            "webSocketDebuggerUrl": (
-                f"ws://127.0.0.1:{self.ws_port}/devtools/browser/{self.browser_id}"
-            ),
+            "webSocketDebuggerUrl": (f"ws://127.0.0.1:{self.ws_port}/devtools/browser/{self.browser_id}"),
         }
 
     def _list(self) -> list[dict[str, Any]]:
@@ -195,21 +199,19 @@ class FakeChrome:
                 # A real browser sends a title here. Our client drops it on the
                 # floor, which is the point: see `cdp.Target`.
                 "title": "a conversation title",
-                "webSocketDebuggerUrl": (
-                    f"ws://127.0.0.1:{self.ws_port}/devtools/page/{item.id}"
-                ),
+                "webSocketDebuggerUrl": (f"ws://127.0.0.1:{self.ws_port}/devtools/page/{item.id}"),
             }
             for item in self.targets
         ]
 
-    def _handler_class(self) -> type[BaseHTTPRequestHandler]:
+    def _handler_class(self) -> type[BaseHTTPRequestHandler]:  # ruff: ignore[complex-structure] - the HTTP half of the protocol, in one place
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802 - the stdlib spells it this way
+            def do_GET(self) -> None:
                 if self.path == "/json/version":
                     self._json(fake._version())
-                elif self.path in ("/json/list", "/json"):
+                elif self.path in {"/json/list", "/json"}:
                     self._json(fake._list())
                 elif self.path.startswith("/json/close/"):
                     target_id = self.path.rsplit("/", 1)[-1]
@@ -218,9 +220,7 @@ class FakeChrome:
                         return
                     with fake._lock:
                         known = fake.target(target_id) is not None
-                        fake.targets = [
-                            item for item in fake.targets if item.id != target_id
-                        ]
+                        fake.targets = [item for item in fake.targets if item.id != target_id]
                     if not known:
                         # What a real Chrome does, verified against Chromium 141:
                         # `No such target id: X`, with a 404.
@@ -243,7 +243,7 @@ class FakeChrome:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def log_message(self, format: str, *args: object) -> None:
+            def log_message(self, fmt: str, *args: object) -> None:
                 """Silence."""
 
         return Handler
@@ -285,7 +285,7 @@ class FakeChrome:
                 return override
         return self._default_reply(call)
 
-    def _default_reply(self, call: Call) -> dict[str, Any] | None:
+    def _default_reply(self, call: Call) -> dict[str, Any] | None:  # ruff: ignore[complex-structure, too-many-return-statements] - one reply per CDP method
         target_id = call.path.rsplit("/", 1)[-1]
         target = self.target(target_id)
         if call.method == "Browser.close":
@@ -308,9 +308,7 @@ class FakeChrome:
                 target.url = str(call.params.get("url", target.url))
             return {"result": {}}
         if call.method == "Target.createTarget":
-            created = FakeTarget(
-                id=f"page-{len(self.targets) + 1}", url=str(call.params.get("url", ""))
-            )
+            created = FakeTarget(id=f"page-{len(self.targets) + 1}", url=str(call.params.get("url", "")))
             with self._lock:
                 self.targets.append(created)
             return {"result": {"targetId": created.id}}
@@ -319,18 +317,18 @@ class FakeChrome:
         if call.method == "DOM.querySelector":
             found = "missing" not in str(call.params.get("selector", ""))
             return {"result": {"nodeId": 2 if found else 0}}
-        if call.method in (
+        if call.method in {
             "Page.enable",
             "Input.insertText",
             "Input.dispatchKeyEvent",
             "DOM.setFileInputFiles",
-        ):
+        }:
             return {"result": {}}
         return {"error": {"code": -32601, "message": f"'{call.method}' wasn't found"}}
 
 
 def dialog_event(kind: str = "alert") -> dict[str, Any]:
-    """A `Page.javascriptDialogOpening` event, as Chrome sends it."""
+    """Return a `Page.javascriptDialogOpening` event, as Chrome sends it."""
     return {
         "method": "Page.javascriptDialogOpening",
         "params": {
@@ -341,12 +339,12 @@ def dialog_event(kind: str = "alert") -> dict[str, Any]:
     }
 
 
-def dialog_closed_event(result: bool = True) -> dict[str, Any]:
+def dialog_closed_event(*, result: bool = True) -> dict[str, Any]:
     return {"method": "Page.javascriptDialogClosed", "params": {"result": result}}
 
 
 def page_state(**overrides: Any) -> dict[str, Any]:
-    """What `probe.PAGE_STATE_JS` returns, with the fields a test cares about."""
+    """Return what `probe.PAGE_STATE_JS` returns, with the fields a test cares about."""
     state: dict[str, Any] = {
         "url": "https://claude.ai/new",
         "composer_present": True,

@@ -87,7 +87,7 @@ class PromptError(ValueError):
 
 
 def _one_line(value: str) -> str:
-    """A field value that cannot become two fields.
+    """Return a field value that cannot become two fields.
 
     `log.safe_token` is the same reduction everywhere else, but its length limit
     is wrong for this: a truncated path names a different file, or none, and the
@@ -112,11 +112,8 @@ def _block(key: str, values: Sequence[str]) -> list[str]:
 
 
 def helper_command(workspace: Path) -> str:
-    """The helper prefix, quoted, so a workspace path with a space survives."""
-    return (
-        quoted([PROGRAM_NAME, "--workspace", str(workspace), "browser"])
-        + f" {HELPER_SUFFIX}"
-    )
+    """Return the helper prefix, quoted, so a workspace path with a space survives."""
+    return quoted([PROGRAM_NAME, "--workspace", str(workspace), "browser"]) + f" {HELPER_SUFFIX}"
 
 
 def render(
@@ -187,7 +184,7 @@ def for_seed(
     delay_between_parts_s: float = 0.0,
     title: str = "",
 ) -> str:
-    """The prompt for a seed `04` generated and `12` has just written out.
+    """Return the prompt for a seed `04` generated and `12` has just written out.
 
     The acknowledgement lines come off the seed itself rather than being rebuilt
     from the short id, so the line the chat is asked to reply with and the line

@@ -41,12 +41,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from dataporter import log, render, state
+from dataporter import importer as importing
+from dataporter import log, render, signin, state
 from dataporter import verify as verifying
+from dataporter.browser import launcher
+from dataporter.browser.probe import NEW_CHAT_URL
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import HermesError
 from dataporter.exit_codes import ExitCode
+from dataporter.hermes import doctor as hermes_doctor
 from dataporter.hermes import prompt as prompting
 from dataporter.hermes import runner as hermes_running
 from dataporter.state import ConversationState, Instant, MigrationState, Status
@@ -147,7 +151,7 @@ class ProbeFile(ProbeModel):
     probes: list[Probe] = []
 
     def replace(self, probe: Probe) -> "ProbeFile":
-        """This file with `probe`'s conversation answered afresh.
+        """Return this file with `probe`'s conversation answered afresh.
 
         A probe re-run overwrites its own record rather than appending a second
         one: the question is the same question, and two answers in the file would
@@ -179,8 +183,11 @@ def question_path(settings: Settings) -> Path:
 
 
 def read(settings: Settings) -> ProbeFile:
-    """`probes.json`, or an empty one. A missing file is not an error: the first
-    probe run is what creates it, and `judge` reports nothing to grade."""
+    """`probes.json`, or an empty one.
+
+    A missing file is not an error: the first probe run is what creates it, and `judge`
+    reports nothing to grade.
+    """
     try:
         text = probes_path(settings).read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -188,9 +195,7 @@ def read(settings: Settings) -> ProbeFile:
     try:
         return ProbeFile.model_validate_json(text)
     except ValidationError as exc:
-        raise state.StateError(
-            f"{probes_path(settings)} is not a probe file: {_describe(exc)}"
-        ) from exc
+        raise state.StateError(f"{probes_path(settings)} is not a probe file: {_describe(exc)}") from exc
 
 
 def write(settings: Settings, file: ProbeFile) -> Path:
@@ -208,7 +213,7 @@ def write(settings: Settings, file: ProbeFile) -> Path:
 
 
 def write_question(settings: Settings, question: str = QUESTION) -> Path:
-    """The question, as the file the helper pastes from.
+    """Return the question, as the file the helper pastes from.
 
     `newline=""` and UTF-8, exactly as `04` writes a seed part: what the composer
     ends up holding is compared against a hash of these bytes.
@@ -222,8 +227,7 @@ def write_question(settings: Settings, question: str = QUESTION) -> Path:
 def _describe(exc: ValidationError) -> str:
     """`loc: msg`, with the offending value left out — it may be a reply."""
     return "; ".join(
-        f"{'.'.join(str(item) for item in error['loc']) or '(root)'}: {error['msg']}"
-        for error in exc.errors()
+        f"{'.'.join(str(item) for item in error['loc']) or '(root)'}: {error['msg']}" for error in exc.errors()
     )
 
 
@@ -233,7 +237,7 @@ def _describe(exc: ValidationError) -> str:
 
 
 def in_the_right_chat(result: ProbeResult, conversation_id: str) -> ProbeResult:
-    """`result`, or a failure when it says it answered somewhere else.
+    """Return `result`, or a failure when it says it answered somewhere else.
 
     The agent is told which chat to ask in and reports which chat it asked in,
     and those two disagreeing is the one way a probe can produce a reply that is
@@ -298,22 +302,18 @@ in it.
 """
 
 
-def prompt(
-    *, short_id: str, conversation_id: str, question_file: Path, workspace: Path
-) -> str:
+def prompt(*, short_id: str, conversation_id: str, question_file: Path, workspace: Path) -> str:
     """One probe's task prompt. Names files and ids, as `11`'s prompt does."""
-    return "\n".join(
-        [
-            HEAD,
-            f"short_id: {short_id}",
-            f"conversation_id: {conversation_id}",
-            f"chat url: {verifying.chat_url(conversation_id)}",
-            f"question file: {question_file}",
-            f"helper: {prompting.helper_command(workspace)}",
-            "",
-            TAIL,
-        ]
-    )
+    return "\n".join([
+        HEAD,
+        f"short_id: {short_id}",
+        f"conversation_id: {conversation_id}",
+        f"chat url: {verifying.chat_url(conversation_id)}",
+        f"question file: {question_file}",
+        f"helper: {prompting.helper_command(workspace)}",
+        "",
+        TAIL,
+    ])
 
 
 # --------------------------------------------------------------------------- #
@@ -329,19 +329,17 @@ class Prober:
     thing that opens the account is the thing that should have checked it.
     """
 
-    def __init__(
-        self, settings: Settings, *, runner: hermes_running.HermesRunner | None = None
-    ) -> None:
+    def __init__(self, settings: Settings, *, runner: hermes_running.HermesRunner | None = None) -> None:
         self.settings = settings
-        self.runner = (
-            runner if runner is not None else hermes_running.HermesRunner(settings)
-        )
+        self.runner = runner if runner is not None else hermes_running.HermesRunner(settings)
         self.question_file = write_question(settings)
 
     def ask(self, uuid: str, entry: ConversationState) -> Probe:
-        """Ask one chat, and say what came back. Never raises for a probe that
-        failed: a run that could not get an answer is a row of the write-up, and
-        nine more conversations are waiting behind it."""
+        """Ask one chat, and say what came back.
+
+        Never raises for a probe that failed: a run that could not get an answer is a
+        row of the write-up, and nine more conversations are waiting behind it.
+        """
         short_id = render.short_id(uuid)
         conversation_id = entry.destination.conversation_id or ""
         text = prompt(
@@ -375,7 +373,7 @@ class Prober:
         )
 
     def _run(self, text: str, short_id: str) -> ProbeResult:
-        """The subprocess, and the object it printed last.
+        """Return the subprocess, and the object it printed last.
 
         `run_raw` rather than `run`: the result contract here is this module's,
         not `09`'s, and a probe that answered `answered` is not a migration
@@ -393,10 +391,7 @@ class Prober:
         try:
             return ProbeResult.model_validate(payload)
         except ValidationError as exc:
-            raise HermesError(
-                detail=f"invalid probe json: {_describe(exc)}; "
-                f"stdout: {raw.stdout_path}"
-            ) from exc
+            raise HermesError(detail=f"invalid probe json: {_describe(exc)}; stdout: {raw.stdout_path}") from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -406,16 +401,16 @@ class Prober:
 
 @dataclass(frozen=True)
 class FollowupOutcome:
-    """Every chat asked, with its reply record; exit `1` if any went unanswered
-    and `4` if there was nothing to ask."""
+    """Every chat asked, with its reply record.
+
+    Exit `1` if any went unanswered and `4` if there was nothing to ask.
+    """
 
     probes: tuple[Probe, ...]
     exit_code: ExitCode
 
 
-def ask_all(
-    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD
-) -> FollowupOutcome:
+def ask_all(settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD) -> FollowupOutcome:
     """Ask each migrated chat one follow-up question (the pilot's probe, `20`).
 
     Nothing completed, or nothing selected, is exit `4` — `06`'s rule for an
@@ -434,12 +429,6 @@ def ask_all(
     gap between conversations is kept, for §13's reason: this is one more message
     into a real account, sent by the same browser.
     """
-    from dataporter import importer as importing
-    from dataporter import signin
-    from dataporter.browser import launcher
-    from dataporter.browser.probe import NEW_CHAT_URL
-    from dataporter.hermes import doctor as hermes_doctor
-
     if settings.non_interactive:
         signin.require_credentials(settings)
     log.enable_run_log(settings.workspace)

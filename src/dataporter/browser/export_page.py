@@ -28,10 +28,10 @@ four constants below are what it corrects — one line each.
 import json
 import re
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from orval import utcnow
 
@@ -44,6 +44,9 @@ from dataporter.browser.launcher import BrowserSession
 from dataporter.browser.probe import CLAUDE_HOST, PageState
 from dataporter.config import Settings
 from dataporter.errors import BrowserError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _logger = log.get_logger(__name__)
 
@@ -80,10 +83,7 @@ every helper Hermes can run still refuses this page under `MIGRATION_SURFACE`.
 EXPORT_BUTTON_SELECTOR = '[data-testid="export-data"], button[aria-label="Export data"]'
 """The control that asks the vendor for the account's data."""
 
-CONFIRM_BUTTON_SELECTOR = (
-    '[role="dialog"] [data-testid="confirm-export"], '
-    '[role="dialog"] button[type="submit"]'
-)
+CONFIRM_BUTTON_SELECTOR = '[role="dialog"] [data-testid="confirm-export"], [role="dialog"] button[type="submit"]'
 """The confirmation inside whatever dialog the button opens, if it opens one."""
 
 REQUESTED_SELECTOR = '[data-testid="export-requested"], [role="status"]'
@@ -108,9 +108,7 @@ CLICK_TAG = "dataporter:click"
 
 def _expression(tag: str, body: str) -> str:
     """One expression: `probe`'s prelude, this page's selectors, then `body`."""
-    consts = "".join(
-        f"  const {name} = {json.dumps(value)};\n" for name, value in _SELECTORS
-    )
+    consts = "".join(f"  const {name} = {json.dumps(value)};\n" for name, value in _SELECTORS)
     return probing.expression(tag, consts + body)
 
 
@@ -246,9 +244,7 @@ def signed_out(state: PageState) -> bool:
     return state.kind is probing.PageKind.LOGIN
 
 
-def request_export(
-    settings: Settings, session: BrowserSession, *, poll_s: float = ASK_POLL_S
-) -> AskResult:
+def request_export(settings: Settings, session: BrowserSession, *, poll_s: float = ASK_POLL_S) -> AskResult:
     """Press the vendor's button, confirm if it asks, and watch for the answer.
 
     The whole of what this tool does inside a source account (§36). Everything
@@ -282,9 +278,7 @@ def request_export(
                     "export requested",
                     extra={"source": settings.source, "clicks": len(clicks)},
                 )
-                return AskResult(
-                    requested=True, pressed_at=pressed_at, clicks=tuple(clicks)
-                )
+                return AskResult(requested=True, pressed_at=pressed_at, clicks=tuple(clicks))
             if view.dialog and view.confirm and CONFIRM_ACTION not in clicks:
                 _click(settings, page, CONFIRM_BUTTON_SELECTOR, CONFIRM_ACTION)
                 clicks.append(CONFIRM_ACTION)
@@ -296,10 +290,8 @@ def request_export(
             time.sleep(poll_s)
 
 
-def _stopped(
-    reason: str, pressed_at: datetime | None = None, clicks: list[str] | None = None
-) -> AskResult:
-    """An ask that did not get its confirmation, and why."""
+def _stopped(reason: str, pressed_at: datetime | None = None, clicks: list[str] | None = None) -> AskResult:
+    """Return an ask that did not get its confirmation, and why."""
     _logger.info("export not requested", extra={"reason": reason})
     return AskResult(blocked=reason, pressed_at=pressed_at, clicks=tuple(clicks or ()))
 
@@ -363,9 +355,7 @@ def _record(
     )
 
 
-def _bring_to_export_page(
-    session: BrowserSession, *, deadline: float, poll_s: float
-) -> None:
+def _bring_to_export_page(session: BrowserSession, *, deadline: float, poll_s: float) -> None:
     """Point the tab at the export page, and wait until it is showing it.
 
     The one CDP call the ask makes on a page outside the extraction surface, and
@@ -415,8 +405,7 @@ def _wait_until(answered: "Callable[[], bool]", deadline: float, poll_s: float) 
 
 
 def on_export_page(url: str) -> bool:
-    """Whether this URL *is* the export page, rather than merely allowed on the
-    surface.
+    """Whether this URL *is* the export page, rather than merely allowed on the surface.
 
     The sign-in page is inside the surface too, and so is wherever claude.ai
     leaves a person once they are through it, so "the wall admits this" is not

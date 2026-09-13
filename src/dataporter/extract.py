@@ -56,7 +56,9 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from dataporter import PROGRAM_NAME, log, plan, store
+from dataporter import PROGRAM_NAME, log, plan, signin, store
+from dataporter.browser import export_page, launcher
+from dataporter.browser import session as browser_session
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import (
@@ -129,8 +131,7 @@ ASK_OPEN = (
     "{program} extract --source {source} --account {account} --abandon"
 )
 ASK_ALREADY_OPEN = (
-    "an ask is already open for {source}/{account}, made {asked_at}; "
-    "fetch it with --link, or drop it with --abandon"
+    "an ask is already open for {source}/{account}, made {asked_at}; fetch it with --link, or drop it with --abandon"
 )
 """The same refusal, told twice, because the two know different things.
 
@@ -166,9 +167,7 @@ in: minutes, because the line is for the eye and the seconds belong to
 DOWNLOADED = "Downloaded {size} MB."
 FILED = "Filed {name}."
 NO_ASK_ON_RECORD = "Filed without an ask on record."
-COUNTS = (
-    "Conversations: {conversations}     Projects: {projects}     Memories: {memories}"
-)
+COUNTS = "Conversations: {conversations}     Projects: {projects}     Memories: {memories}"
 GAP_LINE = "Gaps: {count} {reason}"
 SNAPSHOT_LINE = "Snapshot: {path}"
 """The brief's own block, byte for byte. `Downloaded` is base-10 megabytes to
@@ -218,7 +217,7 @@ def ask_path(settings: Settings) -> Path:
 
 
 def read_ask(settings: Settings) -> store.Ask | None:
-    """The open ask, or `None` when there is not one.
+    """Return the open ask, or `None` when there is not one.
 
     A file that will not parse is an error rather than a `None`: a fetch that
     read it as "no ask" would stamp the snapshot with the moment it was filed
@@ -282,9 +281,7 @@ def ask_block(ask: store.Ask) -> str:
         EMAILED.format(name=store.SOURCE_NAMES[ask.source]),
         WHEN_IT_ARRIVES,
         "",
-        FETCH_COMMAND.format(
-            program=PROGRAM_NAME, source=ask.source, account=ask.account
-        ),
+        FETCH_COMMAND.format(program=PROGRAM_NAME, source=ask.source, account=ask.account),
     ]
     return "".join(f"{line}\n" for line in lines)
 
@@ -313,9 +310,6 @@ def ask(settings: Settings, *, sink: Sink = DISCARD) -> ExtractOutcome:
     request, and the honest answer is to say what the page did and leave no
     record claiming otherwise.
     """
-    from dataporter import signin
-    from dataporter.browser import export_page, launcher
-
     account = _account(settings)
     log.enable_run_log(settings.logs_dir)
     open_ask = read_ask(settings)
@@ -353,9 +347,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD) -> ExtractOutcome:
     return ExtractOutcome()
 
 
-def _sign_in_to_source(
-    settings: Settings, browser: "BrowserSession", *, sink: Sink
-) -> None:
+def _sign_in_to_source(settings: Settings, browser: "BrowserSession", *, sink: Sink) -> None:
     """Have the source account signed in, in whichever mode this is (§35).
 
     The probe is made against the export page rather than against `/new`, which
@@ -363,10 +355,6 @@ def _sign_in_to_source(
     surface, and a tool that opens it to find out whether it is signed in has
     opened a new chat in the account it promised to take one action in.
     """
-    from dataporter import signin
-    from dataporter.browser import export_page
-    from dataporter.browser import session as browser_session
-
     state = browser_session.current_state(browser, export_page.EXPORT_PAGE_URL)
     if not export_page.signed_out(state):
         return
@@ -383,17 +371,11 @@ def _sign_in_to_source(
         url=export_page.EXPORT_PAGE_URL,
     )
     if arrived is None:
-        raise AuthError(
-            detail=browser_session.LOGIN_TIMED_OUT.format(
-                seconds=settings.timeouts.login_s
-            )
-        )
+        raise AuthError(detail=browser_session.LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
 
 
 def _why_not(blocked: str | None) -> str:
-    """The line an operator reads when the ask did not go through."""
-    from dataporter.browser import export_page
-
+    """Return the line an operator reads when the ask did not go through."""
     path = export_page.EXPORT_PAGE_PATH
     if blocked == export_page.BUTTON_NOT_FOUND:
         return EXPORT_BUTTON_MISSING.format(path=path)
@@ -406,9 +388,7 @@ def abandon(settings: Settings, *, sink: Sink = DISCARD) -> ExtractOutcome:
     """Give up the open ask, so that a new one can be made (§31)."""
     path = ask_path(settings)
     if not path.exists():
-        raise StoreError(
-            NO_ASK_OPEN.format(source=settings.source, account=_account(settings))
-        )
+        raise StoreError(NO_ASK_OPEN.format(source=settings.source, account=_account(settings)))
     path.unlink()
     _logger.info(
         "ask abandoned",
@@ -427,7 +407,7 @@ def fetch(
     settings: Settings,
     link: str,
     *,
-    open_url: Callable[..., Any] = urllib.request.urlopen,
+    open_url: Callable[..., Any] = urllib.request.urlopen,  # ruff: ignore[suspicious-url-open-usage] - the scheme is checked before any request
     sink: Sink = DISCARD,
 ) -> ExtractOutcome:
     """Download the link the vendor emailed and file it as a snapshot (§31).
@@ -510,9 +490,7 @@ def file(settings: Settings, path: Path, *, sink: Sink = DISCARD) -> ExtractOutc
         size=path.stat().st_size,
     )
     directory, snapshot = store.Store(settings.store_dir).file_archive(path, filing)
-    sink.block(
-        block(settings, snapshot, first=FILED.format(name=path.name), no_ask=False)
-    )
+    sink.block(block(settings, snapshot, first=FILED.format(name=path.name), no_ask=False))
     return ExtractOutcome(snapshot=snapshot, path=directory)
 
 
@@ -622,7 +600,7 @@ def _read(path: Path, display: str) -> Export:
 
 
 def _gaps(export: Export) -> tuple[store.Gap, ...]:
-    """What the account holds that this snapshot does not (§31).
+    """Return what the account holds that this snapshot does not (§31).
 
     One kind today: the export refers to files and carries none of their bytes.
     No references, no gap — a snapshot with nothing missing says nothing, rather
@@ -636,9 +614,9 @@ def _gaps(export: Export) -> tuple[store.Gap, ...]:
 
 
 def _digest(path: Path) -> str:
-    """The SHA-256 of a file already on disk, read a chunk at a time."""
+    """Return the SHA-256 of a file already on disk, read a chunk at a time."""
     digest = hashlib.sha256()
-    with open(path, "rb") as stream:
+    with Path(path).open("rb") as stream:
         while chunk := stream.read(store.COPY_CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
@@ -649,9 +627,7 @@ def _digest(path: Path) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def block(
-    settings: Settings, snapshot: store.Snapshot, *, first: str, no_ask: bool
-) -> str:
+def block(settings: Settings, snapshot: store.Snapshot, *, first: str, no_ask: bool) -> str:
     """§31's block, newline-terminated.
 
     The path is printed as the store was configured — `~` unexpanded when the
@@ -659,9 +635,7 @@ def block(
     back the words the documentation gives them, not one machine's home.
     """
     lines = [
-        HEADER.format(
-            name=store.SOURCE_NAMES[snapshot.source], account=snapshot.account
-        ),
+        HEADER.format(name=store.SOURCE_NAMES[snapshot.source], account=snapshot.account),
         "",
         first,
     ]
@@ -674,9 +648,7 @@ def block(
             memories=snapshot.counts.memories,
         )
     )
-    lines.extend(
-        GAP_LINE.format(count=gap.count, reason=gap.reason) for gap in snapshot.gaps
-    )
+    lines.extend(GAP_LINE.format(count=gap.count, reason=gap.reason) for gap in snapshot.gaps)
     lines.extend(["", SNAPSHOT_LINE.format(path=_display(settings, snapshot))])
     return "".join(f"{line}\n" for line in lines)
 
@@ -692,9 +664,7 @@ def _display(settings: Settings, snapshot: store.Snapshot) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def extract_command(
-    settings: Settings, request: ExtractRequest, *, sink: Sink = DISCARD
-) -> ExtractOutcome:
+def extract_command(settings: Settings, request: ExtractRequest, *, sink: Sink = DISCARD) -> ExtractOutcome:
     """Ask, fetch, file or abandon — whichever the flags name (§31).
 
     The library picks the mode and refuses the combinations that cannot both be
@@ -717,7 +687,7 @@ def extract_command(
 
 
 def _account(settings: Settings) -> str:
-    """The label, which every mode needs. `with_account` is what sets it."""
+    """Return the label, which every mode needs. `with_account` is what sets it."""
     if settings.account is None:
         raise UsageError(ACCOUNT_REQUIRED)
     return settings.account
