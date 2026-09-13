@@ -35,6 +35,7 @@ from dataporter.browser.cdp import CdpClient
 from dataporter.config import Settings
 from dataporter.errors import AuthError, BrowserError, Category, HermesError
 from dataporter.exit_codes import ExitCode
+from dataporter.export.source import load_export
 from dataporter.hermes import runner as hermes_running
 from dataporter.state import ErrorRecord, Status
 from dataporter.steps import Step
@@ -850,3 +851,60 @@ def test_the_loop_hands_progress_the_counts_it_reads_from_state(
     world.run(limit=1)
 
     assert "aa000001  completed  (2/6)" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# `33`: the trace a run leaves
+# --------------------------------------------------------------------------- #
+
+
+def _only_trace(workspace: Path) -> list[dict[str, Any]]:
+    traces = sorted((workspace / "logs").glob("trace-*.jsonl"))
+    assert len(traces) == 1, traces
+    return [json.loads(line) for line in traces[0].read_text(encoding="utf-8").splitlines()]
+
+
+def test_a_run_leaves_a_trace_beside_its_run_log(
+    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One trace per invocation, the run log's stamp, the header's marks, and the end."""
+    cli_env(world, monkeypatch)
+    result = runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
+    assert result.exit_code == ExitCode.OK
+
+    logs = world.settings.workspace / "logs"
+    assert [path.name.removeprefix("trace-") for path in sorted(logs.glob("trace-*.jsonl"))] == [
+        path.name.removeprefix("run-") for path in sorted(logs.glob("run-*.jsonl"))
+    ]
+    header, *_, end = _only_trace(world.settings.workspace)
+    assert header["trace"] == 1
+    assert header["command"] == "import"
+    assert header["flags"] == ["--limit"]
+    assert header["source"] == "claude"
+    assert header["host"] == "claude.ai"
+    assert header["account"] is None
+    assert header["export_fingerprint"] == load_export(world.export).fingerprint
+    assert header["chrome"] == "Chrome/141.0.0.0"
+    assert header["agent"] == "hermes 1.0.0"
+    assert header["root"] == str(world.settings.workspace)
+    assert end["what"] == "end"
+    assert end["exit"] == 0
+    # The one-shot Hermes was told where the trace is, the way it is told the workspace.
+    assert world.hermes.one_shots[-1].env["DATAPORTER_TRACE"] == str(min(logs.glob("trace-*.jsonl")))
+
+
+def test_the_trace_ends_with_the_code_the_run_returns(world: World) -> None:
+    summary = world.run(limit=1)
+    end = _only_trace(world.settings.workspace)[-1]
+    assert end["what"] == "end"
+    assert end["exit"] == int(summary.exit_code)
+
+
+def test_a_run_that_raised_ends_its_trace_with_70(world: World) -> None:
+    """A signed-out session is `AuthError` after the browser is up: the trace exists, and says so."""
+    world.page.composer = None
+    with pytest.raises(AuthError):
+        world.run(limit=1)
+    end = _only_trace(world.settings.workspace)[-1]
+    assert end["what"] == "end"
+    assert end["exit"] == 70

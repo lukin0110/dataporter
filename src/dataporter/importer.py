@@ -77,6 +77,7 @@ from dataporter import progress as reporting
 from dataporter import seed as seeding
 from dataporter import selection as selecting
 from dataporter import store as storing
+from dataporter import trace as tracing
 from dataporter import verify as verifying
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher, probe
@@ -794,8 +795,15 @@ class Importer:
         progress: reporting.Progress | None = None,
         intervention: intervening.Intervention | None = None,
         force_unlock: bool = False,
+        flags: Sequence[str] = (),
     ) -> None:
         self.settings = settings
+        self.flags = tuple(flags)
+        """The invocation's own flags, by name, for the trace's header (`33`)."""
+        self.trace: tracing.Trace | None = None
+        """The run's trace, opened with the browser and ended with the lock."""
+        self.command = "import"
+        self.export_fingerprint: str | None = None
         self.progress: reporting.Progress = progress if progress is not None else reporting.Reporter()
         self.intervention: intervening.Intervention = (
             intervention
@@ -829,6 +837,8 @@ class Importer:
     def run(self, export_path: Path, selection: state.Selection) -> RunSummary:
         """Migrate what `selection` chooses out of the export at `export_path`."""
         parsed = load_export(export_path)
+        self.command = "import"
+        self.export_fingerprint = parsed.fingerprint
         return self._under_lock(lambda: self._locked(parsed, export_path, selection))
 
     def resume(self) -> RunSummary:
@@ -842,19 +852,27 @@ class Importer:
         paused = self._pause_to_resume()
         export_path = self._recorded_export()
         parsed = load_export(export_path)
+        self.command = "resume"
+        self.export_fingerprint = parsed.fingerprint
         return self._under_lock(lambda: self._locked_resume(parsed, export_path, paused))
 
     def _under_lock(self, work: Callable[[], RunSummary]) -> RunSummary:
         lock = state.WorkspaceLock(self.settings.workspace)
         lock.acquire(force_unlock=self.force_unlock)
+        exit_code: ExitCode | int = ExitCode.INTERNAL
         try:
-            return replace(work(), report=self._write_report())
+            finished = replace(work(), report=self._write_report())
+            exit_code = finished.exit_code
+            return finished
         finally:
             # Both, on every path: a browser left running holds the next run's
             # debug port, and a lock left behind makes the next run exit `2`.
             # A paused run releases both as well — §12 asks the human to act in
-            # the browser window, and `resume` opens a new one.
+            # the browser window, and `resume` opens a new one. The trace ends
+            # last with the code the run is about to return, `70` for a raise.
             self._close_browser()
+            tracing.finish(self.trace, exit_code)
+            self.trace = None
             lock.release()
 
     def _locked(self, parsed: Export, export_path: Path, selection: state.Selection) -> RunSummary:
@@ -978,6 +996,16 @@ class Importer:
         them rather than made to start again.
         """
         self._launch()
+        if self.trace is None:
+            # Once per invocation: a mid-run relaunch continues the same trace.
+            self.trace = tracing.start(
+                self.settings,
+                command=self.command,
+                flags=self.flags,
+                site=probe.MIGRATION_SITE,
+                client=self._session().client,
+                export_fingerprint=self.export_fingerprint,
+            )
         self._require_signed_in()
         # Blank and duplicate new-chat tabs only, never a conversation (`08`).
         # Hermes picks its tab by looking, and one candidate is what makes that
@@ -2097,6 +2125,7 @@ def import_command(
     *,
     quiet: bool = False,
     sink: Sink = DISCARD,
+    flags: Sequence[str] = (),
 ) -> ImportOutcome:
     """Migrate conversations from an export into the destination account.
 
@@ -2181,6 +2210,7 @@ def import_command(
             effective,
             progress=reporting.Reporter(quiet=quiet),
             force_unlock=request.force_unlock,
+            flags=flags,
         ).run(path, selection(effective))
         sink.block(report_text(outcome))
         return ImportOutcome(exit_code=outcome.exit_code, summary=outcome, choices=choices)
@@ -2206,7 +2236,9 @@ def import_command(
     return ImportOutcome(exit_code=ExitCode.OK, plan=plan, choices=choices)
 
 
-def resume_command(settings: Settings, *, quiet: bool = False, sink: Sink = DISCARD) -> ImportOutcome:
+def resume_command(
+    settings: Settings, *, quiet: bool = False, sink: Sink = DISCARD, flags: Sequence[str] = ()
+) -> ImportOutcome:
     """Continue a migration that paused for human intervention (`14`).
 
     No pause to continue is not an error, so no `error:` and nothing on stderr:
@@ -2218,7 +2250,7 @@ def resume_command(settings: Settings, *, quiet: bool = False, sink: Sink = DISC
         signin.require_credentials(settings)
     log.enable_run_log(settings.workspace)
     try:
-        outcome = Importer(settings, progress=reporting.Reporter(quiet=quiet)).resume()
+        outcome = Importer(settings, progress=reporting.Reporter(quiet=quiet), flags=flags).resume()
     except NothingToResumeError:
         sink.line(NOTHING_TO_RESUME)
         return ImportOutcome(exit_code=ExitCode.NOTHING_TO_DO)

@@ -15,11 +15,13 @@ import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from dataporter import cli
+from dataporter import trace as tracing
 from dataporter.browser import export_page, helpers, launcher, probe
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
@@ -1262,3 +1264,78 @@ def test_live_a_click_finds_nothing_to_click(
         assert page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR)) is False
     finally:
         page.close()
+
+
+# --------------------------------------------------------------------------- #
+# `33`: the move
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def traced(tmp_path: Path) -> Iterator[tracing.Trace]:
+    """Return a trace this process holds, the way a run's own process does."""
+    with Browser(FakePage(url=NEW_URL)) as browser:
+        settings = browser.settings(tmp_path)
+    trace = tracing.Trace.open(settings, command="import", flags=(), site=probe.MIGRATION_SITE, chrome=None, agent=None)
+    tracing.set_current(trace)
+    try:
+        yield trace
+    finally:
+        tracing.set_current(None)
+        trace.close()
+
+
+def _trace_lines(trace: tracing.Trace) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in trace.path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_every_helper_writes_a_move_with_the_actions_own_stamp(tmp_path: Path, traced: tracing.Trace) -> None:
+    printed = [json.loads(text) for text, _ in helper_calls(tmp_path, NEW_URL)]
+    moves = [line for line in _trace_lines(traced) if line["kind"] == "move"]
+    workspace = traced.path.parent.parent
+    actions = [json.loads(line) for line in helpers.actions_path(workspace).read_text(encoding="utf-8").splitlines()]
+
+    assert [move["helper"] for move in moves] == ["probe", "paste", "attach", "await-response"]
+    assert [move["ts"] for move in moves] == [action["ts"] for action in actions]
+    assert [move["ok"] for move in moves] == [action["ok"] for action in actions]
+    assert [move["elapsed_ms"] for move in moves] == [action["elapsed_ms"] for action in actions]
+    for move, one in zip(moves, printed, strict=True):
+        assert list(move) == [
+            "kind",
+            "ts",
+            "t_ms",
+            "helper",
+            "ok",
+            "elapsed_ms",
+            "conversation_id",
+            "before",
+            "after",
+            "result",
+        ]
+        assert move["before"] is None
+        assert move["after"] is None
+        assert move["result"] == tracing.sanitised(one)
+        assert "title" not in json.dumps(move)
+
+
+def test_a_failure_s_url_becomes_a_path_in_the_move(tmp_path: Path, traced: tracing.Trace) -> None:
+    for text, _ in helper_calls(tmp_path, OUTSIDE):
+        assert json.loads(text)["url"] == OUTSIDE
+    moves = [line for line in _trace_lines(traced) if line["kind"] == "move"]
+    assert len(moves) == 4
+    for move in moves:
+        assert move["ok"] is False
+        assert move["result"] == {
+            "ok": False,
+            "error": "outside_migration_surface",
+            "path": "/settings/profile",
+            "query": [],
+        }
+
+
+def test_without_a_trace_a_helper_writes_its_action_and_nothing_else(tmp_path: Path) -> None:
+    helper_calls(tmp_path, NEW_URL)
+    with Browser(FakePage(url=NEW_URL)) as browser:
+        workspace = browser.settings(tmp_path).workspace
+    assert helpers.actions_path(workspace).exists()
+    assert not list((workspace / "logs").glob("trace-*.jsonl"))

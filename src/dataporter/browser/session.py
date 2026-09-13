@@ -9,14 +9,16 @@ calls, and the CLI adds nothing but the flag parsing and the exit.
 
 import shutil
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from dataporter import PROGRAM_NAME, log
+from dataporter import trace as tracing
 from dataporter.browser import launcher
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.launcher import BrowserSession, PortInUseError
-from dataporter.browser.probe import CLAUDE_HOST, NEW_CHAT_URL, PageState, probe
+from dataporter.browser.probe import CLAUDE_HOST, MIGRATION_SITE, NEW_CHAT_URL, PageState, probe
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import AuthError, BrowserError
@@ -25,6 +27,8 @@ from dataporter.state import StateError
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from dataporter.browser.site import Site
 
 _logger = log.get_logger(__name__)
 
@@ -266,12 +270,24 @@ class LogoutOutcome:
     exit_code: ExitCode = ExitCode.OK
 
 
-def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
+def site_of(settings: Settings) -> "Site":
+    """Which site a `login` is to: the destination's, or a source's (`31`)."""
+    if settings.account is None:
+        return MIGRATION_SITE
+    # Local: `export_page` imports `helpers`, which imports this module.
+    from dataporter.browser import export_page  # ruff: ignore[import-outside-top-level] - see above
+
+    return export_page.EXTRACTION_SITE
+
+
+def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) -> LoginOutcome:
     """Open Claude in the dedicated browser profile and wait for sign-in (§8).
 
     The prompt is a line on the sink rather than a log record: it is an
     instruction to the person at the keyboard, and it is the only thing this
     command asks of them. A wait that runs out is `AuthError`, exit `3`.
+
+    `flags` are the invocation's own, for the trace's header (`33`).
     """
     from dataporter import signin  # ruff: ignore[import-outside-top-level] - signin imports login_form, which imports helpers, which imports this module
 
@@ -285,17 +301,21 @@ def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
     # `launcher.launch` to hand a command a fake Chrome.
     browser = launcher.launch(settings, NEW_CHAT_URL)
     try:
-        if settings.non_interactive:
-            # `24`: the tool signs in, or says what a person would have to do.
-            # No prompt, because nobody is reading one; the same last line,
-            # because a CI log is read the way a terminal is.
-            signin.ensure_signed_in(settings, browser)
-        elif not signed_in(browser):
-            sink.line(LOGIN_PROMPT)
-            arrived = wait_for_login(browser, timeout_s=settings.timeouts.login_s)
-            if arrived is None:
-                raise AuthError(detail=LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
-        sink.line(LOGGED_IN.format(profile=settings.browser_profile_dir))
+        with tracing.opened(
+            settings, command="login", flags=flags, site=site_of(settings), client=browser.client
+        ) as traced:
+            if settings.non_interactive:
+                # `24`: the tool signs in, or says what a person would have to do.
+                # No prompt, because nobody is reading one; the same last line,
+                # because a CI log is read the way a terminal is.
+                signin.ensure_signed_in(settings, browser)
+            elif not signed_in(browser):
+                sink.line(LOGIN_PROMPT)
+                arrived = wait_for_login(browser, timeout_s=settings.timeouts.login_s)
+                if arrived is None:
+                    raise AuthError(detail=LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
+            sink.line(LOGGED_IN.format(profile=settings.browser_profile_dir))
+            traced.exit_code = ExitCode.OK
     finally:
         # Always, on every path: Chrome writes its cookie jar and session store
         # out on exit, so a profile that is never closed can come back signed

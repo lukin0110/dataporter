@@ -142,6 +142,34 @@ def settings_of(ctx: typer.Context) -> Settings:
     return app_context(ctx).settings
 
 
+def given_flags(ctx: typer.Context) -> tuple[str, ...]:
+    """Return the long names of the options this invocation was given, the root's first.
+
+    For `33`'s trace header: names only, never a value — `--email` is one — in
+    the order the commands declare them. An argument (`export`) has no long
+    name and is not a flag.
+    """
+    contexts: list[Any] = []
+    current: Any = ctx
+    while current is not None:
+        contexts.append(current)
+        current = current.parent
+    found: list[str] = []
+    for context in reversed(contexts):
+        for param in context.command.params:
+            if param.name is None:
+                continue
+            source = context.get_parameter_source(param.name)
+            # By name: Typer's context answers with its own click's enum, and
+            # an `is` against another click's would never be true.
+            if source is None or source.name != "COMMANDLINE":
+                continue
+            long_names = [opt for opt in param.opts if opt.startswith("--")]
+            if long_names:
+                found.append(max(long_names, key=len))
+    return tuple(found)
+
+
 def distribution_version() -> str:
     try:
         return importlib.metadata.version("dataporter")
@@ -513,6 +541,7 @@ def login(ctx: typer.Context, account: AccountOption = None, source: Source = No
         browser_session.login(
             with_session_account(settings_of(ctx), source, account),
             sink=console.Terminal(),
+            flags=given_flags(ctx),
         )
     )
 
@@ -585,6 +614,7 @@ def import_cmd(
             ),
             quiet=context.quiet,
             sink=console.Terminal(),
+            flags=given_flags(ctx),
         )
     )
 
@@ -670,6 +700,7 @@ def extract(
             with_account(with_store_dir(settings_of(ctx), store), source, account),
             extracting.ExtractRequest(link=link, from_path=from_path, abandon=abandon),
             sink=console.Terminal(),
+            flags=given_flags(ctx),
         )
     )
 
@@ -696,19 +727,26 @@ def status(ctx: typer.Context, *, json_output: JsonOutput = False) -> None:
 def resume(ctx: typer.Context) -> None:
     """Continue a migration that paused for human intervention."""
     context = app_context(ctx)
-    finish(importing.resume_command(context.settings, quiet=context.quiet, sink=console.Terminal()))
+    finish(
+        importing.resume_command(
+            context.settings,
+            quiet=context.quiet,
+            sink=console.Terminal(),
+            flags=given_flags(ctx),
+        )
+    )
 
 
 @app.command()
 def verify(ctx: typer.Context, only: Only = None) -> None:
     """Check that migrated conversations exist in the destination account."""
-    finish(verifying.verify_all(settings_of(ctx), only=only or (), sink=console.Terminal()))
+    finish(verifying.verify_all(settings_of(ctx), only=only or (), sink=console.Terminal(), flags=given_flags(ctx)))
 
 
 @app.command()
 def followup(ctx: typer.Context, only: Only = None) -> None:
     """Ask each migrated chat one follow-up question (the pilot's probe)."""
-    finish(following.ask_all(settings_of(ctx), only=only or (), sink=console.Terminal()))
+    finish(following.ask_all(settings_of(ctx), only=only or (), sink=console.Terminal(), flags=given_flags(ctx)))
 
 
 @app.command()
@@ -732,7 +770,7 @@ def setup(ctx: typer.Context) -> None:
 @app.command()
 def doctor(ctx: typer.Context) -> None:
     """Check that Hermes and Chrome are present and configured."""
-    finish(hermes_doctor.run_doctor(settings_of(ctx), sink=console.Terminal()))
+    finish(hermes_doctor.run_doctor(settings_of(ctx), sink=console.Terminal(), flags=given_flags(ctx)))
 
 
 @session_app.command("status")

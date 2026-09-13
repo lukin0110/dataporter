@@ -26,8 +26,9 @@ and why, and `signin` turns the answer into §12's pause.
 import json
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from dataporter import log
 from dataporter.browser import helpers, probe
@@ -55,6 +56,13 @@ admits it is the code that types into it, which the agent cannot invoke.
 
 EMAIL_SELECTOR = 'input[type="email"], input[autocomplete="username"]'
 PASSWORD_SELECTOR = 'input[type="password"], input[autocomplete="current-password"]'  # ruff: ignore[hardcoded-password-string] - a CSS selector, not a credential
+
+SELECTORS: Mapping[str, str] = MappingProxyType({
+    "EMAIL_SELECTOR": EMAIL_SELECTOR,
+    "PASSWORD_SELECTOR": PASSWORD_SELECTOR,
+})
+"""The two, by name, for `33`'s extraction site: what a sketch of a sign-in
+page counts. Spelled here, inside the credential seam, and merged elsewhere."""
 """Semantic selectors, as §5 prefers. Guesses until `docs/claude-ui-map.md`'s
 `sign-in form` row is observed, like every other selector in this package."""
 

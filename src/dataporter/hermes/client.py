@@ -16,7 +16,8 @@ the workspace instead of through a pipe into this process.
 
 Every Hermes process starts from `hermes_env()`: `PATH`, `HOME` and `LANG`
 forwarded when the parent has them, `DATAPORTER_WORKSPACE` set to the absolute
-workspace, and nothing else. Two reasons, and they point the same way:
+workspace, `DATAPORTER_TRACE` set to the run's trace when this process has one
+(`33`), and nothing else. Two reasons, and they point the same way:
 
 - `HERMES_YOLO_MODE` cannot be set, by construction rather than by a check,
   because the variable never reaches the child. `09` says the approval layer
@@ -39,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dataporter import log
+from dataporter import trace as tracing
 from dataporter.config import Settings
 from dataporter.errors import HermesError, HermesUsageError
 from dataporter.hermes import version as versioning
@@ -63,6 +65,11 @@ def hermes_env(settings: Settings) -> dict[str, str]:
     """Return the complete environment every Hermes subprocess gets."""
     env = {name: os.environ[name] for name in PASSED_THROUGH_ENV if name in os.environ}
     env[WORKSPACE_ENV_VAR] = str(settings.workspace)
+    # `33`: the run's trace travels the same way, so a helper Hermes runs
+    # appends its move to the file this run opened. No trace, no variable.
+    current = tracing.current()
+    if current is not None:
+        env[tracing.TRACE_ENV_VAR] = str(current.path)
     return env
 
 

@@ -517,3 +517,21 @@ def test_neither_the_terminal_nor_the_log_carries_a_reply(
     assert REPLY not in written
     for phrase in CONTENT:
         assert phrase not in written
+
+
+def test_followup_leaves_a_trace_of_its_own(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`33`: the probe drives a tab, so it leaves a trace beside the migration's."""
+    cli_env(world, monkeypatch)
+    world.answers(MIGRATED, answer())
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
+
+    outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
+
+    assert outcome.exit_code == ExitCode.OK
+    traces = sorted((world.settings.workspace / "logs").glob("trace-*.jsonl"))
+    assert len(traces) == 2
+    written = [json.loads(line) for line in traces[-1].read_text(encoding="utf-8").splitlines()]
+    assert written[0]["command"] == "followup"
+    assert written[0]["flags"] == []
+    assert written[-1]["what"] == "end"
+    assert written[-1]["exit"] == 0

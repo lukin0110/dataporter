@@ -294,6 +294,14 @@ Three places, all local, and each one is purged by deleting a directory:
 | `~/.dataporter/store/` (`30`, `--store` to move it) | The snapshots `extract` files: one vendor archive each, and a manifest beside it. Holds conversations because that is what a backup is for. | `rm -rf ~/.dataporter/store/` — the tool never deletes from the store itself. |
 | `~/.dataporter/accounts/` (`[accounts] dir` to move it) | Per source account, and never a snapshot: the open ask and the run logs. | `rm -rf ~/.dataporter/accounts/` |
 
+Every command that drives a browser tab — `login`, `import`, `resume`, `verify`,
+`followup`, `doctor`, and `extract` when it asks — also leaves a **trace**,
+`logs/trace-<ts>.jsonl` beside its run log: one line per helper call, with what the
+page showed in outline, so that a run against the real site can be read back and the
+mock claude.ai corrected against it (brief `04`). A trace carries paths, the labels of
+controls, and timings; never a message, a title, an address, a query value or a
+credential, and the same guard that protects the run log refuses any line that would.
+
 The workspace holds content by design: a seed *is* a conversation. What does not hold
 content is the terminal and the run logs — no title and no message is printed or logged at
 any verbosity (§10), which is what makes a log safe to paste into an issue.

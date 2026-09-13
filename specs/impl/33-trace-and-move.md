@@ -5,7 +5,7 @@
 **Depends on:** [01](01-foundation.md) (the guard), [08](08-browser-helpers.md),
 [31](31-source-session-and-ask.md) (the account home's logs)
 **Enables:** [34](34-sketch.md), [35](35-watch.md)
-**Status:** Not started
+**Status:** Built
 
 ## Goal
 
@@ -27,11 +27,14 @@ shape the next two slices only add to.
   `CONFIRM_BUTTON_SELECTOR`, `REQUESTED_SELECTOR`) and `login_form`'s two
   (`EMAIL_SELECTOR`, `PASSWORD_SELECTOR`), each under its constant's name. `site.py`
   imports nothing from `probe`, `export_page` or `login_form`; they import it.
-- **The file** (`trace.py`, new): `trace_path(logs_dir, now)` is
-  `<logs_dir>/trace-<UTC ts>.jsonl` with `log.run_log_path`'s stamp format, and a
-  command that has both passes the one `now` to both so the two pair by name (§42).
-  `Trace.open(settings, *, command, flags, site, client, export_fingerprint=None)`
-  creates the file `O_CREAT | O_EXCL | O_APPEND`, mode `0o600`, and writes the header —
+- **The file** (`trace.py`, new): `trace_path(logs_dir, stamp)` is
+  `<logs_dir>/logs/trace-<stamp>.jsonl` with `log.run_log_path`'s stamp format
+  (`log.RUN_LOG_STAMP`), and the stamp is the run log's whenever one is enabled
+  (`log.current_run_log()`, new), so the two pair by name (§42); a caller with no run
+  log gets the moment. `Trace.open(settings, *, command, flags, site, chrome, agent,
+  export_fingerprint=None, stamp=None, now=None)` creates the file `O_CREAT | O_EXCL |
+  O_APPEND`, mode `0o600` — a second run in the same second gets `trace-<stamp>-2.jsonl`,
+  never an append to the first, since a trace has one header — and writes the header,
   the brief's first line, keys in this order and no other:
 
   ```text
@@ -49,7 +52,7 @@ shape the next two slices only add to.
   | `export_fingerprint` | the export's, for `import` and `resume`; `null` otherwise |
   | `tool` | `f"{PROGRAM_NAME} {__version__}"` |
   | `chrome` | the `Browser` field of `client.version()`, the debug port's own answer |
-  | `agent` | the first line `hermes --version` prints, stripped, read through `HermesCli.checked("--version")`; `null` when there is no `hermes` on the path or it fails — never a raised error |
+  | `agent` | the first line `hermes --version` prints, stripped, read through `HermesCli.run("--version")` by `trace.agent_line`; `null` when there is no `hermes` on the path or it fails — never a raised error |
   | `chrome_arguments` | `list(settings.browser.extra_args)` as configured, never the launcher's own |
   | `root` | `str(settings.logs_dir.parent)`: the workspace or the account home |
 
@@ -63,7 +66,11 @@ shape the next two slices only add to.
   Under `log.strict_by_default()` that is `ContentLeakError`; otherwise the line is
   dropped and the run log warns `trace line dropped` with the kind and the sorted names.
   `Trace.end(exit_code)` appends `{"kind":"observation",…,"what":"end","exit":<code>}`
-  and closes the descriptor; nothing is ever written after it.
+  and closes the descriptor; nothing is ever written after it — a later `append` is
+  `TraceEndedError`, a bug in the caller. The two marks are read by `trace.chrome_line`
+  and `trace.agent_line`; `trace.start(...)` reads them, opens the file and makes it the
+  process's current trace, or warns and returns `None` when the file cannot be made, and
+  `trace.finish(trace, exit_code)` ends it and makes none current.
 - **Finding it from another process**: `TRACE_ENV_VAR = "DATAPORTER_TRACE"`, read
   directly like `config.WORKSPACE_ENV_VAR`, never from `config.toml` and never a
   `Settings` field. `Trace.attached(path)` opens an existing trace for appending, reads
@@ -83,7 +90,7 @@ shape the next two slices only add to.
   ```
 
   `result` is `outcome.result.model_dump(mode="json", exclude_none=True)` with every
-  forbidden key removed at every depth (`trace.without_forbidden`) — `ProbeResult.title`
+  forbidden key removed at every depth (`trace.sanitised`) — `ProbeResult.title`
   is one, and `34`'s sketch carries `title_chars` in its place — and a `Failure`'s `url`
   replaced by `path` and `query` under §46's URL rule (`trace.url_fields(url)`: the path,
   and the query's key names in order, never a value or the fragment). For the two export
@@ -92,14 +99,19 @@ shape the next two slices only add to.
   `null` in this slice.
 - **The commands that open one** (§42): each opens the trace once the browser is up and
   ends it in the `finally` that closes the browser, with the exit code the operation is
-  about to return — `trace.opened(settings, …)` is a context manager whose body sets
-  `.exit_code`, and a body that raises ends the trace with `70`. `login` and the session
-  commands in `browser/session.py`'s operation for `login` (not `status`, not `logout`:
-  neither drives a tab); `Importer._open_browser` on its first call, `_close_browser`
-  in `run`'s and `resume`'s `finally` — one trace per invocation, a mid-run relaunch
-  continues it; `verify.verify_all`; `followup.ask_all`; `doctor`'s attach check in
-  `hermes/doctor.py::checks`; `extract.ask`. `import --dry-run`, `fetch`, `file`,
-  `report`, `status`, `snapshots`, `inspect`, `seeds`: none, and a test says so.
+  about to return — `trace.opened(settings, …)` is a context manager yielding an
+  `Opened` whose `.exit_code` the body sets; unset is `0`, and a body that raises ends
+  the trace with `70` unless it set a code first (a generator closed after a failed
+  check, which is `doctor`'s case). Every one of them takes `flags: Sequence[str]`,
+  which `cli.given_flags(ctx)` fills — the long names of the options given, the root's
+  first — and a library caller may leave empty. `browser/session.py`'s `login` (not
+  `status`, not `logout`: neither drives a tab), whose site is `session.site_of`: the
+  migration's, or the extraction's for a source account; `Importer._open_browser` on
+  its first call, ended in `_under_lock`'s `finally` with the summary's code — one
+  trace per invocation, a mid-run relaunch continues it; `verify.verify_all`;
+  `followup.ask_all`; `doctor`'s browser half in `hermes/doctor.py::checks`;
+  `extract.ask`. `import --dry-run`, `fetch`, `file`, `report`, `status`, `snapshots`,
+  `inspect`, `seeds`: none, and a test says so.
 - **Tests**:
   - `tests/test_trace.py` — the header line byte for byte from fixed inputs, against
     the block above with the table's rule per key; `t_ms` counts from the header's `ts`
@@ -107,19 +119,23 @@ shape the next two slices only add to.
     dropped with a warning otherwise; a trace key used as a field is refused the same
     way; `url_fields` keeps the path and the key names and drops the values and the
     fragment; `end` writes the last line and a later `append` raises; two processes
-    (`multiprocessing`) appending 8 KB lines a thousand times leave a file every line
-    of which parses; `current()` is `None` with no variable and no open trace, and
-    `attached` with the variable.
+    (`multiprocessing`) appending 8 KB lines three hundred times each leave a file
+    every line of which parses; `current()` is `None` with no variable and no open
+    trace, and `attached` with the variable; `opened` ends with the body's code, `70`
+    on a raise, and the code a body set before it raised; a trace that cannot be made
+    is a warning and `None`; the marks are `None` without a browser or a `hermes`.
   - `tests/test_browser_helpers.py` — each helper's move, keys in order, `title` absent
     from a probe's `result`, a `Failure`'s `url` become `path`; the export clicks' two
     moves with their selectors; the move's `ts` equals the `actions.jsonl` line's.
   - `tests/test_hermes_client.py` — `hermes_env` carries `DATAPORTER_TRACE` when a trace
     is open and not otherwise.
-  - `tests/test_importer.py`, `tests/test_signin.py`, `tests/test_verify.py`,
-    `tests/test_followup.py`, `tests/test_hermes_doctor.py`, `tests/test_ask.py` (all
-    in the fake world, `slow`) — one trace file after a run, its header's `command`
-    and `flags`, an `end` line with the run's exit code, and the same stamp as the run
-    log; `import --dry-run` leaves no `logs/` at all (as `05` requires).
+  - `tests/test_importer.py`, `tests/test_browser_session.py` (`login`),
+    `tests/test_verify.py`, `tests/test_followup.py`, `tests/test_hermes_doctor.py`,
+    `tests/test_ask.py` (all against the fakes, `slow`) — one trace file after a run,
+    its header's `command` and `flags`, an `end` line with the run's exit code (`70`
+    for a `login` that gave up and a run that met a signed-out session), the same stamp
+    as the run log, and the one-shot Hermes told `DATAPORTER_TRACE`; `import --dry-run`
+    leaves no `logs/` at all (`test_log.py`, as `05` requires).
   - `tests/test_cli.py` — the surface rows unchanged: no new command, no new flag.
 - **Docs**: `README.md` (one paragraph under the workspace's files: what a trace is,
   what it never holds); `specs/README.md` (the workspace bullet names
@@ -197,6 +213,14 @@ shape the next two slices only add to.
 - *(Live: it needs a real Chromium and the scripted `hermes`, and no account.)* A
   rehearsal's `login`, `import --pilot`, `verify` and `followup` each leave a trace whose
   `agent` says `hermes 1.0.0` and whose moves match `actions.jsonl` line for line.
+
+Every criterion but the live one was met on 2026-09-13 against the fakes: the header
+and the move lines byte for byte, the guard on every forbidden name at depth, the
+strict switch both ways, two processes appending 600 lines of 8 KB with none torn,
+and one trace per invocation from `login`, `import`, `verify`, `followup`, `doctor` and
+`extract` in their own suites — 1782 tests, `trace.py` at 100% and the gate at 99.52%.
+The live criterion waits on `36`, which is where a rehearsal gathers its traces; until
+then the status is `Built`.
 
 ## Risks
 

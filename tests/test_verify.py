@@ -17,6 +17,7 @@ Three layers, and they are deliberately separate:
 The acceptance criteria of `17` are the four tests under *Acceptance*.
 """
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -848,3 +849,26 @@ def test_a_run_that_needs_a_human_is_not_verified(world: World) -> None:
     assert entry_.verified_at is None
     assert entry_.error is not None
     assert entry_.error.category is Category.AUTH
+
+
+@pytest.mark.slow
+def test_verify_leaves_a_trace(
+    chat: tuple[Browser, FakePage],
+    runner: CliRunner,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`33`: one trace per invocation, ended with the command's own code."""
+    browser, _ = chat
+    store = workspace_with(tmp_path, browser, monkeypatch)
+
+    result = runner.invoke(cli.app, ["verify"], catch_exceptions=False)
+    assert result.exit_code == ExitCode.OK
+
+    traces = sorted((store.workspace / "logs").glob("trace-*.jsonl"))
+    assert len(traces) == 1
+    written = [json.loads(line) for line in traces[0].read_text(encoding="utf-8").splitlines()]
+    assert written[0]["command"] == "verify"
+    assert written[0]["flags"] == []
+    assert written[-1]["what"] == "end"
+    assert written[-1]["exit"] == 0

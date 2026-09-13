@@ -340,7 +340,7 @@ def test_no_mode_flag_is_the_ask(settings: Settings, monkeypatch: pytest.MonkeyP
     """
     asked: list[str] = []
 
-    def record(settings: Settings, *, sink: Collected) -> extract.ExtractOutcome:
+    def record(settings: Settings, *, sink: Collected, flags: tuple[str, ...] = ()) -> extract.ExtractOutcome:
         asked.append(settings.account or "")
         return extract.ExtractOutcome()
 
