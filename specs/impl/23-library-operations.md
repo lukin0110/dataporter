@@ -53,7 +53,7 @@ changed by a byte.
   | `resume` | `importer.resume_command(settings, *, quiet, sink)` | `ImportOutcome` |
   | `inspect` | `selection.inspect_export(settings, export, *, attachments_dir, json_output, sink)` | `InspectOutcome(plan)` |
   | `seeds` | `seed.write_seeds(settings, export, *, only, out, quiet, sink)` | `SeedsOutcome(written, skipped, exit_code)` |
-  | `extract` | `extract.extract_command(settings, ExtractRequest, *, sink)` | `ExtractOutcome(snapshot, path, exit_code)` — the fetch, `--from`, `--abandon`, and `69` for the ask `31` builds |
+  | `extract` | `extract.extract_command(settings, ExtractRequest, *, sink)` | `ExtractOutcome(snapshot, path, exit_code)` — the ask, the fetch, `--from` and `--abandon`; `31` filled the mode `30` left unbuilt |
   | `snapshots` | `store.list_command(settings, *, json_output, sink)` | `SnapshotsOutcome(rows, exit_code)` |
   | `status` | `report.status(settings, *, json_output, sink)` | `StatusOutcome(migration, counters)` |
   | `report` | `report.show(settings, *, json_output, sink)` | `ReportOutcome(report)` |

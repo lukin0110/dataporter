@@ -243,8 +243,9 @@ Of the third brief, §30–§39 are claimed by `30` and `31`: `30` takes the sto
 snapshot, the fetch and import from a snapshot, `31` takes the ask, the source session
 and the safety boundaries, and §31 and §38 are split between them along the same line.
 §29 is that brief's goal and is claimed by both; §40 is its list of what is deliberately
-left, which no slice claims until one of its items is built. `30` is built; `31` is not
-started.
+left, which no slice claims until one of its items is built. Both are `Built`, and
+neither is `Done` until a real account has been asked — the Status table above, and the
+two paragraphs under it, say what that costs.
 
 ## Working rules
 
