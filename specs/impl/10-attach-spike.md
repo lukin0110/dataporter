@@ -101,7 +101,9 @@ answers. The code changes allowed are limited to defaults in `config.py`, select
   twenty measurements whose value is in being exactly comparable, and `paste` already
   answers with a digest comparison rather than an impression. The two things only a human
   can see — did a "pasted text" chip appear, and clearing the composer between rounds — are
-  the two things the script asks a human for.
+  the two things the script asks a human for. That is also why an unattended run measures
+  one rung and no more, which [`LIMITATIONS.md`](../../docs/LIMITATIONS.md) records under
+  *The spike harness*.
 - The ladder never submits, so question 3 costs the throwaway account no quota and can run
   before the questions that do. Provoking the rate limit is last for the same reason.
 - `spikes/` is excluded from the sdist and outside the wheel's package, but `make check`
