@@ -607,3 +607,38 @@ def test_an_export_with_no_file_references_has_no_gap(
     assert outcome.snapshot is not None
     assert outcome.snapshot.gaps == []
     assert "Gaps:" not in sink.stdout
+
+
+def test_one_missing_file_is_not_one_files(settings: Settings, tmp_path: Path) -> None:
+    """The reason is read as part of the block's sentence, so it has two
+    spellings. (Raised by Copilot in review on #43.)"""
+    one = tmp_path / "one.zip"
+    with zipfile.ZipFile(one, "w") as archive:
+        archive.writestr(
+            "conversations.json",
+            json.dumps(
+                [
+                    {
+                        "uuid": "c1",
+                        "name": "A chat",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "updated_at": "2026-01-01T00:00:00Z",
+                        "chat_messages": [
+                            {
+                                "uuid": "m1",
+                                "text": "here it is",
+                                "sender": "human",
+                                "created_at": "2026-01-01T00:00:00Z",
+                                "files": [{"file_name": "notes.txt"}],
+                            }
+                        ],
+                    }
+                ]
+            ),
+        )
+    sink = Collected()
+    outcome = extract.file(settings, one, sink=sink)
+
+    assert outcome.snapshot is not None
+    assert outcome.snapshot.gap_count == 1
+    assert "Gaps: 1 file the export does not carry\n" in sink.stdout

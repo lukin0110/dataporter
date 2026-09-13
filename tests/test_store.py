@@ -487,3 +487,29 @@ def test_a_write_that_fails_is_a_store_error(
         store._create(tmp_path / "manifest", b"{}")
     with pytest.raises(StoreError, match="No space left on device"):
         store._copy(source, tmp_path / "copy.zip")
+
+
+def test_one_gap_is_not_one_gaps(tmp_path: Path) -> None:
+    """The last column is read by a person. (Raised by Copilot in review on #43.)"""
+    root = tmp_path / "store"
+    snapshot_at(
+        root,
+        "claude",
+        "a",
+        STAMP,
+        counts=store.Counts(conversations=2),
+        gaps=[store.Gap(kind="bytes_not_in_export", count=1, reason="file")],
+    )
+
+    assert store.Store(root).rows()[0].note == "1 gap"
+
+
+def test_a_snapshot_is_the_owners_to_read(tmp_path: Path) -> None:
+    """A snapshot holds the account's conversations, in a long-lived store shared
+    between accounts. (Raised by Copilot in review on #43.)"""
+    source = archive(tmp_path)
+    directory, _ = store.Store(tmp_path / "store").file_archive(source, filing(source))
+
+    for name in store.SNAPSHOT_FILES:
+        mode = (directory / name).stat().st_mode & 0o777
+        assert mode == store.SNAPSHOT_MODE, name

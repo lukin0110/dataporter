@@ -42,7 +42,8 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
 - **The store** (`store.py`, new): `<store>/<source>/<account>/<stamp>/`. `stamp_of(instant)`
   renders `YYYY-MM-DDTHH-MM-SSZ` in UTC to the second; `parse_stamp` reads it back. A
   snapshot is three files, created in this order, each with
-  `os.open(path, O_CREAT | O_EXCL | O_WRONLY)` and never renamed, moved or appended to:
+  `os.open(path, O_CREAT | O_EXCL | O_WRONLY, 0o600)` and never renamed, moved or
+  appended to:
   `export.zip`, `snapshot.json`, `COMPLETE` (zero bytes). `export.zip` and
   `snapshot.json` are fsynced, then the directory, before `COMPLETE` is created: a marker
   that lands before the bytes are durable is a marker that lies after a power loss.
@@ -278,6 +279,13 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   file named with a uuid, and an operator reading `conversations.json missing from
   export: /…/8f3c….zip` is being shown a path they never typed. The override is how the
   refusal says `the download` instead.
+- **A snapshot is `0o600`, and its counts are printed with the right plural.** Three
+  findings from Copilot's review on #43, all correct. The mode is the one the
+  download's temp file and `ask.json` already use, and a snapshot is the account's
+  conversations sitting in a store shared between accounts, so the owner's is the
+  right audience; the two spellings of the gap reason and of the listing's last column
+  exist because `1 files the export does not carry` and `1 gaps` are both read by a
+  person. §31's and §33's golden blocks are unaffected — their examples are 38 and 2.
 - **An incomplete stamp is the operator's to remove.** A copy that fails midway leaves
   the stamp directory without `COMPLETE`; the next fetch under the same ask computes the
   same stamp and is refused. The tool never deletes from the store, so the refusal names

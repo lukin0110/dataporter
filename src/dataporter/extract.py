@@ -81,8 +81,14 @@ DOWNLOAD_DISPLAY = "the download"
 uuid the operator never typed."""
 
 BYTES_REASON = "files the export does not carry"
+BYTES_REASON_ONE = "file the export does not carry"
 """The one gap kind a Claude snapshot has today (§31). The export names the
-files a conversation carried and ships none of their bytes."""
+files a conversation carried and ships none of their bytes.
+
+Two spellings because the reason is read as part of a sentence — §31's block
+prints `Gaps: 38 files the export does not carry` — and `1 files` is not one.
+(Raised by Copilot in review on #43.)
+"""
 
 # -- what an operator is told ------------------------------------------------ #
 
@@ -453,9 +459,8 @@ def _gaps(export: Export) -> tuple[store.Gap, ...]:
     missing = file_entries(export)
     if not missing:
         return ()
-    return (
-        store.Gap(kind=plan.BYTES_NOT_IN_EXPORT, count=missing, reason=BYTES_REASON),
-    )
+    reason = BYTES_REASON_ONE if missing == 1 else BYTES_REASON
+    return (store.Gap(kind=plan.BYTES_NOT_IN_EXPORT, count=missing, reason=reason),)
 
 
 def _digest(path: Path) -> str:
