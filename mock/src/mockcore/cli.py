@@ -115,7 +115,9 @@ def parser(identity: Identity, *, description: str | None, email: str, password:
     """Return the four commands every mock has: `serve`, `ledger`, `exports`, `rows`."""
     root = argparse.ArgumentParser(prog=identity.program, description=description)
     root.add_argument("--version", action="version", version=__version__)
-    commands = root.add_subparsers(dest="command")
+    # Required, so that a bare `claude-mock` prints its usage and exits `2` rather
+    # than falling through to `serve` with none of its arguments parsed.
+    commands = root.add_subparsers(dest="command", required=True)
 
     start = commands.add_parser("serve", help="start the mock")
     start.add_argument("--host", default=DEFAULT_HOST)
