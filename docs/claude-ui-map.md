@@ -14,7 +14,9 @@ This is the file that
 out of: every state the mock can show is a row below, cited in its `uimap.py`,
 and a behaviour it needs that has no row here is added here first, marked
 *unknown*. **A mock run never turns an *unknown* into an *observed***. Only a
-person watching claude.ai does that. Every selector and label
+person watching claude.ai does that — or a person who has read a trace of a run against
+claude.ai (brief `04` §49) and cites it, by file and line, as the row's *Observed
+signal*: the trace is the watching, kept. Every selector and label
 below is either something a human watched the page do — `*observed on <date>*` — or the
 informed guess `08` shipped with, which is `*unknown*` until somebody looks. Nothing here
 is a design decision; when the map and the code disagree, the map wins and the code
@@ -68,7 +70,9 @@ changes.
 
 What we look for today, and what the page really does. The middle column is the code as it
 stands; the right-hand column is what replaces it. A row is only `*observed on <date>*`
-when someone watched that exact signal appear. A trace's sketch (brief `04` §45) counts
+when someone watched that exact signal appear, or read it in a committed trace and cites
+it beside the signal — `docs/spike/traces/<file>.jsonl:<line>` — in the sketch's own
+words, the role and the label, and nothing paraphrased. A trace's sketch (brief `04` §45) counts
 the middle column on a real page: its `selectors` object says how many elements each of
 these selectors found, by the constant's name, visible or not.
 
@@ -119,4 +123,6 @@ row because a download is not something a page shows.
 
 Timestamped observations land in [`spike/notes.jsonl`](spike/), one JSON object per line,
 written by `spikes/spike.py`. Screenshots go in [`spike/`](spike/) with personal data
-cropped. No message content, no titles and no account identifiers belong in either (§10).
+cropped. Traces of runs against claude.ai go in [`spike/traces/`](spike/traces/), read end
+to end before they are committed, and are cited by file and line. No message content, no
+titles and no account identifiers belong in any of them (§10).

@@ -308,7 +308,9 @@ selectors found. Beside the moves, a **watch** — the tool's own session on the
 records what the page did whoever caused it, Hermes included: navigations, URL changes,
 dialogs by type, the page's own requests in outline, and the certificate the browser was
 shown. A watch that is lost is a line in the trace and a warning in the run log, never a
-failed run.
+failed run. A trace of a run against the real site may be committed under
+`docs/spike/traces/` once a person has read it end to end, and cited by file and line
+where a row of the UI map turns *observed*.
 
 The workspace holds content by design: a seed *is* a conversation. What does not hold
 content is the terminal and the run logs — no title and no message is printed or logged at

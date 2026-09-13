@@ -239,7 +239,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [34](impl/34-sketch.md) | The sketch | §45, §46, §50 | Done |
 | [35](impl/35-watch.md) | The watch | §44, §46, §47, §50 | Done |
 | [36](impl/36-rehearsal-traces.md) | The rehearsal's traces | §47, §48 | Done |
-| [37](impl/37-traces-as-evidence.md) | Traces as evidence | §49, §50 | Not started |
+| [37](impl/37-traces-as-evidence.md) | Traces as evidence | §49, §50 | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -299,7 +299,11 @@ leaky fixture page and `new.html` under `34`, and been watched through a redirec
 `replaceState` under `35`, with the numbers in each slice. `36` is `Done`: rehearsal 02
 (`docs/rehearsal-02.md`) ran the whole protocol under a watch and filed eight traces,
 which is also what turns `33`'s live criterion — a rehearsal's traces, matching
-`actions.jsonl` — from waiting into met. `37` is `Not started`.
+`actions.jsonl` — from waiting into met. `37` is `Built`: the evidence directory, the
+UI map's one-clause widening, the mock's reader and the commit-time guard are in, and
+what turns it `Done` is the first trace of a run against claude.ai committed under
+`docs/spike/traces/` and the first row marked from it — a person's trip to a throwaway
+account, which no test can take.
 
 ## Working rules
 

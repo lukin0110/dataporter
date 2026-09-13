@@ -11,6 +11,7 @@ what it concludes. The conclusions are in [`hermes-attach.md`](../hermes-attach.
 | `paste-ladder.json` | `spikes/paste_ladder.py` | one object per (size, method) of Q3's ladder, and the markdown table to paste into `seed-limits.md` |
 | `*.png` | a human | screenshots, with every piece of personal data cropped out before the file is saved |
 | `pilot/` | `20` | the pilot run's Hermes sessions, redacted by a human — [`pilot/README.md`](pilot/README.md) says what is stripped |
+| `traces/` | the tool, `33`–`35` | traces of runs against the real site, read end to end by the person committing them — [`traces/README.md`](traces/README.md) says what may land there and how a trace is cited |
 
 ## The four export rows (`31`)
 

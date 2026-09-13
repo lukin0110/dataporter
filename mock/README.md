@@ -120,6 +120,39 @@ side of the wire — and a rehearsal record whose numbers do not reconcile with
 these is not a rehearsal (§25). The same numbers are printed when the process
 is stopped, and served as JSON at `/__mock/ledger.json`.
 
+## Reading a trace
+
+Every run of the tool that drives a tab leaves a **trace**, `logs/trace-<ts>.jsonl`
+beside its run log (the tool's brief `04`), and a trace of a run against the real
+claude.ai is what this mock is corrected against. The mock reads one the way a person
+does — as a file, in the shape the brief describes — and imports nothing from the tool
+that wrote it (ADR 0003). Four kinds of line:
+
+- **`header`**, the first line: the command, the source and host, the tool, browser and
+  agent versions, and the browser's arguments. A trace of *this* mock shows the resolver
+  rule that points `claude.ai` at it in `chrome_arguments`, and the certificate line
+  below shows an issuer equal to its subject, since the mock signs its own; a trace of
+  the real site shows neither.
+- **`sketch`**: a page in outline. Its `controls` — a button, a text box, a dialog, a
+  status region, each by role and label — are the labels the mock's pages should carry;
+  everything else is a role, a count and a length. Its `selectors` object says how many
+  elements each of the tool's own selectors found on the real page, by the constant's
+  name, which is the middle column of the UI map counted for real: a `0` where the mock's
+  markup would give `1` is a row to correct, in `docs/claude-ui-map.md` first and then
+  in `pages.py`.
+- **`move`**: one helper call, with the sketch before and after it by hash and what the
+  helper printed. The sequence of moves is the procedure the mock is driven through.
+- **`observation`**: what the page did on its own — a `navigation`, a `url_changed`
+  after the first submit, a `dialog_opened` by type, a `request` and its `response` by
+  method, path, status, type, size and timing, the `certificate`, a tab appearing. The
+  requests are the traffic `APP_JS` should make and the pace it should make it at; the
+  URL change is the moment `history.replaceState` should fire.
+
+A row of the UI map corrected from a trace cites it by file and line, and a line of
+`uimap.WHAT_THE_MOCK_DOES` may name the same citation. The traces of a rehearsal against
+this mock are the baseline — `docs/rehearsal-NN.md` lists them — and are never committed
+as evidence about claude.ai.
+
 ## What it does, and why
 
 Every state the mock can show is a row of
