@@ -1,8 +1,10 @@
 """The ledger block, byte for byte.
 
-`26`'s golden string. Brief `02`'s block (§21) illustrates the shape and leaves
-it to the slice; this is where the slice pins it, and `rehearsal/run.py` rebuilds
-the same block from the numbers, so a change here fails there too.
+`26`'s golden string, with `32`'s row under it. Brief `02`'s block (§21)
+illustrates the shape and leaves it to the slice; this is where the slice pins it.
+`rehearsal/run.py` rebuilds §21's five rows from the numbers for the record — the
+sixth is always zero in a migration rehearsal — so the first five must stay as
+they are.
 """
 
 import threading
@@ -17,6 +19,7 @@ def test_the_block_is_the_golden_string() -> None:
         messages_received=11,
         files_accepted=2,
         renames=8,
+        exports_requested=1,
     )
     assert ledger.block() == (
         "Mock claude.ai — ledger\n"
@@ -26,6 +29,7 @@ def test_the_block_is_the_golden_string() -> None:
         "Messages received:            11\n"
         "Files accepted:                2\n"
         "Renames:                       8\n"
+        "Exports requested:             1\n"
         "\n"
     )
 
@@ -37,6 +41,7 @@ def test_a_fresh_ledger_is_all_zeros() -> None:
         "messages_received": 0,
         "files_accepted": 0,
         "renames": 0,
+        "exports_requested": 0,
     }
 
 

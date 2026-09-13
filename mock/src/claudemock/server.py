@@ -16,8 +16,13 @@ Three things about it are worth knowing:
 - **It is stateful and it is in memory.** A rehearsal in several sessions sees
   the same chats throughout; restarting the process resets it.
 - **It counts.** Every request that does something — a sign-in, a chat, a
-  message, a file, a rename — goes through the ledger, which is the only witness
-  a rehearsal record can reconcile against (§25).
+  message, a file, a rename, an export asked for — goes through the ledger, which
+  is the only witness a rehearsal record can reconcile against (§25).
+- **It hands out a link instead of an email** (`32`). Confirming on the export
+  page mints a token, and the archive is served at a `/__mock/` address on the
+  mock's own host — never on `claude.ai`, because the tool downloads a link with
+  Python and no resolver rule, and never behind a session, because a link is the
+  vendor's leave to download. `cli.py` prints the link where an email would be.
 
 The routes are plain `def`s rather than `async def`s on purpose: `Site` is
 synchronous and guards its state with a lock, so FastAPI runs each route on a
@@ -29,6 +34,7 @@ import secrets
 import socket
 import threading
 import time
+from collections.abc import Callable
 from http import HTTPStatus
 from typing import Annotated, Any
 from urllib.parse import unquote
@@ -39,8 +45,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.responses import RedirectResponse as _RedirectResponse
 from pydantic import BaseModel
 
-from claudemock import certificate, pages
-from claudemock.site import Chat, Site
+from claudemock import archive, certificate, pages
+from claudemock.site import Chat, Export, Site
 
 SESSION_COOKIE = "mock_session"
 LOGIN_COOKIE = "mock_login"
@@ -51,6 +57,21 @@ LEDGER_JSON_PATH = "/__mock/ledger.json"
 """Outside the surface any helper will drive, and deliberately not a claude.ai
 path: nothing the tool does can reach it, which is what keeps the witness
 independent of the thing it is a witness to."""
+
+EXPORT_PAGE_PATH = "/settings/data-privacy-controls"
+"""Where the site lets a user ask for their data: the tool's own
+`export_page.EXPORT_PAGE_PATH`, re-typed because the mock imports nothing from it
+(ADR 0003). The row is `*unknown*` in the UI map; correcting it corrects both
+spellings, one line each."""
+
+EXPORTS_PATH = "/__mock/exports"
+EXPORTS_JSON_PATH = "/__mock/exports.json"
+ARCHIVE_PATH = EXPORTS_PATH + "/{token}.zip"
+"""Where the links live and what they point at. Under `/__mock/` for the ledger's
+reason — no helper will ever drive it — and on the mock's own host and port,
+which `serve` learns once it is listening: the browser's `Host` says `claude.ai`
+under the resolver rule, and a link that said so too would lead the tool's fetch
+to the real site."""
 
 SESSION_MAX_AGE_S = 7 * 24 * 60 * 60
 """How long a signed-in session lasts. Long enough to survive the browser being
@@ -139,6 +160,19 @@ def not_found() -> Response:
     return PlainTextResponse("not found", status_code=HTTPStatus.NOT_FOUND)
 
 
+def export_json(export: Export, link: str) -> dict[str, Any]:
+    return {
+        "token": export.token,
+        "link": link,
+        "requested_at": export.requested_at,
+        "fetched": export.fetched,
+    }
+
+
+def _quiet(_link: str) -> None:
+    """Announce a link to nobody: what `create_app` does when no caller asked."""
+
+
 def chat_json(chat: Chat, now: float) -> dict[str, Any]:
     return {
         "id": chat.id,
@@ -152,15 +186,25 @@ def chat_json(chat: Chat, now: float) -> dict[str, Any]:
 # -- the application ---------------------------------------------------------- #
 
 
-def create_app(site: Site) -> FastAPI:  # ruff: ignore[complex-structure, too-many-statements] - one route per function
+def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one route per function
+    site: Site,
+    *,
+    link_base: str = "",
+    announce: Callable[[str], None] = _quiet,
+) -> FastAPI:
     """Return the site as an ASGI application: every route the mock answers.
 
     A factory rather than a module-level `app`, because the site it serves is
     constructed per process — and per test, which is what keeps the tests of
-    the wire independent of one another.
+    the wire independent of one another. `link_base` is the origin an export link
+    is spelled with, and `announce` is told each link as it is minted — the CLI
+    prints it where the vendor would have sent an email.
     """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     pending = Pending()
+
+    def link_of(export: Export) -> str:
+        return f"{link_base}{EXPORTS_PATH}/{export.token}.zip"
 
     def session(request: Request) -> str:
         token = request.cookies.get(SESSION_COOKIE)
@@ -183,6 +227,28 @@ def create_app(site: Site) -> FastAPI:  # ruff: ignore[complex-structure, too-ma
     @app.get(LEDGER_JSON_PATH)
     def ledger_json() -> dict[str, int]:
         return site.counters()
+
+    @app.get(EXPORTS_PATH)
+    def exports_text() -> Response:
+        """Return the links minted so far, one per line, oldest first. Nothing when none."""
+        return PlainTextResponse("".join(f"{link_of(export)}\n" for export in site.exports()))
+
+    @app.get(EXPORTS_JSON_PATH)
+    def exports_json() -> list[dict[str, Any]]:
+        return [export_json(export, link_of(export)) for export in site.exports()]
+
+    @app.get(ARCHIVE_PATH)
+    def download(token: str) -> Response:
+        """Serve the archive a link names. No session: the fetch carries no cookies.
+
+        A token nobody minted is not found, which the tool reports as
+        `link refused: HTTP 404` and leaves the ask open — a dead link (§39, 5),
+        as near as a mock with no clock to expire on can come to one.
+        """
+        if site.export(token) is None:
+            return not_found()
+        payload = archive.render(site.all_chats(), email=site.email, now=site.now())
+        return Response(payload, media_type="application/zip")
 
     # -- sign-in ----------------------------------------------------------- #
 
@@ -273,6 +339,24 @@ def create_app(site: Site) -> FastAPI:  # ruff: ignore[complex-structure, too-ma
             return not_found()
         site.rename(chat, title.title)
         return JSONResponse(chat_json(chat, site.now()))
+
+    # -- the export page (`32`) --------------------------------------------- #
+
+    @app.get(EXPORT_PAGE_PATH)
+    def export_page(_session: Session) -> Response:
+        return HTMLResponse(pages.export_page())
+
+    @app.post("/api/exports")
+    def request_export(_session: Session) -> Response:
+        """Take the ask: mint the link, count it, and say it where an email would go.
+
+        The page never shows the link — the tool reads a status region, not a
+        sentence — so the response carries it for whoever is reading the wire.
+        """
+        export = site.request_export()
+        link = link_of(export)
+        announce(link)
+        return JSONResponse({"ok": True, "link": link})
 
     @app.post("/api/uploads")
     async def upload(session: Session, request: Request) -> Response:
@@ -401,11 +485,17 @@ def serve(
     port: int,
     host: str = "127.0.0.1",
     material: certificate.Material,
+    announce: Callable[[str], None] = _quiet,
 ) -> MockServer:
-    """Return a started server, listening. The caller closes it."""
+    """Return a started server, listening. The caller closes it.
+
+    The link base is spelled from the port the socket really got — `0` asks for
+    any — so an export link points at this process and no other.
+    """
     sock = listen(host, port)
     try:
-        server = MockServer(create_app(site), sock, material)
+        link_base = f"https://{host}:{sock.getsockname()[1]}"
+        server = MockServer(create_app(site, link_base=link_base, announce=announce), sock, material)
     except BaseException:
         sock.close()
         raise

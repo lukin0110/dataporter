@@ -4,6 +4,8 @@ import pytest
 from claudemock.ledger import Ledger
 from claudemock.site import CANNED, Site, asked_line
 
+from conftest import WALL
+
 SEED = """\
 This is a migrated conversation.
 
@@ -120,6 +122,7 @@ def test_the_ledger_counts_what_the_mock_was_asked_to_do() -> None:
     chat = site.create_chat(SEED, session="s")
     site.receive(chat, SEED)
     site.rename(chat, "A name")
+    site.request_export()
 
     assert ledger.counters() == {
         "sign_ins": 1,
@@ -127,8 +130,33 @@ def test_the_ledger_counts_what_the_mock_was_asked_to_do() -> None:
         "messages_received": 2,
         "files_accepted": 1,
         "renames": 1,
+        "exports_requested": 1,
     }
     assert chat.files == ["notes.txt"]
+
+
+def test_an_export_ask_mints_a_link_and_is_counted(site: Site) -> None:
+    """`32`: two asks are two links, in order, and never the same token."""
+    first = site.request_export()
+    second = site.request_export()
+    assert first.token != second.token
+    assert all(len(export.token) == 32 for export in (first, second))
+    assert [export.token for export in site.exports()] == [first.token, second.token]
+    assert site.counters()["exports_requested"] == 2
+
+
+def test_a_token_nobody_minted_is_nothing_and_a_minted_one_counts_its_fetches(site: Site) -> None:
+    assert site.export("deadbeef") is None
+    minted = site.request_export()
+    assert site.export(minted.token) is minted
+    site.export(minted.token)
+    assert minted.fetched == 2
+
+
+def test_a_chat_is_dated_by_the_wall_clock(site: Site) -> None:
+    chat = site.create_chat(SEED, session="s")
+    assert chat.created_at == pytest.approx(WALL)
+    assert site.all_chats() == (chat,)
 
 
 def test_a_file_belongs_to_the_chat_the_next_message_creates(site: Site) -> None:

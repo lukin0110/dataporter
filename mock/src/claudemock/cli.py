@@ -1,9 +1,10 @@
 """`claude-mock`: start the mock, or ask it what it has been asked to do.
 
-Two commands and no configuration file. `serve` starts the site and prints the
+Three commands and no configuration file. `serve` starts the site and prints the
 one thing an operator needs in order to reach it — nobody composes a resolver
-rule by hand (§21, *Reachability*) — and `ledger` prints the count the rehearsal
-record reconciles against (§25).
+rule by hand (§21, *Reachability*) — `ledger` prints the count the rehearsal
+record reconciles against (§25), and `exports` prints the links the site has
+handed out instead of emails (`32`), for the terminal that did not start it.
 
 What the printed lines must *do* is the brief's (§21): send the `claude.ai` host
 to the mock, and trust the mock's own key and never every certificate. The port,
@@ -42,7 +43,21 @@ which would resolve claude.ai itself. Add to the same list:
 
   "--no-proxy-server",
 
+The tool's fetch of an export link reads the same proxy. Set beside SSL_CERT_FILE:
+
+  no_proxy=127.0.0.1
+
 """
+
+LINK_NOTE = """\
+Export requested — the link, instead of an email:
+
+  {link}
+
+"""
+"""What `serve` prints when the export page's confirmation is pressed: the mock
+has no inbox to send to, so the terminal it runs in is where the link arrives.
+`claude-mock exports` says the same to any other terminal."""
 
 DEFAULT_EMAIL = "rehearsal@example.invalid"
 DEFAULT_PASSWORD = "rehearsal-not-a-real-password"
@@ -69,8 +84,20 @@ def reachability(*, host: str, port: int, material: certificate.Material) -> str
         f'  "{material.flag}",',
         "]",
         "",
+        # `32`: the fetch of an export link is Python's, not Chrome's, so the two
+        # lines above do not reach it. The certificate is a fact about the mock,
+        # which is why this is in the block and the proxy is in the note.
+        "Set in the tool's environment before fetching an export link from it:",
+        "",
+        f"  SSL_CERT_FILE={material.cert_path}",
+        "",
         "",
     ])
+
+
+def link_note(link: str) -> str:
+    """Return what `serve` prints for one export asked for, byte for byte."""
+    return LINK_NOTE.format(link=link)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -101,6 +128,10 @@ def parser() -> argparse.ArgumentParser:
     count.add_argument("--host", default=DEFAULT_HOST)
     count.add_argument("--port", type=int, default=DEFAULT_PORT)
 
+    links = commands.add_parser("exports", help="print the export links a running mock has handed out")
+    links.add_argument("--host", default=DEFAULT_HOST)
+    links.add_argument("--port", type=int, default=DEFAULT_PORT)
+
     commands.add_parser("rows", help="the UI map rows the mock is built out of")
     return root
 
@@ -109,6 +140,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
     if arguments.command == "ledger":
         return ledger(host=arguments.host, port=arguments.port)
+    if arguments.command == "exports":
+        return exports(host=arguments.host, port=arguments.port)
     if arguments.command == "rows":
         return rows()
     return serve(arguments)
@@ -135,7 +168,14 @@ def serve(arguments: argparse.Namespace) -> int:
         reply_delay_s=arguments.reply_delay_s,
         reply_steps=arguments.reply_steps,
     )
-    running = server.serve(site, host=arguments.host, port=arguments.port, material=material)
+    running = server.serve(
+        site,
+        host=arguments.host,
+        port=arguments.port,
+        material=material,
+        # Printed from the server's thread; this one only sleeps, so nothing interleaves.
+        announce=lambda link: print(link_note(link), end="", flush=True),
+    )
     print(
         reachability(host=arguments.host, port=running.port, material=material),
         end="",
@@ -165,10 +205,24 @@ def serve(arguments: argparse.Namespace) -> int:
 
 def ledger(*, host: str, port: int) -> int:
     """Ask a running mock for its count. Its own certificate, and no other."""
+    return _fetch_text(host=host, port=port, path=server.LEDGER_PATH)
+
+
+def exports(*, host: str, port: int) -> int:
+    """Ask a running mock for the links it handed out, one per line, oldest first.
+
+    `claude-mock exports | tail -n 1` is the newest, which is what an operator
+    hands to `dataporter extract --link` in the terminal the mock is not in.
+    """
+    return _fetch_text(host=host, port=port, path=server.EXPORTS_PATH)
+
+
+def _fetch_text(*, host: str, port: int, path: str) -> int:
+    """Print what a running mock serves at `path`, verifying nothing: it is ours."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
-    url = f"https://{host}:{port}{server.LEDGER_PATH}"
+    url = f"https://{host}:{port}{path}"
     try:
         with urllib.request.urlopen(url, context=context, timeout=10) as answer:
             print(answer.read().decode("utf-8"), end="")

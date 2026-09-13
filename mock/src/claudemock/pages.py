@@ -16,6 +16,10 @@ seed come back byte for byte, which is the thing a rehearsal is testing.
 The script is the site's behaviour in the browser: it submits, it renders turns
 as they arrive, it uploads a file and grows a chip for it, and it renames a chat.
 Everything it does goes through the mock's own HTTP API, so the ledger counts it.
+
+`32`'s export page is the one page here with no composer. It is built out of the
+four `31` rows — a button, a confirmation, a status — spelled with the selectors
+the tool's `export_page.py` looks for, re-typed rather than imported (ADR 0003).
 """
 
 import html
@@ -36,6 +40,12 @@ STYLE = """\
     white-space: pre-wrap; margin: .5rem 0; }
   .attachment-chip { display: inline-block; border: 1px solid #999;
     padding: 0 .3rem; margin: .2rem; }
+  /* The export page's stages: `hidden` is how a dialog and a status region
+     wait their turn, and `.invisible` is a control the page offers but does not
+     show — both `display: none`, which is what the tool's `visible` filter
+     reads. */
+  [hidden] { display: none; }
+  .invisible { display: none; }
 """
 
 APP_JS = """\
@@ -244,6 +254,28 @@ LOGIN_JS = """\
   }
 """
 
+EXPORT_JS = """\
+  const dialog = document.querySelector('[role="dialog"]');
+  const requested = document.querySelector('[data-testid="export-requested"]');
+  for (const button of document.querySelectorAll('[data-testid="export-data"]')) {
+    button.addEventListener('click', () => { dialog.hidden = false; });
+  }
+  document.querySelector('[data-testid="confirm-export"]').addEventListener('click', () => {
+    /* `export requested`: the status region appears only once the mock has
+       counted the ask and minted a link, so the ledger is the witness. A
+       signed-out POST is redirected to the login page, whose body is not JSON,
+       and nothing appears. */
+    fetch('/api/exports', { method: 'POST', headers: { 'Accept': 'application/json' } })
+      .then((answer) => answer.json())
+      .then((payload) => {
+        if (!payload.ok) return;
+        dialog.hidden = true;
+        requested.hidden = false;
+      })
+      .catch(() => {});
+  });
+"""
+
 
 def shell(title: str, body: str, script: str = "") -> bytes:
     """One page. Nothing outside this function writes a `<html>`."""
@@ -323,6 +355,42 @@ def unsupported_page() -> bytes:
         "<p>This account signs in with an email address and a password.</p>\n"
         '<p><a href="/login">Back</a></p>\n</main>',
     )
+
+
+# --------------------------------------------------------------------------- #
+# The export page (`export page`, `export button`, `export confirmation`,
+# `export requested`)
+# --------------------------------------------------------------------------- #
+
+
+def export_page() -> bytes:
+    """Return the page where the account's data is asked for, at its first stage.
+
+    Three stages, walked by the page's own script: a button, a dialog with a
+    confirmation in it, and a status region that appears once the ask has been
+    taken. A hidden twin of the button comes first in the DOM, because a page that
+    offers one control per device width is exactly how a real one would break a
+    click helper that did not filter by visibility — and the tool's does.
+
+    No composer, no file input, no other dialog and no other status: the tool
+    reads the page as four booleans, and anything else visible here would be
+    something for one of them to be wrong about.
+    """
+    body = (
+        "<main>\n"
+        "<h1>Data privacy controls</h1>\n"
+        '<button class="invisible" data-testid="export-data">Export data</button>\n'
+        '<button data-testid="export-data">Export data</button>\n'
+        '<div role="dialog" aria-label="Export data" hidden>\n'
+        "  <p>Claude will email a download link to the address on this account.</p>\n"
+        '  <button type="submit" data-testid="confirm-export">Confirm</button>\n'
+        "</div>\n"
+        '<div role="status" data-testid="export-requested" hidden>\n'
+        "  Your export was requested. Check your email.\n"
+        "</div>\n"
+        "</main>"
+    )
+    return shell("Data privacy controls", body, EXPORT_JS)
 
 
 # --------------------------------------------------------------------------- #

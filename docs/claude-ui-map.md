@@ -107,7 +107,11 @@ Every selector in the middle column has exactly one spelling in the source, in
 and the path constant above them — so correcting a row here is a one-line edit there.
 The four export rows are the ones nobody can observe from a destination account: they
 need a *source* account and `dataporter extract --account <label>`, which is why
-[`spike/README.md`](spike/) lists them as their own steps.
+[`spike/README.md`](spike/) lists them as their own steps. `32`'s mock serves those four
+rows at the placeholder path with the placeholder selectors, re-typed on its side of ADR
+0003's line — so correcting a row here is one edit in `export_page.py` and one in the
+mock — and hands out its link at a `/__mock/` address on its own host, which is not a
+row because a download is not something a page shows.
 
 ## Notes
 
