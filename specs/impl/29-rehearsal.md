@@ -111,7 +111,8 @@ account and no model, so nothing here waits on `10` or `20` to become `Done`.
   the tool never learned about and the retry starts another. The ledger is what
   makes that visible — the tool's own drill instrument cannot see it — and the
   record names it. It is a property of the design rather than a defect in it, and
-  it belongs in `LIMITATIONS.md` at sign-off.
+  it is recorded in [`LIMITATIONS.md`](../../docs/LIMITATIONS.md) under *The rehearsal*,
+  with the other two things a passed rehearsal is not evidence of.
 - **Three defects it has already found** are `24`'s sign-in reading a page
   mid-navigation as a challenge, `07`'s first probe reading a tab that has not
   rendered as a session that expired, and `17`'s verification reading a large

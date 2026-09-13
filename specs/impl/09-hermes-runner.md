@@ -223,4 +223,6 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
   how Hermes finds its profiles, and then either propagates the value or narrows the
   setting; the stronger check — asking Hermes which skills it can see — needs the same
   answer. Raised by a review bot on the PR, and a fair hit: the setting's docstring
-  promised more than the code did.
+  promised more than the code did. Recorded in
+  [`LIMITATIONS.md`](../../docs/LIMITATIONS.md) under *The agent*, so that it is read
+  before a run rather than only here.

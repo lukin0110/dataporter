@@ -11,6 +11,14 @@ controlled through the UI". This file is the list of that metadata — everythin
 for that the destination account will not hold after a migration, and what the operator
 gets instead.
 
+It is also where every *other* limitation this build has reported ends up, so that there
+is one place to read before relying on any of it: what a store does not promise (`30`),
+what one press in a source account does not promise (`31`), what an unattended run cannot
+sign into (`24`), what a green `doctor` line about the agent is worth (`09`), and what a
+passed rehearsal is not evidence of (`26`–`29`). Those sections were gathered here from
+the slices' *Risks* and the pull requests that reported them; a limitation named in a
+slice and nowhere else is one nobody reads before a run.
+
 Every entry carries a mark:
 
 - *by construction* — it follows from the approach itself (a conversation is replayed as
@@ -171,6 +179,57 @@ Not a limitation list — the target. `20` measures it with the six §18 questio
 optionally, the `judge` extra. Anything it finds that the UI cannot be made to do lands
 here.
 
+## The agent (`09`)
+
+What installing a skill into a Hermes profile does and does not prove. Neither entry is
+about fidelity; both are about what `doctor`'s green line is worth.
+
+- **Nothing tells Hermes where its home is.** `hermes.home` is *our* view of the profile
+  tree — the one `setup` writes into and `doctor` looks in. The subprocess environment is
+  built from scratch (`09` forwards `PATH`, `HOME` and `LANG` and nothing else), so it
+  carries no Hermes-home variable, and an operator's own is stripped rather than passed.
+  For the `~/.hermes` default the two agree, because `HOME` is forwarded; an operator who
+  overrides `hermes.home` to a tree the `hermes` on `PATH` does not use gets
+  `skill installed ok` confirming our own write. *by construction*
+- **Whether Hermes can be told a home at all** — and so whether the override could be
+  propagated rather than narrowed — is a question about an external tool's interface that
+  `09` refused to guess at, for the same reason `MINIMUM_VERSION` is `0.1.0`. `10`
+  installs a real Hermes and settles it. *unknown*
+
+## The spike harness (`10`)
+
+- **The paste ladder measures one round per unattended invocation.** Nothing in `08`
+  clears a composer — no helper does, and the slice that would add one is somebody
+  else's — so between rungs only a person can, and a `--no-prompt` run that asks for more
+  gets one usable row and `composer_not_empty` for the rest. The flag says so in its help
+  and warns when asked for more than one round; a full ladder is a human at the keyboard.
+  Reported by `18` rather than built, because the fix is a new helper in `src/`. *by
+  construction*
+
+## The rehearsal (`26`–`29`)
+
+What a passed rehearsal is not evidence of. The record itself
+([`rehearsal-01.md`](rehearsal-01.md)) says the first of these every time it is written;
+the three are here because `21`'s sign-off quotes this file and not that one.
+
+- **A rehearsal can only find what the mock can show.** The failure states §21 lists are
+  the ones a migration is most likely to meet on the real site, and `26`–`29` serve none
+  of them: a rate limit, a login expiry mid-run, a modal or JavaScript dialog, a
+  generation error, a CAPTCHA, and a code prompt at sign-in. A rehearsal that passes says
+  the protocol runs end to end against a site that behaves; it says nothing about the
+  six. *by construction*
+- **A rehearsal is not evidence about claude.ai.** Every `*unknown*` in
+  [`claude-ui-map.md`](claude-ui-map.md) is still `*unknown*` afterwards, semantic
+  fidelity is *not applicable* rather than passed, and whether a model can follow the
+  skill is the pilot's question (§27). The mock is governed by the UI map, so it can only
+  ever reflect what the map already claims. *by construction*
+- **The drill leaves an orphan chat.** A one-shot agent reports the chat's id when it
+  returns, so a run killed before it returns leaves a chat the tool never learned about,
+  and the retry starts another. The mock's ledger is what makes it visible — the tool's
+  own drill instrument cannot see it — and `29`'s record names it. A property of the
+  design rather than a defect in it, and the same property a killed *real* run has.
+  *by construction*
+
 ## Unattended runs (`24`)
 
 - **Password sign-in only.** An unattended run signs in with an email address and a
@@ -197,6 +256,12 @@ the rest of this file is about; both are about what a backup does *not* promise.
   A link that leads to a valid export of somebody *else's* account would be filed, under
   whatever `--account` said. The label is the operator's claim about whose account it is,
   and the tool cannot check it. *by construction*
+- **A filing costs twice the archive's bytes and two passes over them.** The fetch writes
+  a temporary file, verifies it, then copies it into the stamp directory, hashing as it
+  goes; both files exist at once and the bytes are read through twice. A multi-gigabyte
+  export is minutes rather than hours, and `store.max_download_bytes` (5 GB) is the
+  ceiling that keeps a fetch bounded — but a disk with room for one copy is not a disk
+  with room to file it. *by construction*
 
 ## The ask (`31`)
 
