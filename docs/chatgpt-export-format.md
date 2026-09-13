@@ -189,8 +189,9 @@ nothing of its content:
 
 ## Sources
 
-Read on 2026-09-13. None is OpenAI's; each is a parser or a reader of real exports, and
-the claims above are what they agree on.
+Read on 2026-09-13. All but the last are parsers or readers of real exports, and the
+claims above are what they agree on; the last is OpenAI's own, cited for the one thing
+it says about the archive — that a large export is split over numbered files.
 
 | Short name | What | Address | Date |
 | --- | --- | --- | --- |
