@@ -94,11 +94,20 @@ when someone watched that exact signal appear.
 | `generation failed` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
 | `every message` | `[data-testid="user-message"], [data-testid="assistant-message"]`, visible, in document order — `17`'s `probe --messages` reads the whole transcript this way and reports a role, a length and which of the caller's own strings each turn contains | not yet looked at | *unknown* |
 | `chat title` | the first visible match of `[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], header h1, header h2`, else `document.title`; whitespace squashed, compared in the page against the caller's `--expect-title` | not yet looked at | *unknown* |
+| `export page` (`31`) | the path `export_page.EXPORT_PAGE_PATH` names, which is the placeholder `/settings/data-privacy-controls`. It is also the whole of `EXTRACTION_SURFACE` beside `/login`, so a wrong path is an ask that refuses itself rather than one that wanders | not yet looked at | *unknown* |
+| `export button` (`31`) | a visible `[data-testid="export-data"], button[aria-label="Export data"]`, clicked with `element.click()` on the first visible match | not yet looked at | *unknown* |
+| `export confirmation` (`31`) | a visible `[role="dialog"]` holding a visible `[role="dialog"] [data-testid="confirm-export"], [role="dialog"] button[type="submit"]`. Whether the button opens one at all is part of what is unknown; the ask presses it if it is there and does not wait for one if it is not | not yet looked at | *unknown* |
+| `export requested` (`31`) | a visible `[data-testid="export-requested"], [role="status"]`. An element that is there, never the sentence it holds — and the one signal that makes the ask write `ask.json` | not yet looked at | *unknown* |
 | `rename affordance` | nothing in the code: `17` asks Hermes to find "the chat's own menu" and its rename control by looking, because this document has no label to quote. What the tool checks is the row above — whether the title changed — never how it was changed. `26`'s mock serves the simplest shape that description admits — a menu that opens from the title trigger, a rename control in it, and a text field that takes a new name — and `27`'s scripted agent, which cannot look, drives that shape by id | not yet looked at | *unknown* |
 
 Every selector in the middle column has exactly one spelling in the source, in
-`probe.py`'s `_SELECTORS` and the two expression bodies beside it, so correcting a row here
-is a one-line edit there.
+`probe.py`'s `_SELECTORS` and the two expression bodies beside it — or, for the four
+`31` rows, in
+[`browser/export_page.py`](../src/dataporter/browser/export_page.py)'s own `_SELECTORS`
+and the path constant above them — so correcting a row here is a one-line edit there.
+The four export rows are the ones nobody can observe from a destination account: they
+need a *source* account and `dataporter extract --account <label>`, which is why
+[`spike/README.md`](spike/) lists them as their own steps.
 
 ## Notes
 

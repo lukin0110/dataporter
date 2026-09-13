@@ -372,13 +372,22 @@ def test_the_two_flag_combinations_are_refused(
     assert str(abandoning.value) == extract.ABANDON_ALONE
 
 
-def test_no_mode_flag_is_the_ask_and_is_not_built(settings: Settings) -> None:
-    sink = Collected()
-    outcome = extract.extract_command(settings, extract.ExtractRequest(), sink=sink)
+def test_no_mode_flag_is_the_ask(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Which mode the flags name is this module's; what the ask then does is
+    `31`'s, and `test_ask.py` is where it has a browser to do it with."""
+    asked: list[str] = []
 
-    assert outcome.exit_code == ExitCode.NOT_IMPLEMENTED
-    assert sink.stdout == ""
-    assert sink.stderr == f"{extract.NOT_BUILT}\n"
+    def record(settings: Settings, *, sink: Collected) -> extract.ExtractOutcome:
+        asked.append(settings.account or "")
+        return extract.ExtractOutcome()
+
+    monkeypatch.setattr(extract, "ask", record)
+    outcome = extract.extract_command(settings, extract.ExtractRequest())
+
+    assert asked == ["old-personal"]
+    assert outcome.exit_code == ExitCode.OK
 
 
 def test_an_invocation_with_no_account_is_refused(workspace: Path) -> None:
@@ -466,18 +475,6 @@ def test_the_real_opener_streams_a_served_archive(
 def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     return ["--store", str(tmp_path / "store")]
-
-
-def test_no_mode_flag_exits_69(
-    runner: CliRunner, workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    flags = cli_env(tmp_path, monkeypatch)
-    result = runner.invoke(
-        cli.app, ["extract", "--account", "a", *flags], catch_exceptions=False
-    )
-
-    assert result.exit_code == ExitCode.NOT_IMPLEMENTED
-    assert result.stderr == f"{extract.NOT_BUILT}\n"
 
 
 def test_a_source_the_tool_does_not_have_exits_2(

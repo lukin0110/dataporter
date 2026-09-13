@@ -34,6 +34,7 @@ from dataporter.config import (
 )
 from dataporter.exit_codes import ExitCode
 from dataporter.state import Status
+from fake_export_page import FakeExportPage, browser
 from world import FIRST, World, cli_env
 
 
@@ -189,6 +190,74 @@ def test_extract_abandon_is_the_same_through_the_library(
     assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
 
 
+@pytest.mark.slow
+def test_extract_the_ask_is_the_same_through_the_library(
+    runner: CliRunner,
+    workspace: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`31`'s ask, twice: once as a call and once as a command.
+
+    Two browsers, because an ask closes the one it opened, and two accounts,
+    because one ask is open per account at a time — which is the same shape
+    `extract --from` needs two stores for.
+    """
+    page = FakeExportPage()
+    with browser(page) as chrome:
+        monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
+        settings = ask_settings(tmp_path, chrome.port, "library")
+        fake_launch(monkeypatch, chrome.port)
+        sink = console.Collected()
+        outcome = extracting.ask(settings, sink=sink)
+
+    page = FakeExportPage()
+    with browser(page, port=chrome.port) as second:
+        fake_launch(monkeypatch, second.port)
+        code, out, err = invoke(runner, "extract", "--account", "cli")
+
+    assert (outcome.exit_code, sink.stderr) == (code, err)
+    assert without_account(sink.stdout, "library") == without_account(out, "cli")
+
+
+def ask_settings(tmp_path: Path, port: int, account: str) -> Settings:
+    """One invocation about one source account, pointed at the fake browser."""
+    from dataporter.config import BrowserSettings, TimeoutSettings
+
+    loaded = load_settings().model_copy(
+        update={
+            "browser": BrowserSettings(cdp_port=port),
+            "timeouts": TimeoutSettings(cdp_call_s=2.0, ask_s=0.3, login_s=0.1),
+        }
+    )
+    return with_account(loaded, "claude", account)
+
+
+def fake_launch(monkeypatch: pytest.MonkeyPatch, port: int) -> None:
+    """`07`'s adoption, without a Chrome — `world.py`'s seam, one test at a time."""
+    from dataporter.browser import launcher
+    from dataporter.browser.cdp import CdpClient
+
+    monkeypatch.setattr(
+        launcher,
+        "launch",
+        lambda settings, url: launcher.BrowserSession(
+            client=CdpClient(port=port, timeout=2.0),
+            profile=settings.browser_profile_dir,
+            adopted=True,
+        ),
+    )
+
+
+def without_account(text: str, account: str) -> str:
+    """The ask's block with the label and the minute taken out of it.
+
+    Two asks are two accounts and two moments; every other byte has to match.
+    """
+    moment = re.sub(r"\d{4}-\d\d-\d\d \d\d:\d\d UTC", "<moment>", text)
+    return moment.replace(account, "<account>")
+
+
 def test_snapshots_is_the_same_through_the_library(
     runner: CliRunner,
     workspace: Path,
@@ -261,6 +330,24 @@ def test_logout_with_no_profile_is_the_same_through_the_library(
 
     assert (outcome.exit_code, sink.stdout) == (code, out)
     assert not outcome.removed
+
+
+def test_logout_of_a_source_account_is_the_same_through_the_library(
+    runner: CliRunner,
+    workspace: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`31`'s label, through both doors. The path in the line is the account
+    home's, which is the whole of what naming an account changes."""
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
+    settings = with_account(load_settings(), "claude", "a")
+    sink = console.Collected()
+    outcome = browser_session.logout(settings, sink=sink)
+    code, out, _ = invoke(runner, "session", "logout", "--account", "a")
+
+    assert (outcome.exit_code, sink.stdout) == (code, out)
+    assert str(settings.accounts_dir) in out
 
 
 def test_resume_with_nothing_to_resume_is_the_same_through_the_library(

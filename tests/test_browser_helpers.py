@@ -20,7 +20,7 @@ import pytest
 from typer.testing import CliRunner
 
 from dataporter import cli
-from dataporter.browser import helpers, launcher, probe
+from dataporter.browser import export_page, helpers, launcher, probe
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import SafetyError, UIError
@@ -85,6 +85,36 @@ def test_the_migration_surface_admits_nothing_else(url: str) -> None:
     assert not helpers.CLAUDE.permits(url)
     with pytest.raises(SafetyError):
         helpers.guard(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        export_page.EXPORT_PAGE_URL,
+        f"{export_page.EXPORT_PAGE_URL}?tab=data",
+        "https://claude.ai/login",
+        "https://claude.ai/login/callback",
+    ],
+)
+def test_the_extraction_surface_admits_the_two_pages_an_ask_uses(url: str) -> None:
+    assert export_page.EXTRACTION_SURFACE.permits(url)
+
+
+@pytest.mark.parametrize("url", [NEW_URL, CHAT_URL, "https://claude.ai/settings"])
+def test_the_extraction_surface_admits_no_chat(url: str) -> None:
+    """§36: the source session never imports, and a page it cannot open is a
+    chat it cannot create."""
+    assert not export_page.EXTRACTION_SURFACE.permits(url)
+    with pytest.raises(SafetyError):
+        helpers.guard(url, export_page.EXTRACTION_SURFACE)
+
+
+def test_the_migration_surface_admits_no_export_page() -> None:
+    """And the other way round, which is what makes the two lists a wall rather
+    than a preference: every helper Hermes can run refuses the export page."""
+    assert not helpers.CLAUDE.permits(export_page.EXPORT_PAGE_URL)
+    with pytest.raises(SafetyError):
+        helpers.guard(export_page.EXPORT_PAGE_URL)
 
 
 @pytest.mark.parametrize(
@@ -1279,3 +1309,54 @@ def test_live_a_page_outside_the_surface_is_refused(
             live_settings(session, tmp_path / "migration"),
             surface=fixture_surface(server),
         )
+
+
+@requires_a_browser
+def test_live_the_export_page_walks_its_three_stages(
+    live: tuple[launcher.BrowserSession, PageServer],
+) -> None:
+    """`31`'s two expressions against a real Chrome and a real document.
+
+    Not evidence about claude.ai — every row of the UI map this fixture is built
+    from is still `*unknown*` — but evidence about us: that `EXPORT_PAGE_JS`
+    tells the three stages apart, that `click_js` clicks the first *visible*
+    match rather than the first match, and that a confirmation dialog is only
+    confirmable while it is open.
+    """
+    session, server = live
+    visit(session, server.url(export_page.EXPORT_PAGE_PATH))
+    tab = session.client.pages()[0]
+    page = session.client.attach(tab.id)
+    try:
+        before = export_page.ExportPageView.read(page)
+        assert (before.button, before.dialog, before.requested) == (True, False, False)
+
+        assert page.evaluate(export_page.click_js(export_page.EXPORT_BUTTON_SELECTOR))
+        opened = export_page.ExportPageView.read(page)
+        # The button is still there behind the dialog, because that is what a
+        # modal is. The ask presses it once, before the loop, and never again.
+        assert (opened.dialog, opened.confirm) == (True, True)
+
+        assert page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR))
+        after = export_page.ExportPageView.read(page)
+        assert (after.requested, after.dialog) == (True, False)
+    finally:
+        page.close()
+
+
+@requires_a_browser
+def test_live_a_click_finds_nothing_to_click(
+    live: tuple[launcher.BrowserSession, PageServer],
+) -> None:
+    """`false`, not an exception: "there was nothing there" is an answer the ask
+    reports rather than a page expression that threw."""
+    session, server = live
+    visit(session, server.url(export_page.EXPORT_PAGE_PATH))
+    page = session.client.attach(session.client.pages()[0].id)
+    try:
+        assert (
+            page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR))
+            is False
+        )
+    finally:
+        page.close()

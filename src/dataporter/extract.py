@@ -1,15 +1,20 @@
-"""Extraction: the fetch, the filing and the open ask (`30`, brief `03` §31).
+"""Extraction: the ask, the fetch and the filing (`30`, `31`, brief `03` §31).
 
 The export arrives in two moves with a person between them, because the vendor
-puts an inbox there. This module is the second move and the record the first one
+puts an inbox there. This module is both moves and the record the first one
 leaves:
 
 ```text
 extract --source claude --account old-personal            the ask   (`31`)
         │  the vendor emails the person a link
-extract --source claude --account old-personal --link …   the fetch (here)
+extract --source claude --account old-personal --link …   the fetch (`30`)
 extract --source claude --account old-personal --from …   an archive they had
 ```
+
+The ask is here and the page it presses is in `browser/export_page.py`, which is
+the division `probe` and the helpers already have: what the page looks like and
+what may be clicked on it is one file's knowledge, and what an operator is told
+and what is written down is this one's.
 
 The fetch downloads to a temp file under the account home, hashes it as it
 streams, checks that what arrived is an export of this source, and only then
@@ -47,7 +52,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -55,6 +60,7 @@ from dataporter import PROGRAM_NAME, log, plan, store
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import (
+    AuthError,
     ExportError,
     FetchError,
     NetworkError,
@@ -64,6 +70,9 @@ from dataporter.errors import (
 from dataporter.exit_codes import ExitCode
 from dataporter.export import Export, ExportSource, read_export
 from dataporter.export.model import file_entries
+
+if TYPE_CHECKING:  # pragma: no cover - the browser is imported where it is used
+    from dataporter.browser.launcher import BrowserSession
 
 _logger = log.get_logger(__name__)
 
@@ -95,7 +104,6 @@ prints `Gaps: 38 files the export does not carry` — and `1 files` is not one.
 ACCOUNT_REQUIRED = "extract needs an account: --account LABEL"
 LINK_AND_FILE = "--link and --from name two different archives; give one"
 ABANDON_ALONE = "--abandon gives up the open ask; it takes no --link and no --from"
-NOT_BUILT = f"not implemented in this build: {PROGRAM_NAME} extract (the ask)"
 
 LINK_SCHEME = "https"
 """The only scheme the tool will download from.
@@ -120,13 +128,41 @@ ASK_OPEN = (
     "an ask is already open for {source}/{account}; abandon it with: "
     "{program} extract --source {source} --account {account} --abandon"
 )
+ASK_ALREADY_OPEN = (
+    "an ask is already open for {source}/{account}, made {asked_at}; "
+    "fetch it with --link, or drop it with --abandon"
+)
+"""The same refusal, told twice, because the two know different things.
+
+`ASK_ALREADY_OPEN` is `31`'s check before any browser starts: it has read the
+record, so it can say when the ask was made, which is what an operator needs to
+decide between fetching it and dropping it. `ASK_OPEN` is `write_ask`'s, raised
+by `O_EXCL` against a file that appeared while this invocation was pressing a
+button — a race nobody will see, and one that has no record in hand to quote.
+"""
 NO_ASK_OPEN = "no ask is open for {source}/{account}"
 INVALID_ASK = "invalid {filename}: {path}"
 ABANDONED = "Abandoned the open ask for {source}/{account}."
 
-# -- §31's block ------------------------------------------------------------- #
+EXPORT_BUTTON_MISSING = "export button not found on {path}"
+NOT_CONFIRMED = "no confirmation that the export was requested"
+ASK_DIALOG = "a javascript dialog is in the way on {path}; clear it and ask again"
+"""Why an ask exited `1`. A dialog is never answered (`31`, §36): what it says is
+unknown, and a tool that clicks OK on an unread question in an account it is
+allowed one action in has taken a second one."""
+
+# -- §31's blocks ------------------------------------------------------------ #
 
 HEADER = "{name} extraction — {account}"
+REQUESTED = "Export requested {moment}."
+EMAILED = "{name} will email a download link to the account's address."
+WHEN_IT_ARRIVES = "When it arrives:"
+FETCH_COMMAND = "  {program} extract --source {source} --account {account} --link <url>"
+ASKED_AT_FORMAT = "%Y-%m-%d %H:%M UTC"
+"""§31's ask block, byte for byte, and the one format an operator reads a moment
+in: minutes, because the line is for the eye and the seconds belong to
+`ask.json`, where the stamp the snapshot is filed under comes from."""
+
 DOWNLOADED = "Downloaded {size} MB."
 FILED = "Filed {name}."
 NO_ASK_ON_RECORD = "Filed without an ask on record."
@@ -228,6 +264,142 @@ def write_ask(settings: Settings, asked_at: datetime) -> store.Ask:
     with os.fdopen(handle, "w", encoding="utf-8", newline="") as stream:
         stream.write(ask.model_dump_json(indent=2) + "\n")
     return ask
+
+
+def ask_block(ask: store.Ask) -> str:
+    """§31's ask block, newline-terminated.
+
+    The command it prints back is the one the operator will type when the email
+    arrives, spelled with the flags they used rather than with the defaults: a
+    person who named `--source claude` reads it back, and a person who did not
+    still gets a line that works, because `source` is what this invocation
+    resolved.
+    """
+    lines = [
+        HEADER.format(name=store.SOURCE_NAMES[ask.source], account=ask.account),
+        "",
+        REQUESTED.format(moment=ask.asked_at.strftime(ASKED_AT_FORMAT)),
+        EMAILED.format(name=store.SOURCE_NAMES[ask.source]),
+        WHEN_IT_ARRIVES,
+        "",
+        FETCH_COMMAND.format(
+            program=PROGRAM_NAME, source=ask.source, account=ask.account
+        ),
+    ]
+    return "".join(f"{line}\n" for line in lines)
+
+
+def ask(settings: Settings, *, sink: Sink = DISCARD) -> ExtractOutcome:
+    """Ask the vendor for this account's export, and write down that we did (§31).
+
+    The whole of `31`, in the order the order matters:
+
+    1. An ask that is already open is refused **before a browser starts**. A
+       second export request is an account-level action taken on a premise the
+       operator has not seen, and the fetch would have no way to tell which of
+       the two links belongs to which moment.
+    2. Unattended, the credentials are required next — `login`'s rule, and for
+       `login`'s reason: a run that would stop at the first sign-in form is a run
+       that should not have opened a window.
+    3. Then the browser, and the sign-in if the page asks for one.
+    4. Then one press, and the page's own word that it took (`31`'s
+       `export_page`).
+    5. Only then `ask.json`, with the moment of the press. A record written
+       before the confirmation would send the fetch looking for an email nobody
+       sent.
+
+    `ExitCode.FAILED` and a note on stderr for a page that would not say it was
+    requested: nothing failed *in* us, the account may or may not have taken the
+    request, and the honest answer is to say what the page did and leave no
+    record claiming otherwise.
+    """
+    from dataporter import signin
+    from dataporter.browser import export_page, launcher
+
+    account = _account(settings)
+    log.enable_run_log(settings.logs_dir)
+    open_ask = read_ask(settings)
+    if open_ask is not None:
+        raise StoreError(
+            ASK_ALREADY_OPEN.format(
+                source=settings.source,
+                account=account,
+                asked_at=open_ask.asked_at.strftime(ASKED_AT_FORMAT),
+            )
+        )
+    if settings.non_interactive:
+        signin.require_credentials(settings)
+
+    browser = launcher.launch(settings, export_page.EXPORT_PAGE_URL)
+    try:
+        _sign_in_to_source(settings, browser, sink=sink)
+        result = export_page.request_export(settings, browser)
+    finally:
+        # Chrome writes its cookie jar out on exit, and a browser left running
+        # would hold the next session's port (`31`: one port, sequential
+        # sessions). `login` closes it on every path for the same two reasons.
+        browser.close()
+
+    if not result.requested or result.pressed_at is None:
+        # The second half is not a second case: a page that says the export was
+        # requested was pressed, or the press is where the moment came from. It
+        # is written as one condition so that "there is a moment" is a fact the
+        # type carries rather than one a comment promises.
+        sink.note(_why_not(result.blocked))
+        return ExtractOutcome(exit_code=ExitCode.FAILED)
+    written = write_ask(settings, result.pressed_at)
+    _logger.info("ask recorded", extra={"source": settings.source, "account": account})
+    sink.block(ask_block(written))
+    return ExtractOutcome()
+
+
+def _sign_in_to_source(
+    settings: Settings, browser: "BrowserSession", *, sink: Sink
+) -> None:
+    """Have the source account signed in, in whichever mode this is (§35).
+
+    The probe is made against the export page rather than against `/new`, which
+    is what keeps the wall at two doors: `/new` is outside the extraction
+    surface, and a tool that opens it to find out whether it is signed in has
+    opened a new chat in the account it promised to take one action in.
+    """
+    from dataporter import signin
+    from dataporter.browser import export_page
+    from dataporter.browser import session as browser_session
+
+    state = browser_session.current_state(browser, export_page.EXPORT_PAGE_URL)
+    if not export_page.signed_out(state):
+        return
+    if settings.non_interactive:
+        # `24`'s agent half. An unattended ask on a signed-out profile needs
+        # Hermes; one on a signed-in profile needs nothing, which is why this is
+        # reached only after the probe above.
+        signin.ensure_signed_in(settings, browser)
+        return
+    sink.line(browser_session.LOGIN_PROMPT)
+    arrived = browser_session.wait_for_login(
+        browser,
+        timeout_s=settings.timeouts.login_s,
+        url=export_page.EXPORT_PAGE_URL,
+    )
+    if arrived is None:
+        raise AuthError(
+            detail=browser_session.LOGIN_TIMED_OUT.format(
+                seconds=settings.timeouts.login_s
+            )
+        )
+
+
+def _why_not(blocked: str | None) -> str:
+    """The line an operator reads when the ask did not go through."""
+    from dataporter.browser import export_page
+
+    path = export_page.EXPORT_PAGE_PATH
+    if blocked == export_page.BUTTON_NOT_FOUND:
+        return EXPORT_BUTTON_MISSING.format(path=path)
+    if blocked == export_page.JS_DIALOG:
+        return ASK_DIALOG.format(path=path)
+    return NOT_CONFIRMED
 
 
 def abandon(settings: Settings, *, sink: Sink = DISCARD) -> ExtractOutcome:
@@ -528,7 +700,8 @@ def extract_command(
     The library picks the mode and refuses the combinations that cannot both be
     honoured, as `import_command` does for `--pilot`, so that a Python caller is
     refused by the same rule as a typed command. With no mode flag at all this
-    is the ask, which `31` builds.
+    is the ask (`31`), which is the command's first move and the one every other
+    mode is about.
     """
     if request.link is not None and request.from_path is not None:
         raise UsageError(LINK_AND_FILE)
@@ -540,8 +713,7 @@ def extract_command(
         return fetch(settings, request.link, sink=sink)
     if request.from_path is not None:
         return file(settings, request.from_path, sink=sink)
-    sink.note(NOT_BUILT)
-    return ExtractOutcome(exit_code=ExitCode.NOT_IMPLEMENTED)
+    return ask(settings, sink=sink)
 
 
 def _account(settings: Settings) -> str:

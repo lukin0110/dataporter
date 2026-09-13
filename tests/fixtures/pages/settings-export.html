@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- A stand-in for the page where claude.ai lets a user ask for their data
+     (`31`). Its real path, its real button and whatever it really shows when
+     the request goes through are all `*unknown*` in `docs/claude-ui-map.md`;
+     what this fixture is for is the mechanics either way — that
+     `export_page.click_js` clicks the first *visible* match of a selector, and
+     that `EXPORT_PAGE_JS` reads the three states apart in a real Chrome.
+
+     So it is built out of the selectors as they stand today, and it walks the
+     three stages an ask walks: a button, a dialog with a confirmation in it,
+     and a region that appears once the request has been accepted. Nothing here
+     is evidence about claude.ai; correcting the map corrects this file too. -->
+<meta charset="utf-8">
+<title>Data privacy controls</title>
+<style>
+  [hidden] { display: none; }
+  .invisible { display: none; }
+</style>
+<main>
+  <h1>Data privacy controls</h1>
+
+  <!-- A hidden button matching the same selector, first in document order: the
+       click helper filters by visibility, and a page that offers one control
+       per device width is exactly how a real one would break that rule. -->
+  <button class="invisible" data-testid="export-data">Export data</button>
+  <button data-testid="export-data">Export data</button>
+
+  <div role="dialog" aria-label="Export data" hidden>
+    <p>Claude will email a download link to the address on this account.</p>
+    <button type="submit" data-testid="confirm-export">Confirm</button>
+  </div>
+
+  <div role="status" data-testid="export-requested" hidden>
+    Your export was requested. Check your email.
+  </div>
+</main>
+<script>
+  const dialog = document.querySelector('[role="dialog"]');
+  const requested = document.querySelector('[data-testid="export-requested"]');
+  const buttons = document.querySelectorAll('[data-testid="export-data"]');
+
+  for (const button of buttons) {
+    button.addEventListener('click', () => { dialog.hidden = false; });
+  }
+  document
+    .querySelector('[data-testid="confirm-export"]')
+    .addEventListener('click', () => {
+      dialog.hidden = true;
+      requested.hidden = false;
+    });
+</script>

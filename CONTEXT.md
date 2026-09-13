@@ -96,6 +96,11 @@ The request the tool makes of a vendor for an account's export, remembered until
 comes back. One is open per account at a time.
 _Avoid_: export request, job, ticket
 
+**Export page**:
+The page where a vendor lets a signed-in user ask for their data. The one page an
+extraction acts on, and the one place the tool clicks anything in a source account.
+_Avoid_: settings page, data controls, privacy page
+
 **Link**:
 The download address the vendor emails after an ask, which a person hands to the tool.
 Never kept.

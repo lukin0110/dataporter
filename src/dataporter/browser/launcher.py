@@ -249,16 +249,23 @@ def write_marker(profile: Path, marker: ProfileMarker) -> None:
 
 
 def ensure_profile(settings: Settings) -> Path:
-    """Create `<workspace>/browser-profile/` at `0700`, and the `.gitignore`.
+    """Create the browser profile at `0700`, and the workspace's `.gitignore`.
 
     `0700` explicitly rather than by umask: the directory holds a live session
     for a Claude account, and on a shared machine the default `0755` would make
     it world-readable.
+
+    The `.gitignore` is written only when the profile is inside the workspace,
+    which is where `07` put the destination's. `31`'s source profile is in the
+    account home under `~/.dataporter/accounts/`, which is not a directory
+    anybody checks in and not one a command about an account should be creating
+    a `./migration` beside.
     """
     profile = settings.browser_profile_dir
     profile.mkdir(parents=True, exist_ok=True)
     os.chmod(profile, 0o700)
-    ensure_gitignore(settings.workspace)
+    if profile.is_relative_to(settings.workspace):
+        ensure_gitignore(settings.workspace)
     return profile
 
 

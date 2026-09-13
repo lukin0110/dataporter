@@ -128,6 +128,28 @@ def test_extract_help_carries_every_flag(runner: CliRunner) -> None:
         assert flag in result.stdout
 
 
+@pytest.mark.parametrize(
+    "command", [["login"], ["session", "status"], ["session", "logout"]]
+)
+def test_the_session_commands_carry_the_account_options(
+    runner: CliRunner, command: list[str]
+) -> None:
+    """`31`: each of `07`'s three commands gains a label and the source it
+    belongs to, and means the destination without one."""
+    result = runner.invoke(cli.app, [*command, "--help"], catch_exceptions=False)
+    for flag in ("--source", "--account"):
+        assert flag in result.stdout
+
+
+def test_the_account_options_are_optional_on_the_session_commands() -> None:
+    """A literal `None` rather than a required option: §35's "absent means the
+    destination" is a property of the signature, not of a code path."""
+    for command in (cli.login, cli.session_status, cli.session_logout):
+        parameters = inspect.signature(command).parameters
+        assert parameters["account"].default is None
+        assert parameters["source"].default is None
+
+
 def test_source_has_no_literal_default(runner: CliRunner, workspace: Path) -> None:
     """`claude` is the default in `Settings`, not on the flag: a literal here
     would outrank `DATAPORTER_SOURCE`, the way `--limit` would outrank config."""

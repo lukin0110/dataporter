@@ -19,7 +19,9 @@ says so.
 has been read end to end, `10`'s spike has not been conducted against a live Claude, and
 neither the pilot (`20`) nor the full run (`21`) has produced a number —
 `docs/experiment-01.md` and `docs/experiment-02.md` carry `*not yet run*` where each one
-belongs. [`specs/README.md`](specs/README.md) is the per-slice state.
+belongs. Extraction is the same: `31`'s ask is built against a placeholder path and three
+guessed selectors, no real account has been asked, and `docs/extraction-01.md` says so.
+[`specs/README.md`](specs/README.md) is the per-slice state.
 
 ## What you end up with
 
@@ -138,8 +140,8 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 | --- | --- |
 | `setup` | Create the Hermes profile and install the migration skill. |
 | `doctor` | Check Hermes, Chrome and the configuration. Exits `6` at the first failure. |
-| `login` | Open the dedicated browser profile and wait for you to sign in. |
-| `session status` / `session logout` | Whether that profile is signed in; remove it locally. |
+| `login` | Open the dedicated browser profile and wait for you to sign in. `--account LABEL` (and `--source`) signs in to a *source* account instead of the destination. |
+| `session status` / `session logout` | Whether that profile is signed in; remove it locally. Same two options, same meaning. |
 | `extract` | Ask a source for an account's export, then file what comes back as a snapshot. `--source`, `--account`, `--link`, `--from`, `--abandon`, `--store`. |
 | `snapshots` | What the store holds: source, account, stamp, conversations, state. `--json`. |
 | `inspect <export>` | What the export contains, and what is migratable. A snapshot works wherever an export does. |
@@ -165,8 +167,11 @@ wants a backup never migrates — and a person stands between them, because the 
 puts an inbox there:
 
 ```sh
-# 1. Ask Claude for the account's export. The tool signs in and presses the button.
-dataporter extract --source claude --account old-personal      # the ask — `31`, not built yet
+# 0. Sign in to the source account, in its own browser profile.
+dataporter login --account old-personal
+
+# 1. Ask Claude for the account's export. The tool presses the button itself.
+dataporter extract --source claude --account old-personal      # the ask
 
 # 2. Claude emails a link. Hand it over; the tool downloads, checks and files it.
 dataporter extract --source claude --account old-personal --link 'https://…'
@@ -191,8 +196,21 @@ stamp, and a stamp that already exists is an error rather than a merge.
 `--account` is your label for the account, not its login: emails change and ids are the
 vendor's. The link is used once and never written down — not in the snapshot, not in a
 log — because it expires and is a credential to the archive while it lasts.
-[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) has the two things to know before relying on
-a store.
+[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) has what to know before relying on a store,
+and what one press on the vendor's page does not promise.
+
+The source account gets its own browser session, because one browser profile holds one
+signed-in identity per site: `login --account old-personal` signs it in, `session status
+--account old-personal` says whether it still is, and `session logout --account
+old-personal` throws it away. Without `--account` all three mean the destination, exactly
+as before. **One at a time**: every session shares `browser.cdp_port`, so a Chrome still
+running for one account makes the next command exit `2` — close it and run again.
+
+The ask itself never uses a model: the tool goes to the page, presses the button, and
+records that it did. Unattended (`--non-interactive`) it is the same one press, and it
+needs Hermes only when the source session has expired and somebody has to be signed in
+first — which is `24`'s agent half, and the one part of a backup a cron job cannot do
+without a model.
 
 ## Running unattended
 
