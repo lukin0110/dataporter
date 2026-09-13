@@ -2,7 +2,7 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40 | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
@@ -11,11 +11,12 @@ Two kinds of document live here, and they are not interchangeable.
 | **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands; `Built` when its tests pass, `Done` when its live criteria are met |
 | **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
-| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings; the blocks in brief `02` (§21, §23, §25) are illustrative | Normative |
+| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings; the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines | Normative |
 
-There are three briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
-[`02-claude-mock.md`](02-claude-mock.md) (§20–§28) and
-[`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40). Section numbers
+There are four briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
+[`02-claude-mock.md`](02-claude-mock.md) (§20–§28),
+[`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40) and
+[`04-trace.md`](04-trace.md) (§41–§51). Section numbers
 continue across them,
 so `§N` names one section anywhere in the repository (a working rule, below). The words
 the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
@@ -36,6 +37,7 @@ specs/
 ├── 01-initial-brief.md   the briefing — intent, stable
 ├── 02-claude-mock.md     the rehearsal brief — intent, stable
 ├── 03-extraction-and-backup.md   the extraction brief — intent, stable
+├── 04-trace.md           the trace brief — intent, stable
 ├── README.md             this file — index, sequence, shared decisions
 └── impl/
     ├── _template.md      the shape every implementation spec follows
@@ -105,6 +107,14 @@ M8 — Extraction and backup (brief 03, §29–§40)
   30  The store and the snapshot: filing, fetching, listing, import from a snapshot
   31  The source session and the ask: a second profile, the extraction surface, one click
   32  The mock export page: a page to ask on, and a link instead of an email
+
+M9 — Trace (brief 04, §41–§51) — outside the gates: every command that drives a tab
+     leaves one, rehearsal or not, and nothing it writes touches an account
+  33  The trace file and the move: the header, the guard, one line per helper call
+  34  The sketch: the page in outline, labels for controls, shape for the rest
+  35  The watch: a second session on the tab, what the page did whoever caused it
+  36  The rehearsal's traces: gathered, named after their steps, listed in the record
+  37  Traces as evidence: a real trace committed, a UI-map row marked from it
 ```
 
 ## Dependencies
@@ -149,6 +159,20 @@ the two of them only for the shape of what it serves — it imports nothing from
 02, 23 ─> 30 ─┐
 07, 24 ───────┴─> 31
 26, 30, 31 ─> 32
+```
+
+M9 is a chain of five, and the first three are the tool's: `33` is the file and the
+move, written where `08`'s helpers already count an action and found by a helper
+subprocess through its environment; `34` is the sketch, taken on the connection `08`'s
+`driving` already holds; `35` is the watch, a second CDP session beside the agent's,
+and is where the trace stops being a record of the tool's own moves and becomes a
+record of the page. `36` is the rehearsal's side — `29`'s runner gathers what the
+steps leave — and `37` is paperwork: the evidence directory, the UI map's one-clause
+amendment, and the mock's README, which reads a trace and imports nothing.
+
+```text
+01, 08, 31 ─> 33 ─> 34 ─> 35 ─> 36 ─> 37
+                    (34 also needs 07; 36 needs 29; 37 needs 10 and 26)
 ```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
@@ -211,6 +235,11 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [30](impl/30-store-and-snapshot.md) | The store and the snapshot | §30, §31, §32, §33, §37, §38 | Built |
 | [31](impl/31-source-session-and-ask.md) | The source session and the ask | §31, §35, §36, §38, §39 | Built |
 | [32](impl/32-mock-export-page.md) | The mock export page | §40 (a mock source) | Done |
+| [33](impl/33-trace-and-move.md) | The trace file and the move | §42, §43, §46, §47, §50 | Not started |
+| [34](impl/34-sketch.md) | The sketch | §45, §46, §50 | Not started |
+| [35](impl/35-watch.md) | The watch | §44, §46, §47, §50 | Not started |
+| [36](impl/36-rehearsal-traces.md) | The rehearsal's traces | §47, §48 | Not started |
+| [37](impl/37-traces-as-evidence.md) | Traces as evidence | §49, §50 | Not started |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -256,6 +285,14 @@ say what that costs. `32` is `Done` for the reason `26`–`29` are: its live cri
 a real Chromium and no account, and a real Chromium has walked its page under
 `dataporter extract`, both moves, with the numbers in the slice.
 
+Of the fourth brief, §42–§50 are claimed by `33`–`37`: `33` takes the file, the move and
+the header's marks, `34` the sketch, `35` the watch and the certificate, `36` the
+rehearsal's side, and `37` the evidence rule; §46 (what a trace never carries) and §50
+(one shape for every source) are split across the three tool slices along the same
+lines. §41 is that brief's goal and is claimed by all five; §51 is its list of what is
+deliberately left and stays unclaimed until one of its items is built. All five are
+`Not started`.
+
 ## Working rules
 
 - **New work starts as a slice, not as an edit to the brief.** If the brief turns out to be
@@ -276,7 +313,8 @@ a real Chromium and no account, and a real Chromium has walked its page under
   entry leaves that file when an ADR, an amendment or a glossary edit lands.
 - **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
   `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
-  `03` starts at §29 where `02` ends, and a fourth starts at §41. Cite `§N`, never `02§N`.
+  `03` starts at §29 where `02` ends, `04` at §41 where `03` ends, and a fifth starts at
+  §52. Cite `§N`, never `02§N`.
 
 ## Shared decisions
 
@@ -324,15 +362,19 @@ Assumptions, not brief requirements. Change them here and the slices follow.
 - **Workspace:** `migration/` next to the export by default, `--workspace` to override.
   Holds `state.json` (§7 shape, nothing else in it), `run.json` (run-level counters and
   pause record), `plan.json`, `seeds/`, `attachments/`, `browser-profile/`, `hermes/`,
-  `report.json`, `pilot/` (`20`'s question and probe replies) and `logs/`. Never inside
-  the export.
+  `report.json`, `pilot/` (`20`'s question and probe replies) and `logs/` — the run log,
+  `actions.jsonl`, and from `33` the trace, `logs/trace-<ts>.jsonl`, one per run that
+  drove a tab. Never inside the export.
 - **Output discipline (§10):** no message content and no titles on stdout or in logs at any
   verbosity. Titles live in `state.json` because §7 puts them there, and in seed files
   because they are content. Hermes's own session transcripts contain page snapshots and
   therefore content; they live under the Hermes profile and `setup` documents how to purge
   them. `20` adds one more content-bearing workspace file, `pilot/probes.json`, which holds
   the probe replies a person grades; it is written, never printed and never logged, and it
-  is the only place in the tool where a message Claude wrote is recorded.
+  is the only place in the tool where a message Claude wrote is recorded. A trace
+  (brief `04`) carries the page's chrome and shape — paths, the labels of controls, the
+  outline of traffic — and never its content: §46 is the rule, and the run log's guard,
+  applied to every line, is the enforcement.
 - **Secrets:** interactively the tool never sees a Claude password (§8). Unattended (`24`)
   it holds the destination account's email and password in memory for one invocation,
   from the environment or a file and never from `config.toml`, types them into the form

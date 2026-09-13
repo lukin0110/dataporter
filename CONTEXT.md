@@ -162,6 +162,34 @@ The model-free agent that performs the skill's procedure from a rendered prompt 
 as written, standing where Hermes and its model stand.
 _Avoid_: fake agent, mock Hermes, fake Hermes
 
+### Trace
+
+**Trace**:
+The file a run that drives a tab leaves: every move made and every observation the watch
+recorded, in order, with what the page showed in outline and never its content. One per
+run.
+_Avoid_: log, recording, transcript
+
+**Move**:
+One helper call as it happened, with the sketch before and after it.
+_Avoid_: step, action
+
+**Watch**:
+The tool's own session on the tab for the length of a run, recording what the page did
+whoever caused it.
+_Avoid_: listener, spy, witness
+
+**Observation**:
+One thing the page did or showed, recorded by the watch with its moment: a navigation, a
+dialog, a request, a certificate. The evidence that turns a UI-map row *observed on
+\<date\>*.
+_Avoid_: event, entry
+
+**Sketch**:
+A page in outline: its URL, its controls by role and label, the shape of everything else.
+Never a message, a title or an address.
+_Avoid_: snapshot, DOM dump, view
+
 ### Test doubles
 
 **Fake world**:
