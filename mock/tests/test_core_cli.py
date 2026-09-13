@@ -101,6 +101,15 @@ def test_the_parser_has_the_four_commands_with_the_sites_defaults() -> None:
     assert parser.prog == "chatgpt-mock"
 
 
+def test_a_bare_command_is_usage_not_a_crash(capsys: pytest.CaptureFixture[str]) -> None:
+    """No subcommand is a usage error, exit `2` — never `serve` with nothing parsed."""
+    parser = cli.parser(CLAUDE, description=None, email="e@example.invalid", password="p")
+    with pytest.raises(SystemExit) as caught:
+        parser.parse_args([])
+    assert caught.value.code == 2
+    assert "usage: claude-mock" in capsys.readouterr().err
+
+
 def test_a_mock_nobody_is_serving_is_an_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.ledger(CHATGPT, host="127.0.0.1", port=1) == 1
     assert capsys.readouterr().err.startswith("chatgpt-mock: https://127.0.0.1:1/__mock/ledger:")
