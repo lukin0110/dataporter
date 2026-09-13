@@ -33,6 +33,7 @@ import re
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -43,8 +44,10 @@ from pydantic import BaseModel, ConfigDict
 from dataporter import log
 from dataporter import trace as tracing
 from dataporter.browser import probe as probing
+from dataporter.browser import sketch as sketching
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.session import BLANK_URLS
+from dataporter.browser.site import Site
 from dataporter.config import Settings
 from dataporter.errors import BrowserError, MigrationError, SafetyError
 from dataporter.exit_codes import ExitCode
@@ -96,12 +99,21 @@ class Surface:
 
     host: str
     allowed: re.Pattern[str]
+    site: Site | None = None
+    """What a sketch of a page on this surface counts (`34`): the site's
+    selectors, by name. `None` — the test suite's fixture surfaces — sketches
+    with no selector table."""
 
     def permits(self, url: str) -> bool:
         return self.allowed.match(url) is not None
 
 
-CLAUDE = Surface(host=probing.CLAUDE_HOST, allowed=MIGRATION_SURFACE)
+CLAUDE = Surface(host=probing.CLAUDE_HOST, allowed=MIGRATION_SURFACE, site=probing.MIGRATION_SITE)
+
+_SKETCHED: ContextVar[tuple[str | None, str | None]] = ContextVar("sketched", default=(None, None))
+"""The sketches `driving` took before and after its body, by hash, for the
+move `run` writes. A context variable rather than a return value, because
+`driving`'s signature is every helper's and both extraction modules'."""
 
 
 def guard(url: str, surface: Surface = CLAUDE) -> None:
@@ -469,9 +481,31 @@ def driving(client: CdpClient, target: Target, surface: Surface = CLAUDE) -> Ite
     page = client.attach(target.id)
     try:
         guard(page.url, surface)
-        yield page
+        before = sketch_of(page, surface)
+        _SKETCHED.set((before, None))
+        try:
+            yield page
+        finally:
+            _SKETCHED.set((before, sketch_of(page, surface)))
     finally:
         page.close()
+
+
+def sketch_of(page: Page, surface: Surface) -> str | None:
+    """Sketch the page into the run's trace and answer the hash, or `None` without one.
+
+    `34`: no trace — a helper run by hand — is no sketch and no CDP call; a
+    sketch that cannot be taken is a warning and `None`, never a failed helper.
+    """
+    current = tracing.current()
+    if current is None:
+        return None
+    site = surface.site if surface.site is not None else Site(source="", host=surface.host, selectors={})
+    try:
+        return current.sketch(sketching.take(page, site))
+    except BrowserError as exc:
+        _logger.warning("sketch not taken", extra={"reason": exc.detail or type(exc).__name__})
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -835,6 +869,7 @@ def run(
     is not empty. Only a bug in us escapes, and `cli` turns that into exit `70`.
     """
     client = CdpClient(port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s)
+    _SKETCHED.set((None, None))
     started = time.monotonic()
     try:
         outcome = work(client, settings)
@@ -859,7 +894,8 @@ def run(
         conversation_id=outcome.conversation_id,
         ts=ts,
     )
-    record_move(helper, outcome, elapsed_ms=elapsed_ms, ts=ts)
+    before, after = _SKETCHED.get()
+    record_move(helper, outcome, elapsed_ms=elapsed_ms, ts=ts, before=before, after=after)
     return Emission(
         text=outcome.result.model_dump_json(exclude_none=True),
         exit_code=outcome.exit_code,
@@ -930,7 +966,15 @@ def record_action(
         _logger.warning("actions log not written", extra={"reason": str(exc)})
 
 
-def record_move(helper: str, outcome: Outcome, *, elapsed_ms: int, ts: str) -> None:
+def record_move(
+    helper: str,
+    outcome: Outcome,
+    *,
+    elapsed_ms: int,
+    ts: str,
+    before: str | None = None,
+    after: str | None = None,
+) -> None:
     """One move in the run's trace (`33`), when this process has one.
 
     Written where the action is counted, with the `actions.jsonl` line's own
@@ -948,4 +992,6 @@ def record_move(helper: str, outcome: Outcome, *, elapsed_ms: int, ts: str) -> N
         conversation_id=outcome.conversation_id,
         result=tracing.sanitised(outcome.result.model_dump(mode="json", exclude_none=True)),
         ts=ts,
+        before=before,
+        after=after,
     )

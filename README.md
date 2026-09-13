@@ -301,6 +301,10 @@ page showed in outline, so that a run against the real site can be read back and
 mock claude.ai corrected against it (brief `04`). A trace carries paths, the labels of
 controls, and timings; never a message, a title, an address, a query value or a
 credential, and the same guard that protects the run log refuses any line that would.
+What the page showed is a **sketch**: its controls by role and label — a button, a text
+box, a dialog — and everything else by role and shape, a heading or a sidebar link as a
+length and a hash and never a word of it, plus how many elements each of the tool's own
+selectors found.
 
 The workspace holds content by design: a seed *is* a conversation. What does not hold
 content is the terminal and the run logs — no title and no message is printed or logged at

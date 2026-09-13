@@ -38,6 +38,7 @@ import world as world_module
 from dataporter import log
 from dataporter import seed as seeding
 from dataporter import store as storing
+from dataporter import trace as tracing
 from dataporter.config import AttachmentSettings, SeedSettings, Settings
 from dataporter.export import load_export
 from fake_chrome import FakeChrome
@@ -113,6 +114,14 @@ def strict_content_guard(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     log.reset_logging()
     yield
     log.reset_logging()
+
+
+@pytest.fixture(autouse=True)
+def no_trace_outlives_a_test() -> Iterator[None]:
+    """`33`: the process's trace, and every attached one, is a test's own."""
+    tracing.reset()
+    yield
+    tracing.reset()
 
 
 @pytest.fixture(autouse=True)

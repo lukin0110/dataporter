@@ -297,6 +297,8 @@ source = ["src/dataporter"]
 # is what a module that writes files once and never again has to be.
 # `33`: 7002/7036, 99.52% — `trace.py` at 100%, as a file the guard stands on
 # has to be; `browser/site.py` is a dataclass and a line.
+# `34`: 7149/7182, 99.54% — `browser/sketch.py` at 100%, and the four modules the
+# sketch touches still at 100%.
 fail_under = 99
 show_missing = true
 # `python -m dataporter`'s guard runs in a subprocess, where coverage does not

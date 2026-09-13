@@ -26,6 +26,7 @@ from enum import StrEnum
 from typing import Any
 
 from dataporter.browser import export_page, login_form, probe, session
+from dataporter.browser import sketch as sketching
 from fake_chrome import Call, FakeChrome, FakeTarget, dialog_event
 from fake_composer import js_const
 
@@ -167,12 +168,15 @@ class FakeExportPage:
                 self.loading_for -= 1
                 return False
             return self.url if expression == session.READY_JS else True
-        if export_page.EXPORT_PAGE_TAG in expression:
-            return self.view()
-        if export_page.CLICK_TAG in expression:
-            return self.click(js_const(expression, "selector"))
-        if probe.PAGE_STATE_TAG in expression:
-            return self.state()
+        answers: list[tuple[str, Callable[[], Any]]] = [
+            (export_page.EXPORT_PAGE_TAG, self.view),
+            (export_page.CLICK_TAG, lambda: self.click(js_const(expression, "selector"))),
+            (probe.PAGE_STATE_TAG, self.state),
+            (sketching.SELECTORS_TAG, lambda: dict.fromkeys(js_const(expression, "table"), 0)),
+        ]
+        for tag, answer in answers:
+            if tag in expression:
+                return answer()
         raise AssertionError(f"unexpected expression: {expression[:80]}")
 
     def respond(self, call: Call) -> dict[str, Any] | None:
