@@ -27,6 +27,23 @@ def test_the_reachability_block_is_the_one_an_operator_pastes(
         f'  "--ignore-certificate-errors-spki-list={material.spki_sha256}",\n'
         "]\n"
         "\n"
+        "Set in the tool's environment before fetching an export link from it:\n"
+        "\n"
+        f"  SSL_CERT_FILE={material.cert_path}\n"
+        "\n"
+    )
+
+
+def test_the_proxy_note_tells_the_fetch_too() -> None:
+    """`32`: the tool downloads a link with Python, which reads the same proxy Chrome does."""
+    note = cli.PROXY_NOTE.format(names="https_proxy")
+    assert '"--no-proxy-server",' in note
+    assert "no_proxy=127.0.0.1" in note
+
+
+def test_the_link_note_is_the_golden_string() -> None:
+    assert cli.link_note("https://127.0.0.1:8443/__mock/exports/abc.zip") == (
+        "Export requested — the link, instead of an email:\n\n  https://127.0.0.1:8443/__mock/exports/abc.zip\n\n"
     )
 
 
@@ -71,8 +88,16 @@ def test_a_ledger_nobody_is_serving_is_an_error(
     assert "claude-mock:" in capsys.readouterr().err
 
 
+def test_exports_nobody_is_serving_is_an_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.exports(host="127.0.0.1", port=1) == 1
+    assert "claude-mock:" in capsys.readouterr().err
+
+
 def test_rows_prints_every_citation(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.rows() == 0
     printed = capsys.readouterr().out
     assert "rename affordance" in printed
     assert "sign-in form" in printed
+    assert "export requested" in printed

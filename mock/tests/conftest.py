@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 EMAIL = "rehearsal@example.invalid"
 PASSWORD = "rehearsal-not-a-real-password"
 
+WALL = 1_757_764_800.0
+"""2025-09-13T12:00:00Z, the wall clock every test site reads."""
+
 
 class Client:
     """A browser's worth of behaviour: a cookie jar and a certificate it trusts.
@@ -69,6 +72,16 @@ class Client:
                 failure.headers.get("Location", ""),
             )
 
+    def get_bytes(self, path: str) -> tuple[int, bytes]:
+        """Status and the raw body: what a download is, and what `request` decodes away."""
+        request = urllib.request.Request(self.base + path)
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=self.context))
+        try:
+            with opener.open(request, timeout=10) as answer:
+                return answer.status, answer.read()
+        except HTTPError as failure:
+            return failure.code, failure.read()
+
     def post(self, path: str, body: bytes, **headers: str) -> tuple[int, str, str]:
         return self.request(path, data=body, headers=headers, follow=False)
 
@@ -99,7 +112,8 @@ def material(tmp_path_factory: pytest.TempPathFactory) -> certificate.Material:
 def site() -> Site:
     # Fast on purpose: the delay is what a rehearsal configures down, and a test
     # that waited a second per reply would be a test nobody runs.
-    return Site(email=EMAIL, password=PASSWORD, reply_delay_s=0.05, reply_steps=2)
+    # And a fixed wall clock, so an archive's timestamps are the same on every run.
+    return Site(email=EMAIL, password=PASSWORD, reply_delay_s=0.05, reply_steps=2, wall=lambda: WALL)
 
 
 @pytest.fixture

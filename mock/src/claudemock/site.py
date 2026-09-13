@@ -18,6 +18,11 @@ as they are:
   which is what the tool's `await-response` waits for, is something a rehearsal
   really waits for rather than a condition that is true on the first poll.
 
+A third behaviour is `32`'s, and smaller: the site keeps the **exports** it was
+asked for — a token each, minted when the export page's confirmation is pressed —
+and renders nothing itself. `archive.py` turns the chats into the archive a token
+is fetched as.
+
 Nothing here is a claim about claude.ai. `uimap.py` says which row of the UI map
 each of these behaviours stands on.
 """
@@ -103,13 +108,18 @@ class Reply:
 
 @dataclass
 class Chat:
-    """One chat: what it is called, what is in it, and what it is writing."""
+    """One chat: what it is called, what is in it, and what it is writing.
+
+    `created_at` is wall-clock seconds, the one moment the archive dates a chat
+    by; everything else about time here is the monotonic clock replies grow on.
+    """
 
     id: str
     title: str = NEW_CHAT_TITLE
     turns: list[Turn] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     reply: Reply | None = None
+    created_at: float = 0.0
 
     def view(self, now: float) -> list[Turn]:
         """Return the transcript as the page shows it at `now`."""
@@ -122,6 +132,21 @@ class Chat:
 
     def generating(self, now: float) -> bool:
         return self.reply is not None and not self.reply.finished(now)
+
+
+@dataclass
+class Export:
+    """One export the site was asked for: its token, when, and how often it was fetched.
+
+    The token is the whole of the link's secret, as a vendor's would be. It lives
+    until the process does, and it may be fetched any number of times: the mock
+    has no clock a link could expire on, and an operator whose first fetch failed
+    for a reason on their side should not have to ask again.
+    """
+
+    token: str
+    requested_at: float
+    fetched: int = 0
 
 
 def asked_line(message: str) -> str | None:
@@ -147,6 +172,7 @@ class Site:
         reply_steps: int = DEFAULT_REPLY_STEPS,
         ledger: Ledger | None = None,
         clock: Callable[[], float] = time.monotonic,
+        wall: Callable[[], float] = time.time,
     ) -> None:
         self.email = email
         self.password = password
@@ -154,9 +180,11 @@ class Site:
         self.reply_steps = reply_steps
         self.ledger = ledger if ledger is not None else Ledger()
         self.clock = clock
+        self.wall = wall
         self.chats: dict[str, Chat] = {}
         self.sessions: set[str] = set()
         self.pending_files: dict[str, list[str]] = {}
+        self._exports: dict[str, Export] = {}
         self._lock = threading.Lock()
 
     # -- the clock ---------------------------------------------------------- #
@@ -197,7 +225,7 @@ class Site:
 
     def create_chat(self, message: str, *, session: str) -> Chat:
         """Return a submit on `/new`: an id, a URL, a first turn, and an answer coming."""
-        created = Chat(id=str(uuid.uuid4()))
+        created = Chat(id=str(uuid.uuid4()), created_at=float(self.wall()))
         with self._lock:
             self.chats[created.id] = created
         self.ledger.count("chats_created")
@@ -241,6 +269,39 @@ class Site:
         with self._lock:
             names = self.pending_files.pop(session, [])
             chat.files.extend(names)
+
+    # -- exports (`32`) ------------------------------------------------------ #
+
+    def request_export(self) -> Export:
+        """Mint the link an ask gets instead of an email, and count the ask.
+
+        Site-wide rather than per session: the mock has one account, and the tool
+        distinguishes nothing finer. A second ask adds a second link rather than
+        replacing the first, so that two extractions yield two snapshots (§39, 6).
+        """
+        export = Export(token=secrets.token_hex(16), requested_at=float(self.wall()))
+        with self._lock:
+            self._exports[export.token] = export
+        self.ledger.count("exports_requested")
+        return export
+
+    def export(self, token: str) -> Export | None:
+        """Return the export a token names, counting the fetch; `None` for one nobody minted."""
+        with self._lock:
+            export = self._exports.get(token)
+            if export is not None:
+                export.fetched += 1
+            return export
+
+    def exports(self) -> Sequence[Export]:
+        """Every export asked for, in the order asked."""
+        with self._lock:
+            return tuple(self._exports.values())
+
+    def all_chats(self) -> Sequence[Chat]:
+        """Every chat, in the order created — what an archive holds."""
+        with self._lock:
+            return tuple(self.chats.values())
 
     # -- what a rehearsal reconciles against -------------------------------- #
 

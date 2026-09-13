@@ -45,8 +45,9 @@ specs/
 
 Two directories outside `src/` belong to the second brief and to no release:
 `mock/` is `26`'s stand-in for claude.ai, a workspace member with its own project
-file and README, and `rehearsal/` is `28`'s export and `29`'s protocol. Neither is
-in the wheel or the sdist, and `dataporter` imports neither.
+file and README — and, since `32`, the third brief's mock source too — and
+`rehearsal/` is `28`'s export and `29`'s protocol. Neither is in the wheel or the
+sdist, and `dataporter` imports neither.
 
 ## Sequence
 
@@ -103,6 +104,7 @@ M7 — Rehearsal (brief 02, §20–§28) — outside the gates: it needs no acco
 M8 — Extraction and backup (brief 03, §29–§40)
   30  The store and the snapshot: filing, fetching, listing, import from a snapshot
   31  The source session and the ask: a second profile, the extraction surface, one click
+  32  The mock export page: a page to ask on, and a link instead of an email
 ```
 
 ## Dependencies
@@ -134,16 +136,19 @@ from it — and `27` depends on `09`, `11` and `24`, whose procedures it package
                   28 ──┘
 ```
 
-M8 is a chain of two: `30` is everything of brief 03 that needs no browser — the store,
-the snapshot, the fetch, `snapshots`, and `import` reading a snapshot — and depends on
-`02`'s export source and `23`'s operation shape; `31` is the source session and the ask,
-which need `07`'s browser session and `24`'s unattended sign-in as well as `30`'s store to
-write the ask into. The split falls on the repository's own gate: nothing that touches an
-account is built before the browser half is proven.
+M8 is a chain of two and a stand-in: `30` is everything of brief 03 that needs no browser
+— the store, the snapshot, the fetch, `snapshots`, and `import` reading a snapshot — and
+depends on `02`'s export source and `23`'s operation shape; `31` is the source session and
+the ask, which need `07`'s browser session and `24`'s unattended sign-in as well as `30`'s
+store to write the ask into. The split falls on the repository's own gate: nothing that
+touches an account is built before the browser half is proven. `32` is the mock's side of
+both: it grows `26`'s site the page `31` presses and the link `30` fetches, and depends on
+the two of them only for the shape of what it serves — it imports nothing from the tool.
 
 ```text
 02, 23 ─> 30 ─┐
 07, 24 ───────┴─> 31
+26, 30, 31 ─> 32
 ```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
@@ -205,6 +210,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [29](impl/29-rehearsal.md) | The rehearsal | §22, §23, §25, §26, §27 | Done |
 | [30](impl/30-store-and-snapshot.md) | The store and the snapshot | §30, §31, §32, §33, §37, §38 | Built |
 | [31](impl/31-source-session-and-ask.md) | The source session and the ask | §31, §35, §36, §38, §39 | Built |
+| [32](impl/32-mock-export-page.md) | The mock export page | §40 (a mock source) | Done |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -243,9 +249,12 @@ Of the third brief, §30–§39 are claimed by `30` and `31`: `30` takes the sto
 snapshot, the fetch and import from a snapshot, `31` takes the ask, the source session
 and the safety boundaries, and §31 and §38 are split between them along the same line.
 §29 is that brief's goal and is claimed by both; §40 is its list of what is deliberately
-left, which no slice claims until one of its items is built. Both are `Built`, and
-neither is `Done` until a real account has been asked — the Status table above, and the
-two paragraphs under it, say what that costs.
+left, of which one item is built and claimed — the mock source, by `32` — and the rest
+stay unclaimed until theirs is. `30` and `31` are `Built`, and neither is `Done` until a
+real account has been asked — the Status table above, and the two paragraphs under it,
+say what that costs. `32` is `Done` for the reason `26`–`29` are: its live criterion needs
+a real Chromium and no account, and a real Chromium has walked its page under
+`dataporter extract`, both moves, with the numbers in the slice.
 
 ## Working rules
 

@@ -212,6 +212,9 @@ needs Hermes only when the source session has expired and somebody has to be sig
 first — which is `24`'s agent half, and the one part of a backup a cron job cannot do
 without a model.
 
+Both moves can be rehearsed with no account: `mock/` serves the export page and prints
+the link where the vendor would have emailed it ([`mock/README.md`](mock/README.md)).
+
 ## Running unattended
 
 ```sh
@@ -336,7 +339,9 @@ What comes out is §25's pass criteria, reconciled against the mock's own count 
 was asked to do, and — with `--record docs/rehearsal-NN.md` — a record like
 [`docs/rehearsal-01.md`](docs/rehearsal-01.md). It is **not** evidence about claude.ai:
 see [`specs/02-claude-mock.md`](specs/02-claude-mock.md) §27 and
-[`mock/README.md`](mock/README.md).
+[`mock/README.md`](mock/README.md). The mock also serves an export page and hands out a
+link instead of an email (`32`), so `extract` is rehearsed against it too — by hand, per
+`mock/README.md`; `rehearsal/run.py` runs the migration protocol only.
 
 [`specs/README.md`](specs/README.md) is the map: what each slice is, what is `Done`, and
 which brief section it satisfies. Start there rather than here.

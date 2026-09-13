@@ -190,5 +190,5 @@ _Avoid_: fixture export, sample export
 
 **Ledger**:
 The mock's own count of what it was asked to do — sign-ins, chats created, messages
-received, files accepted, renames.
+received, files accepted, renames, exports requested.
 _Avoid_: log, stats, metrics

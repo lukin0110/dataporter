@@ -11,7 +11,8 @@ Three rules hold everywhere in this package:
 
 - **It behaves on its own.** Nothing here is scripted per run and there is no
   model behind it. A submit creates a chat, a chat answers, a reload shows what
-  was said. What a rehearsal gets is a site, not a recording.
+  was said, and the export page hands out a link instead of sending an email.
+  What a rehearsal gets is a site, not a recording.
 - **It is governed by `docs/claude-ui-map.md`.** Every state it can show is a row
   of that table, and `uimap.py` is where each one is cited. It invents nothing:
   where the map says *unknown*, the simplest behaviour the tool already accepts

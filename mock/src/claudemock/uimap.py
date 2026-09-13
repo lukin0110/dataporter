@@ -40,6 +40,11 @@ ROWS: Mapping[str, str] = {
     "every chip": "every upload accepted",
     "title": "chat title",
     "rename": "rename affordance",
+    # the export page (`32`), out of `31`'s four rows
+    "export page": "export page",
+    "export button": "export button",
+    "export confirmation": "export confirmation",
+    "export requested": "export requested",
 }
 """Each thing the mock can show, and the row of the map it comes from.
 
@@ -79,6 +84,24 @@ WHAT_THE_MOCK_DOES: Mapping[str, str] = {
     "rename affordance": (
         "the chat menu opens from that trigger and holds a rename control and a "
         "text input; a renamed title survives a reload"
+    ),
+    "export page": (
+        "/settings/data-privacy-controls — the tool's placeholder path, re-typed — "
+        "with no composer on it; signed out it redirects to /login like every page"
+    ),
+    "export button": (
+        'a visible button[data-testid="export-data"], with a hidden twin before it '
+        "in the DOM so that a click that did not filter by visibility would miss"
+    ),
+    "export confirmation": (
+        'pressing the button opens a [role="dialog"] holding a '
+        '[data-testid="confirm-export"] submit button; nothing is asked of the '
+        "site until that is pressed"
+    ),
+    "export requested": (
+        'confirming POSTs /api/exports, and a [role="status"] appears only once '
+        "the ask is counted and a link minted — the link is served at a /__mock/ "
+        "address on the mock's own host, and printed where an email would be sent"
     ),
 }
 """What the mock does for each row, in one line.
