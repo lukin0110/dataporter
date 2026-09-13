@@ -239,8 +239,9 @@ same bytes.
 
 ## 56. Built ahead of its driver
 
-Nothing in the tool drives chatgpt.com, so no rehearsal can run against this mock until
-the later brief's slices exist. Until then the mock is proven by two things:
+None of this mock exists today: the brief is intent, and its slices are carved after it.
+And nothing in the tool drives chatgpt.com, so no rehearsal can run against the mock
+until the later brief's slices exist. Until then the mock is proven by two things:
 
 - its own suite — the behaviour without a socket, the wire over a real TLS connection to
   a real port, the archive read back with nothing of the tool's;
@@ -260,22 +261,23 @@ carries a message, a title or an address.
 
 ## 57. What is sure and what is not
 
-What this brief's slices build, and on what ground:
+What this brief's slices are to build, and on what ground. None of it exists yet: the
+brief is intent, and its slices are carved after it.
 
-| Behaviour | Ground | Built |
+| Behaviour | Ground | Who builds it |
 | --- | --- | --- |
-| The core and the project shape (§53) | the mock claude.ai, `26`–`32` | yes |
-| Sign-in on two host names | documented (7426629) | yes |
-| The sign-in screens and their fields | *unknown* | yes, simplest shape |
-| A new chat at the root, a conversation at its own URL | reported | yes |
-| A composer with a stable id, one send-and-stop control, turns by role, a copy control on a finished turn | reported | yes |
-| A paste over 10,000 characters becomes an attachment, with **Show in text field** | documented (6825453) | yes |
-| Rename through the sidebar entry's options menu into a titled field | reported | yes |
-| Upload through a file control, shown by name | reported | yes |
-| The export page and its flow: **Export**, **Confirm export**, a status | documented (7260999) | yes |
-| A link instead of an email; the archive behind a session | documented (7260999) | yes |
-| The archive's shape | assumed (`docs/chatgpt-export-format.md`) | yes |
-| The ledger, reachability, lifetime | §21 | yes |
+| The core and the project shape (§53) | the mock claude.ai, `26`–`32` | a slice of this brief |
+| Sign-in on two host names | documented (7426629) | a slice of this brief |
+| The sign-in screens and their fields | *unknown* | a slice of this brief, in the simplest shape |
+| A new chat at the root, a conversation at its own URL | reported | a slice of this brief |
+| A composer with a stable id, one send-and-stop control, turns by role, a copy control on a finished turn | reported | a slice of this brief |
+| A paste over 10,000 characters becomes an attachment, with **Show in text field** | documented (6825453) | a slice of this brief |
+| Rename through the sidebar entry's options menu into a titled field | reported | a slice of this brief |
+| Upload through a file control, shown by name | reported | a slice of this brief |
+| The export page and its flow: **Export**, **Confirm export**, a status | documented (7260999) | a slice of this brief |
+| A link instead of an email; the archive behind a session | documented (7260999) | a slice of this brief |
+| The archive's shape | assumed (`docs/chatgpt-export-format.md`) | a slice of this brief |
+| The ledger, reachability, lifetime | §21 | a slice of this brief |
 
 What this brief names and builds nothing for, because nobody has looked or the mock has
 no clock — each an *unknown* or a *reported* row served by nothing, and each on §58's

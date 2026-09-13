@@ -7,10 +7,11 @@
 Brief `05` §55 makes this the one place the shape of a ChatGPT export is written down: the
 mock chatgpt.com renders its archive from what this document says, and the tool's ChatGPT
 half, when it is written, reads what this document says. OpenAI publishes no description
-of the format — the best third-party account of it opens with "OpenAI does not document
-this format publicly … It can change without notice" — so everything below is what
-independent readers of real exports agree on, read on 2026-09-13, and the last section
-says how to confirm it.
+of the format — the fullest third-party account of it, the format notes of the
+`nexus-ai-chat-importer` project (*Sources*, below), opens with "OpenAI does not
+document this format publicly … It can change without notice" — so everything below is
+what independent readers of real exports agree on, read on 2026-09-13 from the sources
+listed at the end, and the section before them says how to confirm it.
 
 ## How to read this document
 
@@ -185,3 +186,18 @@ nothing of its content:
    ones it refutes.
 6. Open the slice that builds the mock's archive and change what it renders to match;
    then, when there is one, the tool's ChatGPT export model.
+
+## Sources
+
+Read on 2026-09-13. None is OpenAI's; each is a parser or a reader of real exports, and
+the claims above are what they agree on.
+
+| Short name | What | Address | Date |
+| --- | --- | --- | --- |
+| nexus-ai-chat-importer | "ChatGPT export format (2026)", the August 2026 member inventory, the `.dat` assets and the name index; the quoted opening line | <https://github.com/Superkikim/nexus-ai-chat-importer/blob/main/docs/architecture/providers/chatgpt-export-format.md> | 2026 |
+| convoviz | `docs/dev/chatgpt-spec.md` v3.0, the February 2026 member inventory, a schema of `conversations.json`, the hidden-message rule | <https://github.com/mohamed-chs/convoviz/blob/main/docs/dev/chatgpt-spec.md> | 2026-02-05 |
+| chatgpt-exporter | `src/api.ts`, the `content_type` union and the author roles | <https://github.com/pionxzh/chatgpt-exporter/blob/master/src/api.ts> | read 2026-09-13 |
+| obsidian-weaver | `src/interfaces/IConversation.ts`, typed conversation, node and message | <https://github.com/vasilecampeanu/obsidian-weaver/blob/master/src/interfaces/IConversation.ts> | read 2026-09-13 |
+| open-chat-memory | a redacted sample `conversations.json`, the root node and a finished assistant node | <https://github.com/ndamulelonemakh/open-chat-memory/blob/main/docs/examples/openai-export-sample/conversations.json> | read 2026-09-13 |
+| ChatGPT-Wrapped | `docs/export-data-schema.md`, the directory layout and `export_manifest.json` | <https://github.com/Systina12/ChatGPT-Wrapped/blob/main/docs/export-data-schema.md> | read 2026-09-13 |
+| OpenAI 9106926 | "Transfer exported conversations between ChatGPT accounts": numbered conversation files in large exports | <https://help.openai.com/en/articles/9106926-transfer-exported-conversations-between-chatgpt-accounts> | read 2026-09-13 |

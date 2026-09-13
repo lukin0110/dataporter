@@ -47,7 +47,7 @@ specs/
     └── …
 ```
 
-Two directories outside `src/` belong to the second brief and to no release:
+Two directories outside `src/` belong to no release:
 `mock/` is the mocks' project — `26`'s stand-in for claude.ai, since `32` the third
 brief's mock source too, and since brief `05` the home of the mock chatgpt.com and of
 the core the sites share — a workspace member with its own project file and README;
