@@ -8,6 +8,7 @@ two things a fake cannot show: a redirect the page makes itself, and a
 """
 
 import json
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -548,3 +549,20 @@ def test_a_browser_that_goes_away_is_watch_lost(tmp_path: Path) -> None:
     assert len(lost) == 1
     assert lost[0]["what"] == "watch_lost"
     assert lost[0]["reason"].startswith("browser connection lost")
+
+
+def test_a_thread_that_will_not_stop_keeps_its_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stuck loop is seen — `running` stays true — and can be stopped again, not lost."""
+    release = threading.Event()
+    stuck = threading.Thread(target=release.wait, daemon=True)
+    stuck.start()
+    watch = watching.Watch(trace=None, site=probe.MIGRATION_SITE, _thread=stuck)
+    monkeypatch.setattr(watching, "STOP_S", 0.05)
+
+    watch.stop()
+    assert watch.running
+
+    release.set()
+    stuck.join(timeout=WAIT_S)
+    watch.stop()
+    assert not watch.running
