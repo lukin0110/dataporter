@@ -5,7 +5,7 @@
 **Depends on:** [26](26-mock-claude.md), [32](32-mock-export-page.md) (the mock claude.ai
 as it stands), ADR [0007](../../docs/adr/0007-the-mocks-are-one-project.md)
 **Enables:** [39](39-chatgpt-mock-site.md)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -140,14 +140,24 @@ is where the code that a second site would otherwise copy lives.
 - `chatgpt-mock --version` and `claude-mock --version` print the same number, `0.2.0`.
 - *(Live: it needs a headless Chromium and the scripted `hermes`, and no account.)* A
   rehearsal (`29`) against `claude-mock serve` from this slice passes as rehearsal 02
-  did, with the same six-row ledger reconciled. Not yet run: the code the mock claude.ai
-  serves is unchanged in every byte a rehearsal reads, and its suite of the wire is what
-  says so until the next rehearsal record does.
+  did, with the same six-row ledger reconciled.
 
-The first four were met on 2026-09-13. The status is `Built` rather than `Done` because
-the fifth is a rehearsal record nobody has written since the refactor, and §56's rule
-holds for every slice of this brief: `Built` when its suite passes, `Done` when a
-tool-driven run has walked it.
+Every criterion was met on 2026-09-13. The first four by the suite; the fifth by
+`rehearsal/run.py` against this slice's `claude-mock serve` with its default reply
+delay, a real headless Chromium (Playwright's build 1194) and the scripted `hermes`:
+`rehearsal: passed`, all twelve of §25's criteria, the pilot 9/9 at the first attempt,
+no pause, `verify` exit 0, 9/9 titles set, the drill losing nothing, and the ledger
+reconciled — 10 chats created against 9 recorded plus the one the drill killed, 11
+messages against 10 parts plus the drill's, 1 file, 9 renames, 1 sign-in — the mock
+closing at 1 sign-in, 10 chats, 20 messages (the follow-up's nine among them), 1 file,
+9 renames, 0 exports. That is a tool-driven run against the refactored mock, which is
+what §56 asks of a slice of this brief, so the status is `Done`. One thing the run
+found is worth writing down: a first attempt with `--reply-delay-s 0.3` failed the
+pilot at every conversation with `ambiguous_ui`, identically against `main`'s mock —
+the reply was whole before the scripted agent probed for the human turn it had just
+sent, so the last turn it saw was the assistant's. The default delay is what a
+rehearsal is written against, and a mock that answers faster than a real site could
+is a mock that fails the tool for the tool's wrong reason.
 
 ## Risks
 

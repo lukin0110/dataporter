@@ -265,7 +265,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [35](impl/35-watch.md) | The watch | §44, §46, §47, §50 | Done |
 | [36](impl/36-rehearsal-traces.md) | The rehearsal's traces | §47, §48 | Done |
 | [37](impl/37-traces-as-evidence.md) | Traces as evidence | §49, §50 | Built |
-| [38](impl/38-mock-core.md) | The core and the rename | §53 | Built |
+| [38](impl/38-mock-core.md) | The core and the rename | §53 | Done |
 | [39](impl/39-chatgpt-mock-site.md) | The mock chatgpt.com: sign-in and chats | §54, §57 | Built |
 | [40](impl/40-chatgpt-export-and-archive.md) | The mock chatgpt.com: the export page and the archive | §54, §55 | Built |
 | [41](impl/41-chatgpt-mock-walk.md) | The README's walk | §53, §54, §56 | Built |
@@ -339,14 +339,14 @@ project shape, `39` the sign-in, the chats, the ledger, the reachability and the
 of §54 and the rows §57 says a slice builds, `40` the export page of §54 and the archive
 of §55, and `41` the walk of §56 and the two-mock merge of §54. §52 is that brief's goal
 and is claimed by all four; §58 is its list of what is deliberately left and stays
-unclaimed until one of its items is built. All four are `Built` and none is `Done`: §56
-lends the live criterion to the brief that gives the tool a ChatGPT half, and a slice of
-`05` reaches `Done` when that brief's first run has walked the mock. What has walked it
-so far is a headless Chromium driven through the README's walk by hand on 2026-09-13
-(`39`, `40` and `41` record it), which proves the pages and turns no row of
-`docs/chatgpt-ui-map.md` *observed*. `38`'s own live criterion is a rehearsal against
-the refactored mock claude.ai, which nobody has run since; its suite of the wire is what
-says the bytes did not change until the next record does.
+unclaimed until one of its items is built. `38` is `Done`: its live criterion is a
+rehearsal against the refactored mock claude.ai, and one ran on 2026-09-13 and passed
+every one of §25's criteria with the ledger reconciled (the slice has the numbers). `39`,
+`40` and `41` are `Built` and not `Done`: §56 lends their live criterion to the brief
+that gives the tool a ChatGPT half, and a slice of `05` reaches `Done` when that brief's
+first run has walked the mock. What has walked it so far is a headless Chromium driven
+through the README's walk by hand on 2026-09-13 (the three slices record it), which
+proves the pages and turns no row of `docs/chatgpt-ui-map.md` *observed*.
 
 ## Working rules
 
