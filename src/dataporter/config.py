@@ -339,6 +339,17 @@ class TimeoutSettings(BaseModel):
     deadline would have to be guessed from a size nobody knows in advance.
     """
 
+    ask_s: float = Field(default=60.0, gt=0)
+    """How long `31`'s ask waits for the export page to say it was requested.
+
+    A minute: the ask is a button, a confirmation dialog and whatever the page
+    does about it, none of which is a generation or a download. Greater than
+    zero for the reason `hermes_task_s` is — a wait with no time in it would
+    report "no confirmation" about a page nobody looked at — and a wait that
+    runs out writes no `ask.json`, so the export may have been requested and the
+    tool says it cannot tell rather than pretending either way.
+    """
+
     hermes_task_s: float = Field(default=1800.0, gt=0)
     """One conversation's `hermes -z` run (`09`, spent by `12`).
 
@@ -492,7 +503,14 @@ class AccountsSettings(BaseModel):
 
 
 class AuthSettings(BaseModel):
-    """The destination account's credentials, for a non-interactive run (`24`).
+    """The credentials of the account this invocation signs in to (`24`, `31`).
+
+    The destination's for everything the first brief describes, and the source
+    account's for `31`'s ask — one invocation signs in to one account, so one
+    pair of fields serves both and an operator asking for two accounts in one
+    command was never a thing this tool did. §35 holds the source to §8's rules
+    exactly: held in memory for one invocation, written nowhere, never in a
+    snapshot.
 
     From the environment (`DATAPORTER_AUTH__EMAIL`, `DATAPORTER_AUTH__PASSWORD`) or the
     command line (`--email`, `--password-file`) and never from `config.toml` —
@@ -681,13 +699,23 @@ class Settings(BaseSettings):
 
     @property
     def browser_profile_dir(self) -> Path:
-        """Chrome's `--user-data-dir` (`07`).
+        """Chrome's `--user-data-dir` (`07`, `31`).
 
-        Inside the workspace and not configurable: the point of the dedicated
-        profile is that it is *ours*, created by us, deletable by
-        `session logout`, and never the operator's everyday one (§17).
+        Not configurable: the point of the dedicated profile is that it is
+        *ours*, created by us, deletable by `session logout`, and never the
+        operator's everyday one (§17).
+
+        Where it is depends on whose session it is. Without an account it is the
+        destination's and lives in the workspace, exactly as `07` put it. With
+        one it is that source account's and lives in the account home, because
+        one browser profile holds one signed-in identity per site (§35) — a
+        source signed in over the destination's profile would sign the
+        destination out, and `import` would find somebody else's account behind
+        the composer.
         """
-        return self.workspace / BROWSER_PROFILE_DIRNAME
+        home = self.account_home
+        base = self.workspace if home is None else home
+        return base / BROWSER_PROFILE_DIRNAME
 
     @property
     def hermes_dir(self) -> Path:
@@ -879,6 +907,32 @@ def _sources() -> tuple[str, ...]:
     from dataporter.store import SOURCES
 
     return SOURCES
+
+
+SOURCE_WITHOUT_ACCOUNT = "--source names the vendor of an account; give --account LABEL"
+
+
+def with_session_account(
+    settings: Settings, source: str | None, account: str | None
+) -> Settings:
+    """Whose session `login`, `session status` and `session logout` mean (`31`).
+
+    `None` for `account` is the destination, which is what those three commands
+    have always meant and go on meaning: the settings come back untouched, so
+    the profile stays in the workspace and every byte of their output is what it
+    was before this slice. A label is a source account, and is applied through
+    `with_account` — the same validation, the same two fields, the same refusal
+    for a label that could not be a directory name.
+
+    `--source` without `--account` is refused rather than ignored: it names the
+    vendor of an account nobody gave, and a flag accepted and quietly dropped is
+    what `12` ruled out for `--pilot`.
+    """
+    if account is None:
+        if source is not None:
+            raise ConfigError(SOURCE_WITHOUT_ACCOUNT)
+        return settings
+    return with_account(settings, source, account)
 
 
 def with_store_dir(settings: Settings, directory: Path | None) -> Settings:

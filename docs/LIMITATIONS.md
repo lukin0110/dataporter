@@ -198,6 +198,33 @@ the rest of this file is about; both are about what a backup does *not* promise.
   whatever `--account` said. The label is the operator's claim about whose account it is,
   and the tool cannot check it. *by construction*
 
+## The ask (`31`)
+
+What one press in a source account does not promise. All three are about the vendor's
+page, which nobody has watched yet: `docs/extraction-01.md` is where they stop being
+`*unknown*`.
+
+- **A rate limit on asking is indistinguishable from a page we do not recognise.** Claude
+  may refuse a second export request within some window, and what the tool would see is
+  the same thing it sees when the page has changed: no confirmation inside
+  `timeouts.ask_s`. It exits `1` with `no confirmation that the export was requested`,
+  writes no `ask.json`, and leaves a person to read the page. Erring this way is
+  deliberate — a record claiming an export was requested is worse than one saying nobody
+  can tell — but it means "asked too soon" and "the button moved" arrive as one message.
+  *unknown*
+- **A JavaScript dialog on the export page stops the ask.** It is never answered: what it
+  asks is unknown, and the ask is allowed one action in the account. Exit `1`, no record,
+  and a person clears it. *by construction*
+- **One browser at a time.** The destination session and each source session share
+  `browser.cdp_port`, so a Chrome left running for one is `PortInUse` for the other. Close
+  it and run the command again; sessions are sequential by design, not by accident.
+  *by construction*
+- **An unattended ask on a signed-out profile needs Hermes.** Signing in without a person
+  is `24`'s agent half, so a cron job whose source session has expired exits `3` and asks
+  for `login` — the right failure, but a silent one until somebody reads the log. A
+  signed-in profile needs no model at all, which is the case the backup is built for.
+  *by construction*
+
 ## How to add to this file
 
 One bullet, one mark, and the slice that found it. A limitation discovered without a mark

@@ -277,7 +277,10 @@ def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
 
     if settings.non_interactive:
         signin.require_credentials(settings)
-    log.enable_run_log(settings.workspace)
+    # `settings.logs_dir`, which is the workspace for the destination and the
+    # account home for `31`'s source: a command about one account writes its
+    # records beside that account's other operational files.
+    log.enable_run_log(settings.logs_dir)
     # Through the module, not a bound name: the test suite substitutes
     # `launcher.launch` to hand a command a fake Chrome.
     browser = launcher.launch(settings, NEW_CHAT_URL)
@@ -308,7 +311,12 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
 
     The answer is a line and an exit code rather than an `AuthError`: `SIGNED_OUT`
     is the command's result, not an error, and it carries no `error:` prefix.
+
+    Whose session is `settings`': the destination's, or `31`'s source account
+    when one was named. Nothing here knows the difference — the profile
+    directory is the whole of it.
     """
+    log.enable_run_log(settings.logs_dir)
     client = CdpClient(
         port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s
     )
@@ -339,6 +347,7 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
 def logout(settings: Settings, *, sink: Sink = DISCARD) -> LogoutOutcome:
     """Remove the browser profile. Local only, and said so: the account itself is
     untouched, and a session on another machine is not ended by this."""
+    log.enable_run_log(settings.logs_dir)
     removed = remove_profile(settings)
     profile = settings.browser_profile_dir
     sink.line(

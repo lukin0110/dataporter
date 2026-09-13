@@ -13,6 +13,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import Self
 
+from dataporter.browser import export_page
+
 FIXTURES = Path(__file__).parent / "fixtures" / "pages"
 
 CHAT_ID = "11111111-2222-4333-8444-555555555555"
@@ -37,9 +39,14 @@ ROUTES: dict[str, str] = {
     f"/chat/{RESPONDING_CHAT_ID}": "responding.html",
     f"/chat/{MIGRATED_CHAT_ID}": "migrated.html",
     "/settings/profile": "dialog.html",
+    export_page.EXPORT_PAGE_PATH: "settings-export.html",
 }
 """Path to fixture. `/settings/profile` is deliberately a real page: `08` needs
-somewhere outside the migration surface to point its safety gate at."""
+somewhere outside the migration surface to point its safety gate at.
+
+The export page is served at the path `31` names rather than at one of its own,
+so that a corrected UI map moves the fixture with the code and no second
+spelling of the path exists here."""
 
 
 class _Handler(BaseHTTPRequestHandler):

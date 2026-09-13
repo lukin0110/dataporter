@@ -917,6 +917,8 @@ def record_action(
     ok: bool,
     elapsed_ms: int,
     conversation_id: str | None = None,
+    url: str | None = None,
+    selector: str | None = None,
 ) -> None:
     """Append one line to `<workspace>/logs/actions.jsonl`.
 
@@ -924,14 +926,24 @@ def record_action(
     lost result. The helper has already acted on the page by the time this runs,
     and `19` counting one action fewer is a smaller loss than Hermes never
     learning what happened.
+
+    `url` and `selector` are `31`'s: an ask is two clicks on a page no helper
+    may touch, and what it clicked is worth writing down. Omitted from the record
+    rather than written as `null`, so a helper's line keeps the five keys it has
+    always had and `19` reads the same file either way. Neither is content —
+    the URL is the export page's and the selector is ours — and the element's
+    own text is never recorded at all.
     """
-    record = {
+    record: dict[str, object] = {
         "ts": utcnow().isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "helper": helper,
         "ok": ok,
         "elapsed_ms": elapsed_ms,
         "conversation_id": conversation_id,
     }
+    record.update(
+        {key: value for key, value in (("url", url), ("selector", selector)) if value}
+    )
     path = actions_path(workspace)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

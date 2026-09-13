@@ -6,7 +6,7 @@
 **Depends on:** [30](30-store-and-snapshot.md), [07](07-browser-session.md),
 [24](24-non-interactive.md)
 **Enables:** extraction end to end — an ask, an email, a fetch, a snapshot
-**Status:** Not started
+**Status:** Built
 
 ## Goal
 
@@ -19,8 +19,12 @@ model. The fetch that follows is `30`'s.
 
 - **An account on the session commands** (`cli.py`, `browser/session.py`): `login`,
   `session status` and `session logout` gain `--source SRC` (default `claude`) and
-  `--account LABEL`, applied through `config.with_account`. Absent, they mean the
-  destination and their output is byte-identical to today. Brief §35 writes `--account`
+  `--account LABEL`, applied through `config.with_session_account`, which is
+  `with_account` plus the two rules a command with an *optional* label needs: no label is
+  the destination, and `--source` without one is refused rather than ignored
+  (`SOURCE_WITHOUT_ACCOUNT`, exit `2`) — a wrapper rather than a branch in `cli.py`,
+  where `23`'s "a command parses, calls one library function, and exits" forbids the `if`.
+  Absent, they mean the destination and their output is byte-identical to today. Brief §35 writes `--account`
   alone; a label is scoped by its source here because a source "knows how to sign in"
   (§34) and the day ChatGPT lands, `login` needs to know which sign-in page to open.
   `session_app`'s help becomes `Inspect or end a browser session.`; `AuthSettings`'
@@ -42,8 +46,16 @@ model. The fetch that follows is `30`'s.
   uses the export page as its URL: `browser_session.current_state(session,
   EXPORT_PAGE_URL)` and `browser_session.wait_for_login(session,
   timeout_s=settings.timeouts.login_s, url=EXPORT_PAGE_URL)`, the module-level functions
-  `browser/session.py` already has, with their existing `url` keyword. `/new` never
-  enters this surface. The surface is
+  `browser/session.py` already has, with their existing `url` keyword. What "signed out"
+  *means* on that URL is `export_page.signed_out(state)`, which reads the page kind and
+  not `state.logged_in`: `07`'s answer is a visible composer, a settings page has none,
+  and a signed-in export page would otherwise send every ask looking for credentials.
+  A redirect to `/login` is the signal, which is the `signed out` row of the UI map asked
+  of a different URL. `/new` never
+  enters this surface — but a finished sign-in lands the tab there, so the ask navigates
+  *into* the surface before it drives anything: one attach outside the wall, the
+  navigation, then a wait on the live URL and on the target list (`on_export_page`), and
+  every read and click after that under `driving`. The surface is
   passed to `helpers.driving` by this module and nothing else. The page's selectors live
   in this module's own `_SELECTORS`, injected as `probe.py` injects its own, never
   appended to `probe`'s prelude: every migration expression would otherwise carry them.
@@ -80,14 +92,20 @@ model. The fetch that follows is `30`'s.
      When it arrives:
 
        dataporter extract --source claude --account old-personal --link <url>
-
      ```
 
+     The block ends at the command, as `30`'s ends at `Snapshot:`: the blank line before
+     the brief's closing fence is the fence's, not the block's.
+
   Every action goes to the account home's `logs/actions.jsonl` through
-  `helpers.record_action`, with the page's URL and the click's selector and never its
-  text.
-- **Safety** (§36): the source session never imports — `import_command` and
-  `resume_command` never call `with_account`, and a test proves it from `cli.py`'s AST;
+  `helpers.record_action`, which gains an optional `url` and `selector` — omitted from
+  the record rather than written as `null`, so a helper's line keeps the five keys `19`
+  has always read — and never the element's text.
+- **Safety** (§36): the source session never imports — no migration command calls
+  `with_account` or `with_session_account`, and a test proves it from `cli.py`'s AST,
+  both ways round: none of `import`, `resume`, `verify` or `followup` makes either call,
+  and the set of commands that do is exactly `login`, `session status`, `session logout`
+  and `extract`;
   the ask navigates inside `EXTRACTION_SURFACE` only, guarded before attach and on the
   live URL as `driving` guards; the only synthesized inputs are the two clicks, and
   `Input.insertText` is never sent from this path.
@@ -96,7 +114,10 @@ model. The fetch that follows is `30`'s.
   requested`. `docs/spike/README.md` gains the steps that observe them.
 - **The record**: `docs/extraction-01.md`, in the experiment documents' discipline, holds
   brief §39's answers to questions 1, 2 and 5 with numbers, once a real account has been
-  asked. Until then the slice is `Built`, not `Done`.
+  asked. Until then the slice is `Built`, not `Done`. `tests/test_extraction_doc.py`
+  keeps it honest the way `test_experiment_doc.py` keeps `20`'s: a measure, an evidence
+  line and one marked number per question, two marks only, and nothing claiming a
+  measurement while the status line still says none.
 - **Tests**:
   - `tests/fake_export_page.py` — a `FakePage` with stages `settings → confirm →
     requested`, answering `EXPORT_PAGE_JS` by its tag, reading the selector back from a
@@ -110,8 +131,8 @@ model. The fetch that follows is `30`'s.
   - `tests/test_ask.py` (`slow`, the fake Chrome substituted for `launcher.launch` as
     `test_browser_session.py` does) — the happy path writes `ask.json` and prints the
     block byte for byte, and the fake recorded exactly two clicks and no
-    `Input.insertText`; an open ask is refused before launch; signed out and unattended
-    with no credentials exits `3` with `MISSING_CREDENTIALS`; the JavaScript dialog exits
+    `Input.insertText`; an open ask is refused before launch; unattended with no
+    credentials exits `2` with `MISSING_CREDENTIALS`; the JavaScript dialog exits
     `1` and writes no `ask.json`; no button exits `1`; `requested` never arriving exits
     `1`. Every branch is covered by the fake, so the coverage gate never rests on a
     browser.
@@ -144,6 +165,20 @@ model. The fetch that follows is `30`'s.
   is substituted in some forty test sites and by `world.py`; `browser_profile_dir` is read
   by `status`, `logout`, `doctor`, `verify` and `followup`; and "the source session never
   imports" becomes a property of who calls `with_account`, checkable by reading `cli.py`.
+- **The export page has no composer, so "signed in" is a different question there.**
+  `07`'s `logged_in` is a visible composer on a page that is not `/login`, which is the
+  right test for a chat and no test at all for a settings page — a signed-in export page
+  answers "no" to it. So the ask asks the URL instead (`signed_out`), and the
+  interactive wait still uses `wait_for_login`, which returns when the person lands back
+  in the application. That is why the ask then navigates to the export page rather than
+  assuming the tab is on it. Rejected: a second `logged_in` rule inside `probe`, which
+  would make one function mean two things on two pages.
+- **Exit `2` for missing credentials, not `3`.** The acceptance criteria first said `3`;
+  every other command in the tool answers a missing credential with `signin.
+  require_credentials` — a `UsageError`, exit `2`, before any browser — and this spec's
+  own step 2 says "as `login` does". One of the two had to give, and a second spelling of
+  the same refusal would have been the worse answer. Exit `3` stays what it has always
+  been here: a session that could not be signed in.
 - **`--source` on the session commands.** Brief §35 left it out; a label that means one
   account on Claude and another on ChatGPT is a trap, and the sign-in page is the
   source's.
@@ -167,9 +202,10 @@ model. The fetch that follows is `30`'s.
   recorded exactly two clicks and no `Input.insertText`.
 - The same command again exits `2` with the open-ask line and starts no browser;
   `--abandon` then a new ask exits `0`.
-- `DATAPORTER_NON_INTERACTIVE=1` with no credentials on a signed-out profile exits `3`
-  with `MISSING_CREDENTIALS`; on a signed-in profile it exits `0` and no sign-in was
-  attempted.
+- `DATAPORTER_NON_INTERACTIVE=1` with no credentials exits `2` with `MISSING_CREDENTIALS`
+  and starts no browser (amended from `3`; see the design note); with credentials on a
+  signed-in profile it exits `0` and no sign-in was attempted, and on a signed-out one
+  `signin.ensure_signed_in` is what runs.
 - `driving` under `EXTRACTION_SURFACE` refuses `https://claude.ai/new` and
   `/chat/<uuid>` with `outside_migration_surface`; under `MIGRATION_SURFACE` it refuses
   the export page.

@@ -46,6 +46,7 @@ from dataporter.config import (
     Settings,
     load_settings,
     with_account,
+    with_session_account,
     with_store_dir,
 )
 from dataporter.errors import (
@@ -257,7 +258,7 @@ def _typer(**kwargs: Any) -> typer.Typer:
 app = _typer(
     cls=_RootGroup, help="Migrate a Claude export into another Claude account."
 )
-session_app = _typer(help="Inspect or end the destination browser session.")
+session_app = _typer(help="Inspect or end a browser session.")
 browser_app = _typer(help="Deterministic browser primitives Hermes calls.")
 
 app.add_typer(session_app, name="session")
@@ -463,6 +464,14 @@ Account = Annotated[
         help="Your label for the account. Not the login; it names the snapshots.",
     ),
 ]
+AccountOption = Annotated[
+    str | None,
+    typer.Option(
+        "--account",
+        metavar="LABEL",
+        help="Act on this source account's session instead of the destination's.",
+    ),
+]
 StoreDir = Annotated[
     Path | None,
     typer.Option(
@@ -471,9 +480,11 @@ StoreDir = Annotated[
         help="Where snapshots are kept. Defaults to ~/.dataporter/store.",
     ),
 ]
-"""`30`'s three. `--account` is required wherever it appears: a snapshot is
-addressed by source, account and stamp, and the tool does not guess whose account
-it is looking at."""
+"""`30`'s three, and `31`'s fourth. `--account` is required on `extract`: a
+snapshot is addressed by source, account and stamp, and the tool does not guess
+whose account it is looking at. On the three session commands it is optional and
+its absence is the destination (§35), which is what those commands have always
+meant."""
 
 AttachmentsDir = Annotated[
     Path | None,
@@ -494,9 +505,16 @@ job is to explain that."""
 
 
 @app.command()
-def login(ctx: typer.Context) -> None:
+def login(
+    ctx: typer.Context, account: AccountOption = None, source: Source = None
+) -> None:
     """Open Claude in a dedicated browser profile and wait for sign-in."""
-    finish(browser_session.login(settings_of(ctx), sink=console.Terminal()))
+    finish(
+        browser_session.login(
+            with_session_account(settings_of(ctx), source, account),
+            sink=console.Terminal(),
+        )
+    )
 
 
 @app.command("import")
@@ -739,15 +757,29 @@ def doctor(ctx: typer.Context) -> None:
 
 
 @session_app.command("status")
-def session_status(ctx: typer.Context) -> None:
-    """Report whether the destination account is signed in."""
-    finish(browser_session.status(settings_of(ctx), sink=console.Terminal()))
+def session_status(
+    ctx: typer.Context, account: AccountOption = None, source: Source = None
+) -> None:
+    """Report whether an account is signed in. Without --account, the destination."""
+    finish(
+        browser_session.status(
+            with_session_account(settings_of(ctx), source, account),
+            sink=console.Terminal(),
+        )
+    )
 
 
 @session_app.command("logout")
-def session_logout(ctx: typer.Context) -> None:
-    """Sign the destination account out and clear the browser profile."""
-    finish(browser_session.logout(settings_of(ctx), sink=console.Terminal()))
+def session_logout(
+    ctx: typer.Context, account: AccountOption = None, source: Source = None
+) -> None:
+    """Clear a browser profile. Without --account, the destination's."""
+    finish(
+        browser_session.logout(
+            with_session_account(settings_of(ctx), source, account),
+            sink=console.Terminal(),
+        )
+    )
 
 
 # --------------------------------------------------------------------------- #

@@ -204,7 +204,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [28](impl/28-rehearsal-export.md) | The rehearsal export | §24 | Done |
 | [29](impl/29-rehearsal.md) | The rehearsal | §22, §23, §25, §26, §27 | Done |
 | [30](impl/30-store-and-snapshot.md) | The store and the snapshot | §30, §31, §32, §33, §37, §38 | Built |
-| [31](impl/31-source-session-and-ask.md) | The source session and the ask | §31, §35, §36, §38, §39 | Not started |
+| [31](impl/31-source-session-and-ask.md) | The source session and the ask | §31, §35, §36, §38, §39 | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -215,8 +215,16 @@ are met, and it is what turns `Built` into `Done`.
 
 `30` carries the same value for a different half of the world: it needs no Hermes, no
 Chrome and no account, and every acceptance criterion it states passes — but no *real*
-vendor link has been fetched, and §39's questions about one cannot be answered until
-`31`'s ask exists to produce a link. The slice says so in its own first design note.
+vendor link has been fetched, and §39's questions about one cannot be answered until an
+ask has produced a link. The slice says so in its own first design note.
+
+`31` is `Built` for the reason the browser slices are: its code is in and its tests pass
+against a fake export page and, in the live tier, against a checked-in fixture in a real
+Chrome — but the page it was written for has never been looked at. Its path and its three
+selectors are placeholders, the four export rows of `docs/claude-ui-map.md` are
+`*unknown*`, and `docs/extraction-01.md` carries `*not yet run*` against §39's questions
+1, 2 and 5. One trip to a throwaway source account — `docs/spike/README.md` has the steps
+— is what turns both it and `30` into `Done`.
 
 `21`'s own last item is to sweep this column to `Done` at sign-off, which is why it is
 still reporting what is true rather than what the plan hoped: `20` and `21` are built and
