@@ -367,7 +367,7 @@ def _bring_to_export_page(
 
     Then it waits twice, because a navigation lands in two places at two
     moments: the page's own `location.href`, which is what the tab is really
-    showing, and the target list, which is the snapshot `chosen_tab` and
+    showing, and the target list, which is the stale copy `chosen_tab` and
     `driving` read next. `Page.navigate` returns before either. Waiting only for
     the second would leave the ask reading a page the list merely believes in.
     """
