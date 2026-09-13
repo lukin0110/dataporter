@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- A page seeded with everything a sketch must never carry (`34`, brief `04`
+     §45–§46): a chat title in the document title and in a heading, an email
+     address in a paragraph, a message body under the assistant-message
+     selector, a sidebar of links named after conversations, and a seed in the
+     composer. Beside them, the three controls a sketch must keep. The live
+     test grep-s the trace it leaves for every seeded string. -->
+<meta charset="utf-8">
+<title>Planning the Lisbon trip</title>
+<main>
+  <nav aria-label="Chats">
+    <ul>
+      <li><a href="/chat/1">Planning the Lisbon trip</a></li>
+      <li><a href="/chat/2">Salary negotiation notes</a></li>
+      <li><a href="/chat/3">Therapy journal</a></li>
+      <li><a href="/chat/4">Mortgage numbers</a></li>
+      <li><a href="/chat/5">Divorce timeline</a></li>
+      <li><a href="/chat/6">Medical results</a></li>
+      <li><a href="/chat/7">Passwords I keep forgetting</a></li>
+      <li><a href="/chat/8">Letter to my sister</a></li>
+      <li><a href="/chat/9">Startup pitch draft</a></li>
+      <li><a href="/chat/10">Tax questions</a></li>
+      <li><a href="/chat/11">Apartment hunting</a></li>
+      <li><a href="/chat/12">Wedding speech</a></li>
+    </ul>
+  </nav>
+  <div role="alert">We use cookies to make this site work. <button>Accept all</button></div>
+  <h1 data-testid="conversation-title">Planning the Lisbon trip</h1>
+  <p>Signed in as maria.oliveira@example.com</p>
+  <div data-testid="user-message">Can you sketch a five-day itinerary for Lisbon in October?</div>
+  <div data-testid="assistant-message">Day one: Alfama at sunrise, then the tram to Belém for pastéis.</div>
+  <div contenteditable="true" role="textbox" aria-label="Write your prompt to Claude"><p>MIGRATION-SEED part 1 of 3: the whole conversation follows.</p></div>
+  <input type="file" style="display: none">
+  <button aria-label="Send message" disabled>Send</button>
+</main>

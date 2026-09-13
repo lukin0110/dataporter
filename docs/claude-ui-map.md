@@ -68,7 +68,9 @@ changes.
 
 What we look for today, and what the page really does. The middle column is the code as it
 stands; the right-hand column is what replaces it. A row is only `*observed on <date>*`
-when someone watched that exact signal appear.
+when someone watched that exact signal appear. A trace's sketch (brief `04` §45) counts
+the middle column on a real page: its `selectors` object says how many elements each of
+these selectors found, by the constant's name, visible or not.
 
 | State | Signal the code looks for today | Observed signal | Mark |
 | ----- | ------------------------------- | --------------- | ---- |

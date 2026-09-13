@@ -590,6 +590,10 @@ def test_both_clicks_are_moves_in_the_account_home_s_trace(
         "query": [],
     }
     assert all(move["conversation_id"] is None for move in moves)
+    # `34`: both clicks are sketched before and after, and every hash names a
+    # sketch line earlier in the file.
+    sketches = {line["hash"] for line in written if line["kind"] == "sketch"}
+    assert {move["before"] for move in moves} | {move["after"] for move in moves} <= sketches
     actions = [
         json.loads(line) for line in helpers.actions_path(settings.logs_dir).read_text(encoding="utf-8").splitlines()
     ]

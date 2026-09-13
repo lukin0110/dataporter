@@ -4,7 +4,7 @@
 **Implements:** [Brief 04](../04-trace.md) §45, §46 (the label rule), §50
 **Depends on:** [33](33-trace-and-move.md), [07](07-browser-session.md) (the CDP page)
 **Enables:** [35](35-watch.md) (which takes sketches too), [37](37-traces-as-evidence.md)
-**Status:** Not started
+**Status:** Done
 
 ## Goal
 
@@ -22,16 +22,18 @@ and it carries no message, title or address by construction, which a seeded page
   LABELLED_ROLES = ("button", "textbox", "searchbox", "combobox", "checkbox", "radio", "switch",
                     "menuitem", "menuitemcheckbox", "menuitemradio", "tab",
                     "dialog", "alertdialog", "alert", "status", "progressbar")
-  SHAPED_ROLES = ("heading", "link", "list", "listitem", "img", "table",
+  SHAPED_ROLES = ("heading", "link", "list", "listitem", "image", "table",
                   "main", "navigation", "banner", "contentinfo", "complementary", "region",
                   "article", "form")
   LABEL_LIMIT = 80
   ```
 
   A node whose role is in neither is skipped; its children are still walked. Roles are
-  the accessibility tree's own names, lower-cased as CDP reports them.
+  the accessibility tree's own names as CDP reports them — `image`, not `img`, which is
+  what reality corrected this list's first draft to.
 - **Taking one**: `take(page: cdp.Page, site: Site) -> Sketch`. `Accessibility.enable`
-  once per connection, then `Accessibility.getFullAXTree`; nodes in the order returned,
+  on every take — idempotent, and cheaper than tracking it per connection — then
+  `Accessibility.getFullAXTree`; nodes in the order returned,
   which is document order; `ignored` nodes skipped. For a labelled role: `role`,
   `label` = the node's `name.value` through `log.safe_token(value, LABEL_LIMIT)`,
   `disabled: true` only when the `disabled` property is true, and for `textbox` and
@@ -52,44 +54,59 @@ and it carries no message, title or address by construction, which a seeded page
   `hash` is the first twelve hex digits of the SHA-256 of
   `json.dumps(fields, sort_keys=True, separators=(",", ":"))` over every key but `kind`,
   `ts`, `t_ms` and `hash` itself. `Sketch` is a frozen pydantic model with `extra="forbid"`
-  and `hash` a computed field.
+  and `hash` a property, so that it is never a field a line could carry twice.
 - **Once per page** (`trace.py`): `Trace.sketch(sketch) -> str` appends the line when its
   hash is new to this trace and returns the hash either way. `Trace.open` starts with no
   hashes; `Trace.attached` reads the file's existing `sketch` lines' hashes on open, so a
-  helper process knows what the run has already drawn.
-- **Before and after** (`helpers.driving`, `helpers.run`, `export_page._click`):
-  `driving()` takes a sketch after its guard and attach, before it yields, and another in
-  its `finally` after the body, and leaves the pair in a `contextvars.ContextVar`;
-  `run` reads the pair after `work` returns and writes their hashes as the move's
-  `before` and `after`. A helper that never enters `driving` — `no_claude_tab`,
-  `ambiguous_tab` — leaves both `null`. `export_page._click` holds its page and takes
-  its own pair around the click. The sketch is taken on the connection the helper already
-  holds: no second attach.
+  helper process knows what the run has already drawn — and `trace.current()` now keeps
+  the trace it attached to, per path, so a helper's two sketches and its move share one
+  descriptor and one read of the file (`trace.reset()` forgets it, for tests).
+- **Before and after** (`helpers.driving`, `helpers.sketch_of`, `helpers.run`,
+  `export_page._click`): `Surface` gains `site: Site | None` — `CLAUDE` carries
+  `probe.MIGRATION_SITE`, `EXTRACTION_SURFACE` its `EXTRACTION_SITE`, `LOGIN_SURFACE` the
+  migration selectors plus the form's two, and the test suite's fixture surfaces none,
+  which sketches with an empty table. `sketch_of(page, surface)` is the one call: no
+  trace current, no sketch and no CDP call; a tree the browser refuses is a warning and
+  `None`. `driving()` takes one after its guard and attach, before it yields, and another
+  in its `finally` after the body, and leaves the pair in a `contextvars.ContextVar`
+  (`_SKETCHED`); `run` resets the pair before `work` and reads it after, and writes the
+  hashes as the move's `before` and `after`. A helper that never enters `driving` —
+  `no_claude_tab`, `ambiguous_tab` — leaves both `null`. `export_page._click` holds its
+  page and takes its own pair around the click. The sketch is taken on the connection the
+  helper already holds: no second attach.
 - **Where a sketch may look**: anywhere the tab is. The sketch sends no input and
   navigates nowhere; the surface (ADR 0001) is a rule about hands, and `driving` has
   already applied it before the first sketch is taken. What a sketch of an off-surface
   page would show is exactly the evidence the UI map's `signed out` row wants.
 - **Tests**:
-  - `tests/test_sketch.py` — a hand-built AX tree → the line above byte for byte; a
-    link, a heading and a list item keep no label; a run of twelve links collapses to
-    one entry with the summed `chars`; a textbox reports `chars` of its value and never
-    the value; a `disabled` button says so and an enabled one says nothing; the hash is
-    the same across two `ts`; the hash changes when a label changes; a second `sketch()`
-    of the same hash writes nothing and returns the hash; `attached` knows the file's
-    hashes.
+  - `tests/test_sketch.py` — a hand-built AX tree → the line above, key for key; a
+    link, a heading, a list item, an image and a landmark keep no label; a run of twelve
+    links collapses to one entry with the summed `chars`, and a control between two
+    links breaks the run; a textbox reports `chars` of its value and never the value; a
+    `disabled` button says so and an enabled one says nothing; a label is bounded and
+    cannot forge a line; ignored and unknown nodes are skipped; the hash is stable and
+    changes with a label; a second `sketch()` of the same hash writes nothing and returns
+    the hash; `attached` knows the file's hashes and skips lines it cannot read; `take`
+    against the fake Chrome reads the tree, the counts and the URL, and a count that is
+    not a number is `0`; a tree the browser refuses leaves the move with `null` sketches
+    and the helper's answer unchanged; `current()` attaches once per path.
   - `tests/test_browser_helpers.py` — every helper's move carries `before` and `after`
     from `driving`'s pair, `null` when the tab was never found; the two export clicks
     carry theirs.
   - `tests/fake_chrome.py` — answers `Accessibility.enable` and
     `Accessibility.getFullAXTree` with a tree the test configures (`FakeTarget.ax_tree`),
-    and records both like every other method.
+    and records both like every other method; `fake_composer.FakePage` and
+    `fake_export_page.FakeExportPage` answer the `dataporter:selectors` expression from
+    what they hold; `conftest.py` resets the process's trace around every test.
   - Live tier, `tests/fixtures/pages/leaky.html` and `tests/test_sketch.py`'s
     `requires_a_browser` case — a page seeded with a chat title in an `h1`, an email
     address in a paragraph, a message body under `[data-testid="assistant-message"]`,
     twelve sidebar links each titled after a conversation, a `contenteditable` holding a
     seed, and a URL with `?token=abc123`: the sketch's line, and the whole trace file the
     move lands in, contain none of those byte strings; and the same page's controls
-    (`Send message`, `Write your prompt to Claude`, `Accept all`) are all there.
+    (`Send message`, `Write your prompt to Claude`, `Accept all`) are all there, the
+    twelve links are one run, the query is `["token"]`, and the five selectors count what
+    the markup holds. A second live case sketches `new.html` and checks its five counts.
 - **Docs**: `README.md`'s trace paragraph (what a sketch keeps and what it does not);
   `docs/claude-ui-map.md` (one sentence under the table: the `selectors` object of a
   sketch is the map's middle column, counted on a real page).
@@ -152,6 +169,16 @@ and it carries no message, title or address by construction, which a seeded page
 - *(Live: the same.)* Against `tests/fixtures/pages/`, every `selectors` count on
   `new.html` equals what the page's markup holds — one composer, one file input, no
   message.
+
+Every criterion above was met on 2026-09-13: the first three by the suite against the
+fakes, and the two live ones against a real Google Chrome 152 on macOS, driven by
+`tests/live_browser.py`. The sketch of `leaky.html` kept the three control labels and
+the twelve links as one run of 219 characters, counted the five selectors as the
+markup holds them, carried `["token"]` for the query, and neither its line nor the trace
+the probe's move landed in held any of the nine seeded strings; `new.html` counted one
+composer, one file input and nothing else. `sketch.py` is at 100% and the gate held at
+99.54% over 1808 tests. The status is `Done` for `32`'s reason: the live criteria need a real Chromium
+and no account, and one has walked the pages.
 
 ## Risks
 

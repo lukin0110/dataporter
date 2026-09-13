@@ -1296,6 +1296,9 @@ def test_every_helper_writes_a_move_with_the_actions_own_stamp(tmp_path: Path, t
     actions = [json.loads(line) for line in helpers.actions_path(workspace).read_text(encoding="utf-8").splitlines()]
 
     assert [move["helper"] for move in moves] == ["probe", "paste", "attach", "await-response"]
+    sketches = [line["hash"] for line in _trace_lines(traced) if line["kind"] == "sketch"]
+    assert len(sketches) == len(set(sketches))
+    assert {move["before"] for move in moves} | {move["after"] for move in moves} <= set(sketches)
     assert [move["ts"] for move in moves] == [action["ts"] for action in actions]
     assert [move["ok"] for move in moves] == [action["ok"] for action in actions]
     assert [move["elapsed_ms"] for move in moves] == [action["elapsed_ms"] for action in actions]
@@ -1312,8 +1315,9 @@ def test_every_helper_writes_a_move_with_the_actions_own_stamp(tmp_path: Path, t
             "after",
             "result",
         ]
-        assert move["before"] is None
-        assert move["after"] is None
+        # `34`: the page before and after, by hash, each written as a sketch first.
+        assert re.fullmatch(r"[0-9a-f]{12}", move["before"])
+        assert re.fullmatch(r"[0-9a-f]{12}", move["after"])
         assert move["result"] == tracing.sanitised(one)
         assert "title" not in json.dumps(move)
 

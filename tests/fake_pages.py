@@ -39,6 +39,7 @@ ROUTES: dict[str, str] = {
     f"/chat/{RESPONDING_CHAT_ID}": "responding.html",
     f"/chat/{MIGRATED_CHAT_ID}": "migrated.html",
     "/settings/profile": "dialog.html",
+    "/leaky": "leaky.html",
     export_page.EXPORT_PAGE_PATH: "settings-export.html",
 }
 """Path to fixture. `/settings/profile` is deliberately a real page: `08` needs

@@ -36,6 +36,7 @@ from dataporter.browser.cdp import Page, Target
 from dataporter.browser.helpers import Surface
 from dataporter.browser.launcher import BrowserSession
 from dataporter.browser.probe import CLAUDE_HOST
+from dataporter.browser.site import Site
 from dataporter.config import Credentials
 from dataporter.errors import BrowserError
 
@@ -43,16 +44,6 @@ _logger = log.get_logger(__name__)
 
 LOGIN_URL = "https://claude.ai/login"
 
-LOGIN_SURFACE = Surface(
-    host=CLAUDE_HOST,
-    allowed=re.compile(r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"),
-)
-"""§17's wall with one more door: the sign-in page and its sub-pages.
-
-Passed to `helpers.driving` by this module and nothing else. `MIGRATION_SURFACE`
-is untouched, so every helper the agent can run still refuses `/login`; what
-admits it is the code that types into it, which the agent cannot invoke.
-"""
 
 EMAIL_SELECTOR = 'input[type="email"], input[autocomplete="username"]'
 PASSWORD_SELECTOR = 'input[type="password"], input[autocomplete="current-password"]'  # ruff: ignore[hardcoded-password-string] - a CSS selector, not a credential
@@ -63,6 +54,18 @@ SELECTORS: Mapping[str, str] = MappingProxyType({
 })
 """The two, by name, for `33`'s extraction site: what a sketch of a sign-in
 page counts. Spelled here, inside the credential seam, and merged elsewhere."""
+
+LOGIN_SURFACE = Surface(
+    host=CLAUDE_HOST,
+    site=Site("claude", CLAUDE_HOST, {**probe.SELECTORS, **SELECTORS}),
+    allowed=re.compile(r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"),
+)
+"""§17's wall with one more door: the sign-in page and its sub-pages.
+
+Passed to `helpers.driving` by this module and nothing else. `MIGRATION_SURFACE`
+is untouched, so every helper the agent can run still refuses `/login`; what
+admits it is the code that types into it, which the agent cannot invoke.
+"""
 """Semantic selectors, as §5 prefers. Guesses until `docs/claude-ui-map.md`'s
 `sign-in form` row is observed, like every other selector in this package."""
 

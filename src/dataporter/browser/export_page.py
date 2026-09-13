@@ -63,20 +63,6 @@ the observation that corrects it is one edit.
 
 EXPORT_PAGE_URL = f"https://{CLAUDE_HOST}{EXPORT_PAGE_PATH}"
 
-EXTRACTION_SURFACE = Surface(
-    host=CLAUDE_HOST,
-    allowed=re.compile(
-        rf"^https://claude\.ai/(login(/.*)?|{re.escape(EXPORT_PAGE_PATH.lstrip('/'))})"
-        r"(\?.*)?$"
-    ),
-)
-"""§36's wall for the ask: the sign-in page, and the page the export is asked for.
-
-Two doors and no more. `/new` is not one of them — an extraction that could open
-a new chat is an extraction that could send a message — and neither is
-`/chat/<uuid>`. Passed to `helpers.driving` by this module and nothing else, so
-every helper Hermes can run still refuses this page under `MIGRATION_SURFACE`.
-"""
 
 # --------------------------------------------------------------------------- #
 # What an element of the export page is called
@@ -111,6 +97,22 @@ EXTRACTION_SITE = Site(
 )
 """claude.ai as an extraction's trace describes it (brief `04` §50): the same
 host, and every selector the ask and a source sign-in drive it with, by name."""
+
+EXTRACTION_SURFACE = Surface(
+    host=CLAUDE_HOST,
+    site=EXTRACTION_SITE,
+    allowed=re.compile(
+        rf"^https://claude\.ai/(login(/.*)?|{re.escape(EXPORT_PAGE_PATH.lstrip('/'))})"
+        r"(\?.*)?$"
+    ),
+)
+"""§36's wall for the ask: the sign-in page, and the page the export is asked for.
+
+Two doors and no more. `/new` is not one of them — an extraction that could open
+a new chat is an extraction that could send a message — and neither is
+`/chat/<uuid>`. Passed to `helpers.driving` by this module and nothing else, so
+every helper Hermes can run still refuses this page under `MIGRATION_SURFACE`.
+"""
 
 EXPORT_PAGE_TAG = "dataporter:export_page"
 CLICK_TAG = "dataporter:click"
@@ -323,15 +325,19 @@ def _click(settings: Settings, page: Page, selector: str, action: str) -> dateti
     helpers.guard(url, EXTRACTION_SURFACE)
     if not on_export_page(url):
         raise BrowserError(detail=NOT_THE_EXPORT_PAGE)
+    before = helpers.sketch_of(page, EXTRACTION_SURFACE)
     started = time.monotonic()
     clicked = page.evaluate(click_js(selector)) is True
+    elapsed_ms = round((time.monotonic() - started) * 1000)
     _record(
         settings,
         action,
         ok=clicked,
         url=url,
         selector=selector,
-        elapsed_ms=round((time.monotonic() - started) * 1000),
+        elapsed_ms=elapsed_ms,
+        before=before,
+        after=helpers.sketch_of(page, EXTRACTION_SURFACE),
     )
     if not clicked:  # pragma: no cover - the view said it was there a moment ago
         raise BrowserError(detail=f"{action} could not be clicked")
@@ -348,8 +354,10 @@ def _record(
     url: str,
     selector: str | None = None,
     elapsed_ms: int = 0,
+    before: str | None = None,
+    after: str | None = None,
 ) -> None:
-    """One line in the account home's `logs/actions.jsonl`.
+    """One line in the account home's `logs/actions.jsonl`, and a move in the trace.
 
     The page's URL and the selector, never the element's text: §38 keeps
     everything the tool writes *about* an account to numbers, labels and our own
@@ -366,13 +374,14 @@ def _record(
         ts=ts,
     )
     current = tracing.current()
-    if current is None:
-        return
-    # `33`: the same line, as a move — the selector is ours, the URL is reduced
-    # to its path and its query's key names (§46).
-    result: dict[str, object] = {"selector": selector} if selector else {}
-    result.update(tracing.url_fields(url))
-    current.move(action, ok=ok, elapsed_ms=elapsed_ms, conversation_id=None, result=result, ts=ts)
+    if current is not None:
+        # `33`: the same line, as a move — the selector is ours, the URL is
+        # reduced to its path and its query's key names (§46).
+        result: dict[str, object] = {"selector": selector} if selector else {}
+        result.update(tracing.url_fields(url))
+        current.move(
+            action, ok=ok, elapsed_ms=elapsed_ms, conversation_id=None, result=result, ts=ts, before=before, after=after
+        )
 
 
 def _bring_to_export_page(session: BrowserSession, *, deadline: float, poll_s: float) -> None:

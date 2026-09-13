@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Self
 
 from dataporter.browser import helpers, login_form, probe, session
+from dataporter.browser import sketch as sketching
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from fake_chrome import Call, FakeChrome, FakeTarget
@@ -165,6 +166,18 @@ class FakePage:
             return
         self.composer += text if self.insert is None else self.insert(text)
 
+    def selector_counts(self, table: dict[str, str]) -> dict[str, int]:
+        """`34`'s count per selector name, from what this page holds."""
+        counts: dict[str, int] = {}
+        for name, selector in table.items():
+            if "contenteditable" in selector:
+                counts[name] = 0 if self.composer is None else 1
+            elif 'type="file"' in selector:
+                counts[name] = 1 if self.file_input else 0
+            else:
+                counts[name] = 0
+        return counts
+
     # -- answering CDP ------------------------------------------------------- #
 
     def evaluate(self, expression: str) -> Any:  # ruff: ignore[complex-structure, too-many-branches, too-many-return-statements] - one answer per probe
@@ -193,6 +206,8 @@ class FakePage:
             }
         if probe.PAGE_STATE_TAG in expression:
             return self.state()
+        if sketching.SELECTORS_TAG in expression:
+            return self.selector_counts(js_const(expression, "table"))
         if helpers.COMPOSER_TEXT_TAG in expression:
             return self.composer_text()
         if helpers.FOCUS_TAG in expression:

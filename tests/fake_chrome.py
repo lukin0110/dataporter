@@ -69,6 +69,8 @@ class FakeTarget:
     url: str
     type: str = "page"
     evaluate: Any = field(default_factory=dict)
+    ax_tree: list[dict[str, Any]] = field(default_factory=list)
+    """What `Accessibility.getFullAXTree` returns as `nodes` (`34`)."""
 
 
 SETTLE_EXPRESSION = "document.readyState === 'complete'"
@@ -312,6 +314,8 @@ class FakeChrome:
             with self._lock:
                 self.targets.append(created)
             return {"result": {"targetId": created.id}}
+        if call.method == "Accessibility.getFullAXTree":
+            return {"result": {"nodes": list(target.ax_tree) if target is not None else []}}
         if call.method == "DOM.getDocument":
             return {"result": {"root": {"nodeId": 1}}}
         if call.method == "DOM.querySelector":
@@ -319,6 +323,7 @@ class FakeChrome:
             return {"result": {"nodeId": 2 if found else 0}}
         if call.method in {
             "Page.enable",
+            "Accessibility.enable",
             "Input.insertText",
             "Input.dispatchKeyEvent",
             "DOM.setFileInputFiles",

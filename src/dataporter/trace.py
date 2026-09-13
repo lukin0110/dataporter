@@ -53,6 +53,7 @@ from dataporter.exit_codes import ExitCode
 if TYPE_CHECKING:
     from dataporter.browser.cdp import CdpClient
     from dataporter.browser.site import Site
+    from dataporter.browser.sketch import Sketch
     from dataporter.config import Settings
 
 _logger = log.get_logger(__name__)
@@ -210,6 +211,10 @@ class Trace:
     _started_mono: float | None = field(default=None, repr=False)
     """The opener's monotonic start; an attached trace has none."""
 
+    _hashes: set[str] = field(default_factory=set, repr=False)
+    """The sketches this file already holds, by hash (`34`): written in full
+    the first time, named by the hash after."""
+
     ended: bool = False
 
     # -- making one --------------------------------------------------------- #
@@ -272,15 +277,12 @@ class Trace:
         or never written — is a warning and `None`, never a raised error.
         """
         try:
-            with path.open(encoding="utf-8") as handle:
-                first = handle.readline()
-            header = json.loads(first)
-            started = datetime.fromisoformat(str(header["ts"]))
+            started, hashes = _read_back(path)
             descriptor = os.open(path, os.O_WRONLY | os.O_APPEND)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             _logger.warning("trace not attached", extra={"trace_path": str(path), "reason": type(exc).__name__})
             return None
-        return cls(path=path, started_at=started, _fd=descriptor)
+        return cls(path=path, started_at=started, _fd=descriptor, _hashes=hashes)
 
     # -- writing ------------------------------------------------------------ #
 
@@ -342,6 +344,17 @@ class Trace:
     def observation(self, what: str, **fields: Any) -> bool:
         return self.append(OBSERVATION, {"what": what, **fields})
 
+    def sketch(self, sketch: "Sketch") -> str:
+        """Write the sketch if its hash is new to this trace; answer the hash either way.
+
+        A stable page costs one line: a run that polls a page for a minute
+        leaves one sketch and sixty moves that point at it (§45).
+        """
+        digest = sketch.hash
+        if digest not in self._hashes and self.append(SKETCH, sketch.fields()):
+            self._hashes.add(digest)
+        return digest
+
     def end(self, exit_code: ExitCode | int) -> None:
         """Write the last line and close the file. Once; a second call does nothing."""
         if self.ended:
@@ -372,6 +385,29 @@ class Trace:
             _logger.warning("trace not written", extra={"trace_path": str(self.path), "reason": type(exc).__name__})
             return False
         return True
+
+
+def _read_back(path: Path) -> tuple[datetime, set[str]]:
+    """Return the header's start and the hashes of every `sketch` line in the file."""
+    with path.open(encoding="utf-8") as handle:
+        header = json.loads(handle.readline())
+        hashes = _sketch_hashes(handle)
+    return datetime.fromisoformat(str(header["ts"])), hashes
+
+
+def _sketch_hashes(handle: Any) -> set[str]:
+    """Return the hashes of the `sketch` lines still to read from an open trace."""
+    found: set[str] = set()
+    for line in handle:
+        if '"kind":"sketch"' not in line:
+            continue
+        try:
+            parsed = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(parsed, dict) and parsed.get("kind") == SKETCH and isinstance(parsed.get("hash"), str):
+            found.add(parsed["hash"])
+    return found
 
 
 def _create(path: Path) -> tuple[Path, int]:
@@ -409,6 +445,10 @@ def _locked_write(descriptor: int, data: bytes) -> None:
 # --------------------------------------------------------------------------- #
 
 _current: Trace | None = None
+_attached: dict[str, Trace] = {}
+"""What `current()` attached to, by path: a helper takes two sketches and
+writes a move in one process, and each would otherwise re-open and re-read
+the file."""
 
 
 def set_current(trace: Trace | None) -> None:
@@ -417,19 +457,28 @@ def set_current(trace: Trace | None) -> None:
     _current = trace
 
 
-def current() -> Trace | None:
-    """Return the process's open trace, else the one `DATAPORTER_TRACE` names, else `None`.
+def reset() -> None:
+    """Forget the process's trace and every attached one. For tests."""
+    set_current(None)
+    for attached in _attached.values():
+        attached.close()
+    _attached.clear()
 
-    Not cached when it comes from the environment: a helper process asks once
-    per call, and a stale descriptor across a test's tests would be worse than
-    a second `open`.
-    """
+
+def current() -> Trace | None:
+    """Return the process's open trace, else the one `DATAPORTER_TRACE` names, else `None`."""
     if _current is not None:
         return _current
     named = os.environ.get(TRACE_ENV_VAR, "").strip()
     if not named:
         return None
-    return Trace.attached(Path(named))
+    cached = _attached.get(named)
+    if cached is not None and not cached.ended:
+        return cached
+    attached = Trace.attached(Path(named))
+    if attached is not None:
+        _attached[named] = attached
+    return attached
 
 
 def start(
