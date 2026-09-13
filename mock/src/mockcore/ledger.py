@@ -1,4 +1,4 @@
-"""What the mock was asked to do, counted.
+"""What a mock was asked to do, counted.
 
 Nothing in the tool can tell a rehearsal from a real run (§22), which is the
 whole point of it — so the mock is the only party that can say what really
@@ -11,19 +11,21 @@ the tool believes: a chat created is a chat this process minted an id for, a
 message received is a message this process parsed, a file accepted is bytes this
 process read to the end, an export requested is an ask this process minted a
 link for.
+
+The six counts are every site's (§54, *The ledger*); the heading is the site's
+own, because two mocks running at once keep two ledgers and a reader has to be
+able to tell which is which.
 """
 
 import threading
 from dataclasses import dataclass, field
-
-HEADING = "Mock claude.ai — ledger"
 
 WIDTH = 32
 """Where the numbers end.
 
 `26` pins the block's columns. The brief's own block (§21) illustrates the shape
 and leaves it to the slice; this constant and `block` are the rule that prints
-it, and `mock/tests/test_ledger.py` is where the bytes are held."""
+it, and `mock/tests/test_core_ledger.py` is where the bytes are held."""
 
 LABELS: tuple[tuple[str, str], ...] = (
     ("sign_ins", "Sign-ins:"),
@@ -41,13 +43,14 @@ part of the block and a second list would be a second thing to keep in step."""
 
 @dataclass
 class Ledger:
-    """Six counters, and the block they print as.
+    """Six counters under a heading that names the site, and the block they print as.
 
     Thread-safe because the server is threaded: two uploads finishing at once
     would otherwise lose one, and a witness that under-counts is worse than no
     witness at all.
     """
 
+    heading: str
     sign_ins: int = 0
     chats_created: int = 0
     messages_received: int = 0
@@ -70,10 +73,10 @@ class Ledger:
 
         `26`'s golden string, in the shape §21 illustrates: the heading, a blank
         line, one labelled count per row with the numbers right-aligned, a blank
-        line. `32` added the sixth row.
+        line. `32` added the sixth row; `38` made the heading the site's.
         """
         counters = self.counters()
-        lines = [HEADING, ""]
+        lines = [self.heading, ""]
         for name, label in LABELS:
             lines.append(f"{label}{counters[name]:>{WIDTH - len(label)}}")
         return "\n".join([*lines, "", ""])

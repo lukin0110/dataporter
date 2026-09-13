@@ -1,4 +1,4 @@
-"""The citation is real: every row the mock stands on is a row of the map.
+"""The citation is real: every row the mock claude.ai stands on is a row of its map.
 
 The mock invents nothing, and this is the checkable form of that claim. It is
 also the thing that fails when somebody teaches the mock a behaviour without

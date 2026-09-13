@@ -1,10 +1,14 @@
-"""The two blocks the mock prints, and the refusals that keep it honest."""
+"""The blocks the mock claude.ai prints, and the refusals that keep it honest.
 
-from pathlib import Path
+What the core prints for every mock — the proxy note's head, the link note, the
+refusals — is tested once in `test_core_cli.py`; what is here is this site's: the
+block with its `SSL_CERT_FILE` tail, and the notes about the tool's own fetch.
+"""
 
 import pytest
-from claudemock import certificate, cli, server
+from claudemock import cli, server
 from claudemock.site import Site
+from mockcore import certificate
 
 
 def test_the_reachability_block_is_the_one_an_operator_pastes(
@@ -37,9 +41,12 @@ def test_the_reachability_block_is_the_one_an_operator_pastes(
 
 def test_the_proxy_note_tells_the_fetch_too() -> None:
     """`32`: the tool downloads a link with Python, which reads the same proxy Chrome does."""
-    note = cli.PROXY_NOTE.format(names="https_proxy")
+    note = cli.proxy_note(["https_proxy"])
+    assert note.startswith(
+        "This machine has a proxy in its environment (https_proxy), which Chrome reads and\nwhich would resolve claude.ai itself."
+    )
     assert '"--no-proxy-server",' in note
-    assert "no_proxy=127.0.0.1" in note
+    assert note.endswith("Set beside SSL_CERT_FILE:\n\n  no_proxy=127.0.0.1\n\n")
 
 
 def test_the_host_note_is_the_golden_string() -> None:
@@ -50,12 +57,6 @@ def test_the_host_note_is_the_golden_string() -> None:
         "the key, not the name — so a migration rehearses; an extraction needs the\n"
         "default host.\n"
         "\n"
-    )
-
-
-def test_the_link_note_is_the_golden_string() -> None:
-    assert cli.link_note("https://127.0.0.1:8443/__mock/exports/abc.zip") == (
-        "Export requested — the link, instead of an email:\n\n  https://127.0.0.1:8443/__mock/exports/abc.zip\n\n"
     )
 
 
@@ -70,27 +71,6 @@ def test_the_trust_is_scoped_to_the_mocks_own_key(
     block = cli.reachability(host="127.0.0.1", port=8443, material=material)
     assert "--ignore-certificate-errors=" not in block
     assert len(material.spki_sha256) == 44  # base64 of a sha-256
-
-
-@pytest.mark.parametrize(
-    ("argv", "reason"),
-    [
-        (["serve", "--reply-delay-s", "0"], "a reply delay is more than zero"),
-        (["serve", "--reply-steps", "1"], "at least two steps"),
-    ],
-)
-def test_a_reply_that_would_not_be_waited_for_is_refused(
-    argv: list[str], reason: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert cli.main(argv) == 2
-    assert reason in capsys.readouterr().err
-
-
-def test_the_key_is_kept_between_runs(tmp_path: Path) -> None:
-    """So that a flag an operator wrote into a config keeps working."""
-    first = certificate.ensure(tmp_path)
-    again = certificate.ensure(tmp_path)
-    assert first.spki_sha256 == again.spki_sha256
 
 
 def test_a_ledger_nobody_is_serving_is_an_error(

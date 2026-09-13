@@ -26,7 +26,9 @@ import html
 import json
 from collections.abc import Sequence
 
-from claudemock.site import Chat, Turn
+from mockcore.reply import Turn
+
+from claudemock.site import Chat
 
 STYLE = """\
   body { font-family: system-ui, sans-serif; margin: 2rem; }

@@ -23,8 +23,8 @@ repository together.
 
 ## Consequences
 
-- The distribution is renamed, `claude-mock` → `mocks`, by the slice that adds the core;
-  the directory and the two commands keep their names.
+- The distribution is renamed, `claude-mock` → `mocks`, by the slice that adds the core
+  (`38`); the directory and the two commands keep their names.
 - ADR 0003's line is unchanged: the project imports nothing from `dataporter` and
   `dataporter` imports nothing from it. A helper wanted by two sites goes into the core; a
   helper wanted by a site and the tool is still duplicated, never imported across.

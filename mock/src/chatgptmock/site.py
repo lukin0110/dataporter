@@ -1,40 +1,73 @@
-"""The mock's state: accounts, chats, replies, and the clock they grow on.
+"""The mock's state: the account, the chats, the replies, and the clock they grow on.
 
 This module is the behaviour. It holds no HTML and no HTTP — `pages.py` renders
 it and `server.py` serves it — so that what the mock *does* can be read, and
-tested, without a socket.
+tested, without a socket. Obedience and growth are the core's
+(`mockcore.reply`): a seed written for a ChatGPT destination asks the same way
+(§54, *Obedient*).
 
-The two behaviours a rehearsal's honesty rests on — **obedience**, the one line a
-seed asks for answered with exactly it, and **growth**, the reply appearing after
-a delay and in steps — are the core's (`mockcore.reply`), because every mock has
-them. What is here is what a chat on claude.ai *is*: a title, a transcript, the
-files it took, and the reply it is writing.
+What a chat on chatgpt.com *is*, as the map reports it: a title in the sidebar,
+a thread of messages each carrying its author's role, and the reply being
+written. Two things about a message are this site's own:
 
-A third behaviour is `32`'s, and smaller: the site keeps the **exports** it was
-asked for — a token each, minted when the export page's confirmation is pressed —
-and renders nothing itself. `archive.py` turns the chats into the archive a token
-is fetched as.
+- **A long paste is an attachment.** OpenAI documents that more than 10,000
+  characters pasted into the composer become an attachment (6825453). The page
+  applies the rule; what reaches the site is a message with its typed text and
+  its pasted texts apart, and the reply reads both — the line a seed asks for
+  is in the pasted text, not in the composer.
+- **A file belongs to the message that carried it.** The export names an
+  accepted file on the user message it was attached to
+  (`docs/chatgpt-export-format.md`), so the site keeps it there rather than on
+  the chat.
 
-Nothing here is a claim about claude.ai. `uimap.py` says which row of the UI map
-each of these behaviours stands on.
+Nothing here is a claim about chatgpt.com. `uimap.py` says which row of the UI
+map each of these behaviours stands on.
 """
 
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from mockcore.exports import Export, Exports
 from mockcore.ledger import Ledger
-from mockcore.reply import DEFAULT_REPLY_DELAY_S, DEFAULT_REPLY_STEPS, Reply, Turn, answer
+from mockcore.reply import DEFAULT_REPLY_DELAY_S, DEFAULT_REPLY_STEPS, Reply, answer
 from mockcore.sessions import Sessions
 
-from claudemock import IDENTITY
+from chatgptmock import IDENTITY
+
+PASTE_THRESHOLD = 10_000
+"""Characters. Past this, an insertion into the composer becomes an attachment
+(`paste over the threshold`, *reported (OpenAI 6825453)*). The page applies it;
+the site only knows what arrived as pasted text."""
 
 NEW_CHAT_TITLE = "New chat"
 """What a chat is called before anything renames it. Not a title of anything —
 the mock never sees a source conversation."""
+
+
+@dataclass(frozen=True)
+class Upload:
+    """One file the composer took: its name, and how many bytes the mock read and dropped."""
+
+    name: str
+    size: int
+
+
+@dataclass(frozen=True)
+class Message:
+    """One message in a thread: who said it, what was typed, what was pasted, what was attached."""
+
+    role: str
+    text: str
+    pasted: tuple[str, ...] = ()
+    files: tuple[Upload, ...] = ()
+
+    @property
+    def content(self) -> str:
+        """Everything the message says, the pasted texts first — what a reply reads."""
+        return "\n".join([*self.pasted, self.text])
 
 
 @dataclass
@@ -48,18 +81,17 @@ class Chat:
     id: str
     created_at: float
     title: str = NEW_CHAT_TITLE
-    turns: list[Turn] = field(default_factory=list)
-    files: list[str] = field(default_factory=list)
+    messages: list[Message] = field(default_factory=list)
     reply: Reply | None = None
 
-    def view(self, now: float) -> list[Turn]:
-        """Return the transcript as the page shows it at `now`."""
-        turns = list(self.turns)
+    def view(self, now: float) -> list[Message]:
+        """Return the thread as the page shows it at `now`."""
+        messages = list(self.messages)
         if self.reply is not None:
             text = self.reply.visible(now)
             if text:
-                turns.append(Turn("assistant", text))
-        return turns
+                messages.append(Message("assistant", text))
+        return messages
 
     def generating(self, now: float) -> bool:
         return self.reply is not None and not self.reply.finished(now)
@@ -68,9 +100,9 @@ class Chat:
 class Site:
     """Everything the mock knows, behind one lock.
 
-    In memory and nowhere else: a rehearsal in several sessions sees the same
-    chats throughout because the process keeps running, and restarting it resets
-    it (§21, *Lifetime*).
+    In memory and nowhere else: a walk in several sessions sees the same chats
+    throughout because the process keeps running, and restarting it resets it
+    (§54, *Lifetime*).
     """
 
     def __init__(
@@ -93,7 +125,7 @@ class Site:
         self.wall = wall
         self.chats: dict[str, Chat] = {}
         self.sessions = Sessions()
-        self.pending_files: dict[str, list[str]] = {}
+        self.pending_files: dict[str, list[Upload]] = {}
         self._exports = Exports(wall=wall)
         self._lock = threading.Lock()
 
@@ -106,7 +138,7 @@ class Site:
     # -- sign-in ------------------------------------------------------------ #
 
     def credentials_match(self, email: str, password: str) -> bool:
-        """Exactly one pair signs in. Any other is refused (§21)."""
+        """Exactly one pair signs in. Any other is refused (§54)."""
         return email == self.email and password == self.password
 
     def sign_in(self) -> str:
@@ -127,22 +159,34 @@ class Site:
         with self._lock:
             return self.chats.get(chat_id)
 
-    def create_chat(self, message: str, *, session: str) -> Chat:
-        """Return a submit on `/new`: an id, a URL, a first turn, and an answer coming."""
+    def create_chat(self, text: str, *, pasted: Sequence[str] = (), session: str) -> Chat:
+        """Return a submit at the root: an id, a URL, a first message, and an answer coming."""
         created = Chat(id=str(uuid.uuid4()), created_at=float(self.wall()))
         with self._lock:
             self.chats[created.id] = created
         self.ledger.count("chats_created")
-        self.attach_pending(created, session=session)
-        self.receive(created, message)
+        self.receive(created, text, pasted=pasted, session=session)
         return created
 
-    def receive(self, chat: Chat, message: str) -> Chat:
-        """One message into a chat, and the reply it will grow into."""
+    def receive(self, chat: Chat, text: str, *, pasted: Sequence[str] = (), session: str) -> Chat:
+        """One message into a chat, with the files waiting in the composer, and the reply it grows into."""
         with self._lock:
-            chat.turns = [*chat.view(self.now()), Turn("human", message)]
-            chat.reply = answer(message, started=self.now(), delay_s=self.reply_delay_s, steps=self.reply_steps)
+            files = tuple(self.pending_files.pop(session, []))
+            message = Message("user", text, pasted=tuple(pasted), files=files)
+            chat.messages = [*chat.view(self.now()), message]
+            chat.reply = answer(message.content, started=self.now(), delay_s=self.reply_delay_s, steps=self.reply_steps)
         self.ledger.count("messages_received")
+        return chat
+
+    def stop(self, chat: Chat) -> Chat:
+        """Stop the reply where it is: what is on the page becomes the finished turn.
+
+        `generating`: one control sends and, while the reply is being written,
+        stops it. Not counted — stopping asks nothing new of the site.
+        """
+        with self._lock:
+            chat.messages = chat.view(self.now())
+            chat.reply = None
         return chat
 
     def rename(self, chat: Chat, title: str) -> None:
@@ -150,28 +194,27 @@ class Site:
             chat.title = title
         self.ledger.count("renames")
 
+    def sidebar(self) -> Sequence[Chat]:
+        """Every chat as the sidebar lists them, newest first."""
+        with self._lock:
+            return tuple(reversed(self.chats.values()))
+
     # -- files -------------------------------------------------------------- #
 
-    def accept_file(self, name: str, *, session: str) -> None:
+    def accept_file(self, name: str, size: int, *, session: str) -> None:
         """Take a file into the composer. It belongs to the next message sent."""
         with self._lock:
-            self.pending_files.setdefault(session, []).append(name)
+            self.pending_files.setdefault(session, []).append(Upload(name, size))
         self.ledger.count("files_accepted")
 
-    def pending(self, session: str) -> list[str]:
+    def pending(self, session: str) -> list[Upload]:
         with self._lock:
             return list(self.pending_files.get(session, ()))
 
-    def attach_pending(self, chat: Chat, *, session: str) -> None:
-        """Move whatever is in the composer's chip row into the chat."""
-        with self._lock:
-            names = self.pending_files.pop(session, [])
-            chat.files.extend(names)
-
-    # -- exports (`32`) ------------------------------------------------------ #
+    # -- exports ------------------------------------------------------------ #
 
     def request_export(self) -> Export:
-        """Mint the link an ask gets instead of an email, and count the ask."""
+        """Mint the link an ask gets instead of an email, and count the ask (§54)."""
         export = self._exports.request()
         self.ledger.count("exports_requested")
         return export
@@ -197,12 +240,3 @@ class Site:
     def chat_ids(self) -> Sequence[str]:
         with self._lock:
             return tuple(self.chats)
-
-
-def names(files: Iterable[str]) -> list[str]:
-    """File names, in order, without repeats — what the chip row shows."""
-    seen: list[str] = []
-    for name in files:
-        if name not in seen:
-            seen.append(name)
-    return seen

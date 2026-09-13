@@ -1,4 +1,4 @@
-"""The chats as an export: the shape the tool validates, spelled here as literals.
+"""The mock claude.ai's chats as an export: the shape the tool validates, spelled here as literals.
 
 `zipfile` and `json` and nothing else — the mock's tests import nothing from
 `dataporter` either (ADR 0003). The keys asserted below are the ones the tool's

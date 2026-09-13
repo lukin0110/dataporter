@@ -1,53 +1,41 @@
 """`claude-mock`: start the mock, or ask it what it has been asked to do.
 
-Three commands and no configuration file. `serve` starts the site and prints the
+Four commands and no configuration file. `serve` starts the site and prints the
 one thing an operator needs in order to reach it — nobody composes a resolver
 rule by hand (§21, *Reachability*) — `ledger` prints the count the rehearsal
-record reconciles against (§25), and `exports` prints the links the site has
-handed out instead of emails (`32`), for the terminal that did not start it.
+record reconciles against (§25), `exports` prints the links the site has
+handed out instead of emails (`32`), for the terminal that did not start it,
+and `rows` prints the UI map rows the mock is built out of.
 
 What the printed lines must *do* is the brief's (§21): send the `claude.ai` host
 to the mock, and trust the mock's own key and never every certificate. The port,
-the mechanism and the lines themselves are `26`'s to choose, and are chosen here:
-`8443`, Chrome's host-resolver rule, and an SPKI pin. The tool is byte-identical
-to the one that will meet claude.ai and has no setting that names the mock, so
-the only way in is configuration an operator may already write — and what is
-printed is that configuration, ready to paste.
+the mechanism and the lines themselves are `26`'s to choose: `8443`, Chrome's
+host-resolver rule, and an SPKI pin — printed by the core (`mockcore.cli`) since
+`38`, byte for byte as `26` pinned them. What is this site's alone is the tail
+of the block: the tool fetches this site's export link with Python, and the
+certificate it must trust for that is a fact about this mock.
 """
 
 import argparse
-import os
-import signal
-import ssl
 import sys
-import time
-import urllib.request
 from collections.abc import Sequence
-from pathlib import Path
-from types import FrameType
 
-from claudemock import HOST, PROGRAM_NAME, __version__, certificate, server, uimap
-from claudemock.site import DEFAULT_REPLY_DELAY_S, DEFAULT_REPLY_STEPS, Site
+from mockcore import certificate
+from mockcore import cli as core
 
-DEFAULT_PORT = 8443
-DEFAULT_HOST = "127.0.0.1"
+from claudemock import DEFAULT_PORT, IDENTITY, server, uimap
+from claudemock.site import Site
 
-PROXY_ENV = ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY")
-"""Chrome reads these on Linux, and a proxy resolves the host name itself — so
-`--host-resolver-rules` never fires and the mock looks unreachable. Not part of
-the block, because it is a fact about the machine rather than about the mock."""
+DEFAULT_HOST = core.DEFAULT_HOST
 
-PROXY_NOTE = """\
-This machine has a proxy in its environment ({names}), which Chrome reads and
-which would resolve claude.ai itself. Add to the same list:
-
-  "--no-proxy-server",
-
+FETCH_PROXY_NOTE = """\
 The tool's fetch of an export link reads the same proxy. Set beside SSL_CERT_FILE:
 
   no_proxy=127.0.0.1
 
 """
+"""What this site adds to the core's proxy note (`32`): the tool downloads a
+link with Python, which reads the same proxy Chrome does."""
 
 HOST_NOTE = """\
 The mock is listening on {host}, and the tool cannot fetch an export link from
@@ -60,16 +48,6 @@ default host.
 `exports` lists are spelled with the address the socket really bound, and the
 tool's fetch verifies that address against the certificate (`32`)."""
 
-LINK_NOTE = """\
-Export requested — the link, instead of an email:
-
-  {link}
-
-"""
-"""What `serve` prints when the export page's confirmation is pressed: the mock
-has no inbox to send to, so the terminal it runs in is where the link arrives.
-`claude-mock exports` says the same to any other terminal."""
-
 DEFAULT_EMAIL = "rehearsal@example.invalid"
 DEFAULT_PASSWORD = "rehearsal-not-a-real-password"
 """Invented, and invalid by construction: `.invalid` is reserved and can never
@@ -79,72 +57,33 @@ name a real mailbox (§23, *What it never touches*)."""
 def reachability(*, host: str, port: int, material: certificate.Material) -> str:
     """Return the reachability block, byte for byte, ending in a blank line.
 
-    `26`'s golden string, pinned by `mock/tests/test_cli.py`. §21 constrains what
-    it does and leaves what it looks like to the slice; the shape here is the
+    `26`'s golden string, pinned by `mock/tests/test_claude_cli.py`. §21 constrains
+    what it does and leaves what it looks like to the slice; the shape here is the
     brief's own illustration, kept because an operator has nothing to gain from
-    a different one.
+    a different one. The tail is `32`'s: the fetch of an export link is Python's,
+    not Chrome's, so the two Chrome lines do not reach it.
     """
-    return "\n".join([
-        f"Mock claude.ai listening on https://{host}:{port}",
-        "",
-        "Add to <workspace>/config.toml before running the tool:",
-        "",
-        "[browser]",
-        "extra_args = [",
-        f'  "--host-resolver-rules=MAP {HOST} {host}:{port}",',
-        f'  "{material.flag}",',
-        "]",
-        "",
-        # `32`: the fetch of an export link is Python's, not Chrome's, so the two
-        # lines above do not reach it. The certificate is a fact about the mock,
-        # which is why this is in the block and the proxy is in the note.
-        "Set in the tool's environment before fetching an export link from it:",
-        "",
-        f"  SSL_CERT_FILE={material.cert_path}",
-        "",
-        "",
-    ])
+    return core.reachability(
+        IDENTITY,
+        host=host,
+        port=port,
+        flag=material.flag,
+        tail=[
+            "Set in the tool's environment before fetching an export link from it:",
+            "",
+            f"  SSL_CERT_FILE={material.cert_path}",
+            "",
+        ],
+    )
 
 
-def link_note(link: str) -> str:
-    """Return what `serve` prints for one export asked for, byte for byte."""
-    return LINK_NOTE.format(link=link)
+def proxy_note(names: Sequence[str]) -> str:
+    """Return the core's note, and then what the tool's own fetch needs."""
+    return core.proxy_note(IDENTITY, names) + FETCH_PROXY_NOTE
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(prog=PROGRAM_NAME, description=__doc__)
-    root.add_argument("--version", action="version", version=__version__)
-    commands = root.add_subparsers(dest="command")
-
-    start = commands.add_parser("serve", help="start the mock")
-    start.add_argument("--host", default=DEFAULT_HOST)
-    start.add_argument("--port", type=int, default=DEFAULT_PORT)
-    start.add_argument("--email", default=DEFAULT_EMAIL)
-    start.add_argument("--password", default=DEFAULT_PASSWORD)
-    start.add_argument(
-        "--reply-delay-s",
-        type=float,
-        default=DEFAULT_REPLY_DELAY_S,
-        help="how long each step of a reply takes; must be more than zero",
-    )
-    start.add_argument("--reply-steps", type=int, default=DEFAULT_REPLY_STEPS)
-    start.add_argument(
-        "--cert-dir",
-        type=Path,
-        default=None,
-        help="where the TLS key lives; the default keeps one between runs",
-    )
-
-    count = commands.add_parser("ledger", help="print a running mock's ledger")
-    count.add_argument("--host", default=DEFAULT_HOST)
-    count.add_argument("--port", type=int, default=DEFAULT_PORT)
-
-    links = commands.add_parser("exports", help="print the export links a running mock has handed out")
-    links.add_argument("--host", default=DEFAULT_HOST)
-    links.add_argument("--port", type=int, default=DEFAULT_PORT)
-
-    commands.add_parser("rows", help="the UI map rows the mock is built out of")
-    return root
+    return core.parser(IDENTITY, description=__doc__, email=DEFAULT_EMAIL, password=DEFAULT_PASSWORD)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -159,20 +98,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def serve(arguments: argparse.Namespace) -> int:
-    if arguments.reply_delay_s <= 0:
-        print(
-            f"{PROGRAM_NAME}: a reply delay is more than zero — a rehearsal that "
-            "never waits for a reply proves nothing",
-            file=sys.stderr,
-        )
-        return 2
-    if arguments.reply_steps < 2:
-        print(
-            f"{PROGRAM_NAME}: a reply grows in at least two steps",
-            file=sys.stderr,
-        )
-        return 2
-    material = certificate.ensure(arguments.cert_dir)
+    refused = core.refused_reply(IDENTITY, arguments)
+    if refused is not None:
+        return refused
+    material = certificate.ensure(IDENTITY, arguments.cert_dir)
     site = Site(
         email=arguments.email,
         password=arguments.password,
@@ -184,70 +113,31 @@ def serve(arguments: argparse.Namespace) -> int:
         host=arguments.host,
         port=arguments.port,
         material=material,
-        # Printed from the server's thread; this one only sleeps, so nothing interleaves.
-        announce=lambda link: print(link_note(link), end="", flush=True),
+        announce=core.announce,
     )
-    print(
-        reachability(host=arguments.host, port=running.port, material=material),
-        end="",
-    )
-    proxies = [name for name in PROXY_ENV if os.environ.get(name)]
+    print(reachability(host=arguments.host, port=running.port, material=material), end="")
+    proxies = core.proxies()
     if proxies:
-        print(PROXY_NOTE.format(names=", ".join(proxies)), end="")
+        print(proxy_note(proxies), end="")
     if arguments.host != DEFAULT_HOST:
         print(HOST_NOTE.format(host=arguments.host), end="")
     sys.stdout.flush()
-
-    def stop(_signal: int, _frame: FrameType | None) -> None:
-        raise KeyboardInterrupt
-
-    signal.signal(signal.SIGTERM, stop)
-    try:
-        # A sleep loop rather than `signal.pause`, which does not exist on
-        # Windows: the mock is a developer's tool and runs wherever Chrome does.
-        while True:
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        running.close()
+    core.wait(running)
     # The ledger on the way out, so a rehearsal that forgot to ask still has it.
     print(site.ledger.block(), end="")
     return 0
 
 
-def ledger(*, host: str, port: int) -> int:
+def ledger(*, host: str, port: int = DEFAULT_PORT) -> int:
     """Ask a running mock for its count. Its own certificate, and no other."""
-    return _fetch_text(host=host, port=port, path=server.LEDGER_PATH)
+    return core.ledger(IDENTITY, host=host, port=port)
 
 
-def exports(*, host: str, port: int) -> int:
-    """Ask a running mock for the links it handed out, one per line, oldest first.
-
-    `claude-mock exports | tail -n 1` is the newest, which is what an operator
-    hands to `dataporter extract --link` in the terminal the mock is not in.
-    """
-    return _fetch_text(host=host, port=port, path=server.EXPORTS_PATH)
-
-
-def _fetch_text(*, host: str, port: int, path: str) -> int:
-    """Print what a running mock serves at `path`, verifying nothing: it is ours."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    url = f"https://{host}:{port}{path}"
-    try:
-        with urllib.request.urlopen(url, context=context, timeout=10) as answer:
-            print(answer.read().decode("utf-8"), end="")
-    except OSError as failure:
-        print(f"{PROGRAM_NAME}: {url}: {failure}", file=sys.stderr)
-        return 1
-    return 0
+def exports(*, host: str, port: int = DEFAULT_PORT) -> int:
+    """Ask a running mock for the links it handed out, one per line, oldest first."""
+    return core.exports(IDENTITY, host=host, port=port)
 
 
 def rows() -> int:
     """Every row of the UI map the mock stands on, and what it did about it."""
-    print("Mock claude.ai — the UI map rows it is built out of\n")
-    for row in uimap.cited():
-        print(f"{row}\n  {uimap.WHAT_THE_MOCK_DOES[row]}\n")
-    return 0
+    return core.rows(IDENTITY, uimap.cited(), uimap.WHAT_THE_MOCK_DOES)

@@ -1,0 +1,266 @@
+"""The wire every mock shares: cookies, redirects, the witness routes, and the server.
+
+Every decision about what a site *does* is in its `site.py`, and everything
+about what it *looks* like is in its `pages.py`; its `server.py` holds its
+routes. What is here is the part of the wire that is the same for every site:
+
+- **It is HTTPS, always.** The tool refuses every URL that is not `https://` on
+  the site's host — `08`'s resolution of §17, kept by §22 — and that refusal is
+  part of what a rehearsal exercises. Serving plain HTTP would make a mock
+  reachable only by a tool that had been told to accept it, which is the door in
+  the wall ADR 0001 refuses.
+- **The session cookie has a lifetime**, so a session survives Chrome being
+  closed and started again — which is what `login` storing a session in the
+  workspace profile means.
+- **The witness lives at `/__mock/`.** Not a path on any site, so nothing a
+  helper drives can reach it, which is what keeps the witness independent of
+  the thing it is a witness to. The ledger and the list of links are served
+  here for every site, on its own host and port (§54, *Reachability*); the
+  archive a link names is each site's own route, because whether it wants a
+  session is a fact about the site.
+
+The routes are plain `def`s rather than `async def`s on purpose: a `Site` is
+synchronous and guards its state with a lock, so FastAPI runs each route on a
+worker thread and the lock keeps doing its job.
+"""
+
+import socket
+import threading
+import time
+from collections.abc import Callable
+from http import HTTPStatus
+from typing import Any
+
+import uvicorn
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import PlainTextResponse
+from fastapi.responses import RedirectResponse as _RedirectResponse
+
+from mockcore import certificate
+from mockcore.exports import Export, Exports
+from mockcore.ledger import Ledger
+
+SESSION_COOKIE = "mock_session"
+LOGIN_COOKIE = "mock_login"
+
+LEDGER_PATH = "/__mock/ledger"
+LEDGER_JSON_PATH = "/__mock/ledger.json"
+EXPORTS_PATH = "/__mock/exports"
+EXPORTS_JSON_PATH = "/__mock/exports.json"
+ARCHIVE_PATH = EXPORTS_PATH + "/{token}.zip"
+"""Outside the surface any helper will drive, and deliberately not a path on
+any site: nothing the tool does can reach it. The archive's route is the site's
+to register at `ARCHIVE_PATH`, because whether the download wants a session is
+the site's fact and not the core's."""
+
+SESSION_MAX_AGE_S = 7 * 24 * 60 * 60
+"""How long a signed-in session lasts. Long enough to survive the browser being
+closed and started again: a cookie with no lifetime is discarded when Chrome
+exits, and every later command would sign in again."""
+
+MAX_BODY_BYTES = 32 * 1024 * 1024
+"""A seed is tens of kilobytes and a rehearsal attachment is smaller still. A
+cap because a mock reads whatever `Content-Length` promises into memory."""
+
+STARTUP_TIMEOUT_S = 10.0
+"""How long `serve` waits for uvicorn to report that it is accepting
+connections before giving up. Starting takes milliseconds; the timeout exists
+so a failure to start is an error rather than a hang."""
+
+
+class SignedOutError(Exception):
+    """Raised by a route that needs a session and was not given one.
+
+    The site's handler turns it into the redirect to wherever its signed-out
+    state lives, so that `signed out` is one line in every route that needs it.
+    """
+
+
+# -- responses ---------------------------------------------------------------- #
+
+
+def set_cookie(response: Response, name: str, value: str) -> None:
+    """Set a cookie for the whole site. Only the session has a lifetime."""
+    response.set_cookie(
+        name,
+        value,
+        path="/",
+        max_age=SESSION_MAX_AGE_S if name == SESSION_COOKIE else None,
+    )
+
+
+def redirect(location: str, **cookies: str) -> Response:
+    response = _RedirectResponse(location, status_code=HTTPStatus.SEE_OTHER)
+    for name, value in cookies.items():
+        set_cookie(response, name, value)
+    return response
+
+
+def not_found() -> Response:
+    return PlainTextResponse("not found", status_code=HTTPStatus.NOT_FOUND)
+
+
+def session_of(signed_in: Callable[[str | None], bool]) -> Callable[[Request], str]:
+    """Return the dependency a route with a session behind it declares."""
+
+    def session(request: Request) -> str:
+        token = request.cookies.get(SESSION_COOKIE)
+        if not signed_in(token):
+            raise SignedOutError
+        return str(token)
+
+    return session
+
+
+def quiet(_link: str) -> None:
+    """Announce a link to nobody: what a server does when no caller asked."""
+
+
+def export_json(export: Export, link: str) -> dict[str, Any]:
+    return {
+        "token": export.token,
+        "link": link,
+        "requested_at": export.requested_at,
+        "fetched": export.fetched,
+    }
+
+
+def witness(app: FastAPI, *, ledger: Ledger, exports: Exports, link_of: Callable[[Export], str]) -> None:
+    """Register the witness routes: the ledger and the links, behind no session.
+
+    The listing of links is open because it stands in for the inbox, and the
+    inbox is not the account (§54, *The export page*).
+    """
+
+    @app.get(LEDGER_PATH)
+    def ledger_block() -> Response:
+        return PlainTextResponse(ledger.block())
+
+    @app.get(LEDGER_JSON_PATH)
+    def ledger_json() -> dict[str, int]:
+        return ledger.counters()
+
+    @app.get(EXPORTS_PATH)
+    def exports_text() -> Response:
+        """Return the links minted so far, one per line, oldest first. Nothing when none."""
+        return PlainTextResponse("".join(f"{link_of(export)}\n" for export in exports.all()))
+
+    @app.get(EXPORTS_JSON_PATH)
+    def exports_json() -> list[dict[str, Any]]:
+        return [export_json(export, link_of(export)) for export in exports.all()]
+
+
+# -- serving it --------------------------------------------------------------- #
+
+
+class MockServer:
+    """The HTTPS server, running on its own thread until it is closed."""
+
+    def __init__(self, app: FastAPI, sock: socket.socket, material: certificate.Material) -> None:
+        self.app = app
+        self._socket = sock
+        self._server = uvicorn.Server(
+            uvicorn.Config(
+                app,
+                ssl_certfile=material.cert_path,
+                ssl_keyfile=material.key_path,
+                # Quiet: a rehearsal's terminal belongs to the tool. No access
+                # log and no logging configuration of uvicorn's own, so nothing
+                # below a warning is printed and a warning still is.
+                log_config=None,
+                log_level="warning",
+                access_log=False,
+                lifespan="off",
+            )
+        )
+        self._failure: BaseException | None = None
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self) -> None:
+        """Run the thread's body.
+
+        Uvicorn, and whatever stopped it, kept for `start` to report rather than printed
+        by the thread on its way out.
+        """
+        try:
+            self._server.run(sockets=[self._socket])
+        except BaseException as failure:  # ruff: ignore[blind-except] — whatever stopped it is the report
+            self._failure = failure
+
+    @property
+    def port(self) -> int:
+        return int(self._socket.getsockname()[1])
+
+    @property
+    def host(self) -> str:
+        return str(self._socket.getsockname()[0])
+
+    def start(self, timeout_s: float = STARTUP_TIMEOUT_S) -> None:
+        """Start the thread and wait until uvicorn is accepting connections.
+
+        A start that fails closes what it opened: the port is released rather than held
+        by a thread nobody will join.
+        """
+        self._thread.start()
+        try:
+            self._await_started(time.monotonic() + timeout_s)
+        except BaseException:
+            self.close()
+            raise
+
+    def _await_started(self, deadline: float) -> None:
+        """Block until uvicorn reports itself started, or say why it never will."""
+        while not self._server.started:
+            if not self._thread.is_alive():
+                raise RuntimeError("the mock's server stopped before it started") from self._failure
+            if time.monotonic() > deadline:
+                raise RuntimeError("the mock's server did not start in time")
+            time.sleep(0.005)
+
+    def close(self) -> None:
+        """Stop accepting, finish what is in flight, and release the port."""
+        self._server.should_exit = True
+        if self._thread.is_alive():
+            self._thread.join()
+        self._socket.close()
+
+
+def listen(host: str, port: int) -> socket.socket:
+    """Return a bound socket, before the server exists.
+
+    Binding here rather than in uvicorn is what makes `port=0` answerable — the tests
+    ask for any free port and need to know which one they got — and what makes a port
+    already in use an error in the caller's thread rather than in the server's.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind((host, port))
+    except OSError:
+        sock.close()
+        raise
+    return sock
+
+
+def serve(
+    build: Callable[[str, int], FastAPI],
+    *,
+    port: int,
+    host: str = "127.0.0.1",
+    material: certificate.Material,
+) -> MockServer:
+    """Return a started server, listening. The caller closes it.
+
+    `build` is told the address and port the socket really got — `0` asks for
+    any port — so that a site whose links point at its own address can spell
+    them for this process and no other.
+    """
+    sock = listen(host, port)
+    try:
+        bound_host, bound_port = sock.getsockname()[:2]
+        server = MockServer(build(str(bound_host), int(bound_port)), sock, material)
+    except BaseException:
+        sock.close()
+        raise
+    server.start()
+    return server
