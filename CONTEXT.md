@@ -30,8 +30,9 @@ The pilot and the full run of the migration against a real destination account.
 _Avoid_: trial, rehearsal
 
 **UI map**:
-The record of claude.ai's states and the signal each one shows, every row marked
-*observed* or *unknown*.
+The record of a site's states and the signal each one shows, one map per site, every
+row marked *observed on a date* (a person watched, or a trace is cited), *reported*
+(documentation or a third party, cited and dated) or *unknown* (nobody looked).
 _Avoid_: selectors document
 
 **Report**:
@@ -202,14 +203,15 @@ The tests that drive a real Chrome against served fixture pages.
 _Avoid_: end-to-end tests, e2e, integration tests, browser tests
 
 **Mock**:
-The served stand-in for the whole of claude.ai that behaves on its own, statefully, for a
-real Chrome. There is one, and it is a separate project. Every other test double is a
-*fake*, scripted by the test that uses it.
-_Avoid_: fake site, simulator, emulator, stub server
+The served stand-in for the whole of a site that behaves on its own, statefully, for a
+real Chrome. One per site, named by the site — the mock claude.ai, the mock chatgpt.com —
+and all of them one separate project. Every other test double is a *fake*, scripted by
+the test that uses it.
+_Avoid_: fake site, simulator, emulator, stub server, the Claude mock, the ChatGPT mock
 
 **Rehearsal**:
-The full run's protocol, run by the shipped tool against the mock with the scripted agent
-standing where Hermes stands. No model, no account.
+The full run's protocol, run by the shipped tool against a site's mock with the scripted
+agent standing where Hermes stands. No model, no account.
 _Avoid_: dry run, test run, smoke test, e2e
 
 **Rehearsal export**:

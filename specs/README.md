@@ -2,7 +2,7 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51 | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
@@ -11,12 +11,13 @@ Two kinds of document live here, and they are not interchangeable.
 | **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands; `Built` when its tests pass, `Done` when its live criteria are met |
 | **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
-| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings; the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines | Normative |
+| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings; the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative | Normative |
 
-There are four briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
+There are five briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
 [`02-claude-mock.md`](02-claude-mock.md) (§20–§28),
-[`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40) and
-[`04-trace.md`](04-trace.md) (§41–§51). Section numbers
+[`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40),
+[`04-trace.md`](04-trace.md) (§41–§51) and
+[`05-chatgpt-mock.md`](05-chatgpt-mock.md) (§52–§58). Section numbers
 continue across them,
 so `§N` names one section anywhere in the repository (a working rule, below). The words
 the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
@@ -38,6 +39,7 @@ specs/
 ├── 02-claude-mock.md     the rehearsal brief — intent, stable
 ├── 03-extraction-and-backup.md   the extraction brief — intent, stable
 ├── 04-trace.md           the trace brief — intent, stable
+├── 05-chatgpt-mock.md    the mock chatgpt.com brief — intent, stable
 ├── README.md             this file — index, sequence, shared decisions
 └── impl/
     ├── _template.md      the shape every implementation spec follows
@@ -46,9 +48,10 @@ specs/
 ```
 
 Two directories outside `src/` belong to the second brief and to no release:
-`mock/` is `26`'s stand-in for claude.ai, a workspace member with its own project
-file and README — and, since `32`, the third brief's mock source too — and
-`rehearsal/` is `28`'s export and `29`'s protocol. Neither is in the wheel or the
+`mock/` is the mocks' project — `26`'s stand-in for claude.ai, since `32` the third
+brief's mock source too, and since brief `05` the home of the mock chatgpt.com and of
+the core the sites share — a workspace member with its own project file and README;
+and `rehearsal/` is `28`'s export and `29`'s protocol. Neither is in the wheel or the
 sdist, and `dataporter` imports neither.
 
 ## Sequence
@@ -115,6 +118,11 @@ M9 — Trace (brief 04, §41–§51) — outside the gates: every command that d
   35  The watch: a second session on the tab, what the page did whoever caused it
   36  The rehearsal's traces: gathered, named after their steps, listed in the record
   37  Traces as evidence: a real trace committed, a UI-map row marked from it
+
+M10 — The mock chatgpt.com (brief 05, §52–§58) — outside the gates: it needs no account
+      and changes nothing in the tool, and it is built ahead of the tool's ChatGPT half
+  (no slices yet — to be carved from the brief: the core and the rename, the site's
+   sign-in and chats, the export page and the archive, the README's walk)
 ```
 
 ## Dependencies
@@ -305,6 +313,13 @@ what turns it `Done` is the first trace of a run against claude.ai committed und
 `docs/spike/traces/` and the first row marked from it — a person's trip to a throwaway
 account, which no test can take.
 
+Of the fifth brief, §52–§58 are claimed by no slice yet. §57 draws the line between
+what its slices build and what they name and leave, and §58 is its list of what is
+deliberately left; the slices, when they are carved, claim §53–§57 between them and §52
+as the goal. None can be `Done` on its own suite alone: §56 lends the live criterion to
+the brief that gives the tool a ChatGPT half, and a slice of `05` reaches `Built` when
+its suite passes and `Done` when that brief's first run has walked the mock.
+
 ## Working rules
 
 - **New work starts as a slice, not as an edit to the brief.** If the brief turns out to be
@@ -325,8 +340,8 @@ account, which no test can take.
   entry leaves that file when an ADR, an amendment or a glossary edit lands.
 - **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
   `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
-  `03` starts at §29 where `02` ends, `04` at §41 where `03` ends, and a fifth starts at
-  §52. Cite `§N`, never `02§N`.
+  `03` starts at §29 where `02` ends, `04` at §41 where `03` ends, `05` at §52 where
+  `04` ends, and a sixth starts at §59. Cite `§N`, never `02§N`.
 
 ## Shared decisions
 
@@ -402,13 +417,18 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   it — the whole suite is ~20 seconds across four cores where it was five minutes — so the
   split is now a rail (a pull request is never gated on a browser) rather than the thing
   that makes the loop bearable.
-- **The mock and the rehearsal:** the mock is a `uv` workspace member (`mock/`,
-  package `claudemock`, command `claude-mock`) with one dependency of its own, and
-  the rehearsal is a top-level `rehearsal/` package that is linted, type-checked and
-  in neither the wheel nor the sdist. Neither is imported by `dataporter`; `26`'s
-  mock imports nothing from it either, and `29`'s runner drives the installed
-  command as a subprocess. The scripted agent's *procedures* stay in
-  `tests/fake_agent.py`, which is where the tool's own suite drives them.
+- **The mocks and the rehearsal:** the mocks are one `uv` workspace member, `mock/`
+  (brief `05` §53, ADR 0007): distribution `mocks` — `claude-mock` until the slice that
+  adds the core renames it — holding a core package, `mockcore`, and one package and
+  one command per site: `claudemock` / `claude-mock` on `127.0.0.1:8443` and
+  `chatgptmock` / `chatgpt-mock` on `127.0.0.1:8444`, each with its own certificate
+  under `~/.cache/<command>/`, its own UI map (`docs/claude-ui-map.md`,
+  `docs/chatgpt-ui-map.md`) and its own archive shape. The rehearsal is a top-level
+  `rehearsal/` package that is linted, type-checked and in neither the wheel nor the
+  sdist. Neither is imported by `dataporter`; the mocks import nothing from it either,
+  and `29`'s runner drives the installed command as a subprocess. The scripted agent's
+  *procedures* stay in `tests/fake_agent.py`, which is where the tool's own suite
+  drives them.
 - **Repo tooling:** [Graft](https://github.com/trailhq/Graft) indexes the repo into a code
   graph that coding agents query instead of re-reading the source. Development tooling only —
   no slice depends on it, `make check` never runs it, and the graph itself is git-ignored.
