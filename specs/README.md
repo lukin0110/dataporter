@@ -261,6 +261,10 @@ two paragraphs under it, say what that costs.
   the set skimmable.
 - **Words come from `CONTEXT.md`.** A term a document needs and the glossary lacks is
   added there first.
+- **A question a slice cannot answer alone is written down, not left.**
+  [`docs/open-decisions.md`](../docs/open-decisions.md) holds the ones where more than
+  one answer is defensible — what is at stake, the options, and what settles each. An
+  entry leaves that file when an ADR, an amendment or a glossary edit lands.
 - **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
   `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
   `03` starts at §29 where `02` ends, and a fourth starts at §41. Cite `§N`, never `02§N`.
