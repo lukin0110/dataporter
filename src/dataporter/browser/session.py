@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from dataporter import PROGRAM_NAME, log, signin
+from dataporter import PROGRAM_NAME, log
 from dataporter.browser import launcher
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.launcher import BrowserSession, PortInUseError
@@ -273,6 +273,8 @@ def login(settings: Settings, *, sink: Sink = DISCARD) -> LoginOutcome:
     instruction to the person at the keyboard, and it is the only thing this
     command asks of them. A wait that runs out is `AuthError`, exit `3`.
     """
+    from dataporter import signin  # ruff: ignore[import-outside-top-level] - signin imports login_form, which imports helpers, which imports this module
+
     if settings.non_interactive:
         signin.require_credentials(settings)
     # `settings.logs_dir`, which is the workspace for the destination and the

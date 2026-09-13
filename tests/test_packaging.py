@@ -252,3 +252,43 @@ def test_the_module_runs_as_a_command() -> None:
     )
 
     assert done.stdout == f"{PROGRAM_NAME} {__version__}\n"
+
+
+def _importable_modules() -> list[str]:
+    """Every module in the package, as a consumer would spell it in an `import`."""
+    root = REPO / "src"
+    names = []
+    for path in sorted((root / "dataporter").rglob("*.py")):
+        if path.name == "__main__.py":  # guarded; `test_the_module_runs_as_a_command` covers it
+            continue
+        parts = list(path.relative_to(root).with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts.pop()
+        names.append(".".join(parts))
+    return names
+
+
+@pytest.mark.parametrize("module", _importable_modules())
+def test_every_module_imports_on_its_own(module: str) -> None:
+    """Each module is the first thing its interpreter imports.
+
+    The suite imports the package in one order — `conftest` first, then whatever a
+    test asked for — and a cycle hidden behind that order is invisible to every
+    assertion in it. A consumer of `23`'s library writes `from dataporter.browser
+    import helpers` and gets whatever order that implies, so each module is asked
+    on its own, in a subprocess that has imported nothing else.
+
+    A function-local import is how this package breaks the cycles it has; the
+    ones that are there say so on the line. This is what keeps the next hoist
+    honest.
+    """
+    done = subprocess.run(
+        [sys.executable, "-c", f"import {module}"],
+        cwd=REPO,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert done.returncode == 0, f"`import {module}` failed:\n{done.stderr}"
