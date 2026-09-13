@@ -100,7 +100,13 @@ COMPLETE = "complete"
 INCOMPLETE = "incomplete"
 UNREADABLE = "unreadable"
 GAPS = "{count} gaps"
-"""The four things the last column of a `snapshots` row says."""
+GAPS_ONE = "1 gap"
+"""What the last column of a `snapshots` row says.
+
+`1 gap` rather than `1 gaps`: the column is read by a person, and §33's own
+block shows the plural because its example has two. (Raised by Copilot in review
+on #43.)
+"""
 
 COLUMN_GAP = "   "
 """Three spaces between the columns of a `snapshots` row (§33's block)."""
@@ -269,7 +275,9 @@ class SnapshotRow(StoreModel):
         """
         if self.state != COMPLETE:
             return self.state
-        return GAPS.format(count=self.gaps) if self.gaps else COMPLETE
+        if not self.gaps:
+            return COMPLETE
+        return GAPS_ONE if self.gaps == 1 else GAPS.format(count=self.gaps)
 
 
 # --------------------------------------------------------------------------- #
@@ -493,10 +501,22 @@ def _copy(source: Path, target: Path) -> tuple[str, int]:
     return digest.hexdigest(), written
 
 
+SNAPSHOT_MODE = 0o600
+"""The mode every file in a snapshot is created with.
+
+A snapshot holds the account's conversations — that is what it is for — and the
+store is long-lived and shared between accounts and sources, so the bytes are
+the owner's and nobody else's. The same mode the download's temp file and
+`ask.json` already use, and a narrowing of the umask default rather than a
+widening of it: a `0o644` snapshot is world-readable wherever the umask allows
+it. (Raised by Copilot in review on #43.)
+"""
+
+
 def _open_exclusive(path: Path) -> int:
     """`O_CREAT | O_EXCL | O_WRONLY`: create it, or fail because it is there."""
     try:
-        return os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        return os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, SNAPSHOT_MODE)
     except FileExistsError as exc:
         raise StoreError(SNAPSHOT_EXISTS.format(path=path)) from exc
     except OSError as exc:
