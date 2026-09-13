@@ -136,14 +136,24 @@ class Watch:
         return self._thread is not None and self._thread.is_alive()
 
     def stop(self) -> None:
-        """Close the session and wait for the thread. Safe to call twice."""
+        """Close the session and wait for the thread. Safe to call twice.
+
+        A thread still alive after the wait keeps its reference and is warned
+        about, so a stuck loop can be seen — `running` stays true — and stopped
+        again later, rather than lost. (Raised by Copilot in review on #48.)
+        """
         self._stopping.set()
         page, self._page = self._page, None
         if page is not None:
             page.close()
-        if self._thread is not None:
-            self._thread.join(timeout=STOP_S)
-            self._thread = None
+        thread = self._thread
+        if thread is None:
+            return
+        thread.join(timeout=STOP_S)
+        if thread.is_alive():
+            _logger.warning("watch did not stop", extra={"waited_s": STOP_S})
+            return
+        self._thread = None
 
     # -- the loop ----------------------------------------------------------- #
 
