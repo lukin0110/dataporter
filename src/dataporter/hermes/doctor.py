@@ -33,17 +33,18 @@ contain page snapshots; what reaches the terminal is a fixed phrase and a path.
 import json
 import secrets
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
 from dataporter import PROGRAM_NAME, log
+from dataporter import trace as tracing
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
-from dataporter.browser.probe import NEW_CHAT_URL
+from dataporter.browser.probe import MIGRATION_SITE, NEW_CHAT_URL
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import BrowserError, HermesError
@@ -177,7 +178,7 @@ def pacing_check(settings: Settings) -> Check:
     )
 
 
-def checks(settings: Settings) -> Generator[Check, None, None]:  # ruff: ignore[complex-structure, too-many-branches, too-many-return-statements, too-many-statements] - one branch per check, and it stops at the first failure
+def checks(settings: Settings, flags: Sequence[str] = ()) -> Generator[Check, None, None]:  # ruff: ignore[complex-structure, too-many-branches, too-many-return-statements, too-many-statements] - one branch per check, and it stops at the first failure
     """Yield one `Check` per check, ending after the first failure.
 
     A generator so that the CLI prints each line as it is produced — the two
@@ -267,25 +268,34 @@ def checks(settings: Settings) -> Generator[Check, None, None]:  # ruff: ignore[
         yield Check(CHROME_LAUNCH, ok=False, detail=exc.detail or type(exc).__name__)
         return
     try:
-        yield Check(
-            CHROME_LAUNCH,
-            ok=True,
-            detail=f"port {settings.browser.cdp_port}, {time.monotonic() - started:.1f}s"
-            + (", headless" if settings.headless else ""),
-        )
-        # Written out rather than looped, because each of the three is only
-        # worth running if the one before it passed — and the two Hermes tasks
-        # cost a minute each, so "run it anyway and throw the line away" is not
-        # a cheap simplification.
-        attached = _hermes_reaches_chrome(settings, browser.client)
-        yield attached
-        if not attached.ok:
-            return
-        helper = _hermes_runs_helper(settings)
-        yield helper
-        if not helper.ok:
-            return
-        yield _session_check(browser)
+        with tracing.opened(
+            settings, command="doctor", flags=flags, site=MIGRATION_SITE, client=browser.client
+        ) as traced:
+            yield Check(
+                CHROME_LAUNCH,
+                ok=True,
+                detail=f"port {settings.browser.cdp_port}, {time.monotonic() - started:.1f}s"
+                + (", headless" if settings.headless else ""),
+            )
+            # Written out rather than looped, because each of the three is only
+            # worth running if the one before it passed — and the two Hermes tasks
+            # cost a minute each, so "run it anyway and throw the line away" is not
+            # a cheap simplification. The trace's exit code is set before each
+            # yield that may be the last: `run_doctor` closes the generator on a
+            # failed check, and the trace then ends with `6` rather than `70`.
+            attached = _hermes_reaches_chrome(settings, browser.client)
+            traced.exit_code = ExitCode.OK if attached.ok else ExitCode.ENVIRONMENT
+            yield attached
+            if not attached.ok:
+                return
+            helper = _hermes_runs_helper(settings)
+            traced.exit_code = ExitCode.OK if helper.ok else ExitCode.ENVIRONMENT
+            yield helper
+            if not helper.ok:
+                return
+            session = _session_check(browser)
+            traced.exit_code = ExitCode.OK if session.ok else ExitCode.ENVIRONMENT
+            yield session
     finally:
         # A browser this command started is a browser this command closes; one it
         # adopted belongs to whoever started it, as `session status` has it.
@@ -471,7 +481,7 @@ class DoctorOutcome:
     exit_code: ExitCode
 
 
-def run_doctor(settings: Settings, *, sink: Sink = DISCARD) -> DoctorOutcome:
+def run_doctor(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) -> DoctorOutcome:
     """Check that Hermes and Chrome are present and configured, stopping at the first failure (`09`).
 
     The pacing line comes first and unconditionally: §13's numbers are what this
@@ -487,7 +497,7 @@ def run_doctor(settings: Settings, *, sink: Sink = DISCARD) -> DoctorOutcome:
     sink.line(pacing_check(settings).render())
     ran: list[Check] = []
     failed = False
-    with closing(checks(settings)) as stream:
+    with closing(checks(settings, flags=flags)) as stream:
         for check in stream:
             ran.append(check)
             sink.line(check.render())

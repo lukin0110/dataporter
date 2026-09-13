@@ -19,7 +19,7 @@ import pytest
 from pydantic import SecretStr
 from typer.testing import CliRunner
 
-from dataporter import cli, extract, signin, store
+from dataporter import cli, extract, log, signin, store
 from dataporter.browser import export_page, helpers, launcher
 from dataporter.browser.cdp import CdpClient
 from dataporter.browser.launcher import BrowserSession
@@ -557,3 +557,43 @@ def test_the_store_is_untouched_by_an_ask(settings: Settings, page: FakeExportPa
 
     assert extract.ask_path(settings).exists()
     assert store.Store(settings.store_dir).rows() == []
+
+
+def test_both_clicks_are_moves_in_the_account_home_s_trace(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """`33`: the two clicks, as moves, beside the account home's run log."""
+    extract.ask(settings, flags=("--account",))
+
+    logs = Path(settings.logs_dir) / "logs"
+    traces = sorted(logs.glob("trace-*.jsonl"))
+    assert len(traces) == 1
+    # The run log's stamp — the run log itself appears only once a record is
+    # written, and nothing under `INFO` is written outside the CLI.
+    run_log = log.current_run_log()
+    assert run_log is not None
+    assert traces[0].name == run_log.name.replace("run-", "trace-")
+    written = [json.loads(line) for line in traces[0].read_text(encoding="utf-8").splitlines()]
+    header = written[0]
+    assert header["command"] == "extract"
+    assert header["flags"] == ["--account"]
+    assert header["source"] == "claude"
+    assert header["account"] == ACCOUNT
+    assert header["host"] == "claude.ai"
+    assert header["root"] == str(settings.logs_dir)
+
+    moves = [line for line in written if line["kind"] == "move"]
+    assert [move["helper"] for move in moves] == [export_page.BUTTON_ACTION, export_page.CONFIRM_ACTION]
+    assert moves[0]["result"] == {
+        "selector": export_page.EXPORT_BUTTON_SELECTOR,
+        "path": export_page.EXPORT_PAGE_PATH,
+        "query": [],
+    }
+    assert all(move["conversation_id"] is None for move in moves)
+    actions = [
+        json.loads(line) for line in helpers.actions_path(settings.logs_dir).read_text(encoding="utf-8").splitlines()
+    ]
+    assert [move["ts"] for move in moves] == [action["ts"] for action in actions]
+    assert written[-1]["what"] == "end"
+    assert written[-1]["exit"] == 0
+    assert not (settings.workspace / "logs").exists()

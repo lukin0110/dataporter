@@ -38,10 +38,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from orval import utcnow
 from pydantic import BaseModel, ConfigDict
 
 from dataporter import log
+from dataporter import trace as tracing
 from dataporter.browser import probe as probing
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.session import BLANK_URLS
@@ -850,13 +850,16 @@ def run(
             )
         )
     elapsed_ms = round((time.monotonic() - started) * 1000)
+    ts = tracing.timestamp()
     record_action(
         settings.workspace,
         helper,
         ok=outcome.ok,
         elapsed_ms=elapsed_ms,
         conversation_id=outcome.conversation_id,
+        ts=ts,
     )
+    record_move(helper, outcome, elapsed_ms=elapsed_ms, ts=ts)
     return Emission(
         text=outcome.result.model_dump_json(exclude_none=True),
         exit_code=outcome.exit_code,
@@ -891,8 +894,12 @@ def record_action(
     conversation_id: str | None = None,
     url: str | None = None,
     selector: str | None = None,
+    ts: str | None = None,
 ) -> None:
     """Append one line to `<workspace>/logs/actions.jsonl`.
+
+    `ts` is `33`'s: the run's trace writes its move with the same stamp, which
+    is how the two lines are paired. Unset, it is the moment.
 
     Best effort: a workspace that cannot be written to is worth a warning, not a
     lost result. The helper has already acted on the page by the time this runs,
@@ -907,7 +914,7 @@ def record_action(
     own text is never recorded at all.
     """
     record: dict[str, object] = {
-        "ts": utcnow().isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        "ts": ts or tracing.timestamp(),
         "helper": helper,
         "ok": ok,
         "elapsed_ms": elapsed_ms,
@@ -921,3 +928,24 @@ def record_action(
             handle.write(json.dumps(record) + "\n")
     except OSError as exc:
         _logger.warning("actions log not written", extra={"reason": str(exc)})
+
+
+def record_move(helper: str, outcome: Outcome, *, elapsed_ms: int, ts: str) -> None:
+    """One move in the run's trace (`33`), when this process has one.
+
+    Written where the action is counted, with the `actions.jsonl` line's own
+    `ts`, and what the helper printed minus what §46 forbids — `ProbeResult`'s
+    `title`, a `Failure`'s `url`. No trace — a helper run by hand, with no
+    `DATAPORTER_TRACE` in its environment — is no move, and no warning either.
+    """
+    current = tracing.current()
+    if current is None:
+        return
+    current.move(
+        helper,
+        ok=outcome.ok,
+        elapsed_ms=elapsed_ms,
+        conversation_id=outcome.conversation_id,
+        result=tracing.sanitised(outcome.result.model_dump(mode="json", exclude_none=True)),
+        ts=ts,
+    )

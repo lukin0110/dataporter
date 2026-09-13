@@ -36,12 +36,14 @@ from typing import TYPE_CHECKING
 from orval import utcnow
 
 from dataporter import log
-from dataporter.browser import helpers
+from dataporter import trace as tracing
+from dataporter.browser import helpers, login_form
 from dataporter.browser import probe as probing
 from dataporter.browser.cdp import Page
 from dataporter.browser.helpers import Surface
 from dataporter.browser.launcher import BrowserSession
 from dataporter.browser.probe import CLAUDE_HOST, PageState
+from dataporter.browser.site import Site
 from dataporter.config import Settings
 from dataporter.errors import BrowserError
 
@@ -101,6 +103,14 @@ _SELECTORS: tuple[tuple[str, str], ...] = (
 )
 """The three, as JavaScript consts, injected into this module's expressions —
 `probe`'s own discipline, applied to the page `probe` knows nothing about."""
+
+EXTRACTION_SITE = Site(
+    "claude",
+    CLAUDE_HOST,
+    {**probing.SELECTORS, **dict(_SELECTORS), **login_form.SELECTORS},
+)
+"""claude.ai as an extraction's trace describes it (brief `04` §50): the same
+host, and every selector the ask and a source sign-in drive it with, by name."""
 
 EXPORT_PAGE_TAG = "dataporter:export_page"
 CLICK_TAG = "dataporter:click"
@@ -345,6 +355,7 @@ def _record(
     everything the tool writes *about* an account to numbers, labels and our own
     strings.
     """
+    ts = tracing.timestamp()
     helpers.record_action(
         Path(settings.logs_dir),
         action,
@@ -352,7 +363,16 @@ def _record(
         elapsed_ms=elapsed_ms,
         url=url,
         selector=selector,
+        ts=ts,
     )
+    current = tracing.current()
+    if current is None:
+        return
+    # `33`: the same line, as a move — the selector is ours, the URL is reduced
+    # to its path and its query's key names (§46).
+    result: dict[str, object] = {"selector": selector} if selector else {}
+    result.update(tracing.url_fields(url))
+    current.move(action, ok=ok, elapsed_ms=elapsed_ms, conversation_id=None, result=result, ts=ts)
 
 
 def _bring_to_export_page(session: BrowserSession, *, deadline: float, poll_s: float) -> None:

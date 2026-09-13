@@ -1,21 +1,23 @@
 """Picking a tab, waiting for a login, and throwing the profile away."""
 
 import ast
+import json
 import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 import dataporter
 from dataporter import cli, log
-from dataporter.browser import launcher
+from dataporter.browser import export_page, launcher, probe
 from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
 from dataporter.browser.probe import NEW_CHAT_URL
-from dataporter.config import BrowserSettings, Settings, TimeoutSettings
+from dataporter.config import BrowserSettings, Settings, TimeoutSettings, with_session_account
 from dataporter.errors import BrowserError
 from dataporter.exit_codes import ExitCode
 from dataporter.state import StateError
@@ -589,3 +591,67 @@ def _logs_a_forbidden_field(node: ast.AST) -> bool:
                 if isinstance(key, ast.Constant) and key.value in log.FORBIDDEN_FIELDS:
                     return True
     return False
+
+
+# --------------------------------------------------------------------------- #
+# `33`: the trace a `login` leaves
+# --------------------------------------------------------------------------- #
+
+
+def _trace_lines(workspace: Path) -> list[dict[str, Any]]:
+    traces = sorted((workspace / "logs").glob("trace-*.jsonl"))
+    assert len(traces) == 1, traces
+    run_logs = sorted((workspace / "logs").glob("run-*.jsonl"))
+    # Paired with the run log by name: the same stamp, the same directory.
+    assert [path.name.removeprefix("trace-") for path in traces] == [
+        path.name.removeprefix("run-") for path in run_logs
+    ]
+    return [json.loads(line) for line in traces[0].read_text(encoding="utf-8").splitlines()]
+
+
+def test_login_leaves_a_trace_beside_its_run_log(
+    runner: CliRunner,
+    chrome: FakeChrome,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = adoptable(chrome, tmp_path, monkeypatch)
+    result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
+    assert result.exit_code == ExitCode.OK
+
+    written = _trace_lines(settings.workspace)
+    header, *_, end = written
+    assert header["kind"] == "header"
+    assert header["command"] == "login"
+    assert header["flags"] == []
+    assert header["source"] == "claude"
+    assert header["host"] == "claude.ai"
+    assert header["account"] is None
+    assert header["root"] == str(settings.workspace)
+    assert end["what"] == "end"
+    assert end["exit"] == 0
+
+
+def test_a_login_that_gave_up_ends_its_trace_with_70(
+    runner: CliRunner,
+    chrome: FakeChrome,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The body raised; the terminal says `3` and the trace says the body did not return."""
+    chrome.targets[0].evaluate = LOGGED_OUT
+    settings = adoptable(chrome, tmp_path, monkeypatch)
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__LOGIN_S", "0.05")
+    result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
+    assert result.exit_code == ExitCode.NOT_AUTHENTICATED
+
+    end = _trace_lines(settings.workspace)[-1]
+    assert end["what"] == "end"
+    assert end["exit"] == 70
+
+
+def test_a_login_s_site_is_the_destination_s_or_the_source_s(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, 1)
+    assert browser_session.site_of(settings) is probe.MIGRATION_SITE
+    assert browser_session.site_of(with_session_account(settings, "claude", "old")) is export_page.EXTRACTION_SITE
+    assert set(export_page.EXTRACTION_SITE.selectors) > set(probe.MIGRATION_SITE.selectors)

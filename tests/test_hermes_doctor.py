@@ -1,5 +1,6 @@
 """`doctor`: ten checks in order, stopping at the first failure."""
 
+import json
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -668,3 +669,26 @@ def test_a_failing_helper_task_is_reported_as_that_check(
     assert labels(results)[-1] == hermes_doctor.HERMES_HELPER
     assert "hermes exited 1" in results[-1].detail
     assert results[-2].ok
+
+
+def test_doctor_leaves_a_trace_that_ends_with_its_code(
+    tmp_path: Path,
+    fake: FakeHermes,
+    chrome: FakeChrome,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`33`: a `doctor` drives a tab, so it leaves a trace like every other command."""
+    settings = make_settings(tmp_path, fake, chrome)
+    profiling.run_setup(settings)
+    adopt_instead(monkeypatch, chrome)
+
+    outcome = hermes_doctor.run_doctor(settings, flags=("--verbose",))
+
+    traces = sorted((settings.workspace / "logs").glob("trace-*.jsonl"))
+    assert len(traces) == 1
+    written = [json.loads(line) for line in traces[0].read_text(encoding="utf-8").splitlines()]
+    assert written[0]["command"] == "doctor"
+    assert written[0]["flags"] == ["--verbose"]
+    assert written[0]["agent"] == "hermes 1.0.0"
+    assert written[-1]["what"] == "end"
+    assert written[-1]["exit"] == int(outcome.exit_code)

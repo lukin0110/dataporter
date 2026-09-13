@@ -235,7 +235,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [30](impl/30-store-and-snapshot.md) | The store and the snapshot | §30, §31, §32, §33, §37, §38 | Built |
 | [31](impl/31-source-session-and-ask.md) | The source session and the ask | §31, §35, §36, §38, §39 | Built |
 | [32](impl/32-mock-export-page.md) | The mock export page | §40 (a mock source) | Done |
-| [33](impl/33-trace-and-move.md) | The trace file and the move | §42, §43, §46, §47, §50 | Not started |
+| [33](impl/33-trace-and-move.md) | The trace file and the move | §42, §43, §46, §47, §50 | Built |
 | [34](impl/34-sketch.md) | The sketch | §45, §46, §50 | Not started |
 | [35](impl/35-watch.md) | The watch | §44, §46, §47, §50 | Not started |
 | [36](impl/36-rehearsal-traces.md) | The rehearsal's traces | §47, §48 | Not started |
@@ -290,8 +290,10 @@ the header's marks, `34` the sketch, `35` the watch and the certificate, `36` th
 rehearsal's side, and `37` the evidence rule; §46 (what a trace never carries) and §50
 (one shape for every source) are split across the three tool slices along the same
 lines. §41 is that brief's goal and is claimed by all five; §51 is its list of what is
-deliberately left and stays unclaimed until one of its items is built. All five are
-`Not started`.
+deliberately left and stays unclaimed until one of its items is built. `33` is `Built`:
+its code is in and its tests pass against the fakes, and its one live criterion — a
+rehearsal's traces matching `actions.jsonl` line for line — waits on `36`, which is
+where a rehearsal gathers them. The other four are `Not started`.
 
 ## Working rules
 

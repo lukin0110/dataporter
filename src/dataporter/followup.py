@@ -43,9 +43,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import importer as importing
 from dataporter import log, render, signin, state
+from dataporter import trace as tracing
 from dataporter import verify as verifying
 from dataporter.browser import launcher
-from dataporter.browser.probe import NEW_CHAT_URL
+from dataporter.browser.probe import MIGRATION_SITE, NEW_CHAT_URL
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import HermesError
@@ -410,7 +411,9 @@ class FollowupOutcome:
     exit_code: ExitCode
 
 
-def ask_all(settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD) -> FollowupOutcome:
+def ask_all(
+    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD, flags: Sequence[str] = ()
+) -> FollowupOutcome:
     """Ask each migrated chat one follow-up question (the pilot's probe, `20`).
 
     Nothing completed, or nothing selected, is exit `4` — `06`'s rule for an
@@ -452,16 +455,20 @@ def ask_all(settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCAR
         asking = Prober(settings)
         file = read(settings)
         try:
-            signin.ensure_signed_in(settings, browser)
-            for position, (uuid, entry) in enumerate(wanted):
-                answer = asking.ask(uuid, entry)
-                file = file.replace(answer)
-                write(settings, file)
-                answers.append(answer)
-                # Printed even under `--quiet`, like `verify`'s lines.
-                sink.line(answer.line())
-                if position + 1 < len(wanted):
-                    importing.pause(settings.pacing.delay_between_conversations_s)
+            with tracing.opened(
+                settings, command="followup", flags=flags, site=MIGRATION_SITE, client=browser.client
+            ) as traced:
+                signin.ensure_signed_in(settings, browser)
+                for position, (uuid, entry) in enumerate(wanted):
+                    answer = asking.ask(uuid, entry)
+                    file = file.replace(answer)
+                    write(settings, file)
+                    answers.append(answer)
+                    # Printed even under `--quiet`, like `verify`'s lines.
+                    sink.line(answer.line())
+                    if position + 1 < len(wanted):
+                        importing.pause(settings.pacing.delay_between_conversations_s)
+                traced.exit_code = ExitCode.FAILED if any(not answer.answered for answer in answers) else ExitCode.OK
         finally:
             if not browser.adopted:
                 browser.close()

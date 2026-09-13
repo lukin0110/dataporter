@@ -48,7 +48,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,6 +57,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from dataporter import PROGRAM_NAME, log, plan, signin, store
+from dataporter import trace as tracing
 from dataporter.browser import export_page, launcher
 from dataporter.browser import session as browser_session
 from dataporter.config import Settings
@@ -286,7 +287,7 @@ def ask_block(ask: store.Ask) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
-def ask(settings: Settings, *, sink: Sink = DISCARD) -> ExtractOutcome:
+def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) -> ExtractOutcome:
     """Ask the vendor for this account's export, and write down that we did (§31).
 
     The whole of `31`, in the order the order matters:
@@ -326,8 +327,12 @@ def ask(settings: Settings, *, sink: Sink = DISCARD) -> ExtractOutcome:
 
     browser = launcher.launch(settings, export_page.EXPORT_PAGE_URL)
     try:
-        _sign_in_to_source(settings, browser, sink=sink)
-        result = export_page.request_export(settings, browser)
+        with tracing.opened(
+            settings, command="extract", flags=flags, site=export_page.EXTRACTION_SITE, client=browser.client
+        ) as traced:
+            _sign_in_to_source(settings, browser, sink=sink)
+            result = export_page.request_export(settings, browser)
+            traced.exit_code = ExitCode.OK if result.requested and result.pressed_at is not None else ExitCode.FAILED
     finally:
         # Chrome writes its cookie jar out on exit, and a browser left running
         # would hold the next session's port (`31`: one port, sequential
@@ -664,7 +669,9 @@ def _display(settings: Settings, snapshot: store.Snapshot) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def extract_command(settings: Settings, request: ExtractRequest, *, sink: Sink = DISCARD) -> ExtractOutcome:
+def extract_command(
+    settings: Settings, request: ExtractRequest, *, sink: Sink = DISCARD, flags: Sequence[str] = ()
+) -> ExtractOutcome:
     """Ask, fetch, file or abandon — whichever the flags name (§31).
 
     The library picks the mode and refuses the combinations that cannot both be
@@ -683,7 +690,7 @@ def extract_command(settings: Settings, request: ExtractRequest, *, sink: Sink =
         return fetch(settings, request.link, sink=sink)
     if request.from_path is not None:
         return file(settings, request.from_path, sink=sink)
-    return ask(settings, sink=sink)
+    return ask(settings, sink=sink, flags=flags)
 
 
 def _account(settings: Settings) -> str:

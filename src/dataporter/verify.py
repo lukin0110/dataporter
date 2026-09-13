@@ -45,6 +45,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from dataporter import log, render, signin, state
+from dataporter import trace as tracing
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher
 from dataporter.browser import probe as probing
@@ -553,7 +554,9 @@ class VerifyOutcome:
     exit_code: ExitCode
 
 
-def verify_all(settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD) -> VerifyOutcome:
+def verify_all(
+    settings: Settings, *, only: Sequence[str] = (), sink: Sink = DISCARD, flags: Sequence[str] = ()
+) -> VerifyOutcome:
     """Check that migrated conversations exist in the destination account (`17`).
 
     Nothing migrated, or nothing selected, is exit `4` rather than the `0` that
@@ -588,19 +591,23 @@ def verify_all(settings: Settings, *, only: Sequence[str] = (), sink: Sink = DIS
         # a window the operator left open reuses it.
         browser = launcher.launch(settings, probing.NEW_CHAT_URL)
         try:
-            # Exit `3` when signed out — after `24`'s one unattended sign-in,
-            # in that mode: a signed-out session makes every chat unreadable,
-            # and reporting a hundred failed verifications would bury the one
-            # fact that matters.
-            signin.ensure_signed_in(settings, browser)
-            verifier = Verifier(settings, browser.client)
-            for uuid, expected in wanted:
-                result = verifier.verify(expected)
-                record(store, uuid, result)
-                found.append((uuid, result))
-                # Printed even under `--quiet`, for the reason `status`'s block
-                # is: `-q` suppresses progress, and these lines are the result.
-                sink.line(result.line())
+            with tracing.opened(
+                settings, command="verify", flags=flags, site=probing.MIGRATION_SITE, client=browser.client
+            ) as traced:
+                # Exit `3` when signed out — after `24`'s one unattended sign-in,
+                # in that mode: a signed-out session makes every chat unreadable,
+                # and reporting a hundred failed verifications would bury the one
+                # fact that matters.
+                signin.ensure_signed_in(settings, browser)
+                verifier = Verifier(settings, browser.client)
+                for uuid, expected in wanted:
+                    result = verifier.verify(expected)
+                    record(store, uuid, result)
+                    found.append((uuid, result))
+                    # Printed even under `--quiet`, for the reason `status`'s block
+                    # is: `-q` suppresses progress, and these lines are the result.
+                    sink.line(result.line())
+                traced.exit_code = ExitCode.FAILED if any(not result.ok for _, result in found) else ExitCode.OK
         finally:
             # A browser this command started is one it closes; one that was
             # already running belongs to whoever started it (`12`, `07`).

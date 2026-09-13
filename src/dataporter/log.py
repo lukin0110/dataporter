@@ -143,7 +143,7 @@ def _extras(record: logging.LogRecord) -> dict[str, Any]:
     return {key: value for key, value in record.__dict__.items() if key not in _RESERVED_RECORD_ATTRS}
 
 
-def _forbidden_names(fields: Mapping[str, Any], depth: int = 0) -> set[str]:
+def forbidden_names(fields: Mapping[str, Any], depth: int = 0) -> set[str]:
     """Forbidden field names in `fields`, including inside nested mappings.
 
     The spec says "fields are named", i.e. top level. Nested mappings are scanned
@@ -154,7 +154,7 @@ def _forbidden_names(fields: Mapping[str, Any], depth: int = 0) -> set[str]:
     if depth < _MAX_SCAN_DEPTH:
         for value in fields.values():
             if isinstance(value, Mapping):
-                found |= _forbidden_names(value, depth + 1)
+                found |= forbidden_names(value, depth + 1)
     return found
 
 
@@ -175,7 +175,7 @@ class ContentGuard(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         fields = _extras(record)
 
-        offending = _forbidden_names(fields)
+        offending = forbidden_names(fields)
         if offending:
             if self.strict:
                 # Raised outside Handler.emit's try/except, so it reaches the caller
@@ -259,14 +259,28 @@ def strict_by_default() -> bool:
     return _strict_default or to_bool(os.environ.get(STRICT_ENV_VAR, ""), default=False)
 
 
-def run_log_path(workspace: Path, now: datetime | None = None) -> Path:
-    """`<workspace>/logs/run-<UTC ts>.jsonl`.
+RUN_LOG_STAMP = "%Y%m%dT%H%M%SZ"
+"""Basic ISO 8601 — no colons, so it is a legal filename everywhere, and it
+sorts lexicographically by time. `33`'s trace uses the same stamp, so the two
+files of one run pair by name."""
 
-    Basic ISO 8601 — no colons, so it is a legal filename everywhere, and it sorts
-    lexicographically by time.
-    """
-    stamp = (now or utcnow()).strftime("%Y%m%dT%H%M%SZ")
+
+def run_log_path(workspace: Path, now: datetime | None = None) -> Path:
+    """`<workspace>/logs/run-<UTC ts>.jsonl`."""
+    stamp = (now or utcnow()).strftime(RUN_LOG_STAMP)
     return workspace / LOGS_DIRNAME / f"run-{stamp}.jsonl"
+
+
+def current_run_log() -> Path | None:
+    """Return the file the run log is going to, or `None` when none is enabled.
+
+    What `33`'s trace reads its stamp off: a run that has a run log has a trace
+    with the same name beside it.
+    """
+    for handler in package_logger().handlers:
+        if isinstance(handler, _JsonlFileHandler):
+            return Path(handler.baseFilename)
+    return None
 
 
 def configure_logging(*, verbose: bool = False, strict: bool | None = None) -> None:

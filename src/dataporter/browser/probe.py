@@ -37,8 +37,9 @@ guessed; when that file and this one disagree, that file is the one that looked.
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any, Literal, Self
 from urllib.parse import urlparse
 
@@ -47,6 +48,7 @@ from pydantic import BaseModel, ConfigDict
 
 from dataporter import log
 from dataporter.browser.cdp import Page
+from dataporter.browser.site import Site
 
 _logger = log.get_logger(__name__)
 
@@ -98,6 +100,13 @@ _SELECTORS: tuple[tuple[str, str], ...] = (
 )
 """The selectors, as JavaScript consts. Injected rather than interpolated into
 each expression, so the Python constant above is the only spelling of each."""
+
+SELECTORS: Mapping[str, str] = MappingProxyType(dict(_SELECTORS))
+"""The same table, by name, for `33`'s site: what a sketch counts on a page."""
+
+MIGRATION_SITE = Site("claude", CLAUDE_HOST, SELECTORS)
+"""claude.ai as a trace describes it (brief `04` §50): the destination of every
+migration, and the one site this module knows."""
 
 PRELUDE_JS = (
     "".join(f"  const {name} = {json.dumps(value)};\n" for name, value in _SELECTORS)

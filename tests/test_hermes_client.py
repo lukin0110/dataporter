@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from dataporter import trace as tracing
+from dataporter.browser.site import Site
 from dataporter.config import HermesSettings, Settings, TimeoutSettings
 from dataporter.errors import HermesError, HermesUsageError
 from dataporter.hermes import client as hermes_client
@@ -283,3 +285,19 @@ def test_a_credential_in_the_parent_never_reaches_hermes(
     seen = fake.calls[-1].env
     assert not any(key.startswith("DATAPORTER_AUTH") for key in seen)
     assert "hunter2" not in " ".join(seen.values())
+
+
+def test_the_environment_carries_the_trace_when_this_process_has_one(tmp_path: Path) -> None:
+    """`33`: the run's trace travels to every Hermes the way the workspace does."""
+    settings = make_settings(tmp_path)
+    site = Site("claude", "claude.ai", {})
+    trace = tracing.Trace.open(settings, command="import", flags=(), site=site, chrome=None, agent=None)
+    tracing.set_current(trace)
+    try:
+        env = hermes_client.hermes_env(settings)
+        assert env[tracing.TRACE_ENV_VAR] == str(trace.path)
+        assert set(env) <= {*hermes_client.PASSED_THROUGH_ENV, "DATAPORTER_WORKSPACE", tracing.TRACE_ENV_VAR}
+    finally:
+        tracing.set_current(None)
+        trace.close()
+    assert tracing.TRACE_ENV_VAR not in hermes_client.hermes_env(settings)
