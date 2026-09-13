@@ -194,6 +194,12 @@ NOT_REQUESTED = "not_requested"
 """Why an ask stopped. Stable strings: `extract` turns each into the line an
 operator reads, and a log record carries this rather than the prose."""
 
+NOT_THE_EXPORT_PAGE = f"the browser did not arrive at {EXPORT_PAGE_PATH}"
+"""The tab is not on the page the ask came for — it never got there, or it left
+between the look and the click. A `BrowserError` rather than one of the reasons
+above: those three are things the *page* did, and this is the browser being
+somewhere else."""
+
 BUTTON_ACTION = "export-button"
 CONFIRM_ACTION = "export-confirm"
 """What `logs/actions.jsonl` calls the two clicks. Named like `08`'s helpers
@@ -302,12 +308,19 @@ def _click(settings: Settings, page: Page, selector: str, action: str) -> dateti
     """Click, record it, and answer with the moment it happened.
 
     The live URL is checked immediately before the click and not only when the
-    tab was attached to: a session that expired between the two would have this
-    synthesizing an input on a sign-in page — which the surface admits, and which
-    has nothing on it anybody asked us to press.
+    tab was attached to, and it is checked against the *page* and not only
+    against the wall. The wall admits `/login` — it has to, because that is where
+    a signed-out request for the export page lands — so "inside the extraction
+    surface" is not the same statement as "this is the page the button is on". A
+    session that expired between the look and the click would otherwise have this
+    pressing whatever a sign-in page happens to have where the confirm button
+    was, and `CONFIRM_BUTTON_SELECTOR` is generic enough to find one.
+    (Raised by Copilot in review on #44.)
     """
     url = page.url
     helpers.guard(url, EXTRACTION_SURFACE)
+    if not on_export_page(url):
+        raise BrowserError(detail=NOT_THE_EXPORT_PAGE)
     started = time.monotonic()
     clicked = page.evaluate(click_js(selector)) is True
     _record(
@@ -348,9 +361,6 @@ def _record(
         url=url,
         selector=selector,
     )
-
-
-NOT_THE_EXPORT_PAGE = f"the browser did not arrive at {EXPORT_PAGE_PATH}"
 
 
 def _bring_to_export_page(
