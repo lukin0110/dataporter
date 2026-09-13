@@ -49,12 +49,14 @@ FILE_UUID_OFFSET = 1000
 """Where the file references' uuids start counting, so none collides with a
 message's."""
 
-STAMP_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+TIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+"""How the export writes a moment: UTC, microseconds, `Z`. Not a *stamp*, which is
+the tool's word for the moment an extraction began."""
 
 
-def stamp(seconds: float) -> str:
-    """Wall-clock seconds as the export writes a timestamp: UTC, microseconds, `Z`."""
-    return datetime.fromtimestamp(seconds, UTC).strftime(STAMP_FORMAT)
+def when(seconds: float) -> str:
+    """Return wall-clock seconds as the export writes them."""
+    return datetime.fromtimestamp(seconds, UTC).strftime(TIME_FORMAT)
 
 
 def account_uuid(email: str) -> str:
@@ -74,7 +76,7 @@ def turns_of(chat: Chat, now: float) -> list[Turn]:
 
 def message(chat: Chat, index: int, turn: Turn, *, files: Sequence[str] = ()) -> dict[str, object]:
     """One message, in the export's shape."""
-    when = stamp(chat.created_at + index)
+    moment = when(chat.created_at + index)
     refs = [
         {"file_name": name, "file_uuid": message_uuid(chat.id, FILE_UUID_OFFSET + position)}
         for position, name in enumerate(files)
@@ -84,8 +86,8 @@ def message(chat: Chat, index: int, turn: Turn, *, files: Sequence[str] = ()) ->
         "text": turn.text,
         "content": [{"type": "text", "text": turn.text}],
         "sender": turn.role,
-        "created_at": when,
-        "updated_at": when,
+        "created_at": moment,
+        "updated_at": moment,
         "attachments": [],
         "files": refs,
         "files_v2": list(refs),
@@ -107,8 +109,8 @@ def conversation(chat: Chat, *, email: str, now: float) -> dict[str, object]:
         "uuid": chat.id,
         "name": chat.title,
         "summary": "",
-        "created_at": stamp(chat.created_at),
-        "updated_at": stamp(chat.created_at + len(messages)),
+        "created_at": when(chat.created_at),
+        "updated_at": when(chat.created_at + len(messages)),
         "account": {"uuid": account_uuid(email)},
         "chat_messages": messages,
         "current_leaf_message_uuid": str(messages[-1]["uuid"]) if messages else None,
@@ -116,6 +118,7 @@ def conversation(chat: Chat, *, email: str, now: float) -> dict[str, object]:
 
 
 def conversations(chats: Iterable[Chat], *, email: str, now: float) -> list[dict[str, object]]:
+    """Return every chat as a conversation, in the order given — `conversations.json`."""
     return [conversation(chat, email=email, now=now) for chat in chats]
 
 

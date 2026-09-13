@@ -115,11 +115,11 @@ class Chat:
     """
 
     id: str
+    created_at: float
     title: str = NEW_CHAT_TITLE
     turns: list[Turn] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     reply: Reply | None = None
-    created_at: float = 0.0
 
     def view(self, now: float) -> list[Turn]:
         """Return the transcript as the page shows it at `now`."""
@@ -285,8 +285,12 @@ class Site:
         self.ledger.count("exports_requested")
         return export
 
-    def export(self, token: str) -> Export | None:
-        """Return the export a token names, counting the fetch; `None` for one nobody minted."""
+    def fetch_export(self, token: str) -> Export | None:
+        """Return the export a token names and count the fetch; `None` for one nobody minted.
+
+        Named for what it does to the record, not for the lookup: every call is a
+        download, and `Export.fetched` is how many there have been.
+        """
         with self._lock:
             export = self._exports.get(token)
             if export is not None:

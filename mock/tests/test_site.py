@@ -146,10 +146,10 @@ def test_an_export_ask_mints_a_link_and_is_counted(site: Site) -> None:
 
 
 def test_a_token_nobody_minted_is_nothing_and_a_minted_one_counts_its_fetches(site: Site) -> None:
-    assert site.export("deadbeef") is None
+    assert site.fetch_export("deadbeef") is None
     minted = site.request_export()
-    assert site.export(minted.token) is minted
-    site.export(minted.token)
+    assert site.fetch_export(minted.token) is minted
+    site.fetch_export(minted.token)
     assert minted.fetched == 2
 
 

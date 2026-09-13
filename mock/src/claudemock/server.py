@@ -204,7 +204,7 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
     pending = Pending()
 
     def link_of(export: Export) -> str:
-        return f"{link_base}{EXPORTS_PATH}/{export.token}.zip"
+        return link_base + ARCHIVE_PATH.format(token=export.token)
 
     def session(request: Request) -> str:
         token = request.cookies.get(SESSION_COOKIE)
@@ -245,7 +245,7 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
         `link refused: HTTP 404` and leaves the ask open — a dead link (§39, 5),
         as near as a mock with no clock to expire on can come to one.
         """
-        if site.export(token) is None:
+        if site.fetch_export(token) is None:
             return not_found()
         payload = archive.render(site.all_chats(), email=site.email, now=site.now())
         return Response(payload, media_type="application/zip")
@@ -489,12 +489,15 @@ def serve(
 ) -> MockServer:
     """Return a started server, listening. The caller closes it.
 
-    The link base is spelled from the port the socket really got — `0` asks for
-    any — so an export link points at this process and no other.
+    The link base is spelled from the address and port the socket really got —
+    `0` asks for any port — so an export link points at this process and no
+    other. A host other than the loopback address is one the tool's fetch cannot
+    trust (`certificate.py` names `127.0.0.1` alone), and `cli.serve` says so.
     """
     sock = listen(host, port)
     try:
-        link_base = f"https://{host}:{sock.getsockname()[1]}"
+        bound_host, bound_port = sock.getsockname()[:2]
+        link_base = f"https://{bound_host}:{bound_port}"
         server = MockServer(create_app(site, link_base=link_base, announce=announce), sock, material)
     except BaseException:
         sock.close()

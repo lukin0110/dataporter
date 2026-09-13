@@ -49,6 +49,17 @@ The tool's fetch of an export link reads the same proxy. Set beside SSL_CERT_FIL
 
 """
 
+HOST_NOTE = """\
+The mock is listening on {host}, and the tool cannot fetch an export link from
+there: its certificate names 127.0.0.1 alone. Chrome is unaffected — it trusts
+the key, not the name — so a migration rehearses; an extraction needs the
+default host.
+
+"""
+"""Printed when `--host` is not the loopback address. The links `serve` mints and
+`exports` lists are spelled with the address the socket really bound, and the
+tool's fetch verifies that address against the certificate (`32`)."""
+
 LINK_NOTE = """\
 Export requested — the link, instead of an email:
 
@@ -183,6 +194,8 @@ def serve(arguments: argparse.Namespace) -> int:
     proxies = [name for name in PROXY_ENV if os.environ.get(name)]
     if proxies:
         print(PROXY_NOTE.format(names=", ".join(proxies)), end="")
+    if arguments.host != DEFAULT_HOST:
+        print(HOST_NOTE.format(host=arguments.host), end="")
     sys.stdout.flush()
 
     def stop(_signal: int, _frame: FrameType | None) -> None:
