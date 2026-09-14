@@ -764,3 +764,127 @@ def test_what_the_walk_downloaded_is_collected_before_it_is_judged(
 
     assert [item.name for item in collected] == [extract.MANIFEST_FILENAME]
     assert collected[0].exists()
+
+
+# --------------------------------------------------------------------------- #
+# The filing is named for the operator reading `-v`
+# --------------------------------------------------------------------------- #
+
+
+def _filed_paths(settings: Settings) -> list[str]:
+    """Return the `path` of every `filed` record in the run log, oldest first."""
+    return _events(settings, "filed")
+
+
+def test_each_filed_file_is_named_under_verbose(settings: Settings) -> None:
+    """One `filed` line per file — the archive, then each part — at its store path.
+
+    The path is spelled as the store was configured, the same as §31's block, and
+    the vendor's own part names appear (§66 keeps them out of the trace, not out
+    of a snapshot that already records them). The recognised part is `export.zip`,
+    the store's own name, not whatever the vendor called it.
+    """
+    log.configure_logging()
+    log.enable_run_log(settings.logs_dir)
+    snapshot = store.Snapshot(
+        source="claude",
+        account="old-personal",
+        stamp=STAMP,
+        origin="link",
+        filed_at=MOMENT,
+        tool_version="test",
+        archive=store.Archive(name=store.ARCHIVE_NAME, bytes=1, sha256="a"),
+        parts=[store.Archive(name="manifest.json"), store.Archive(name="light_metadata-000.zip")],
+    )
+
+    extract._log_filed(settings, snapshot)
+
+    base = Path(settings.store_display) / "claude" / "old-personal" / STAMP
+    assert _filed_paths(settings) == [
+        str(base / store.ARCHIVE_NAME),
+        str(base / "manifest.json"),
+        str(base / "light_metadata-000.zip"),
+    ]
+
+
+def test_a_manifest_fetch_names_the_archive_and_every_part(
+    settings: Settings, export_zip: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End to end: the archive is `export.zip`, the manifest and the other part beside it.
+
+    The browser is stubbed out at `_download_manifest_and_parts`, so the real
+    `archive_among` and `store.file_archive` run and the `filed` lines name what
+    was actually kept. `CLAUDE` itself, not this module's browserless stand-in,
+    because the manifest branch is the thing under test.
+    """
+    monkeypatch.setattr(sources, "REGISTRY", MappingProxyType({**sources.REGISTRY, CLAUDE.name: CLAUDE}))
+
+    def fake(
+        settings: Settings, source: object, link: str, into: Path, *, sink: object, flags: object, collected: list[Path]
+    ) -> tuple[Path, list[Path]]:
+        manifest = into / extract.MANIFEST_FILENAME
+        manifest.write_text(json.dumps(MANIFEST))
+        collected.append(manifest)
+        metadata = into / "light_metadata-000.zip"
+        with zipfile.ZipFile(metadata, "w") as archive:
+            archive.writestr("users.json", "{}")
+        collected.append(metadata)
+        conversations = into / "conversations-000.zip"
+        conversations.write_bytes(export_zip.read_bytes())
+        collected.append(conversations)
+        return manifest, [metadata, conversations]
+
+    monkeypatch.setattr(extract, "_download_manifest_and_parts", fake)
+
+    outcome = extract.fetch(settings, LINK, sink=Collected())
+
+    assert outcome.path is not None
+    base = Path(settings.store_display) / "claude" / "old-personal"
+    stamp = outcome.path.name
+    assert _filed_paths(settings) == [
+        str(base / stamp / store.ARCHIVE_NAME),
+        str(base / stamp / "manifest.json"),
+        str(base / stamp / "light_metadata-000.zip"),
+    ]
+    written = "\n".join(path.read_text() for path in (settings.logs_dir / "logs").glob("run-*.jsonl"))
+    assert LINK not in written
+    assert "secret-token" not in written
+
+
+def _events(settings: Settings, name: str) -> list[str]:
+    """Return the `path` of every record of one event in the run log, oldest first."""
+    logs = list((settings.logs_dir / "logs").glob("run-*.jsonl"))
+    records = [json.loads(line) for path in logs for line in path.read_text().splitlines()]
+    return [record["path"] for record in records if record["event"] == name]
+
+
+def test_a_download_names_where_it_landed_as_it_lands(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each file says where it is the moment it is written, under its own name.
+
+    The staging path, minutes before the filing: that is where an operator
+    watching `-v` would go to look at what has arrived so far.
+    """
+    log.configure_logging()
+    log.enable_run_log(settings.logs_dir)
+    _index(tmp_path, monkeypatch, MANIFEST)
+
+    extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path, collected=[])
+
+    assert _events(settings, "downloaded") == [
+        str(tmp_path / extract.MANIFEST_FILENAME),
+        str(tmp_path / "light_metadata-000.zip"),
+        str(tmp_path / "conversations-000.zip"),
+    ]
+
+
+def test_a_body_names_where_it_landed(settings: Settings, export_zip: Path) -> None:
+    """A source that serves one archive names its temp file too."""
+    log.configure_logging()
+    extract.fetch(settings, LINK, open_url=opener(export_zip.read_bytes()), sink=Collected())
+
+    downloaded = _events(settings, "downloaded")
+    assert len(downloaded) == 1
+    assert downloaded[0].endswith(".zip")
+    assert extract.TMP_DIRNAME in downloaded[0]
