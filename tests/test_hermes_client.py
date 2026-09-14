@@ -171,7 +171,7 @@ def test_config_set_is_passed_through_verbatim(tmp_path: Path, fake: FakeHermes)
     cli = hermes_client.HermesCli(make_settings(tmp_path, fake.executable))
     cli.config_set("browser.cdp_url", "http://127.0.0.1:9222")
     assert fake.config == {"browser.cdp_url": "http://127.0.0.1:9222"}
-    assert cli.config()["browser.cdp_url"] == "http://127.0.0.1:9222"
+    assert cli.config(["browser.cdp_url"])["browser.cdp_url"] == "http://127.0.0.1:9222"
     assert fake.calls[-1].argv[:2] == ["-p", "dataporter"]
 
 
@@ -185,46 +185,41 @@ def test_profile_list_survives_decoration() -> None:
     assert hermes_client.parse_profile_list(text) == ["dataporter", "default"]
 
 
-def test_nested_yaml_is_flattened_to_dotted_keys() -> None:
-    text = """
-# the profile
-browser:
-  backend: "off"
-  cdp_url: http://127.0.0.1:9222
-  nested:
-    deep: 1
-approvals:
-  mode: manual
-"""
-    assert hermes_client.parse_config(text) == {
-        "browser.backend": "off",
-        "browser.cdp_url": "http://127.0.0.1:9222",
-        "browser.nested.deep": "1",
-        "approvals.mode": "manual",
-    }
+def test_the_profile_table_keeps_its_header_out_of_the_names() -> None:
+    """The column table `59` observed: a header, a rule, a marked active row."""
+    text = (
+        "\n Profile          Model             Gateway\n"
+        " ───────────────    ──────────────    ───────────\n"
+        " ◆default         a/model           running\n"
+        "  dataporter      b/model           stopped\n\n"
+    )
+    assert hermes_client.parse_profile_list(text) == ["default", "dataporter"]
 
 
-def test_flat_dotted_and_equals_forms_are_read_too() -> None:
-    text = "browser.backend = off\nagent.max_turns: 80\n- ignored\n"
-    assert hermes_client.parse_config(text) == {
-        "browser.backend": "off",
-        "agent.max_turns": "80",
-    }
+def test_a_json_value_becomes_the_string_the_config_file_spells() -> None:
+    """`config get --json` answers with types; `mismatches` compares strings."""
+    assert hermes_client.parse_value('"off"\n') == "off"
+    assert hermes_client.parse_value('"manual"') == "manual"
+    assert hermes_client.parse_value("120\n") == "120"
+    assert hermes_client.parse_value("true\n") == "true"
+    assert hermes_client.parse_value("false\n") == "false"
 
 
-def test_a_line_that_is_not_a_setting_is_skipped() -> None:
-    """`config show` may print a banner, a heading or a blank separator."""
-    text = "hermes configuration\n\nbrowser.backend: off\n"
-    assert hermes_client.parse_config(text) == {"browser.backend": "off"}
+def test_a_key_hermes_has_not_got_reads_as_none() -> None:
+    """Hermes exits `0` for one and says so in prose, so not-JSON is the signal."""
+    assert hermes_client.parse_value("Config key not set: nope.not_a_key\n") is None
+    assert hermes_client.parse_value("") is None
 
 
-def test_a_sibling_key_after_a_block_leaves_the_block() -> None:
-    """Dedenting closes the prefix, or every later key would be under it."""
-    text = "browser:\n  backend: off\nmemory:\n  memory_enabled: false\n"
-    assert hermes_client.parse_config(text) == {
-        "browser.backend": "off",
-        "memory.memory_enabled": "false",
-    }
+def test_a_section_reads_as_none_rather_than_as_a_dict_repr() -> None:
+    """`config get model` answers the whole section, and `59` is what that cost.
+
+    Read as unset, so a caller that asked for the section is told it has no
+    value, rather than an operator being shown `{'default': …}` as their model.
+    """
+    assert hermes_client.parse_value('{"default": "a/model", "provider": "custom"}') is None
+    assert hermes_client.parse_value("[1, 2]") is None
+    assert hermes_client.parse_value("null") is None
 
 
 def test_mismatches_name_the_key_what_is_there_and_what_was_wanted() -> None:

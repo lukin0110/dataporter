@@ -284,7 +284,7 @@ def test_browser_actions_come_from_our_own_log(world: World) -> None:
 def test_hermes_usage_is_added_up(world: World) -> None:
     world.hermes.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answers=[completed()],
         append_probe=True,
         usage={"input_tokens": 100, "output_tokens": 20, "cost_usd": 0.25},

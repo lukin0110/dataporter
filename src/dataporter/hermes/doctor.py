@@ -219,12 +219,13 @@ def checks(settings: Settings, flags: Sequence[str] = ()) -> Generator[Check, No
         return
     yield Check(HERMES_PROFILE, ok=True, detail=cli.profile)
 
+    expected = profiling.profile_config(settings)
     try:
-        config = cli.config()
+        config = cli.config((*expected, profiling.MODEL_KEY))
     except HermesError as exc:
-        # Reported as the model check rather than as a check of its own: `config
-        # show` is how the model is read, and a profile that cannot be read has
-        # no model as far as anything downstream is concerned.
+        # Reported as the model check rather than as a check of its own: asking
+        # for a key is how the model is read, and a profile that cannot be read
+        # has no model as far as anything downstream is concerned.
         yield Check(HERMES_MODEL, ok=False, detail=exc.detail or type(exc).__name__)
         return
     model = profiling.configured_model(config)
@@ -233,7 +234,7 @@ def checks(settings: Settings, flags: Sequence[str] = ()) -> Generator[Check, No
         return
     yield Check(HERMES_MODEL, ok=True, detail=model)
 
-    wrong = mismatches(config, profiling.profile_config(settings))
+    wrong = mismatches(config, expected)
     if wrong:
         yield Check(HERMES_CONFIG, ok=False, detail=f"{'; '.join(wrong)} — {SETUP_HINT}")
         return

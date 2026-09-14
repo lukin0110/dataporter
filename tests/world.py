@@ -131,7 +131,7 @@ class World:
         """Set what the fake Hermes prints, one per `-z` run, last one repeating."""
         self.hermes.write(
             version="hermes 1.0.0",
-            config_extra={"agent.model": MODEL},
+            config_extra={"model.default": MODEL},
             answers=list(answers),
             append_probe=True,
         )
@@ -139,7 +139,7 @@ class World:
     def exits(self, *codes: int) -> None:
         self.hermes.write(
             version="hermes 1.0.0",
-            config_extra={"agent.model": MODEL},
+            config_extra={"model.default": MODEL},
             answers=list(self.hermes.spec.get("answers", [])),
             exits=list(codes),
             append_probe=True,

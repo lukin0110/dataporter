@@ -45,18 +45,14 @@ CDP_HOST = "127.0.0.1"
 port reachable from another machine is a full-privilege handle on a signed-in
 Claude account."""
 
-MODEL_KEYS: tuple[str, ...] = (
-    "agent.model",
-    "agent.model_name",
-    "model.name",
-    "model",
-    "llm.model",
-)
-"""Candidates for "which model is this profile using", tried in order.
+MODEL_KEY = "model.default"
+"""Where Hermes keeps the model a profile uses.
 
-Hermes's own spelling is not something `09` can know without a Hermes to ask, and
-`setup` has to print the model before a migration may start. `10` replaces this
-tuple with the one key it observed.
+`09` guessed five spellings, because it had no Hermes to ask, and named the guess
+in its own Risks as something a real one would correct. `59` asked: observed on
+2026-09-14 against Hermes Agent v0.21.2. `config get model` answers the whole
+section — `{"default": …, "provider": …}` — so the dotted key is the one that
+names a value.
 """
 
 NO_MODEL = "no model configured — run: hermes -p {profile} setup model"
@@ -98,12 +94,9 @@ says the wide tool is off, the other says Hermes is pointed at our Chrome."""
 
 
 def configured_model(config: Mapping[str, str]) -> str:
-    """Return the model this profile will use, or `""` if none of `MODEL_KEYS` is set."""
-    for key in MODEL_KEYS:
-        value = config.get(key, "").strip()
-        if value:
-            return log.safe_token(value)
-    return ""
+    """Return the model this profile will use, or `""` if `MODEL_KEY` is unset."""
+    value = config.get(MODEL_KEY, "").strip()
+    return log.safe_token(value) if value else ""
 
 
 @dataclass(frozen=True)
@@ -166,7 +159,7 @@ def run_setup(settings: Settings) -> SetupReport:
         keys=len(config),
         skill=meta,
         skill_dir=home_relative(skilling.install_dir(settings)),
-        model=configured_model(cli.config()),
+        model=configured_model(cli.config([MODEL_KEY])),
     )
 
 

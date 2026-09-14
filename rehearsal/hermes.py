@@ -43,7 +43,6 @@ from pathlib import Path
 from typing import Any
 
 from dataporter.browser.cdp import CdpClient
-from dataporter.hermes.profile import MODEL_KEYS
 from fake_agent import ScriptedAgent, ScriptedProbe, ScriptedSignIn
 from rehearsal.agent import (
     AgentError,
@@ -65,6 +64,13 @@ AGENT_SUFFIX = "(scripted agent)"
 `09`'s parser reads the digits and stops, so the suffix costs nothing there."""
 
 MODEL = "none/scripted-agent"
+
+MODEL_KEY = "model.default"
+"""Where Hermes keeps a profile's model, as `59` observed it.
+
+Spelled here rather than imported from `dataporter`: a stand-in that takes the
+key from the code it stands in for cannot disagree with it, and disagreeing is
+the only thing this one is for."""
 """What `doctor`'s `hermes model` line reports. A profile with no model
 configured is a failed check, and a rehearsal has no model at all — so the value
 says exactly that rather than naming one that is not there."""
@@ -118,18 +124,23 @@ class Profiles:
         nothing to set it to.
         """
         stored = {str(k): str(v) for k, v in self.load().get("config", {}).items()}
-        stored.setdefault(MODEL_KEYS[0], MODEL)
+        stored.setdefault(MODEL_KEY, MODEL)
         return stored
 
 
-def rendered(config: Mapping[str, str]) -> str:
-    """Return a configuration as `hermes config show` prints it: one dotted key a line.
+def displayed(config: Mapping[str, str]) -> str:
+    """Return a configuration as `hermes config show` prints it: a display.
 
-    The flat shape, which is one of the three `client.parse_config` reads. `10`
-    records which one the real Hermes uses; until it does, a rehearsal proves the
-    parser against the simplest of them.
+    Capitalised labels and not a dotted key in sight, which is what `59` observed
+    the real one printing. Nothing reads this — `config get` is what the tool
+    asks — and it is rendered in that shape precisely so a rehearsal cannot make
+    a screen look machine-readable again.
     """
-    return "".join(f"{key}: {config[key]}\n" for key in sorted(config))
+    lines = ["", "  Hermes Configuration", ""]
+    for key in sorted(config):
+        label = key.rsplit(".", 1)[-1].replace("_", " ").capitalize()
+        lines.append(f"  {label}:        {config[key]}")
+    return "\n".join(lines) + "\n"
 
 
 # --------------------------------------------------------------------------- #
@@ -306,7 +317,15 @@ def main(argv: Sequence[str]) -> int:  # ruff: ignore[too-many-return-statements
         profiles.save(state)
         return 0
     if rest[:2] == ["config", "show"]:
-        sys.stdout.write(rendered(profiles.config()))
+        sys.stdout.write(displayed(profiles.config()))
+        return 0
+    if rest[:2] == ["config", "get"]:
+        value = profiles.config().get(rest[2])
+        if value is None:
+            # Hermes exits `0` for a key it has not got, and says so in prose.
+            sys.stdout.write(f"Config key not set: {rest[2]}\n")
+        else:
+            sys.stdout.write(json.dumps(value) + "\n")
         return 0
 
     if ONE_SHOT_FLAG in rest:
