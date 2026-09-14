@@ -251,7 +251,9 @@ The ask signs in to the **source** account. The first brief's session (§8) is t
 **destination's**, and one browser profile holds one signed-in identity per site, so the
 source gets its own session: its own profile, its own `login`, its own `logout`, named by
 the account label it serves. The fetch needs no session: the link is the vendor's leave
-to download, and the tool downloads without a browser.
+to download, and the tool downloads without a browser. *(Amended by brief 06 §63: that
+is true of Claude. A source whose vendor requires the download to be made signed in —
+ChatGPT — fetches through the source session; slices `44` and `45`.)*
 
 ```bash
 dataporter login --account old-personal

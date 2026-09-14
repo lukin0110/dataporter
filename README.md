@@ -183,6 +183,23 @@ dataporter snapshots                                           # what the store 
 dataporter import ~/.dataporter/store/claude/old-personal/2026-09-12T20-51-07Z
 ```
 
+A ChatGPT account is the same two moves (brief `06`). Its sign-in passes through
+`auth.openai.com`, and its link is served only to the signed-in session, so the fetch
+opens the source session's browser and catches the download rather than fetching
+without one:
+
+```sh
+dataporter login --source chatgpt --account work
+dataporter extract --source chatgpt --account work             # the ask; email or text
+dataporter extract --source chatgpt --account work --link 'https://…'   # the fetch, in the browser
+```
+
+Unattended, the sign-in is a walk the tool makes itself — no agent on the path — and a
+cron job needs the credentials in its environment for the case the session has expired.
+A ChatGPT snapshot is a backup and not yet a restore: `import` refuses it with the reason,
+because each source needs its own importer before its snapshots can be restored
+([ADR 0005](docs/adr/0005-snapshots-are-vendor-native.md)).
+
 A snapshot is the vendor's own archive, byte for byte, with everything of ours beside it
 — the stamp, the provenance, the counts, and every gap with its reason. It is written
 once and never touched again: a second extraction is a second snapshot with a later
@@ -215,7 +232,7 @@ without a model.
 Both moves can be rehearsed with no account: `mock/` serves the export page and prints
 the link where the vendor would have emailed it ([`mock/README.md`](mock/README.md)).
 The same project serves a mock chatgpt.com (brief `05`), built ahead of the tool's
-ChatGPT half — a sign-in on two host names, a composer that turns a long paste into an
+ChatGPT half and driven by it since brief `06` — a sign-in on two host names, a composer that turns a long paste into an
 attachment, and a download that wants a session — so that half meets them here first.
 
 ## Running unattended
@@ -363,11 +380,17 @@ rehearsal's traces are the baseline a real run's are laid beside (brief `04` §4
 It is **not** evidence about claude.ai:
 see [`specs/02-claude-mock.md`](specs/02-claude-mock.md) §27 and
 [`mock/README.md`](mock/README.md). The mock also serves an export page and hands out a
-link instead of an email (`32`), so `extract` is rehearsed against it too — by hand, per
-`mock/README.md`; `rehearsal/run.py` runs the migration protocol only. The same project
-holds a mock chatgpt.com, `chatgpt-mock serve` on the port beside it (brief `05`), which
-nothing in the tool drives yet: `mock/README.md` writes down the walk a person takes
-through it instead.
+link instead of an email (`32`). The same project holds a mock chatgpt.com,
+`chatgpt-mock serve` on the port beside it (brief `05`), and `--protocol extraction`
+runs brief `06`'s extraction protocol against both mocks — the account seeded, `login`,
+an ask, the fetch, a second of each, `snapshots`, the ledger reconciled — leaving a
+record like [`docs/rehearsal-03.md`](docs/rehearsal-03.md):
+
+```sh
+uv run --package mocks claude-mock serve               # in one terminal
+uv run --package mocks chatgpt-mock serve              # in another
+PYTHONPATH=tests uv run python -m rehearsal.run --protocol extraction --root /tmp/r3
+```
 
 [`specs/README.md`](specs/README.md) is the map: what each slice is, what is `Done`, and
 which brief section it satisfies. Start there rather than here.

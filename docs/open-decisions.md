@@ -25,10 +25,8 @@ not read is said there too.
 
 | | Question | Raised by | Blocking? |
 | --- | --- | --- | --- |
-| [D1](#d1--the-glossary-against-the-code) | `archive`, `snapshot` and `URL`: three words the glossary forbids and the code uses | `/code-review` of `30`–`31` | no |
 | [D2](#d2--what-timeoutsask_s-covers) | Does `timeouts.ask_s` bound the poll, or the whole ask? | `/code-review` of `31` | no |
 | [D3](#d3--33s-workspace-beside-the-snapshot) | §33 says a snapshot's import writes its workspace beside it; `30` refuses to | `/code-review` of `30` | no |
-| [D4](#d4--are-brief-03s-blocks-golden) | Brief `03`'s output blocks were never classified golden or illustrative | `/code-review` of `30`–`31` | no |
 | [D5](#d5--list-or-tuple-in-the-export-model) | The export model is called immutable and `frozen=True` is shallow | review of `02` (PR #2) | no |
 | [D6](#d6--attribute-docstrings-on-constants) | A string after an assignment: this repo's convention, or dead code? | reviews of `06` and `10` (PRs #11, #17) | no |
 | [D7](#d7--how-the-wall-is-described) | ADR `0001` and §22 describe a wall narrower and wider than the one that ships | review of brief `02` (PR #35) | no |
@@ -37,43 +35,6 @@ not read is said there too.
 None of the eight blocks a merge: each is a question about words, budgets, conventions or
 paperwork, and the code does something defensible today. They are here so that
 "defensible today" does not quietly become "decided".
-
-## D1 — The glossary against the code
-
-[`CONTEXT.md`](../CONTEXT.md) defines **Export** and **Store** with `_Avoid_: archive`,
-**Probe** with `_Avoid_: snapshot`, and **Link** with `_Avoid_: URL`. The working rule in
-[`specs/README.md`](../specs/README.md) is "Words come from `CONTEXT.md`. A term a
-document needs and the glossary lacks is added there first." Three sets of names break
-it:
-
-| Word | Where | Whose |
-| --- | --- | --- |
-| `archive` | `store.py:72` `ARCHIVE_NAME`, `:169` `class Archive`, `:217` `Snapshot.archive`, `:287` "A verified archive, ready to be filed", `:326` `file_archive`; `extract.py:125` `NOT_AN_ARCHIVE`, `:126` `NOT_A_ZIP_FILE`; [`adr/0005`](adr/0005-snapshots-are-vendor-native.md) "the vendor's own archive" | `30` |
-| `snapshot` (of a stale target list) | `cdp.py:358`, `helpers.py:21`, `helpers.py:464` | `07`, `08` |
-| `URL` | `extract.py:117` `LINK_NOT_HTTPS`, `cli.py:645` `--link metavar="URL"` | `30` |
-
-The `snapshot` ones are the interesting half: they were written before `30` made
-*Snapshot* a domain term, and they are correct English about a CDP target list. The
-collision arrived with the glossary entry, not with the code.
-
-**Options.**
-
-1. **Extend the glossary.** Add **Archive** — the vendor's own file, as it sits inside a
-   snapshot — which is a real concept the glossary lacks: "the export inside the
-   snapshot" is not the same thing as either. Then scope the two `_Avoid_` lists to say
-   *archive* is not a synonym for an export or for a store, rather than a forbidden word.
-   Cheapest, and it makes `adr/0005`'s own sentence legal.
-2. **Rename.** `ARCHIVE_NAME` → `EXPORT_FILENAME`, `Archive` → `ExportFile`,
-   `file_archive` → `file_export`, and the two operator-facing strings. A sweep across
-   `store.py`, `extract.py`, `cli.py`, the ADR and the tests that name them; `snapshot.json`'s
-   `archive` key is written to disk, so a manifest version would have to move with it.
-3. **Nothing, deliberately** — record here that the glossary's `_Avoid_` lists are advice
-   about prose and not about identifiers. That is a decision too, and it would make the
-   working rule weaker than it reads.
-
-While nobody decides, the code stays as it is and the review finds it again.
-
-**Settled by:** an edit to `CONTEXT.md` (option 1 or 3), or a slice (option 2).
 
 ## D2 — What `timeouts.ask_s` covers
 
@@ -119,24 +80,6 @@ refuses to do.
 2. **Drop the guard** and let §33 stand as written. Nobody has argued for this.
 
 **Settled by:** an amendment to [`specs/03-extraction-and-backup.md`](../specs/03-extraction-and-backup.md) §33.
-
-## D4 — Are brief `03`'s blocks golden?
-
-[`specs/README.md`](../specs/README.md)'s "Examples" row says the output blocks in §9,
-§10 and §16 are golden strings and brief `02`'s are illustrative. Brief `03` is not
-classified at all — and meanwhile `30` and `31` both pin its §31 and §33 blocks as golden
-and compare bytes against them (`tests/test_extract.py`, `tests/test_ask.py`,
-`tests/test_store.py`).
-
-So the practice has already answered the question and the table has not. A later brief
-will copy whatever that row says.
-
-**Options.** Say brief `03`'s blocks are golden (what the tests already assume), or say
-they are illustrative and loosen three test modules. The first is one edit; the second
-undoes work for nothing.
-
-**Settled by:** the Examples row of `specs/README.md`. While it says nothing, the tests
-are the only statement of it.
 
 ## D5 — `list` or `tuple` in the export model
 
@@ -279,6 +222,8 @@ still open on GitHub is not mistaken for work still open here.
 
 | Finding, and where it was raised | What is true at `e8606bf` |
 | --- | --- |
+| D1, the glossary against the code: `archive`, `snapshot` and `URL` (`/code-review` of `30`–`31`) | Settled by brief `06` (`47`): `CONTEXT.md` gained **Archive** — the export as a file, which a snapshot keeps byte for byte — and **Fetch**, and `archive` left the `_Avoid_` lists of **Export** and **Store**. The `snapshot` and `URL` identifiers stay: the lists govern prose, and the glossary now says which word is which thing. |
+| D4, whether brief `03`'s blocks are golden (`/code-review` of `30`–`31`) | Settled by brief `06` (`47`): the Examples row of `specs/README.md` says brief `03`'s (§31, §33) and brief `06`'s (§60, §63) are golden, which is what `tests/test_extract.py`, `test_ask.py`, `test_store.py`, `test_chatgpt_ask.py` and `test_chatgpt_fetch.py` compare bytes against. |
 | `_click` on the export page could press a sign-in page, because the extraction surface admits `/login` (PR #44) | Fixed in `c3219cb`: `export_page.py:314` refuses anything but the export page itself, with `NOT_THE_EXPORT_PAGE`. The GitHub thread is still open; the code is not. |
 | A dead `LOGGED_OUT` constant in `tests/test_source_session.py` (PR #44) | Fixed in the same commit. The constant that remains is `tests/test_browser_session.py:159`, which is used four times. |
 | `--host-resolver-rules=MAP claude.ai 127.0.0.1:8443` cannot carry a port, so §21's line would not route to the mock (PR #35) | Wrong, and disproved by a run rather than by argument: [`rehearsal-01.md`](rehearsal-01.md) records a complete rehearsal on 2026-09-12 against Chromium 141 with exactly that flag. `MAP` takes `host:port`. |

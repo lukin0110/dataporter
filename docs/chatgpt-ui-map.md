@@ -102,10 +102,14 @@ Every selector in the middle column has exactly one spelling in the mock's sourc
 [`mock/src/chatgptmock/pages.py`](../mock/src/chatgptmock/pages.py) is the markup and
 [`uimap.py`](../mock/src/chatgptmock/uimap.py) beside it cites the row behind each state
 the mock can show, in one line each — so correcting a row here is one edit there, and
-`chatgpt-mock rows` prints the citations. The tool has no ChatGPT half yet; when it does,
-its selectors get their one spelling on its side of ADR 0003's line, re-typed and never
-imported. The mock's tests read this file and fail when the mock cites a row that is not
-here, or one marked *observed*.
+`chatgpt-mock rows` prints the citations. The tool's ChatGPT half (brief `06`) spells its
+selectors on its side of ADR 0003's line, re-typed and never imported:
+[`src/dataporter/sources/chatgpt.py`](../src/dataporter/sources/chatgpt.py) holds the
+export page's three and the landing page's **Log in**, and `login_form.py` the two
+credential fields; correcting a row here is one edit there and one in the mock. The
+mock's tests read this file and fail when the mock cites a row that is not here, or one
+marked *observed*. The first run against chatgpt.com, recorded in
+[`extraction-02.md`](extraction-02.md), is what marks a row *observed*.
 
 ## Notes
 

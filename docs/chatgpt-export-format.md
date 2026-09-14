@@ -7,7 +7,9 @@
 Brief `05` §55 makes this the one place the shape of a ChatGPT export is written down: the
 mock chatgpt.com renders its archive from what this document says
 ([`mock/src/chatgptmock/archive.py`](../mock/src/chatgptmock/archive.py), `40`), and the
-tool's ChatGPT half, when it is written, reads what this document says. OpenAI publishes no description
+tool's ChatGPT half reads what this document says
+([`src/dataporter/export/chatgpt.py`](../src/dataporter/export/chatgpt.py), `43`: the
+members, the conversation envelope and the attachment references, and nothing more). OpenAI publishes no description
 of the format — the fullest third-party account of it, the format notes of the
 `nexus-ai-chat-importer` project (*Sources*, below), opens with "OpenAI does not
 document this format publicly … It can change without notice" — so everything below is
@@ -186,8 +188,9 @@ nothing of its content:
 5. Change every line the reading confirms from *assumed* to *observed*, and correct the
    ones it refutes.
 6. Open [`40`](../specs/impl/40-chatgpt-export-and-archive.md), the slice that built the
-   mock's archive, and change what it renders to match; then, when there is one, the
-   tool's ChatGPT export model.
+   mock's archive, and change what it renders to match; then
+   [`43`](../specs/impl/43-chatgpt-archive.md), the slice that reads it, and its
+   recogniser, its count of files and its gap rule.
 
 ## Sources
 

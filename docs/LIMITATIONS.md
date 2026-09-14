@@ -291,6 +291,46 @@ page, which nobody has watched yet: `docs/extraction-01.md` is where they stop b
   signed-in profile needs no model at all, which is the case the backup is built for.
   *by construction*
 
+## The ChatGPT source (`43`–`45`)
+
+What extraction from a ChatGPT account does not promise. Nobody has watched chatgpt.com
+or read a real ChatGPT export; every row the source stands on is *reported* or *unknown*
+in `docs/chatgpt-ui-map.md` and every claim about the archive is *assumed* in
+`docs/chatgpt-export-format.md`. `docs/extraction-02.md` is where they stop being so.
+
+- **The auth host's screens are the mock's.** The walk expects a **Log in** on the landing
+  page, an email step and a password step on `auth.openai.com`, each submitted with Enter.
+  A code prompt, a CAPTCHA, a banner or a different host stops the unattended sign-in with
+  exit `3` and the `login` instruction, and a sketch of what it saw in the trace. *unknown*
+- **The Data controls path is one string.** The tool navigates straight to
+  `/settings/data-controls`; the site may serve the page elsewhere, or as a dialog. A wrong
+  path is exit `1` with `export button not found`, and one edit to correct. *unknown*
+- **Whether the real link needs the session at all.** The fetch opens the source session's
+  browser because OpenAI's documentation says the download must be made signed in; a real
+  link that a browserless fetch could have taken would make that a cost and not a need,
+  and `fetch_needs_session` is the one flag that would change. *unknown*
+- **The zip's file name is never kept.** The trace carries its length and suffix; the file
+  is named by its download guid. What the vendor calls it is not known. *unknown*
+- **The 24-hour expiry, "already requested" and a rate limit on asking** are answered by
+  the site's page and not by the tool: a dead link is `link refused: HTTP <code>` or `the
+  link led to a page`, an ask the site declines is `no confirmation that the export was
+  requested`, exit `1`, no record. *unknown*
+- **A ChatGPT snapshot cannot be restored by this build.** `import` and `inspect` refuse it
+  with ADR 0005's reason: each source needs its own importer, and a snapshot of a source
+  the tool cannot import is still a backup. *by construction*
+- **The fetch opens a browser.** It obeys "one browser at a time" and needs the session
+  signed in — interactively a person, unattended the credentials. A cron job that fetches
+  needs `DATAPORTER_AUTH__EMAIL` and `DATAPORTER_AUTH__PASSWORD` in its environment for the
+  case the session has expired. *by construction*
+- **Composer drift is a signed-out root.** `probe.logged_in` on chatgpt.com's root depends
+  on the composer selector matching the site's redesigned composer, the highest-risk
+  *reported* row of the map; a signed-in root without a match reads as signed out, the walk
+  finds no **Log in**, and the run stops with `authentication required`. *unknown*
+- **A file the mock accepted is a gap; a real export's files may not be.** The 2026 export
+  is reported to carry attachment bytes as `file_<id>.dat` members; the snapshot counts
+  them as `Files:` and lists only the referenced ones no member carries. Confirming it is
+  the first thing reading a real export settles. *unknown*
+
 ## How to add to this file
 
 One bullet, one mark, and the slice that found it. A limitation discovered without a mark

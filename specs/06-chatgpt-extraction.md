@@ -210,9 +210,9 @@ path. So, beside §46: **while a fetch is in progress, a trace carries hosts and
 paths**. The navigation to the link, every redirect hop and every request the page makes
 are recorded as the host and a marker for the rest — never the path, never the query — and
 the writer refuses a path written by anyone while the fetch runs, under the same guard that
-refuses the link in a log record. The download itself is an observation: the host it came
-from, its size, and the length and suffix of the name the vendor gave it, never the name,
-which may carry the account's address.
+refuses the link in a log record. The download itself is recorded, as a move of the
+tool's own: the host it came from, its size, and the length and suffix of the name the
+vendor gave it, never the name, which may carry the account's address.
 
 ## 67. Tracing parity
 

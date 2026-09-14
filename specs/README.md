@@ -298,7 +298,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [44](impl/44-chatgpt-session-and-ask.md) | The ChatGPT source session and the ask | §60, §61, §62, §65, §67 | Done |
 | [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Done |
 | [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Done |
-| [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Not started |
+| [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Done |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -377,6 +377,18 @@ every one of §25's criteria with the ledger reconciled (the slice has the numbe
 and fetched both links through the session, which is the tool-driven run §56 lent them
 as their live criterion. A rehearsal proves the pages and turns no row of
 `docs/chatgpt-ui-map.md` *observed*.
+
+Of the sixth brief, §60–§70 are claimed by `42`–`47`: `42` takes §60's one object per
+vendor, `43` §64's archive and §59's refusals, `44` the sign-in of §61, the ask of §62,
+the surface of §65 and the parity of §67, `45` the fetch of §63 with the link's wall of
+§65 and the trace's rule of §66, `46` the rehearsal of §68, and `47` the record of §69
+and the rest of the paper. §59 is that brief's goal and is claimed by all six; §71 is its
+list of what is deliberately left and stays unclaimed until one of its items is built.
+`42`–`46` are `Done` since 2026-09-14, the day the extraction rehearsal ran against both
+mocks (`docs/rehearsal-03.md`); `47` is `Done` when its documents are in. What no
+rehearsal can answer — §69's questions about the real site — waits in
+`docs/extraction-02.md` on a throwaway account, as `docs/extraction-01.md` does for
+Claude, and is what would turn `docs/chatgpt-ui-map.md`'s rows *observed*.
 
 ## Working rules
 
