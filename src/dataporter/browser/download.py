@@ -13,9 +13,16 @@ The mechanics are two CDP domains on two sessions. On the browser target,
 when it finished; `allowAndName` makes the file's name the download's own
 guid, so nothing the vendor named is ever joined to a path. On the tab,
 `Network.responseReceived` for the document says whether the link was refused
-— a `403` for a session the vendor does not recognise — and `Page.loadEventFired`
-with no download begun says the link led to a page, which is what a signed-out
-download looks like.
+— a `403` for a session the vendor does not recognise — and a document that
+loaded and then went quiet, with no download begun, says the link led to a page,
+which is what a signed-out download looks like.
+
+Neither of those two domains is trusted to be the whole story. A good link is a
+redirect chain whose middle hops render documents of their own, so quiet and not
+merely loaded is what makes a page a page (`SETTLE_S`); and the completion event
+is not always delivered at all, so a file that has appeared in the staging dir
+and stopped growing counts as the download whether or not the browser said so
+(`_Wait.landed`). The bytes are the one signal that cannot go missing.
 
 What this module never does: click, type, or attach to a tab under a wall. The
 fetch has a wall of its own (§65): the link the person handed over, and
@@ -113,11 +120,16 @@ def fetch(
         page = session.client.attach(tabs[0].id)
         try:
             page.send("Network.enable")
+            # What was in the staging dir before this navigation, so that what
+            # the browser writes into it can be told apart from what is already
+            # filed there — an earlier part, or the manifest beside it.
+            before = frozenset(into.iterdir())
             _navigate(page, link)
             got = _await(
                 browser,
                 page,
                 into=into,
+                before=before,
                 idle_s=settings.timeouts.download_idle_s,
                 max_bytes=settings.store.max_download_bytes,
                 poll_s=poll_s,
@@ -144,6 +156,32 @@ def fetch(
 HTTP_ERROR = 400
 """The first status a vendor refuses a link with."""
 
+CRDOWNLOAD = ".crdownload"
+"""What Chrome names a download still being written; it renames on completion.
+
+So `into` holding no `.crdownload` and a file that was not there before is a
+download the browser has finished with — which is the one signal that never goes
+missing, because `Browser.setDownloadBehavior` put those bytes there and nothing
+else writes to the staging dir."""
+
+SETTLE_S = 5.0
+"""How long a loaded document must go quiet before it is a page and not a hop.
+
+A good link is a redirect chain, not one response: the vendor's own hop renders a
+document of its own — and fires `Page.loadEventFired` — before the archive's
+signed URL on another host begins the download. Concluding "a page" on that first
+load, which one poll's grace did, gives up on a download that has not started
+yet; Chrome then finishes it regardless, which is how a file could land in the
+staging dir under a run that had already failed with `the link led to a page`.
+
+A signed-out link renders its login page and then says nothing more, so quiet —
+no navigation, no response, no download event — is what tells the two apart. The
+cost of the wait is paid only by a link that really has landed on a page.
+
+Capped at half the idle budget where that is shorter (`_await`), so that the
+page is always diagnosed before the stall: "sign in" is what an operator can act
+on, and "the download stalled" is what is left when nothing else can be said."""
+
 
 @dataclass
 class _Wait:
@@ -158,10 +196,18 @@ class _Wait:
     chars: int = 0
     status: int = 0
     loaded_at: float | None = None
+    last_event: float = 0.0
+    before: frozenset[Path] = frozenset()
+    settled_path: Path | None = None
+    settled_size: int = -1
 
     def touch(self) -> None:
         """Push the idle deadline out: the download said something."""
         self.deadline = time.monotonic() + self.idle_s
+
+    def saw_event(self) -> None:
+        """Note that either session said something: the chain is still moving."""
+        self.last_event = time.monotonic()
 
     def browser_event(self, browser: Connection, event: dict[str, Any]) -> Downloaded | None:
         """One event from the browser target: the download beginning, growing, finishing."""
@@ -198,13 +244,52 @@ class _Wait:
         elif method == "Page.loadEventFired":
             self.loaded_at = time.monotonic()
 
-    def settled_on_a_page(self, poll_s: float) -> bool:
-        """Return whether a document loaded and no download began after it.
+    def landed(self) -> Downloaded | None:
+        """Return the file the browser finished writing, when no event said so.
+
+        `Browser.downloadProgress` is not always delivered — observed against
+        claude.ai, where a run would download every byte of a part and then wait
+        out its idle budget for a completion that never arrived. The bytes are not
+        in doubt, only the telling of them: the staging dir is this fetch's alone,
+        so a file that is new, has no `.crdownload` in flight beside it, and has
+        stopped growing is the download, whether or not the browser mentioned it.
+
+        Two polls at the same size before it is believed, because a file is
+        created before it is written; a `.crdownload` means the write is still
+        going, which is progress and not silence, so the idle budget is pushed out.
+        """
+        try:
+            items = list(self.into.iterdir())
+        except OSError:  # pragma: no cover - the dir is made before the navigation
+            return None
+        if any(item.name.endswith(CRDOWNLOAD) for item in items):
+            self.touch()
+            self.settled_path = None
+            return None
+        fresh = [item for item in items if item not in self.before and item.is_file()]
+        if not fresh:
+            return None
+        newest = max(fresh, key=lambda item: item.stat().st_mtime)
+        size = newest.stat().st_size
+        if size == 0:
+            return None
+        if self.settled_path == newest and self.settled_size == size:
+            return Downloaded(path=newest, bytes=size, suffix=self.suffix, filename_chars=self.chars)
+        self.settled_path, self.settled_size = newest, size
+        self.touch()
+        return None
+
+    def settled_on_a_page(self, settle_s: float) -> bool:
+        """Return whether a document loaded, went quiet, and no download began.
 
         A page where an archive should be is what a signed-out link looks like.
-        One poll's grace, because the two events can arrive in either order.
+        Quiet and not merely loaded (`SETTLE_S`): a document that loaded while the
+        redirect chain is still moving is a hop on the way to the archive, and the
+        download it leads to has not begun yet.
         """
-        return self.loaded_at is not None and self.guid is None and time.monotonic() - self.loaded_at >= poll_s
+        if self.loaded_at is None or self.guid is not None:
+            return False
+        return time.monotonic() - max(self.loaded_at, self.last_event) >= settle_s
 
 
 def _await(
@@ -212,21 +297,38 @@ def _await(
     page: Page,
     *,
     into: Path,
+    before: frozenset[Path],
     idle_s: float,
     max_bytes: int,
     poll_s: float,
+    settle_s: float = SETTLE_S,
 ) -> Downloaded:
     """Listen on both sessions until the download finishes, or until it cannot."""
-    wait = _Wait(into=into, idle_s=idle_s, max_bytes=max_bytes)
+    wait = _Wait(into=into, idle_s=idle_s, max_bytes=max_bytes, before=before)
+    # Never longer than half the idle budget: a settle window that outlasts it
+    # would let `STALLED` answer for a link that plainly landed on a page, and
+    # the sign-in is the thing the operator can do something about.
+    settle = min(settle_s, idle_s / 2)
     wait.touch()
     while True:
-        for event in browser.pull(poll_s):
+        from_browser = browser.pull(poll_s)
+        for event in from_browser:
             got = wait.browser_event(browser, event)
             if got is not None:
                 return got
-        for event in page.pull(0):
+        from_page = page.pull(0)
+        for event in from_page:
             wait.page_event(event)
-        if wait.settled_on_a_page(poll_s):
+        if from_browser or from_page:
+            # Either session speaking means the chain is still moving, so a
+            # document that loaded a moment ago is a hop and not a destination.
+            wait.saw_event()
+        # Before the page check, so a download that finished without saying so
+        # is never mistaken for a link that led to a page.
+        landed = wait.landed()
+        if landed is not None:
+            return landed
+        if wait.settled_on_a_page(settle):
             raise DownloadStopped(PAGE, wait.status or 200)
         if time.monotonic() >= wait.deadline:
             raise DownloadStopped(STALLED)
