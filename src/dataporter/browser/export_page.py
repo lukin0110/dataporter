@@ -33,7 +33,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from orval import utcnow
 
@@ -44,7 +44,7 @@ from dataporter.browser.cdp import Page
 from dataporter.browser.launcher import BrowserSession
 from dataporter.browser.probe import PageState
 from dataporter.config import Settings
-from dataporter.errors import BrowserError
+from dataporter.errors import BrowserError, SafetyError
 from dataporter.sources.claude import CLAUDE
 
 if TYPE_CHECKING:
@@ -169,6 +169,26 @@ BUTTON_NOT_FOUND = "button_not_found"
 NOT_REQUESTED = "not_requested"
 """Why an ask stopped. Stable strings: `extract` turns each into the line an
 operator reads, and a log record carries this rather than the prose."""
+
+OFF_SURFACE = "the browser left the extraction surface for {where}"
+"""The wall refused the page the tab is on. Named with where it went, because
+the whole difficulty of a page that moves under a click is knowing where to."""
+
+
+def where_of(url: str) -> str:
+    """Return a URL's path and fragment, which is what may be said about it.
+
+    Never the query: §66 keeps one out of everything this tool records, and a
+    refusal an operator reads is no different. The fragment is kept because on a
+    site that routes in one it is the only thing that says which screen.
+    """
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"}:
+        # `about:blank` parses to the path `blank`, which names nothing an
+        # operator would recognise. Anything not a web page is said whole.
+        return url
+    return f"{parsed.path}#{parsed.fragment}" if parsed.fragment else (parsed.path or "/")
+
 
 NO_TAB = "no tab on {host} for the ask"
 """The tab the ask came for is not there. Named for the source's host and never
@@ -298,7 +318,14 @@ def _click(settings: Settings, page: Page, source: "Source", selector: str, acti
     """
     surface = sites.extraction_surface(source)
     url = page.url
-    helpers.guard(url, surface)
+    try:
+        helpers.guard(url, surface)
+    except SafetyError as exc:
+        # The rail still fires and nothing after it runs; what changes is that an
+        # operator is told where the tab went. A bare `SafetyError` out of here
+        # reaches the CLI as `internal error: SafetyError`, which is the least
+        # useful thing a wall can say about a page that moved under it.
+        raise BrowserError(detail=OFF_SURFACE.format(where=where_of(url))) from exc
     if not on_export_page(url, source):
         raise BrowserError(detail=sites.not_the_export_page(source))
     before = helpers.sketch_of(page, surface)

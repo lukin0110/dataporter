@@ -76,6 +76,11 @@ class FakeExportPage:
     """Whether `Page.navigate` moves this page. `False` is a browser that never
     arrives — a redirect back, a page that will not load."""
 
+    leaves_for: str = SIGNED_OUT_URL
+    """Where the tab goes when it leaves. Inside the wall by default, which is
+    the harder case; an address outside it is the one `51` met, when the panel's
+    second screen turned out to have an address of its own."""
+
     leaves_after_view: int | None = None
     """How many looks at the page before the tab is somewhere else.
 
@@ -134,7 +139,7 @@ class FakeExportPage:
         """Return what `EXPORT_PAGE_JS` answers for this stage."""
         self.view_reads += 1
         if self.leaves_after_view is not None and self.view_reads >= (self.leaves_after_view):
-            self.url = SIGNED_OUT_URL
+            self.url = self.leaves_for
         return {
             "button": self.button and self.stage is Stage.SETTINGS,
             "dialog": self.stage is Stage.CONFIRM,
