@@ -42,7 +42,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dataporter import __version__, log, sources
 from dataporter.config import Settings
@@ -178,11 +178,17 @@ class Archive(StoreModel):
 
 
 class Counts(StoreModel):
-    """What the archive turned out to hold. Numbers only (§38)."""
+    """What the archive turned out to hold. Numbers only (§38).
+
+    `files` is the members an archive carries as bytes (§64), counted by a
+    source whose export ships them and absent from the manifest of one that
+    does not: a Claude manifest reads and writes exactly as it did before `43`.
+    """
 
     conversations: int = 0
     projects: int = 0
     memories: int = 0
+    files: int | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class Gap(StoreModel):
@@ -411,7 +417,7 @@ class Store:
 
     def _row(self, directory: Path) -> SnapshotRow:
         source, account = directory.parent.parent.name, directory.parent.name
-        snapshot = _read_manifest(directory / MANIFEST_NAME)
+        snapshot = read_manifest(directory / MANIFEST_NAME)
         if not (directory / COMPLETE_NAME).exists():
             # Unfinished, whatever the manifest says: the marker is the only
             # thing that makes a snapshot readable.
@@ -434,7 +440,7 @@ class Store:
         )
 
 
-def _read_manifest(path: Path) -> Snapshot | None:
+def read_manifest(path: Path) -> Snapshot | None:
     """`snapshot.json`, or `None` for anything that is not one."""
     try:
         return Snapshot.model_validate_json(path.read_bytes())

@@ -439,12 +439,12 @@ def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def test_a_source_the_tool_does_not_have_exits_2(runner: CliRunner, workspace: Path) -> None:
     result = runner.invoke(
         cli.app,
-        ["extract", "--source", "chatgpt", "--account", "a"],
+        ["extract", "--source", "gemini", "--account", "a"],
         catch_exceptions=False,
     )
 
     assert result.exit_code == ExitCode.USAGE
-    assert result.stderr == "error: no such source: chatgpt\n"
+    assert result.stderr == "error: no such source: gemini\n"
 
 
 def test_a_label_that_is_not_one_exits_2(runner: CliRunner, workspace: Path) -> None:

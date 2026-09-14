@@ -18,6 +18,7 @@ from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
 from dataporter.browser.site import Site
 from dataporter.config import Settings, with_session_account
+from dataporter.sources.chatgpt import CHATGPT
 from dataporter.sources.claude import CLAUDE
 from fake_chrome import FakeChrome, FakeTarget
 
@@ -26,11 +27,12 @@ from fake_chrome import FakeChrome, FakeTarget
 # --------------------------------------------------------------------------- #
 
 
-def test_the_registry_holds_claude_and_nothing_else_yet() -> None:
-    assert list(sources.REGISTRY) == ["claude"]
+def test_the_registry_holds_the_two_sources_the_tool_has() -> None:
+    assert list(sources.REGISTRY) == ["claude", "chatgpt"]
     assert sources.REGISTRY["claude"] is CLAUDE
-    assert store.SOURCES == ("claude",)
-    assert store.SOURCE_NAMES == {"claude": "Claude"}
+    assert sources.REGISTRY["chatgpt"] is CHATGPT
+    assert store.SOURCES == ("claude", "chatgpt")
+    assert store.SOURCE_NAMES == {"claude": "Claude", "chatgpt": "ChatGPT"}
 
 
 def test_a_source_s_hosts_are_its_own_and_the_ones_its_sign_in_passes_through() -> None:
@@ -47,7 +49,8 @@ def test_the_invocation_s_source_is_looked_up_by_name(tmp_path: Path) -> None:
 def test_an_archive_is_recognised_by_its_member_names() -> None:
     assert sources.recognised(["conversations.json", "users.json"]) is CLAUDE
     assert sources.recognised(["conversations.json"]) is CLAUDE
-    assert sources.recognised(["conversations.json", "user.json"]) is None
+    assert sources.recognised(["conversations.json", "user.json"]) is CHATGPT
+    assert sources.recognised(["conversations-001.json", "conversations-002.json"]) is CHATGPT
     assert sources.recognised(["chat.html"]) is None
 
 

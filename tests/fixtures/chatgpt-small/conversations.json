@@ -1,0 +1,124 @@
+[
+  {
+    "title": "Fixture A",
+    "create_time": 1704067200.0,
+    "update_time": 1704067203.0,
+    "mapping": {
+      "root-a": {"id": "root-a", "message": null, "parent": null, "children": ["a1"]},
+      "a1": {
+        "id": "a1",
+        "message": {
+          "id": "a1",
+          "author": {"role": "user", "name": null, "metadata": {}},
+          "create_time": 1704067201.0,
+          "update_time": 1704067201.0,
+          "content": {"content_type": "text", "parts": ["Here are two files."]},
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 1.0,
+          "metadata": {
+            "attachments": [
+              {"id": "file-aaaa1111", "name": "notes.txt", "mime_type": "text/plain", "size": 12},
+              {"id": "file-bbbb2222", "name": "chart.png", "mime_type": "image/png", "size": 2048}
+            ]
+          },
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "root-a",
+        "children": ["a2"]
+      },
+      "a2": {
+        "id": "a2",
+        "message": {
+          "id": "a2",
+          "author": {"role": "assistant", "name": null, "metadata": {}},
+          "create_time": 1704067202.0,
+          "update_time": 1704067202.0,
+          "content": {"content_type": "text", "parts": ["Received."]},
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 1.0,
+          "metadata": {"model_slug": "auto"},
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "a1",
+        "children": []
+      }
+    },
+    "current_node": "a2",
+    "conversation_id": "0a000001-0000-4000-8000-000000000001",
+    "id": "0a000001-0000-4000-8000-000000000001",
+    "is_archived": false,
+    "default_model_slug": "auto"
+  },
+  {
+    "title": "Fixture B",
+    "create_time": 1704153600.5,
+    "update_time": 1704153602.5,
+    "mapping": {
+      "root-b": {"id": "root-b", "message": null, "parent": null, "children": ["b1"]},
+      "b1": {
+        "id": "b1",
+        "message": {
+          "id": "b1",
+          "author": {"role": "user", "name": null, "metadata": {}},
+          "create_time": 1704153601.0,
+          "update_time": null,
+          "content": {
+            "content_type": "multimodal_text",
+            "parts": [
+              {"content_type": "image_asset_pointer", "asset_pointer": "sediment://file-aaaa1111"},
+              "What is in this picture?"
+            ]
+          },
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 1.0,
+          "metadata": {"attachments": [{"id": "file-aaaa1111", "name": "notes.txt", "mime_type": "text/plain", "size": 12}]},
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "root-b",
+        "children": []
+      }
+    },
+    "current_node": "b1",
+    "conversation_id": "0b000002-0000-4000-8000-000000000002",
+    "id": "0b000002-0000-4000-8000-000000000002",
+    "is_archived": true,
+    "default_model_slug": "gpt-5"
+  },
+  {
+    "title": "Fixture C",
+    "create_time": 1704240000.0,
+    "update_time": 1704240001.0,
+    "mapping": {
+      "root-c": {"id": "root-c", "message": null, "parent": null, "children": ["c1"]},
+      "c1": {
+        "id": "c1",
+        "message": {
+          "id": "c1",
+          "author": {"role": "user", "name": null, "metadata": {}},
+          "create_time": 1704240001.0,
+          "update_time": 1704240001.0,
+          "content": {"content_type": "text", "parts": ["One more file."]},
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 1.0,
+          "metadata": {"attachments": [{"id": "file-dddd4444", "name": "sheet.csv", "mime_type": "text/csv", "size": 99}]},
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "root-c",
+        "children": []
+      }
+    },
+    "current_node": "c1",
+    "conversation_id": "0c000003-0000-4000-8000-000000000003",
+    "id": "0c000003-0000-4000-8000-000000000003",
+    "is_archived": false,
+    "default_model_slug": "auto"
+  }
+]

@@ -428,7 +428,7 @@ def test_the_source_defaults_to_claude_and_the_flag_may_be_absent(
     assert with_account(load_settings(), None, "a").source == "claude"
 
 
-@pytest.mark.parametrize("token", ["chatgpt", "Claude", "claude/../..", ""])
+@pytest.mark.parametrize("token", ["gemini", "Claude", "claude/../..", ""])
 def test_a_source_the_tool_does_not_have_is_refused(workspace: Path, token: str) -> None:
     with pytest.raises(ConfigError, match=f"no such source: {token}"):
         with_account(load_settings(), token, "a")

@@ -294,7 +294,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [40](impl/40-chatgpt-export-and-archive.md) | The mock chatgpt.com: the export page and the archive | §54, §55 | Built |
 | [41](impl/41-chatgpt-mock-walk.md) | The README's walk | §53, §54, §56 | Built |
 | [42](impl/42-source-seam.md) | The source seam | §60 | Built |
-| [43](impl/43-chatgpt-archive.md) | The ChatGPT archive | §59, §64 | Not started |
+| [43](impl/43-chatgpt-archive.md) | The ChatGPT archive | §59, §64 | Built |
 | [44](impl/44-chatgpt-session-and-ask.md) | The ChatGPT source session and the ask | §60, §61, §62, §65, §67 | Not started |
 | [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Not started |
 | [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Not started |

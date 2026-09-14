@@ -94,8 +94,9 @@ uuid the operator never typed."""
 
 BYTES_REASON = "files the export does not carry"
 BYTES_REASON_ONE = "file the export does not carry"
-"""The one gap kind a Claude snapshot has today (§31). The export names the
-files a conversation carried and ships none of their bytes.
+"""The one gap kind a snapshot has today (§31, §64). A Claude export names the
+files a conversation carried and ships none of their bytes; a ChatGPT export
+is reported to ship them, and the gap is whichever it did not.
 
 Two spellings because the reason is read as part of a sentence — §31's block
 prints `Gaps: 38 files the export does not carry` — and `1 files` is not one.
@@ -123,6 +124,7 @@ LINK_REFUSED = (
 UNREACHABLE = "cannot reach the download host ({reason})"
 TOO_LARGE = "the download is larger than store.max_download_bytes ({limit} bytes)"
 NOT_A_ZIP = "the download is not a zip archive"
+LOOKS_LIKE = "the archive looks like a {looks} export, not a {asked} one: {display}"
 NOT_AN_ARCHIVE = "--from takes the vendor's archive (.zip); a directory is not one"
 NOT_A_ZIP_FILE = "--from takes the vendor's archive (.zip): {path}"
 NO_SUCH_FILE = "no such file: {path}"
@@ -145,6 +147,12 @@ button — a race nobody will see, and one that has no record in hand to quote.
 NO_ASK_OPEN = "no ask is open for {source}/{account}"
 INVALID_ASK = "invalid {filename}: {path}"
 ABANDONED = "Abandoned the open ask for {source}/{account}."
+
+NOT_YET = "not implemented in this build: {what}"
+"""Exit `69`, `30`'s answer for a mode a later slice builds: the ChatGPT ask is
+`44`'s and the fetch through its session `45`'s, and a source registered
+before its browser half lands says so rather than driving a page it has no
+walk for."""
 
 EXPORT_BUTTON_MISSING = "export button not found on {path}"
 NOT_CONFIRMED = "no confirmation that the export was requested"
@@ -322,10 +330,14 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
                 asked_at=open_ask.asked_at.strftime(ASKED_AT_FORMAT),
             )
         )
+    source = sources.of(settings)
+    if source.unattended_signin == "walk":
+        # Until `44`: the walk is not built, and the ask's sign-in is the walk.
+        sink.note(NOT_YET.format(what=f"the {source.display_name} ask"))
+        return ExtractOutcome(exit_code=ExitCode.NOT_IMPLEMENTED)
     if settings.non_interactive:
         signin.require_credentials(settings)
 
-    source = sources.of(settings)
     browser = launcher.launch(settings, sites.export_page_url(source))
     try:
         with watching.watched(
@@ -429,6 +441,10 @@ def fetch(
     log.enable_run_log(settings.logs_dir)
     if urllib.parse.urlsplit(link).scheme != LINK_SCHEME:
         raise FetchError(LINK_NOT_HTTPS)
+    if source.fetch_needs_session:
+        # Until `45`: the fetch through the session is not built.
+        sink.note(NOT_YET.format(what=f"a fetch through the {source.display_name} session"))
+        return ExtractOutcome(exit_code=ExitCode.NOT_IMPLEMENTED)
 
     ask = read_ask(settings)
     asked_at = None if ask is None else ask.asked_at
@@ -593,6 +609,7 @@ def _filing(
             conversations=reading.conversations,
             projects=reading.projects,
             memories=reading.memories,
+            files=reading.files,
         ),
         gaps=_gaps(reading),
     )
@@ -604,9 +621,18 @@ def _read(path: Path, display: str, source: "Source") -> "Reading":
     Every refusal is a `FetchError` — exit `2`, "ask again" — rather than the
     `ExportError` the parser raises: what failed is the link or the file the
     operator handed over, not an export they are about to migrate.
+
+    An archive that is another source's is refused by name before it is read
+    (§64): two sources spell `conversations.json` and mean two shapes, and a
+    person who typed the wrong `--source` is owed the name of the right one.
     """
     try:
         with ExportView.open(path, display=display) as view:
+            looks = sources.recognised(view.names())
+            if looks is not None and looks is not source:
+                raise FetchError(
+                    LOOKS_LIKE.format(looks=looks.display_name, asked=source.display_name, display=display)
+                )
             return source.read(view)
     except ExportError as exc:
         raise FetchError(exc.detail) from exc
