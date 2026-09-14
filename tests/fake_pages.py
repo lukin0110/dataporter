@@ -14,6 +14,7 @@ from types import TracebackType
 from typing import Self
 
 from dataporter.browser import export_page
+from dataporter.sources.chatgpt import CHATGPT
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pages"
 
@@ -30,6 +31,11 @@ from, how many parts it became, and what the rename step called it. `17`'s
 expectations are built from these rather than from the HTML, so a fixture edited
 without its expectations fails rather than passes differently."""
 
+CHATGPT_LANDING_PATH = "/chatgpt"
+"""Where the ChatGPT landing fixture is served (`44`). The real landing page is
+the site's root, which this server already gives to `new.html`; the fixture
+answers the same expressions from a path of its own."""
+
 ROUTES: dict[str, str] = {
     "/login": "login.html",
     "/login/form": "login-form.html",
@@ -43,6 +49,8 @@ ROUTES: dict[str, str] = {
     "/replace-state": "replace-state.html",
     "/redirect": "redirect.html",
     export_page.EXPORT_PAGE_PATH: "settings-export.html",
+    CHATGPT_LANDING_PATH: "chatgpt-landing.html",
+    CHATGPT.export_page_path: "chatgpt-data-controls.html",
 }
 """Path to fixture. `/settings/profile` is deliberately a real page: `08` needs
 somewhere outside the migration surface to point its safety gate at.

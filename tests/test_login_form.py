@@ -189,7 +189,7 @@ def test_an_answer_that_is_not_a_form_reading_is_no_fields() -> None:
         def evaluate(self, expression: str) -> object:
             return None
 
-    assert login_form._fields(Mute()) == login_form.Fields()  # type: ignore[arg-type]
+    assert login_form.fields_of(Mute()) == login_form.Fields()  # type: ignore[arg-type]
 
 
 def test_filled_names_are_names() -> None:

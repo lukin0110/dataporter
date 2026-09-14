@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- A stand-in for chatgpt.com's landing page, signed out (`44`). The map's
+     `signed out` row is *reported*: a **Log in** button, as
+     `button[data-testid="login-button"]`. What this fixture is for is the
+     mechanics — that `chatgpt_login.landing_js` sees the control and no
+     composer, and that `click_js` presses it — and not evidence about the
+     site; correcting the map corrects this file too. -->
+<meta charset="utf-8">
+<title>ChatGPT</title>
+<style>
+  [hidden] { display: none; }
+  .invisible { display: none; }
+</style>
+<main>
+  <h1>ChatGPT</h1>
+  <!-- A hidden twin first in document order, as the Claude fixture has: the
+       click helper filters by visibility. -->
+  <button class="invisible" data-testid="login-button">Log in</button>
+  <button type="button" data-testid="login-button">Log in</button>
+  <button type="button" data-testid="signup-button">Sign up</button>
+  <p data-testid="went" hidden>Leaving for the auth host.</p>
+</main>
+<script>
+  for (const button of document.querySelectorAll('[data-testid="login-button"]')) {
+    button.addEventListener('click', () => {
+      document.querySelector('[data-testid="went"]').hidden = false;
+    });
+  }
+</script>

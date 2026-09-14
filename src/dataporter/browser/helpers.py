@@ -928,6 +928,40 @@ def count_actions(workspace: Path) -> int:
         return 0
 
 
+def record_step(
+    settings: Settings,
+    action: str,
+    *,
+    ok: bool,
+    url: str,
+    selector: str | None = None,
+    elapsed_ms: int = 0,
+    before: str | None = None,
+    after: str | None = None,
+) -> None:
+    """One line in the run's `logs/actions.jsonl`, and a move in the trace (`31`, `33`).
+
+    Beside `record_move`, which writes a *helper's* move from its printed
+    outcome: this is a step of the tool's own — a click, a typed field — with
+    nothing printed and no outcome object, on a page no helper may touch.
+
+    What the ask's two clicks, the sign-in's typed steps and `44`'s **Log in**
+    all write: the URL and the selector, never the element's text or a field's
+    value — §38 keeps everything the tool writes *about* an account to numbers,
+    labels and our own strings. The URL is reduced to its path and its query's
+    key names on the way into the trace (§46).
+    """
+    ts = tracing.timestamp()
+    record_action(Path(settings.logs_dir), action, ok=ok, elapsed_ms=elapsed_ms, url=url, selector=selector, ts=ts)
+    current = tracing.current()
+    if current is not None:
+        result: dict[str, object] = {"selector": selector} if selector else {}
+        result.update(tracing.url_fields(url))
+        current.move(
+            action, ok=ok, elapsed_ms=elapsed_ms, conversation_id=None, result=result, ts=ts, before=before, after=after
+        )
+
+
 def record_action(
     workspace: Path,
     helper: str,

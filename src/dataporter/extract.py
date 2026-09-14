@@ -149,10 +149,9 @@ INVALID_ASK = "invalid {filename}: {path}"
 ABANDONED = "Abandoned the open ask for {source}/{account}."
 
 NOT_YET = "not implemented in this build: {what}"
-"""Exit `69`, `30`'s answer for a mode a later slice builds: the ChatGPT ask is
-`44`'s and the fetch through its session `45`'s, and a source registered
-before its browser half lands says so rather than driving a page it has no
-walk for."""
+"""Exit `69`, `30`'s answer for a mode a later slice builds: the fetch through
+a ChatGPT session is `45`'s, and a source whose link wants the session says so
+rather than downloading a page."""
 
 EXPORT_BUTTON_MISSING = "export button not found on {path}"
 NOT_CONFIRMED = "no confirmation that the export was requested"
@@ -331,10 +330,6 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
             )
         )
     source = sources.of(settings)
-    if source.unattended_signin == "walk":
-        # Until `44`: the walk is not built, and the ask's sign-in is the walk.
-        sink.note(NOT_YET.format(what=f"the {source.display_name} ask"))
-        return ExtractOutcome(exit_code=ExitCode.NOT_IMPLEMENTED)
     if settings.non_interactive:
         signin.require_credentials(settings)
 

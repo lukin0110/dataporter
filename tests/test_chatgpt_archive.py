@@ -312,17 +312,12 @@ def test_the_source_s_hooks_are_the_reader_s() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Not yet: the ask and the fetch through the session
+# Not yet: the fetch through the session
 # --------------------------------------------------------------------------- #
 
 
-def test_the_chatgpt_ask_and_fetch_say_they_are_not_built_yet(settings: Settings) -> None:
-    """Until `44` and `45`: exit `69`, `30`'s answer for a mode a later slice builds."""
-    sink = Collected()
-    outcome = extract.ask(settings, sink=sink)
-    assert outcome.exit_code == ExitCode.NOT_IMPLEMENTED
-    assert sink.stderr == "not implemented in this build: the ChatGPT ask\n"
-
+def test_the_chatgpt_fetch_says_it_is_not_built_yet(settings: Settings) -> None:
+    """Until `45`: exit `69`, `30`'s answer for a mode a later slice builds."""
     sink = Collected()
     outcome = extract.fetch(settings, "https://chatgpt.com/__mock/exports/t.zip", sink=sink)
     assert outcome.exit_code == ExitCode.NOT_IMPLEMENTED

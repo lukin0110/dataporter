@@ -20,14 +20,16 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
+import fake_pages
 from dataporter import cli
 from dataporter import trace as tracing
-from dataporter.browser import export_page, helpers, launcher, probe
+from dataporter.browser import chatgpt_login, export_page, helpers, launcher, probe
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import BrowserSettings, Settings, TimeoutSettings
 from dataporter.errors import SafetyError, UIError
 from dataporter.exit_codes import ExitCode
 from dataporter.seed import sha256_of
+from dataporter.sources.chatgpt import CHATGPT
 from fake_chrome import Call, free_port
 from fake_composer import Browser, FakePage, Turn
 from fake_pages import (
@@ -1262,6 +1264,44 @@ def test_live_a_click_finds_nothing_to_click(
     page = session.client.attach(session.client.pages()[0].id)
     try:
         assert page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR)) is False
+    finally:
+        page.close()
+
+
+@requires_a_browser
+def test_live_the_chatgpt_landing_page_is_read_and_its_log_in_pressed(
+    live: tuple[launcher.BrowserSession, PageServer],
+) -> None:
+    """`44`'s landing expression against a real Chrome: a visible **Log in**, no composer, one press."""
+    session, server = live
+    visit(session, server.url(fake_pages.CHATGPT_LANDING_PATH))
+    page = session.client.attach(session.client.pages()[0].id)
+    try:
+        landing = chatgpt_login.Landing.read(page, CHATGPT)
+        assert (landing.login_button, landing.composer) == (True, False)
+        assert page.evaluate(export_page.click_js(CHATGPT.selectors["LOGIN_BUTTON_SELECTOR"], source=CHATGPT))
+        assert page.evaluate("document.querySelector('[data-testid=\"went\"]').hidden") is False
+    finally:
+        page.close()
+
+
+@requires_a_browser
+def test_live_the_chatgpt_data_controls_page_walks_its_three_stages(
+    live: tuple[launcher.BrowserSession, PageServer],
+) -> None:
+    """`44`'s selectors against a real document: the same three stages, ChatGPT's spelling."""
+    session, server = live
+    visit(session, server.url(CHATGPT.export_page_path))
+    page = session.client.attach(session.client.pages()[0].id)
+    try:
+        before = export_page.ExportPageView.read(page, CHATGPT)
+        assert (before.button, before.dialog, before.requested) == (True, False, False)
+        assert page.evaluate(export_page.click_js(CHATGPT.selectors["EXPORT_BUTTON_SELECTOR"], source=CHATGPT))
+        opened = export_page.ExportPageView.read(page, CHATGPT)
+        assert (opened.dialog, opened.confirm) == (True, True)
+        assert page.evaluate(export_page.click_js(CHATGPT.selectors["CONFIRM_BUTTON_SELECTOR"], source=CHATGPT))
+        after = export_page.ExportPageView.read(page, CHATGPT)
+        assert (after.requested, after.dialog) == (True, False)
     finally:
         page.close()
 
