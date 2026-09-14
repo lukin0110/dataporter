@@ -6,7 +6,7 @@
 **Depends on:** [43](43-chatgpt-archive.md), [44](44-chatgpt-session-and-ask.md),
 [30](30-store-and-snapshot.md), [35](35-watch.md)
 **Enables:** [46](46-extraction-rehearsal.md)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -109,6 +109,7 @@ leaves the browser. The link is in no line the fetch leaves.
 - The live test downloads through a real headless Chrome and is refused signed out.
 - *(Live, `46`'s.)* The extraction rehearsal fetches the mock chatgpt.com's link through
   the session and files two snapshots; that is what turns this slice `Done`.
+  Met on 2026-09-14: the extraction rehearsal (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)) fetched both of the mock chatgpt.com's links through the session and filed two snapshots; `Done`.
 
 ## Risks
 

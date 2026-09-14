@@ -7,7 +7,7 @@ as the goal
 [`docs/chatgpt-export-format.md`](../../docs/chatgpt-export-format.md)
 **Enables:** [41](41-chatgpt-mock-walk.md); the tool's ChatGPT half, when it is written
 (§58)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -161,6 +161,7 @@ mock printed was `https://chatgpt.com/__mock/exports/<token>.zip`, a fetch from 
 signed-in page returned `200` and 1,582 bytes of zip, the same fetch from a context with
 no cookies returned `403`, and the listing returned `200` to it. A walk, not a run: the
 status is `Built`.
+  Met on 2026-09-14: the extraction rehearsal (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)) asked on this page twice and fetched both links through the session, filing two snapshots; `Done`.
 
 ## Risks
 

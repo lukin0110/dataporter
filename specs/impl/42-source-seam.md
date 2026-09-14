@@ -7,7 +7,7 @@ brief 04 §50, kept
 [33](33-trace-and-move.md)–[35](35-watch.md)
 **Enables:** [43](43-chatgpt-archive.md), [44](44-chatgpt-session-and-ask.md),
 [45](45-fetch-through-the-session.md)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -113,6 +113,7 @@ read-only view of an archive is not one.
   loaded afterwards.
 - *(Live, `46`'s.)* The extraction rehearsal against the mock claude.ai runs `login`, the
   ask and the fetch through the seam; that is what turns this slice `Done`.
+  Met on 2026-09-14: the extraction rehearsal (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)) ran `login`, the ask and the fetch through the seam against both mocks; `Done`.
 
 ## Risks
 

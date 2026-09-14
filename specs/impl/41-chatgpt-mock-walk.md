@@ -6,7 +6,7 @@ once*), §53 (the project's README), and §52 as the goal
 **Depends on:** [39](39-chatgpt-mock-site.md), [40](40-chatgpt-export-and-archive.md)
 **Enables:** the tool's ChatGPT half (§58), which is written against a mock a person
 has walked
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -75,6 +75,7 @@ brief `05`'s sections are claimed. No code.
   is what a reader of the README does next.)*
 - *(Live, the later brief's.)* The tool's first run against the mock reproduces the walk;
   that turns this slice `Done` (§56).
+  Met on 2026-09-14: the extraction rehearsal (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)) reproduced the walk's sign-in, ask and fetch as the tool's own run; `Done`.
 
 ## Risks
 

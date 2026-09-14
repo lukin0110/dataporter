@@ -326,6 +326,7 @@ what they do not yet cover.
   title or any message content, under the suite's strict content guard.
 - Every `extract` mode and `snapshots` reproduce the CLI's stdout, stderr and exit code
   when called as library operations.
+- Rehearsed on 2026-09-14 against the mock claude.ai (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)): the first tool-driven fetch and filing end to end, two snapshots, the first byte-identical after the second. Still `Built`: no real vendor link has been fetched.
 
 ## Risks
 

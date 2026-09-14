@@ -6,7 +6,7 @@ map*, *Sign-in*, *Chats*, *The ledger*, *Reachability*, *Lifetime*), §57 (the r
 builds), and §52 as the goal
 **Depends on:** [38](38-mock-core.md), [`docs/chatgpt-ui-map.md`](../../docs/chatgpt-ui-map.md)
 **Enables:** [40](40-chatgpt-export-and-archive.md), [41](41-chatgpt-mock-walk.md)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -194,6 +194,7 @@ headless Chromium (Playwright's build 1194) driven through the resolver rule and
 pin — 26 checks, every one passed, the ledger closing at 1 sign-in, 2 chats, 3 messages,
 1 file, 1 rename, 1 export requested after the `40` steps of the same walk. That is a
 walk, not a run: it turns no row *observed* and does not make the slice `Done`.
+  Met on 2026-09-14: the extraction rehearsal (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)) signed in through the walk on both host names, twice; `Done`.
 
 ## Risks
 
