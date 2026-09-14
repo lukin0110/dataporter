@@ -42,6 +42,7 @@ def export_page_url(source: "Source") -> str:
 
 
 def not_the_export_page(source: "Source") -> str:
+    """Return the line for a tab that is not on the source's export page."""
     return NOT_THE_EXPORT_PAGE.format(path=source.export_page_path)
 
 

@@ -24,6 +24,11 @@ if TYPE_CHECKING:
     from dataporter.export.source import ExportView
 
 
+LOOKS_LIKE = "the archive looks like a {looks} export, not a {asked} one: {display}"
+"""What an operator reads when an archive is another source's (§64): spelled
+once, here, and raised by the reader that noticed and by the fetch that asked."""
+
+
 @dataclass(frozen=True)
 class Reading:
     """What one parse of an archive found: the numbers a manifest keeps (§38).

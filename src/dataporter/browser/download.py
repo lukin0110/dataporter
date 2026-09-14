@@ -160,6 +160,7 @@ class _Wait:
     loaded_at: float | None = None
 
     def touch(self) -> None:
+        """Push the idle deadline out: the download said something."""
         self.deadline = time.monotonic() + self.idle_s
 
     def browser_event(self, browser: Connection, event: dict[str, Any]) -> Downloaded | None:
@@ -250,6 +251,7 @@ def _navigate(page: Page, link: str) -> None:
 
 
 def _elapsed(started: float) -> int:
+    """Return the milliseconds since `started`."""
     return round((time.monotonic() - started) * 1000)
 
 

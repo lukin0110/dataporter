@@ -134,6 +134,7 @@ def redacting() -> Iterator[None]:
 
 
 def is_redacting() -> bool:
+    """Return whether a fetch is driving the tab to the link right now."""
     return _redacting.is_set()
 
 

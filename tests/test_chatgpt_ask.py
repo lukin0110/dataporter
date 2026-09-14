@@ -1,6 +1,6 @@
 """The ChatGPT source session and the ask (`44`).
 
-Every branch against `fake_chatgpt_pages.FakeChatgptSite` and a fake Chrome: the
+Every branch against `fake_chatgpt_pages.FakeChatgptPages` and a fake Chrome: the
 walk-in sign-in, the interactive wait, the ask's two clicks, and the trace and the
 action log a ChatGPT run leaves — which brief `06` §67 says must be what a Claude
 run leaves.
@@ -32,7 +32,7 @@ from dataporter.config import (
 from dataporter.console import Collected
 from dataporter.errors import AuthError, UsageError
 from dataporter.exit_codes import ExitCode
-from fake_chatgpt_pages import CONFIRM_BUTTON, EXPORT_BUTTON, EXPORT_URL, LOGIN_BUTTON, FakeChatgptSite, Step, browser
+from fake_chatgpt_pages import CONFIRM_BUTTON, EXPORT_BUTTON, EXPORT_URL, LOGIN_BUTTON, FakeChatgptPages, Step, browser
 from fake_chrome import FakeChrome
 
 pytestmark = pytest.mark.slow
@@ -44,12 +44,12 @@ SECRET = "hunter2"
 
 
 @pytest.fixture
-def site() -> FakeChatgptSite:
-    return FakeChatgptSite()
+def site() -> FakeChatgptPages:
+    return FakeChatgptPages()
 
 
 @pytest.fixture
-def chrome(site: FakeChatgptSite) -> Iterator[FakeChrome]:
+def chrome(site: FakeChatgptPages) -> Iterator[FakeChrome]:
     with browser(site) as fake:
         yield fake
 
@@ -130,7 +130,7 @@ def actions(settings: Settings) -> list[str]:
 
 
 def test_the_walk_is_one_click_and_two_fields_and_no_agent(
-    site: FakeChatgptSite, chrome: FakeChrome, settings: Settings
+    site: FakeChatgptPages, chrome: FakeChrome, settings: Settings
 ) -> None:
     outcome = signin.SignIn(settings).perform(session_of(chrome, settings))
 
@@ -141,7 +141,9 @@ def test_the_walk_is_one_click_and_two_fields_and_no_agent(
     assert not (settings.hermes.home).exists()
 
 
-def test_no_expression_ever_carries_a_credential(site: FakeChatgptSite, chrome: FakeChrome, settings: Settings) -> None:
+def test_no_expression_ever_carries_a_credential(
+    site: FakeChatgptPages, chrome: FakeChrome, settings: Settings
+) -> None:
     signin.SignIn(settings).perform(session_of(chrome, settings))
 
     assert not any(SECRET in item or EMAIL in item for item in site.expressions)
@@ -149,7 +151,7 @@ def test_no_expression_ever_carries_a_credential(site: FakeChatgptSite, chrome: 
     assert inserted == [EMAIL, SECRET]
 
 
-def test_a_signed_in_landing_is_already_done(site: FakeChatgptSite, chrome: FakeChrome, settings: Settings) -> None:
+def test_a_signed_in_landing_is_already_done(site: FakeChatgptPages, chrome: FakeChrome, settings: Settings) -> None:
     site.go(Step.HOME)
     outcome = signin.SignIn(settings).perform(session_of(chrome, settings))
 
@@ -167,10 +169,10 @@ def test_a_signed_in_landing_is_already_done(site: FakeChatgptSite, chrome: Fake
     ],
 )
 def test_a_page_that_is_not_the_shape_expected_needs_a_person(
-    site: FakeChatgptSite,
+    site: FakeChatgptPages,
     chrome: FakeChrome,
     settings: Settings,
-    arrange: Callable[[FakeChatgptSite], object],
+    arrange: Callable[[FakeChatgptPages], object],
     blocked: str,
 ) -> None:
     """§61: a landing page with no **Log in**, a code prompt, a refused password — each stops the walk."""
@@ -184,7 +186,7 @@ def test_a_page_that_is_not_the_shape_expected_needs_a_person(
 
 
 def test_ensure_signed_in_walks_then_says_the_login_line_when_it_cannot(
-    site: FakeChatgptSite, chrome: FakeChrome, settings: Settings
+    site: FakeChatgptPages, chrome: FakeChrome, settings: Settings
 ) -> None:
     site.login_button = False
     with pytest.raises(AuthError) as raised:
@@ -199,7 +201,7 @@ def test_ensure_signed_in_walks_then_says_the_login_line_when_it_cannot(
 
 
 def test_the_chatgpt_ask_walks_in_presses_twice_and_prints_the_block(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     sink = Collected()
     outcome = extract.ask(settings, sink=sink)
@@ -215,7 +217,7 @@ def test_the_chatgpt_ask_walks_in_presses_twice_and_prints_the_block(
 
 
 def test_a_signed_in_profile_asks_without_typing(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     site.go(Step.HOME)
     outcome = extract.ask(settings, sink=Collected())
@@ -226,7 +228,7 @@ def test_a_signed_in_profile_asks_without_typing(
 
 
 def test_interactively_the_ask_waits_for_the_person(
-    site: FakeChatgptSite, chrome: FakeChrome, tmp_path: Path, launches: list[str]
+    site: FakeChatgptPages, chrome: FakeChrome, tmp_path: Path, launches: list[str]
 ) -> None:
     site.signs_in_after = 3
     settings = make_settings(chrome, tmp_path, non_interactive=False, credentials=False)
@@ -249,7 +251,7 @@ def test_unattended_without_credentials_is_refused_before_any_browser(
 
 
 def test_a_page_that_never_says_requested_exits_1_and_writes_nothing(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     site.never_requested = True
     sink = Collected()
@@ -266,7 +268,7 @@ def test_a_page_that_never_says_requested_exits_1_and_writes_nothing(
 
 
 def test_the_trace_and_the_action_log_are_what_a_claude_run_leaves(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     extract.ask(settings, sink=Collected())
     lines = trace_lines(settings)
@@ -284,9 +286,15 @@ def test_the_trace_and_the_action_log_are_what_a_claude_run_leaves(
         "export-confirm",
     ]
     assert moves[0]["result"] == {"selector": LOGIN_BUTTON, "path": "/", "query": []}
-    assert moves[1]["result"] == {"selector": login_form.EMAIL_SELECTOR, "path": "/log-in", "query": []}
+    assert moves[1]["result"] == {"selector": login_form.EMAIL_SELECTOR, "path": "/log-in", "query": ["state"]}
     assert moves[3]["result"] == {"selector": EXPORT_BUTTON, "path": "/settings/data-controls", "query": []}
     assert actions(settings) == ["login-button", "email-step", "password-step", "export-button", "export-confirm"]
+    logged = [
+        json.loads(line) for line in helpers.actions_path(settings.logs_dir).read_text(encoding="utf-8").splitlines()
+    ]
+    assert logged[1]["url"] == "https://auth.openai.com/log-in"
+    left = "\n".join(path.read_text(encoding="utf-8") for path in (Path(settings.logs_dir) / "logs").glob("*.jsonl"))
+    assert "s3cret-state" not in left
     text = "\n".join(json.dumps(line) for line in lines)
     assert SECRET not in text
     assert EMAIL not in text
@@ -303,7 +311,7 @@ def test_the_trace_and_the_action_log_are_what_a_claude_run_leaves(
 
 
 def test_login_with_source_chatgpt_opens_the_root_and_keeps_its_own_profile(
-    site: FakeChatgptSite, chrome: FakeChrome, tmp_path: Path, launches: list[str], monkeypatch: pytest.MonkeyPatch
+    site: FakeChatgptPages, chrome: FakeChrome, tmp_path: Path, launches: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     site.signs_in_after = 2
     monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))

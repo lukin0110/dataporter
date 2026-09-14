@@ -77,6 +77,7 @@ class Landing:
 
     @classmethod
     def read(cls, page: Page, source: "Source") -> "Landing":
+        """Read the landing page once."""
         raw = page.evaluate(landing_js(source))
         if not isinstance(raw, dict):  # pragma: no cover - defensive
             raw = {}

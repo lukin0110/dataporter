@@ -31,7 +31,8 @@ from fake_chrome import Call, FakeChrome, FakeTarget
 from fake_composer import js_const
 
 ROOT = CHATGPT.login_url
-AUTH_URL = "https://auth.openai.com/log-in"
+AUTH_URL = "https://auth.openai.com/log-in?state=s3cret-state"
+"""With a query value, as a real auth host's URL may carry: the tests prove it reaches no line (§70)."""
 EXPORT_URL = sites.export_page_url(CHATGPT)
 LINK_PREFIX = "https://chatgpt.com/__mock/exports/"
 """Where the mock chatgpt.com mints its links (`40`): on the site's host, where the cookie is."""
@@ -78,7 +79,7 @@ class Stage(StrEnum):
 
 
 @dataclass
-class FakeChatgptSite:
+class FakeChatgptPages:
     """The whole site, as the tool's expressions read it."""
 
     step: Step = Step.LANDING
@@ -294,7 +295,7 @@ class FakeChatgptSite:
         return None
 
 
-def responder(site: FakeChatgptSite) -> Callable[[Any, Call], Any]:
+def responder(site: FakeChatgptPages) -> Callable[[Any, Call], Any]:
     """Return a `FakeChrome` responder that answers for the one tab and keeps its URL in step."""
 
     def answer(fake: FakeChrome, call: Call) -> dict[str, Any] | None:
@@ -304,6 +305,6 @@ def responder(site: FakeChatgptSite) -> Callable[[Any, Call], Any]:
     return answer
 
 
-def browser(site: FakeChatgptSite, port: int = 0) -> FakeChrome:
+def browser(site: FakeChatgptPages, port: int = 0) -> FakeChrome:
     """Return a fake Chrome with this site on its one tab."""
     return FakeChrome(targets=[FakeTarget(id="page-1", url=site.url)], responder=responder(site), port=port)

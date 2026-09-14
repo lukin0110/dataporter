@@ -150,7 +150,7 @@ break one of them.
 | `probe._expect_const`'s `[item for item in expect if item]` → `compact` | `compact(expect, none_only=False)` is equivalent for a `Sequence[str]`, but the comprehension carries a comment explaining *which* falsy value matters and why (`indexOf('')` is 0 on every string). `none_only=False` hides that behind a flag |
 | Any `@timing` | It logs an f-string through `logging.getLogger("orval.utils")` — outside the `dataporter` logger, so past `ContentGuard`, and against this repo's rule that log messages are constants and variable data goes in `extra` |
 | `runner`/`helpers` elapsed times → `pretty_duration` | `elapsed_s` and `elapsed_ms` are numeric fields in JSON-lines records, read by `19`'s parser and by `21`'s instruments. Nothing formats a duration for a human to read, so there is nothing to pretty-print |
-| `config._describe` / `source._describe` | Genuinely duplicated, but shaped by pydantic's `ValidationError`. orval has no dependencies and should keep none |
+| `config._describe` / `source._describe` / `export.chatgpt._envelope`'s inline copy | Genuinely duplicated — three times since `43` — but shaped by pydantic's `ValidationError`. orval has no dependencies and should keep none |
 | `extract.DOWNLOADED`'s `{size / MEGABYTE:.1f}` → `pretty_bytes(size, "ds", precision=1)` | **Verified not byte-identical** by running both over the same sizes: `pretty_bytes` picks a unit — `999_999` renders `1000.0 KB`, `1_582` renders `1.6 KB`, `5_000_000_000` renders `5.0 GB` — and §31's line is always megabytes to one decimal, `Downloaded 0.0 MB.` for a small archive included, which is what `docs/rehearsal-03.md` prints twice. A golden string, and the unit is the brief's |
 
 ## C. Candidates for orval

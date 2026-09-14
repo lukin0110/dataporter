@@ -169,6 +169,11 @@ NOT_REQUESTED = "not_requested"
 """Why an ask stopped. Stable strings: `extract` turns each into the line an
 operator reads, and a log record carries this rather than the prose."""
 
+NO_TAB = "no tab on {host} for the ask"
+"""The tab the ask came for is not there. Named for the source's host and never
+for the program (ADR 0004): `helpers.NO_CLAUDE_TAB` is the migration helpers'
+wire token, and a ChatGPT ask has no business reporting it."""
+
 BUTTON_ACTION = "export-button"
 CONFIRM_ACTION = "export-confirm"
 """What `logs/actions.jsonl` calls the two clicks. Named like `08`'s helpers
@@ -335,7 +340,7 @@ def _bring_to_export_page(session: BrowserSession, source: "Source", *, deadline
     surface = sites.extraction_surface(source)
     tabs = helpers.surface_tabs(session.client, surface)
     if not tabs:
-        raise BrowserError(detail=helpers.NO_CLAUDE_TAB)
+        raise BrowserError(detail=NO_TAB.format(host=source.host))
     page = session.client.attach(tabs[0].id)
     try:
         if not on_export_page(page.url, source):

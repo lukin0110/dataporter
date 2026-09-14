@@ -468,7 +468,7 @@ def test_a_browser_with_no_tab_at_all_is_a_browser_error(settings: Settings, pag
         with pytest.raises(BrowserError) as raised:
             export_page.request_export(settings, session)
 
-    assert raised.value.detail == helpers.NO_CLAUDE_TAB
+    assert raised.value.detail == export_page.NO_TAB.format(host="claude.ai")
 
 
 def test_a_confirmation_that_never_arrives_is_exit_1(

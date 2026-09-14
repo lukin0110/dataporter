@@ -115,11 +115,7 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
             stdout = f"{mock.source}/rehearsal   2026-09-14T10-00-01Z   3 conversations   1 gap\n{mock.source}/rehearsal   2026-09-14T10-00-02Z   3 conversations   1 gap\n"
         outcome = running.Outcome(name=name, argv=(name,), exit_code=0, seconds=1.0, stdout=stdout)
         if name in driving:
-            lines = [
-                line(**HEADER)
-                if False
-                else json.dumps({**HEADER, "command": name.split()[0], "source": mock.source, "host": mock.hosts[0]})
-            ]
+            lines = [json.dumps({**HEADER, "command": name.split()[0], "source": mock.source, "host": mock.hosts[0]})]
             if name == "login":
                 lines += [
                     line(kind="observation", what="navigation", host=mock.hosts[-1], path="/log-in", query=[]),
