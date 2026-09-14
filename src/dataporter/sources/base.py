@@ -119,6 +119,15 @@ class Source:
     read: Callable[["ExportView"], Reading]
     """Parse the archive and say what it holds, or raise `ExportError`."""
 
+    link_serves_manifest: bool = False
+    """Whether the emailed link serves an index of the real files, not the archive.
+
+    Claude's does: a JSON naming one single-use URL per category and part, so its
+    export arrives as a manifest and several zips rather than as one file. A
+    source whose link serves the archive itself leaves this alone, which is every
+    other source today.
+    """
+
     def __post_init__(self) -> None:
         # Read-only from the moment it is built, as `Site` does it: a frozen
         # dataclass protects the binding and not the mapping.

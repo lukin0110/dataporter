@@ -54,7 +54,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import PROGRAM_NAME, log, plan, signin, sources, store
 from dataporter import trace as tracing
@@ -467,8 +467,18 @@ def fetch(
     temp_dir = home / TMP_DIRNAME
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp: Path | None = None
+    extra: list[Path] = []
     try:
-        if source.fetch_needs_session:
+        if source.link_serves_manifest:
+            # The link is an index, not the archive: what it names is downloaded
+            # beside it and filed with it, because all of it is the account's.
+            manifest_path, parts = _download_manifest_and_parts(
+                settings, source, link, temp_dir, sink=sink, flags=flags
+            )
+            temp = archive_among(parts, source)
+            extra = [manifest_path, *(part for part in parts if part != temp)]
+            size, digest = temp.stat().st_size, _digest(temp)
+        elif source.fetch_needs_session:
             temp, size, digest = _download_through_session(settings, source, link, temp_dir, sink=sink, flags=flags)
         else:
             temp = temp_dir / f"{uuid.uuid4()}.zip"
@@ -486,13 +496,15 @@ def fetch(
             sha256=digest,
             size=size,
         )
-        directory, snapshot = store.Store(settings.store_dir).file_archive(temp, filing)
+        directory, snapshot = store.Store(settings.store_dir).file_archive(temp, filing, extra=extra)
     finally:
         # Whatever happened — a refused link, a body that was not an export, a
         # store that would not take it — the bytes under the account home are
         # not something anybody asked us to keep.
         if temp is not None:
             temp.unlink(missing_ok=True)
+        for spare in extra:
+            spare.unlink(missing_ok=True)
     if ask is not None:
         # After `COMPLETE`, never before: an ask deleted on the way to a filing
         # that then failed is an ask nobody can fetch against any more.
@@ -541,6 +553,122 @@ def file(settings: Settings, path: Path, *, sink: Sink = DISCARD) -> ExtractOutc
     directory, snapshot = store.Store(settings.store_dir).file_archive(path, filing)
     sink.block(block(settings, snapshot, first=FILED.format(name=path.name), no_ask=False))
     return ExtractOutcome(snapshot=snapshot, path=directory)
+
+
+class ManifestFile(BaseModel):
+    """One file a manifest names, as the vendor describes it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    export_url: str
+    filename: str
+    category: str = ""
+    part: int = 0
+
+
+class LinkManifest(BaseModel):
+    """What a link serves when it serves a list rather than an archive.
+
+    Claude's shape, and the only one so far: a JSON index naming the real files,
+    each at a single-use URL of its own, split by category and by part. Read
+    leniently — `extra="ignore"` — because what the tool needs from it is the
+    files, and a vendor adding a field to its own index is not a reason to
+    refuse a person their data.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    data_files: list[ManifestFile] = []
+
+
+MANIFEST_FILENAME = "manifest.json"
+"""What the vendor's index is called in the snapshot. Its own name carries the
+export's uuid and a timestamp, which is provenance the snapshot already has."""
+
+NO_FILES_IN_MANIFEST = "the link served a manifest naming no files"
+NOT_A_MANIFEST = "the link served neither an archive nor a manifest"
+NO_ARCHIVE_IN_MANIFEST = "none of the {count} files the manifest names is a {display} export"
+
+
+def manifest_of(path: Path) -> LinkManifest | None:
+    """Read `path` as a manifest, or `None` when it is not one."""
+    try:
+        return LinkManifest.model_validate_json(path.read_bytes())
+    except (OSError, ValidationError, ValueError):
+        return None
+
+
+def _download_manifest_and_parts(
+    settings: Settings,
+    source: "Source",
+    link: str,
+    into: Path,
+    *,
+    sink: Sink,
+    flags: Sequence[str],
+) -> tuple[Path, list[Path]]:
+    """Download the manifest and every file it names, in one session.
+
+    One browser for all of it: each part is single-use and answers `403` to
+    anything without the session, so they are taken the way the manifest was and
+    the tab is pointed at each in turn. Named as the manifest names them, because
+    a snapshot holding `a1b2c3.zip` describes nothing.
+    """
+    browser = launcher.launch(settings, source.login_url)
+    try:
+        with watching.watched(
+            settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
+        ) as traced:
+            _sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            with tracing.redacting():
+                try:
+                    manifest_path, parts = index_and_files(settings, browser, source, link, into)
+                except download.DownloadStopped as exc:
+                    raise _not_an_archive(settings, source, exc) from exc
+            traced.exit_code = ExitCode.OK
+    finally:
+        browser.close()
+    return manifest_path, parts
+
+
+def index_and_files(
+    settings: Settings,
+    browser: "launcher.BrowserSession",
+    source: "Source",
+    link: str,
+    into: Path,
+) -> tuple[Path, list[Path]]:
+    """Download the index, then every file it names, into `into`.
+
+    Split out so the caller's `try` stays the width of the one failure it
+    turns into a line an operator reads.
+    """
+    got = download.fetch(settings, browser, link, into=into, hosts=source.hosts)
+    manifest_path = got.path.rename(into / MANIFEST_FILENAME)
+    manifest = manifest_of(manifest_path)
+    if manifest is None:
+        raise FetchError(NOT_A_MANIFEST)
+    if not manifest.data_files:
+        raise FetchError(NO_FILES_IN_MANIFEST)
+    parts = []
+    for item in manifest.data_files:
+        _logger.info("export part", extra={"category": item.category, "part": item.part})
+        each = download.fetch(settings, browser, item.export_url, into=into, hosts=source.hosts)
+        parts.append(each.path.rename(into / Path(item.filename).name))
+    return manifest_path, parts
+
+
+def archive_among(parts: "Sequence[Path]", source: "Source") -> Path:
+    """Return the part an importer reads: the one whose members this source owns.
+
+    Claude splits its export by category, and only the conversations part carries
+    `conversations.json`. That part is the snapshot's `archive`; the rest are its
+    `parts`, kept because they are the account's data too.
+    """
+    for part in parts:
+        if zipfile.is_zipfile(part) and source.recognise(zipfile.ZipFile(part).namelist()):
+            return part
+    raise FetchError(NO_ARCHIVE_IN_MANIFEST.format(count=len(parts), display=source.display_name))
 
 
 def _download_through_session(
