@@ -467,16 +467,15 @@ def fetch(
     temp_dir = home / TMP_DIRNAME
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp: Path | None = None
-    extra: list[Path] = []
+    downloaded: list[Path] = []
     try:
         if source.link_serves_manifest:
             # The link is an index, not the archive: what it names is downloaded
             # beside it and filed with it, because all of it is the account's.
-            manifest_path, parts = _download_manifest_and_parts(
-                settings, source, link, temp_dir, sink=sink, flags=flags
+            _, parts = _download_manifest_and_parts(
+                settings, source, link, temp_dir, sink=sink, flags=flags, collected=downloaded
             )
             temp = archive_among(parts, source)
-            extra = [manifest_path, *(part for part in parts if part != temp)]
             size, digest = temp.stat().st_size, _digest(temp)
         elif source.fetch_needs_session:
             temp, size, digest = _download_through_session(settings, source, link, temp_dir, sink=sink, flags=flags)
@@ -496,14 +495,16 @@ def fetch(
             sha256=digest,
             size=size,
         )
-        directory, snapshot = store.Store(settings.store_dir).file_archive(temp, filing, extra=extra)
+        directory, snapshot = store.Store(settings.store_dir).file_archive(
+            temp, filing, extra=[item for item in downloaded if item != temp]
+        )
     finally:
         # Whatever happened — a refused link, a body that was not an export, a
         # store that would not take it — the bytes under the account home are
         # not something anybody asked us to keep.
         if temp is not None:
             temp.unlink(missing_ok=True)
-        for spare in extra:
+        for spare in downloaded:
             spare.unlink(missing_ok=True)
     if ask is not None:
         # After `COMPLETE`, never before: an ask deleted on the way to a filing
@@ -606,6 +607,7 @@ def _download_manifest_and_parts(
     *,
     sink: Sink,
     flags: Sequence[str],
+    collected: list[Path],
 ) -> tuple[Path, list[Path]]:
     """Download the manifest and every file it names, in one session.
 
@@ -622,7 +624,7 @@ def _download_manifest_and_parts(
             _sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
             with tracing.redacting():
                 try:
-                    manifest_path, parts = index_and_files(settings, browser, source, link, into)
+                    manifest_path, parts = index_and_files(settings, browser, source, link, into, collected=collected)
                 except download.DownloadStopped as exc:
                     raise _not_an_archive(settings, source, exc) from exc
             traced.exit_code = ExitCode.OK
@@ -637,14 +639,23 @@ def index_and_files(
     source: "Source",
     link: str,
     into: Path,
+    *,
+    collected: list[Path],
 ) -> tuple[Path, list[Path]]:
     """Download the index, then every file it names, into `into`.
 
     Split out so the caller's `try` stays the width of the one failure it
     turns into a line an operator reads.
+
+    Every file is appended to `collected` the moment it lands, before anything
+    is read or checked, because the caller deletes what is in there whatever
+    happened: an index that names nothing, or names no archive, would otherwise
+    leave its download under the account home. (Raised by Copilot in review
+    on #52.)
     """
     got = download.fetch(settings, browser, link, into=into, hosts=source.hosts)
     manifest_path = got.path.rename(into / MANIFEST_FILENAME)
+    collected.append(manifest_path)
     manifest = manifest_of(manifest_path)
     if manifest is None:
         raise FetchError(NOT_A_MANIFEST)
@@ -655,6 +666,7 @@ def index_and_files(
         _logger.info("export part", extra={"category": item.category, "part": item.part})
         each = download.fetch(settings, browser, item.export_url, into=into, hosts=source.hosts)
         parts.append(each.path.rename(into / Path(item.filename).name))
+        collected.append(parts[-1])
     return manifest_path, parts
 
 
@@ -666,7 +678,11 @@ def archive_among(parts: "Sequence[Path]", source: "Source") -> Path:
     `parts`, kept because they are the account's data too.
     """
     for part in parts:
-        if zipfile.is_zipfile(part) and source.recognise(zipfile.ZipFile(part).namelist()):
+        if not zipfile.is_zipfile(part):
+            continue
+        with zipfile.ZipFile(part) as archive:
+            names = archive.namelist()
+        if source.recognise(names):
             return part
     raise FetchError(NO_ARCHIVE_IN_MANIFEST.format(count=len(parts), display=source.display_name))
 
