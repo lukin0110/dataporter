@@ -431,7 +431,7 @@ class Planner:
         Both components come from the export, so both are checked before they are
         joined: a `file_name` of `../../etc/passwd` must not resolve outside the
         attachments directory, which is the finding `02`'s review raised against
-        `ExportSource.read`. A rejected name is reported as bytes we do not have,
+        `ExportView.read`. A rejected name is reported as bytes we do not have,
         because that is what it is — we will not go and fetch it.
         """
         root = self._attachments_dir

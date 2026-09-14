@@ -50,20 +50,30 @@ an instruction an operator is given in two slightly different spellings is two
 instructions as far as they can tell."""
 
 
+CLAUDE_HOSTS: tuple[str, ...] = (CLAUDE_HOST,)
+"""The destination's one host. A source's are its own (`42`), and every
+function below that looks for a tab takes them."""
+
+
+def tabs_on(client: CdpClient, hosts: Sequence[str]) -> list[Target]:
+    """Every page target on one of `hosts`, in the browser's own order."""
+    return [target for target in client.pages() if target.host in hosts]
+
+
 def claude_tabs(client: CdpClient) -> list[Target]:
     """Every page target on claude.ai, in the browser's own order."""
-    return [target for target in client.pages() if target.host == CLAUDE_HOST]
+    return tabs_on(client, CLAUDE_HOSTS)
 
 
-def open_claude_tab(session: BrowserSession, url: str = NEW_CHAT_URL) -> Page:
-    """Return the tab to drive: an existing claude.ai tab, or one made to be it.
+def open_claude_tab(session: BrowserSession, url: str = NEW_CHAT_URL, *, hosts: Sequence[str] = CLAUDE_HOSTS) -> Page:
+    """Return the tab to drive: an existing tab on the site, or one made to be it.
 
     A blank tab is reused before a new one is created, because that is what a
     just-launched browser looks like while its first page is still loading —
     creating a second tab there would leave the operator with two windows and
     `08` with an `ambiguous_tab`.
     """
-    tabs = claude_tabs(session.client)
+    tabs = tabs_on(session.client, hosts)
     if tabs:
         return session.client.attach(tabs[0].id)
 
@@ -132,8 +142,14 @@ def settled(page: Page, *, timeout_s: float = SETTLE_S) -> bool:
         time.sleep(SETTLE_POLL_S)
 
 
-def current_state(session: BrowserSession, url: str = NEW_CHAT_URL, *, settle_s: float = SETTLE_S) -> PageState:
-    """Probe the claude.ai tab, opening one if there is not one yet.
+def current_state(
+    session: BrowserSession,
+    url: str = NEW_CHAT_URL,
+    *,
+    settle_s: float = SETTLE_S,
+    hosts: Sequence[str] = CLAUDE_HOSTS,
+) -> PageState:
+    """Probe the site's tab, opening one if there is not one yet.
 
     The connection is closed again on the way out. That costs a WebSocket
     handshake per probe and buys the thing a long-lived connection cannot give:
@@ -146,10 +162,10 @@ def current_state(session: BrowserSession, url: str = NEW_CHAT_URL, *, settle_s:
     the caller learns something is wrong — and `12`, which holds one connection
     open for a whole conversation, sees the events themselves.
     """
-    page = open_claude_tab(session, url)
+    page = open_claude_tab(session, url, hosts=hosts)
     try:
         settled(page, timeout_s=settle_s)
-        return probe(page, tab_count=max(len(claude_tabs(session.client)), 1))
+        return probe(page, tab_count=max(len(tabs_on(session.client, hosts)), 1))
     finally:
         page.close()
 
@@ -160,6 +176,7 @@ def wait_for_login(
     timeout_s: float,
     poll_s: float = LOGIN_POLL_S,
     url: str = NEW_CHAT_URL,
+    hosts: Sequence[str] = CLAUDE_HOSTS,
 ) -> PageState | None:
     """Poll until the operator has signed in, or until the timeout.
 
@@ -183,6 +200,7 @@ def wait_for_login(
                 session,
                 url,
                 settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())),
+                hosts=hosts,
             )
         except BrowserError:
             if not session.client.responding():
@@ -201,9 +219,9 @@ def wait_for_login(
         time.sleep(min(poll_s, remaining))
 
 
-def signed_in(session: BrowserSession, url: str = NEW_CHAT_URL) -> bool:
+def signed_in(session: BrowserSession, url: str = NEW_CHAT_URL, *, hosts: Sequence[str] = CLAUDE_HOSTS) -> bool:
     """One probe. `session status` is this plus a printed line."""
-    return current_state(session, url).logged_in
+    return current_state(session, url, hosts=hosts).logged_in
 
 
 def remove_profile(settings: Settings) -> bool:
@@ -271,13 +289,38 @@ class LogoutOutcome:
 
 
 def site_of(settings: Settings) -> "Site":
-    """Which site a `login` is to: the destination's, or a source's (`31`)."""
+    """Which site a `login` is to: the destination's, or a source's (`31`, `42`)."""
     if settings.account is None:
         return MIGRATION_SITE
-    # Local: `export_page` imports `helpers`, which imports this module.
-    from dataporter.browser import export_page  # ruff: ignore[import-outside-top-level] - see above
+    # Local: `sites` imports `helpers`, which imports this module.
+    from dataporter import sources  # ruff: ignore[import-outside-top-level] - see above
+    from dataporter.browser import sites  # ruff: ignore[import-outside-top-level] - see above
 
-    return export_page.EXTRACTION_SITE
+    return sites.extraction_site(sources.of(settings))
+
+
+@dataclass(frozen=True)
+class Whose:
+    """Whose session a command means: where to open, what to say, which hosts."""
+
+    url: str
+    prompt: str
+    hosts: tuple[str, ...]
+
+
+def whose(settings: Settings) -> Whose:
+    """Return whose session a command means: the destination's, or a source account's (`42`).
+
+    Without an account every value is what `07` wrote — `/new`, the prompt and
+    claude.ai — so a destination command's every byte is what it was; with one,
+    the source says where its sign-in is and what it is called.
+    """
+    if settings.account is None:
+        return Whose(url=NEW_CHAT_URL, prompt=LOGIN_PROMPT, hosts=CLAUDE_HOSTS)
+    from dataporter import sources  # ruff: ignore[import-outside-top-level] - see `site_of`
+
+    source = sources.of(settings)
+    return Whose(url=source.login_url, prompt=source.login_prompt, hosts=source.hosts)
 
 
 def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) -> LoginOutcome:
@@ -297,9 +340,10 @@ def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()
     # account home for `31`'s source: a command about one account writes its
     # records beside that account's other operational files.
     log.enable_run_log(settings.logs_dir)
+    session = whose(settings)
     # Through the module, not a bound name: the test suite substitutes
     # `launcher.launch` to hand a command a fake Chrome.
-    browser = launcher.launch(settings, NEW_CHAT_URL)
+    browser = launcher.launch(settings, session.url)
     try:
         with watching.watched(
             settings, command="login", flags=flags, site=site_of(settings), browser=browser
@@ -309,9 +353,11 @@ def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()
                 # No prompt, because nobody is reading one; the same last line,
                 # because a CI log is read the way a terminal is.
                 signin.ensure_signed_in(settings, browser)
-            elif not signed_in(browser):
-                sink.line(LOGIN_PROMPT)
-                arrived = wait_for_login(browser, timeout_s=settings.timeouts.login_s)
+            elif not signed_in(browser, session.url, hosts=session.hosts):
+                sink.line(session.prompt)
+                arrived = wait_for_login(
+                    browser, timeout_s=settings.timeouts.login_s, url=session.url, hosts=session.hosts
+                )
                 if arrived is None:
                     raise AuthError(detail=LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
             sink.line(LOGGED_IN.format(profile=settings.browser_profile_dir))
@@ -345,9 +391,10 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
         sink.line(SIGNED_OUT)
         return StatusOutcome(signed_in=False, exit_code=ExitCode.NOT_AUTHENTICATED)
 
-    browser = running or launcher.launch(settings, NEW_CHAT_URL)
+    session = whose(settings)
+    browser = running or launcher.launch(settings, session.url)
     try:
-        answer = signed_in(browser)
+        answer = signed_in(browser, session.url, hosts=session.hosts)
     finally:
         # A browser this command started is a browser this command cleans up;
         # one that was already running belongs to whoever started it.

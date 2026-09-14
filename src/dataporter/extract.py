@@ -56,8 +56,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from dataporter import PROGRAM_NAME, log, plan, signin, store
-from dataporter.browser import export_page, launcher
+from dataporter import PROGRAM_NAME, log, plan, signin, sources, store
+from dataporter.browser import export_page, launcher, sites
 from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
 from dataporter.config import Settings
@@ -71,11 +71,11 @@ from dataporter.errors import (
     UsageError,
 )
 from dataporter.exit_codes import ExitCode
-from dataporter.export import Export, ExportSource, read_export
-from dataporter.export.model import file_entries
+from dataporter.export import ExportView
 
 if TYPE_CHECKING:  # pragma: no cover - the browser is imported where it is used
     from dataporter.browser.launcher import BrowserSession
+    from dataporter.sources.base import Reading, Source
 
 _logger = log.get_logger(__name__)
 
@@ -157,24 +157,24 @@ allowed one action in has taken a second one."""
 
 HEADER = "{name} extraction — {account}"
 REQUESTED = "Export requested {moment}."
-EMAILED = "{name} will email a download link to the account's address."
-WHEN_IT_ARRIVES = "When it arrives:"
 FETCH_COMMAND = "  {program} extract --source {source} --account {account} --link <url>"
 ASKED_AT_FORMAT = "%Y-%m-%d %H:%M UTC"
 """§31's ask block, byte for byte, and the one format an operator reads a moment
 in: minutes, because the line is for the eye and the seconds belong to
-`ask.json`, where the stamp the snapshot is filed under comes from."""
+`ask.json`, where the stamp the snapshot is filed under comes from. The
+sentences between the moment and the command are the vendor's own
+(`Source.ask_lines`, §60)."""
 
 DOWNLOADED = "Downloaded {size} MB."
 FILED = "Filed {name}."
 NO_ASK_ON_RECORD = "Filed without an ask on record."
-COUNTS = "Conversations: {conversations}     Projects: {projects}     Memories: {memories}"
 GAP_LINE = "Gaps: {count} {reason}"
 SNAPSHOT_LINE = "Snapshot: {path}"
 """The brief's own block, byte for byte. `Downloaded` is base-10 megabytes to
 one decimal — the unit a vendor's download page uses — and the `Gaps:` line is
 omitted when there are none, because a zero there is a question an operator has
-to answer rather than an answer."""
+to answer rather than an answer. The count line is the source's
+(`Source.counts_line`): what an archive holds is the vendor's to say."""
 
 MEGABYTE = 1_000_000
 
@@ -275,12 +275,12 @@ def ask_block(ask: store.Ask) -> str:
     still gets a line that works, because `source` is what this invocation
     resolved.
     """
+    source = sources.REGISTRY[ask.source]
     lines = [
-        HEADER.format(name=store.SOURCE_NAMES[ask.source], account=ask.account),
+        HEADER.format(name=source.display_name, account=ask.account),
         "",
         REQUESTED.format(moment=ask.asked_at.strftime(ASKED_AT_FORMAT)),
-        EMAILED.format(name=store.SOURCE_NAMES[ask.source]),
-        WHEN_IT_ARRIVES,
+        *source.ask_lines,
         "",
         FETCH_COMMAND.format(program=PROGRAM_NAME, source=ask.source, account=ask.account),
     ]
@@ -325,13 +325,14 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     if settings.non_interactive:
         signin.require_credentials(settings)
 
-    browser = launcher.launch(settings, export_page.EXPORT_PAGE_URL)
+    source = sources.of(settings)
+    browser = launcher.launch(settings, sites.export_page_url(source))
     try:
         with watching.watched(
-            settings, command="extract", flags=flags, site=export_page.EXTRACTION_SITE, browser=browser
+            settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            _sign_in_to_source(settings, browser, sink=sink)
-            result = export_page.request_export(settings, browser)
+            _sign_in_to_source(settings, browser, source, sink=sink)
+            result = export_page.request_export(settings, browser, source=source)
             traced.exit_code = ExitCode.OK if result.requested and result.pressed_at is not None else ExitCode.FAILED
     finally:
         # Chrome writes its cookie jar out on exit, and a browser left running
@@ -344,7 +345,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
         # requested was pressed, or the press is where the moment came from. It
         # is written as one condition so that "there is a moment" is a fact the
         # type carries rather than one a comment promises.
-        sink.note(_why_not(result.blocked))
+        sink.note(_why_not(result.blocked, source))
         return ExtractOutcome(exit_code=ExitCode.FAILED)
     written = write_ask(settings, result.pressed_at)
     _logger.info("ask recorded", extra={"source": settings.source, "account": account})
@@ -352,7 +353,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     return ExtractOutcome()
 
 
-def _sign_in_to_source(settings: Settings, browser: "BrowserSession", *, sink: Sink) -> None:
+def _sign_in_to_source(settings: Settings, browser: "BrowserSession", source: "Source", *, sink: Sink) -> None:
     """Have the source account signed in, in whichever mode this is (§35).
 
     The probe is made against the export page rather than against `/new`, which
@@ -360,28 +361,30 @@ def _sign_in_to_source(settings: Settings, browser: "BrowserSession", *, sink: S
     surface, and a tool that opens it to find out whether it is signed in has
     opened a new chat in the account it promised to take one action in.
     """
-    state = browser_session.current_state(browser, export_page.EXPORT_PAGE_URL)
-    if not export_page.signed_out(state):
+    url = sites.export_page_url(source)
+    state = browser_session.current_state(browser, url, hosts=source.hosts)
+    if not export_page.signed_out(state, source):
         return
     if settings.non_interactive:
-        # `24`'s agent half. An unattended ask on a signed-out profile needs
-        # Hermes; one on a signed-in profile needs nothing, which is why this is
-        # reached only after the probe above.
+        # `24`'s agent half, or `44`'s walk: whichever the source says. An
+        # unattended ask on a signed-in profile needs nothing, which is why
+        # this is reached only after the probe above.
         signin.ensure_signed_in(settings, browser)
         return
-    sink.line(browser_session.LOGIN_PROMPT)
+    sink.line(source.login_prompt)
     arrived = browser_session.wait_for_login(
         browser,
         timeout_s=settings.timeouts.login_s,
-        url=export_page.EXPORT_PAGE_URL,
+        url=url,
+        hosts=source.hosts,
     )
     if arrived is None:
         raise AuthError(detail=browser_session.LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
 
 
-def _why_not(blocked: str | None) -> str:
+def _why_not(blocked: str | None, source: "Source") -> str:
     """Return the line an operator reads when the ask did not go through."""
-    path = export_page.EXPORT_PAGE_PATH
+    path = source.export_page_path
     if blocked == export_page.BUTTON_NOT_FOUND:
         return EXPORT_BUTTON_MISSING.format(path=path)
     if blocked == export_page.JS_DIALOG:
@@ -422,6 +425,7 @@ def fetch(
     server would mean having spoken to it.
     """
     home = _account_home(settings)
+    source = sources.of(settings)
     log.enable_run_log(settings.logs_dir)
     if urllib.parse.urlsplit(link).scheme != LINK_SCHEME:
         raise FetchError(LINK_NOT_HTTPS)
@@ -437,6 +441,7 @@ def fetch(
             raise FetchError(NOT_A_ZIP)
         filing = _filing(
             settings,
+            source,
             temp,
             display=DOWNLOAD_DISPLAY,
             origin="ask" if ask is not None else "link",
@@ -476,6 +481,7 @@ def file(settings: Settings, path: Path, *, sink: Sink = DISCARD) -> ExtractOutc
     # The label first: `logs_dir` falls back to the workspace without one, and a
     # command about an account has no business writing into `./migration`.
     _account(settings)
+    source = sources.of(settings)
     log.enable_run_log(settings.logs_dir)
     if not path.exists():
         raise FetchError(NO_SUCH_FILE.format(path=path))
@@ -486,6 +492,7 @@ def file(settings: Settings, path: Path, *, sink: Sink = DISCARD) -> ExtractOutc
 
     filing = _filing(
         settings,
+        source,
         path,
         display=str(path),
         origin="file",
@@ -556,6 +563,7 @@ def _download(
 
 def _filing(
     settings: Settings,
+    source: "Source",
     path: Path,
     *,
     display: str,
@@ -571,7 +579,7 @@ def _filing(
     numbers are the numbers a dry run of the same archive prints rather than a
     second count that agrees with them.
     """
-    export = _read(path, display)
+    reading = _read(path, display, source)
     return store.Filing(
         source=settings.source,
         account=_account(settings),
@@ -580,17 +588,17 @@ def _filing(
         asked_at=asked_at,
         sha256=sha256,
         bytes=size,
-        export_fingerprint=export.fingerprint,
+        export_fingerprint=reading.fingerprint,
         counts=store.Counts(
-            conversations=len(export.conversations),
-            projects=export.projects,
-            memories=export.memories,
+            conversations=reading.conversations,
+            projects=reading.projects,
+            memories=reading.memories,
         ),
-        gaps=_gaps(export),
+        gaps=_gaps(reading),
     )
 
 
-def _read(path: Path, display: str) -> Export:
+def _read(path: Path, display: str, source: "Source") -> "Reading":
     """Parse `path` as this source's export, or refuse it with the reason.
 
     Every refusal is a `FetchError` — exit `2`, "ask again" — rather than the
@@ -598,20 +606,20 @@ def _read(path: Path, display: str) -> Export:
     operator handed over, not an export they are about to migrate.
     """
     try:
-        with ExportSource.open(path, display=display) as source:
-            return read_export(source)
+        with ExportView.open(path, display=display) as view:
+            return source.read(view)
     except ExportError as exc:
         raise FetchError(exc.detail) from exc
 
 
-def _gaps(export: Export) -> tuple[store.Gap, ...]:
+def _gaps(reading: "Reading") -> tuple[store.Gap, ...]:
     """Return what the account holds that this snapshot does not (§31).
 
     One kind today: the export refers to files and carries none of their bytes.
     No references, no gap — a snapshot with nothing missing says nothing, rather
     than saying zero.
     """
-    missing = file_entries(export)
+    missing = reading.missing_files
     if not missing:
         return ()
     reason = BYTES_REASON_ONE if missing == 1 else BYTES_REASON
@@ -639,20 +647,15 @@ def block(settings: Settings, snapshot: store.Snapshot, *, first: str, no_ask: b
     default was used — because an operator who has never named a store reads
     back the words the documentation gives them, not one machine's home.
     """
+    source = sources.REGISTRY[snapshot.source]
     lines = [
-        HEADER.format(name=store.SOURCE_NAMES[snapshot.source], account=snapshot.account),
+        HEADER.format(name=source.display_name, account=snapshot.account),
         "",
         first,
     ]
     if no_ask:
         lines.append(NO_ASK_ON_RECORD)
-    lines.append(
-        COUNTS.format(
-            conversations=snapshot.counts.conversations,
-            projects=snapshot.counts.projects,
-            memories=snapshot.counts.memories,
-        )
-    )
+    lines.append(source.counts_line.format(**snapshot.counts.model_dump()))
     lines.extend(GAP_LINE.format(count=gap.count, reason=gap.reason) for gap in snapshot.gaps)
     lines.extend(["", SNAPSHOT_LINE.format(path=_display(settings, snapshot))])
     return "".join(f"{line}\n" for line in lines)

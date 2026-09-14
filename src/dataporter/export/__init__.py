@@ -26,7 +26,7 @@ from dataporter.export.source import (
     CONVERSATIONS_FILE,
     KNOWN_FILES,
     OPTIONAL_FILES,
-    ExportSource,
+    ExportView,
     load_export,
     read_export,
 )
@@ -42,7 +42,7 @@ __all__ = [
     "Conversation",
     "Export",
     "ExportModel",
-    "ExportSource",
+    "ExportView",
     "FileRef",
     "TextBlock",
     "ThinkingBlock",

@@ -1,6 +1,6 @@
 """Reading an export, without ever writing to it.
 
-`ExportSource` accepts a `.zip`, an extracted directory, or — since `30` — a
+`ExportView` accepts a `.zip`, an extracted directory, or — since `30` — a
 snapshot, which is the vendor's archive with a manifest of ours beside it and is
 read as the archive inside it. Zips are opened in mode `r` and members are read
 from the archive stream — nothing is extracted, so a member name is never joined
@@ -115,7 +115,7 @@ class _Unsupported:
 # --------------------------------------------------------------------------- #
 
 
-class ExportSource:
+class ExportView:
     """A read-only view of an export. Use as a context manager."""
 
     def __init__(self, path: Path, display: str) -> None:
@@ -128,7 +128,7 @@ class ExportSource:
         """
 
     @classmethod
-    def open(cls, path: Path | str, *, display: str | None = None) -> "ExportSource":
+    def open(cls, path: Path | str, *, display: str | None = None) -> "ExportView":
         """Open a snapshot, a `.zip` or an extracted directory.
 
         `display` overrides the name every message about this source uses.
@@ -201,7 +201,7 @@ class ExportSource:
             ) from exc
 
 
-class _DirectorySource(ExportSource):
+class _DirectorySource(ExportView):
     """An extracted export on disk."""
 
     def __init__(self, path: Path, display: str) -> None:
@@ -228,7 +228,7 @@ class _DirectorySource(ExportSource):
             raise ExportError(detail=f"cannot read {member} ({exc.strerror}): {self.display}") from exc
 
 
-class _ZipSource(ExportSource):
+class _ZipSource(ExportView):
     """A `.zip` export, read from the archive stream."""
 
     def __init__(self, path: Path, display: str) -> None:
@@ -263,7 +263,7 @@ class _ZipSource(ExportSource):
         self._archive.close()
 
 
-class _SnapshotSource(ExportSource):
+class _SnapshotSource(ExportView):
     """A snapshot (`30`), read as the export inside it.
 
     A wrapper rather than three more names in `KNOWN_FILES`: `snapshot.json` and
@@ -328,11 +328,11 @@ def _directory_root(path: Path) -> Path:
 
 def load_export(path: Path | str) -> Export:
     """Parse an export. The export is never written to."""
-    with ExportSource.open(path) as source:
+    with ExportView.open(path) as source:
         return read_export(source)
 
 
-def read_export(source: ExportSource) -> Export:
+def read_export(source: ExportView) -> Export:
     """Parse an already-open source."""
     unsupported = _Unsupported()
     names = source.names()
@@ -379,7 +379,7 @@ def read_export(source: ExportSource) -> Export:
     return export
 
 
-def _conversation(item: Any, position: int, source: ExportSource, unsupported: _Unsupported) -> Conversation:
+def _conversation(item: Any, position: int, source: ExportView, unsupported: _Unsupported) -> Conversation:
     """Validate one conversation, dropping what cannot be represented."""
     if not isinstance(item, Mapping):
         raise ExportError(detail=(f"{CONVERSATIONS_FILE}[{position}] is not an object: {source.display}"))
@@ -445,7 +445,7 @@ def _blocks(conversation: Conversation) -> Iterator[Any]:
         yield from message.content
 
 
-def _optional_list(member: str, source: ExportSource, unsupported: _Unsupported) -> list[dict[str, Any]]:
+def _optional_list(member: str, source: ExportView, unsupported: _Unsupported) -> list[dict[str, Any]]:
     """Read an optional top-level file for counts. Absence is not an error.
 
     A malformed optional file is not fatal either: only `conversations.json` can

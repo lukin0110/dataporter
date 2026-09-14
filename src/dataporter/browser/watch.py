@@ -101,7 +101,9 @@ class Watch:
     _own: str = ""
     _requests: dict[str, _Request] = field(default_factory=dict, repr=False)
     _numbered: int = 0
-    _certified: bool = False
+    _certified: set[str] = field(default_factory=set, repr=False)
+    """The hosts whose certificate has been recorded: once per host, and a
+    source that signs in on two hosts (`42`) shows two."""
     _await_load: str | None = None
     """The URL of a navigation whose sketch waits on `Page.loadEventFired`."""
     _dialogs: list[str] = field(default_factory=list, repr=False)
@@ -199,15 +201,16 @@ class Watch:
         if method == "Page.frameNavigated":
             frame = params.get("frame") or {}
             if not frame.get("parentId"):
-                self._write(NAVIGATION, **tracing.url_fields(str(frame.get("url", ""))))
-                self._await_load = str(frame.get("url", ""))
+                url = str(frame.get("url", ""))
+                self._write(NAVIGATION, **self._elsewhere(url), **tracing.url_fields(url))
+                self._await_load = url
         elif method == "Page.loadEventFired":
             if self._await_load is not None:
                 url, self._await_load = self._await_load, None
                 self._sketch(page, url)
         elif method == "Page.navigatedWithinDocument":
             url = str(params.get("url", ""))
-            self._write(URL_CHANGED, **tracing.url_fields(url))
+            self._write(URL_CHANGED, **self._elsewhere(url), **tracing.url_fields(url))
             self._sketch(page, url)
         elif method == "Page.javascriptDialogOpening":
             kind = log.safe_token(str(params.get("type", "dialog")))
@@ -237,11 +240,21 @@ class Watch:
                 self._known.discard(identifier)
                 self._write(TARGET_CLOSED)
 
+    def _elsewhere(self, url: str) -> dict[str, str]:
+        """`host`, when a line is about a host other than the site's own.
+
+        A one-host site never writes it, so every line `35` wrote is what it
+        was; a sign-in that passes through a second host (`42`, §61) says which
+        host its `/log-in` was on, since a path alone cannot.
+        """
+        host = urlsplit(url).hostname or ""
+        return {"host": host} if host and host != self.site.host else {}
+
     def _request(self, params: dict[str, Any]) -> None:
         request = params.get("request") or {}
         url = str(request.get("url", ""))
         kind = str(params.get("type", ""))
-        if urlsplit(url).hostname != self.site.host or kind not in WATCHED_TYPES:
+        if urlsplit(url).hostname not in self.site.hosts or kind not in WATCHED_TYPES:
             return
         self._numbered += 1
         identifier = f"r{self._numbered}"
@@ -252,6 +265,7 @@ class Watch:
             REQUEST,
             id=identifier,
             method=log.safe_token(str(request.get("method", ""))),
+            **self._elsewhere(url),
             **tracing.url_fields(url),
             type=kind.lower(),
         )
@@ -263,11 +277,12 @@ class Watch:
             known.status = int(response.get("status") or 0)
             known.content_type = log.safe_token(str(response.get("mimeType", "")))
         details = response.get("securityDetails")
-        if details and not self._certified and urlsplit(str(response.get("url", ""))).hostname == self.site.host:
-            self._certified = True
+        host = urlsplit(str(response.get("url", ""))).hostname or ""
+        if details and host in self.site.hosts and host not in self._certified:
+            self._certified.add(host)
             self._write(
                 CERTIFICATE,
-                host=self.site.host,
+                host=host,
                 issuer=log.safe_token(str(details.get("issuer", ""))),
                 subject=log.safe_token(str(details.get("subjectName", ""))),
             )
@@ -295,7 +310,7 @@ def _attach(client: CdpClient, site: Site) -> tuple[Page, set[str], str]:
     page closed again on the last.
     """
     pages = client.pages()
-    tabs = [item for item in pages if item.host == site.host]
+    tabs = [item for item in pages if item.host in site.hosts]
     if not tabs:
         raise BrowserError(detail=f"no tab on {site.host} to watch")
     page = client.attach(tabs[0].id)

@@ -26,7 +26,7 @@ one criterion still open, and everything else is met.
 
 ## In scope
 
-- `ExportSource.open(path)` accepts a `.zip` or an extracted directory. Zips are read with
+- `ExportView.open(path)` accepts a `.zip` or an extracted directory. Zips are read with
   `zipfile` in mode `r` only; nothing is extracted to disk (JSON is read from the archive
   stream). Files expected: `conversations.json` (required), `users.json`, `projects.json`,
   `memories.json` (optional, read for counts only).
@@ -129,7 +129,7 @@ Resolved while building:
   `text` block is text. Deciding in front of the union keeps dispatch exact and buys one
   thing the union could not: a *known* tag whose payload will not validate is also kept
   whole, counted as `malformed_block:<tag>`.
-- **`ExportSource` lives in `export/source.py`, the models in `export/model.py`.** The
+- **`ExportView` lives in `export/source.py`, the models in `export/model.py`.** The
   split makes "the model layer performs no I/O and never raises `ExportError`" checkable
   with `grep`, which matters because `03`, `04` and `05` build `Conversation` objects in
   memory in their own tests and must never need a filesystem.

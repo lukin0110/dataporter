@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from dataporter import log
 from dataporter.errors import Category, ExportError
-from dataporter.export import ExportSource, load_export
+from dataporter.export import ExportView, load_export
 from dataporter.export.source import CONVERSATIONS_FILE
 
 
@@ -346,7 +346,7 @@ def test_no_export_content_reaches_the_log(export_dir: Path, tmp_path: Path) -> 
 
 
 def test_the_source_is_a_context_manager(export_zip: Path) -> None:
-    with ExportSource.open(export_zip) as source:
+    with ExportView.open(export_zip) as source:
         assert CONVERSATIONS_FILE in source.names()
         assert source.is_archive
 
@@ -361,7 +361,7 @@ OUTSIDE = ["../conversations.json", "/etc/hostname", "nested/conversations.json"
 @pytest.mark.parametrize("member", OUTSIDE, ids=str)
 def test_a_member_outside_the_export_is_refused(member: str, export_dir: Path, export_zip: Path) -> None:
     for subject in (export_dir, export_zip):
-        with ExportSource.open(subject) as source, pytest.raises(ExportError) as excinfo:
+        with ExportView.open(subject) as source, pytest.raises(ExportError) as excinfo:
             source.read(member)
         assert excinfo.value.detail == f"{member} missing from export: {subject}"
 
@@ -369,7 +369,7 @@ def test_a_member_outside_the_export_is_refused(member: str, export_dir: Path, e
 def test_both_backends_refuse_an_absent_member_alike(export_dir: Path, export_zip: Path) -> None:
     details = []
     for subject in (export_dir, export_zip):
-        with ExportSource.open(subject) as source, pytest.raises(ExportError) as excinfo:
+        with ExportView.open(subject) as source, pytest.raises(ExportError) as excinfo:
             source.read("nope.json")
         details.append(excinfo.value.detail.replace(str(subject), "<export>"))
     assert details[0] == details[1] == "nope.json missing from export: <export>"
@@ -419,6 +419,6 @@ def test_projects_and_memories_are_counted(export_dir: Path) -> None:
 
 
 def test_a_snapshot_is_read_as_an_archive(snapshot_dir: Path) -> None:
-    with ExportSource.open(snapshot_dir) as source:
+    with ExportView.open(snapshot_dir) as source:
         assert source.is_archive
         assert CONVERSATIONS_FILE in source.names()

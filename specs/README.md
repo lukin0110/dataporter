@@ -2,7 +2,7 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58 | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58, [`06`](06-chatgpt-extraction.md) §59–§71 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
@@ -11,13 +11,14 @@ Two kinds of document live here, and they are not interchangeable.
 | **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands; `Built` when its tests pass, `Done` when its live criteria are met |
 | **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
-| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings; the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative | Normative |
+| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative | Normative |
 
-There are five briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
+There are six briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
 [`02-claude-mock.md`](02-claude-mock.md) (§20–§28),
 [`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40),
-[`04-trace.md`](04-trace.md) (§41–§51) and
-[`05-chatgpt-mock.md`](05-chatgpt-mock.md) (§52–§58). Section numbers
+[`04-trace.md`](04-trace.md) (§41–§51),
+[`05-chatgpt-mock.md`](05-chatgpt-mock.md) (§52–§58) and
+[`06-chatgpt-extraction.md`](06-chatgpt-extraction.md) (§59–§71). Section numbers
 continue across them,
 so `§N` names one section anywhere in the repository (a working rule, below). The words
 the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
@@ -40,6 +41,7 @@ specs/
 ├── 03-extraction-and-backup.md   the extraction brief — intent, stable
 ├── 04-trace.md           the trace brief — intent, stable
 ├── 05-chatgpt-mock.md    the mock chatgpt.com brief — intent, stable
+├── 06-chatgpt-extraction.md   the extraction-from-ChatGPT brief — intent, stable
 ├── README.md             this file — index, sequence, shared decisions
 └── impl/
     ├── _template.md      the shape every implementation spec follows
@@ -125,6 +127,15 @@ M10 — The mock chatgpt.com (brief 05, §52–§58) — outside the gates: it n
   39  The mock chatgpt.com: sign-in on two hosts, chats, the paste that becomes an attachment
   40  The mock chatgpt.com: the export page, a link behind a session, the archive
   41  The README's walk: the project's README, the two-mock merge, the specs index
+
+M11 — Extraction from ChatGPT (brief 06, §59–§71) — the tool's ChatGPT half, as a
+      source only; built against the mock chatgpt.com and rehearsed against it
+  42  The source seam: one object per vendor, Claude moved onto it, nothing moved
+  43  The ChatGPT archive: recognised, counted, its gaps, filed with `--from`, refused by `import`
+  44  The ChatGPT source session and the ask: two hosts, the walk-in sign-in, the ask block
+  45  The fetch through the session: the download caught in the tab, the link kept out of the trace
+  46  The extraction rehearsal: both mocks, seeded, reconciled, traced, recorded
+  47  The paperwork: the amendment, the glossary, the records, the candidates
 ```
 
 ## Dependencies
@@ -200,6 +211,19 @@ it.
               (39 needs docs/chatgpt-ui-map.md; 40 needs docs/chatgpt-export-format.md)
 ```
 
+M11 is a chain of six, and the first is the seam the rest stand on: `42` gathers what a
+source knows into one object per vendor and moves Claude onto it with every golden test
+unchanged; `43` is the half of ChatGPT that needs no browser — the archive recognised,
+counted and filed; `44` is its source session and its ask; `45` is the fetch that carries
+the session, which is the one thing brief 03's shape did not have; `46` is the rehearsal
+that runs the whole of it against both mocks, and is what turns `39`–`41` `Done`; `47` is
+the paperwork.
+
+```text
+30, 31, 33–35 ─> 42 ─> 43 ─> 44 ─> 45 ─> 46 ─> 47
+                                   (44 needs 24; 46 needs 29 and 36)
+```
+
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
 own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
 straight to `14`. Both need `12` and nothing else, and both were built against it
@@ -269,6 +293,12 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [39](impl/39-chatgpt-mock-site.md) | The mock chatgpt.com: sign-in and chats | §54, §57 | Built |
 | [40](impl/40-chatgpt-export-and-archive.md) | The mock chatgpt.com: the export page and the archive | §54, §55 | Built |
 | [41](impl/41-chatgpt-mock-walk.md) | The README's walk | §53, §54, §56 | Built |
+| [42](impl/42-source-seam.md) | The source seam | §60 | Built |
+| [43](impl/43-chatgpt-archive.md) | The ChatGPT archive | §59, §64 | Not started |
+| [44](impl/44-chatgpt-session-and-ask.md) | The ChatGPT source session and the ask | §60, §61, §62, §65, §67 | Not started |
+| [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Not started |
+| [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Not started |
+| [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Not started |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -369,7 +399,8 @@ proves the pages and turns no row of `docs/chatgpt-ui-map.md` *observed*.
 - **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
   `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
   `03` starts at §29 where `02` ends, `04` at §41 where `03` ends, `05` at §52 where
-  `04` ends, and a sixth starts at §59. Cite `§N`, never `02§N`.
+  `04` ends, `06` at §59 where `05` ends, and a seventh starts at §72. Cite `§N`, never
+  `02§N`.
 
 ## Shared decisions
 

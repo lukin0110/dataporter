@@ -103,6 +103,13 @@ class Surface:
     """What a sketch of a page on this surface counts (`34`): the site's
     selectors, by name. `None` — the test suite's fixture surfaces — sketches
     with no selector table."""
+    hosts: tuple[str, ...] = ()
+    """The hosts a tab may be on and still be this surface's (`42`): `host`,
+    and the hosts a sign-in passes through beside it. Empty means `host` alone."""
+
+    def __post_init__(self) -> None:
+        if not self.hosts:
+            object.__setattr__(self, "hosts", (self.host,))
 
     def permits(self, url: str) -> bool:
         return self.allowed.match(url) is not None
@@ -441,8 +448,8 @@ class PasteMethod(StrEnum):
 
 
 def surface_tabs(client: CdpClient, surface: Surface = CLAUDE) -> list[Target]:
-    """Every page target on the surface's host, in the browser's own order."""
-    return [item for item in client.pages() if item.host == surface.host]
+    """Every page target on one of the surface's hosts, in the browser's own order."""
+    return [item for item in client.pages() if item.host in surface.hosts]
 
 
 def chosen_tab(client: CdpClient, *, target_id: str | None = None, surface: Surface = CLAUDE) -> Target | Failure:

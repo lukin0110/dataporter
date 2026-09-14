@@ -1,0 +1,194 @@
+"""The source seam (`42`): one object per vendor, and Claude on it unchanged.
+
+Most of what this slice promises is that nothing moved: the selector table, the
+two walls and the block strings `31` and `24` spelled are spelled here again
+and compared byte for byte with what the seam now derives from `CLAUDE`.
+"""
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from dataporter import sources, store
+from dataporter.browser import export_page, helpers, login_form, probe, sites
+from dataporter.browser import session as browser_session
+from dataporter.browser.cdp import CdpClient
+from dataporter.browser.site import Site
+from dataporter.config import Settings, with_session_account
+from dataporter.sources.claude import CLAUDE
+from fake_chrome import FakeChrome, FakeTarget
+
+# --------------------------------------------------------------------------- #
+# The registry
+# --------------------------------------------------------------------------- #
+
+
+def test_the_registry_holds_claude_and_nothing_else_yet() -> None:
+    assert list(sources.REGISTRY) == ["claude"]
+    assert sources.REGISTRY["claude"] is CLAUDE
+    assert store.SOURCES == ("claude",)
+    assert store.SOURCE_NAMES == {"claude": "Claude"}
+
+
+def test_a_source_s_hosts_are_its_own_and_the_ones_its_sign_in_passes_through() -> None:
+    assert CLAUDE.hosts == ("claude.ai",)
+    assert CLAUDE.auth_hosts == ()
+
+
+def test_the_invocation_s_source_is_looked_up_by_name(tmp_path: Path) -> None:
+    settings = Settings(workspace=tmp_path)
+    assert sources.of(settings) is CLAUDE
+    assert sources.of(with_session_account(settings, "claude", "old")) is CLAUDE
+
+
+def test_an_archive_is_recognised_by_its_member_names() -> None:
+    assert sources.recognised(["conversations.json", "users.json"]) is CLAUDE
+    assert sources.recognised(["conversations.json"]) is CLAUDE
+    assert sources.recognised(["conversations.json", "user.json"]) is None
+    assert sources.recognised(["chat.html"]) is None
+
+
+# --------------------------------------------------------------------------- #
+# Spelled once
+# --------------------------------------------------------------------------- #
+
+
+def test_the_host_and_the_export_page_are_spelled_once() -> None:
+    assert probe.CLAUDE_HOST == CLAUDE.host == "claude.ai"
+    assert CLAUDE.login_url == browser_session.NEW_CHAT_URL
+    assert export_page.EXPORT_PAGE_PATH == CLAUDE.export_page_path == "/settings/data-privacy-controls"
+    assert export_page.EXPORT_PAGE_URL == "https://claude.ai/settings/data-privacy-controls"
+    assert sites.not_the_export_page(CLAUDE) == export_page.NOT_THE_EXPORT_PAGE
+    assert export_page.NOT_THE_EXPORT_PAGE == "the browser did not arrive at /settings/data-privacy-controls"
+
+
+def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
+    """`31`'s table, in `31`'s order: `probe`'s, the page's own, the credential fields."""
+    expected = {
+        "COMPOSER_SELECTOR": 'div[contenteditable="true"]',
+        "HUMAN_MESSAGE_SELECTOR": '[data-testid="user-message"]',
+        "MESSAGE_SELECTOR": '[data-testid="user-message"], [data-testid="assistant-message"]',
+        "TITLE_SELECTOR": '[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], header h1, header h2',
+        "FILE_INPUT_SELECTOR": 'input[type="file"]',
+        "EXPORT_BUTTON_SELECTOR": '[data-testid="export-data"], button[aria-label="Export data"]',
+        "CONFIRM_BUTTON_SELECTOR": '[role="dialog"] [data-testid="confirm-export"], [role="dialog"] button[type="submit"]',
+        "REQUESTED_SELECTOR": '[data-testid="export-requested"], [role="status"]',
+        "EMAIL_SELECTOR": 'input[type="email"], input[autocomplete="username"]',
+        "PASSWORD_SELECTOR": 'input[type="password"], input[autocomplete="current-password"]',
+    }
+    assert list(export_page.EXTRACTION_SITE.selectors.items()) == list(expected.items())
+    assert export_page.EXTRACTION_SITE.source == "claude"
+    assert export_page.EXTRACTION_SITE.host == "claude.ai"
+    assert export_page.EXTRACTION_SITE.hosts == ("claude.ai",)
+
+
+def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
+    """Two regular expressions, byte for byte, because a wall is easier to trust when it is one line long."""
+    assert (
+        export_page.EXTRACTION_SURFACE.allowed.pattern
+        == r"^https://claude\.ai/(login(/.*)?|settings/data\-privacy\-controls)(\?.*)?$"
+    )
+    assert (
+        login_form.LOGIN_SURFACE.allowed.pattern == r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
+    )
+    assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
+    assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
+
+
+def test_the_ask_block_s_words_are_the_source_s() -> None:
+    assert CLAUDE.ask_lines == ("Claude will email a download link to the account's address.", "When it arrives:")
+    assert CLAUDE.counts_line == "Conversations: {conversations}     Projects: {projects}     Memories: {memories}"
+    assert CLAUDE.login_prompt == browser_session.LOGIN_PROMPT
+
+
+def test_a_source_is_the_same_object_wherever_it_is_asked_for() -> None:
+    assert sites.extraction_site(CLAUDE) is export_page.EXTRACTION_SITE
+    assert sites.extraction_surface(CLAUDE) is export_page.EXTRACTION_SURFACE
+    assert sites.login_surface(CLAUDE) is login_form.LOGIN_SURFACE
+    assert export_page.export_page_js(CLAUDE) == export_page.EXPORT_PAGE_JS
+
+
+def test_whose_session_a_command_means(tmp_path: Path) -> None:
+    settings = Settings(workspace=tmp_path)
+    assert browser_session.whose(settings) == browser_session.Whose(
+        url=browser_session.NEW_CHAT_URL, prompt=browser_session.LOGIN_PROMPT, hosts=("claude.ai",)
+    )
+    assert browser_session.whose(with_session_account(settings, "claude", "old")) == browser_session.Whose(
+        url=CLAUDE.login_url, prompt=CLAUDE.login_prompt, hosts=CLAUDE.hosts
+    )
+
+
+# --------------------------------------------------------------------------- #
+# A site with several hosts
+# --------------------------------------------------------------------------- #
+
+
+def test_a_one_host_site_is_written_as_it_was() -> None:
+    assert Site("x", "a.example", {}).hosts == ("a.example",)
+    assert Site("x", "a.example", {}, hosts=("a.example", "b.example")).hosts == ("a.example", "b.example")
+    surface = helpers.Surface(host="a.example", allowed=re.compile(r".*"))
+    assert surface.hosts == ("a.example",)
+
+
+def test_a_wall_admits_every_auth_host_whole() -> None:
+    """What `44` will write as data: the site's paths, and a second host with any path."""
+    source = sources.Source(
+        name="x",
+        display_name="X",
+        host="x.example",
+        auth_hosts=("auth.x.example",),
+        login_url="https://x.example/",
+        sign_in_paths=("", "auth/callback"),
+        app_paths=(),
+        export_page_path="/settings/data",
+        selectors={},
+        fetch_needs_session=True,
+        signed_out_at_root=True,
+        unattended_signin="walk",
+        ask_lines=(),
+        counts_line="",
+        login_prompt="",
+        recognise=lambda names: False,
+        read=CLAUDE.read,
+    )
+    assert sites.extraction_pattern(source).pattern == (
+        r"^https://x\.example/(|auth/callback|settings/data)(\?.*)?$|^https://auth\.x\.example/.*$"
+    )
+    wall = sites.extraction_surface(source)
+    assert wall.hosts == ("x.example", "auth.x.example")
+    assert wall.permits("https://x.example/")
+    assert wall.permits("https://x.example/settings/data?tab=1")
+    assert wall.permits("https://auth.x.example/log-in/password")
+    assert not wall.permits("https://x.example/c/abc")
+    assert not wall.permits("https://x.example/settings")
+    assert not wall.permits("https://other.example/")
+    assert not sites.login_surface(source).permits("https://x.example/settings/data")
+
+
+@pytest.mark.slow
+def test_a_tab_on_any_of_the_surface_s_hosts_is_found() -> None:
+    surface = helpers.Surface(host="a.example", allowed=re.compile(r".*"), hosts=("a.example", "b.example"))
+    with FakeChrome(
+        targets=[
+            FakeTarget(id="page-1", url="https://c.example/"),
+            FakeTarget(id="page-2", url="https://b.example/log-in"),
+        ]
+    ) as chrome:
+        client = CdpClient(port=chrome.port, timeout=2.0)
+        assert [item.id for item in helpers.surface_tabs(client, surface)] == ["page-2"]
+        assert [item.id for item in browser_session.tabs_on(client, ("b.example",))] == ["page-2"]
+        assert browser_session.tabs_on(client, ("a.example",)) == []
+
+
+@pytest.mark.slow
+def test_importing_the_sources_imports_nothing_of_the_browser() -> None:
+    """`store` reads the registry, and the store must not pull a browser in to list two names."""
+    code = (
+        "import sys, dataporter.sources, dataporter.store\n"
+        "loaded = sorted(m for m in sys.modules if m.startswith('dataporter.browser'))\n"
+        "assert not loaded, loaded\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=60)

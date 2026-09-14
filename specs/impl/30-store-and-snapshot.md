@@ -85,7 +85,7 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   link must be `https`; that is checked before any request. The body streams to
   `<account home>/tmp/<uuid4>.zip` while a SHA-256 runs, `max_download_bytes` is enforced
   on the stream, and `download_idle_s` is the socket timeout. The temp file is verified
-  in place — `zipfile.is_zipfile`, then `ExportSource.open` and `read_export`, which
+  in place — `zipfile.is_zipfile`, then `ExportView.open` and `read_export`, which
   yield the counts, the fingerprint and the gap count in one parse — and only then filed
   by `Store.file_archive`, which copies it into a fresh stamp directory and re-hashes the
   copy before writing the manifest. The temp file is unlinked in a `finally`. Stamp and
@@ -145,7 +145,7 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   answer, as `status` on an empty workspace is. `--json` emits a list of `SnapshotRow`.
   Rows are ordered by account, then source, then stamp, and the count of a row whose
   manifest could not be read is `?` rather than `0`.
-- **Import from a snapshot** (`export/source.py`): `ExportSource.open` gains a first
+- **Import from a snapshot** (`export/source.py`): `ExportView.open` gains a first
   branch — a directory holding `snapshot.json` is a `_SnapshotSource`, which refuses a
   missing `COMPLETE` with `ExportError` `snapshot is incomplete: <display>` and delegates
   `names`, `read` and `is_archive` to a `_ZipSource` over `export.zip`. `read_export` is
@@ -275,7 +275,7 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   `--abandon` — is one module's, and splitting the write from the two deletes would put
   "one ask is open per account at a time" in two places. `31` calls it after the vendor's
   button has actually been pressed.
-- **`ExportSource.open` grows a `display=`.** The fetch verifies a download in a temp
+- **`ExportView.open` grows a `display=`.** The fetch verifies a download in a temp
   file named with a uuid, and an operator reading `conversations.json missing from
   export: /…/8f3c….zip` is being shown a path they never typed. The override is how the
   refusal says `the download` instead.
