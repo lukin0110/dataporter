@@ -15,8 +15,8 @@ under two host names. It signs somebody in through `auth.openai.com`, takes a me
 answers it, keeps the chat at a URL that survives a reload, turns a long paste into an
 attachment, accepts a file, renames a chat through its sidebar entry, and counts what it
 was asked to do. It is a consequence of `docs/chatgpt-ui-map.md` and no evidence about
-chatgpt.com (§52, §27); nothing in the tool drives it yet, and `--source chatgpt` is
-refused as before.
+chatgpt.com (§52, §27). Built ahead of its driver: the tool's ChatGPT half (brief `06`)
+drives it since 2026-09-14, and `--source chatgpt` is a source since `43`.
 
 ## In scope
 

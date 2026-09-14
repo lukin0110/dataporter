@@ -14,6 +14,12 @@ respects its limit (D1) and `coalesce` overloads that narrow (D2) — so the
 sections below are the second pass, not the first. What the previous pass
 deferred and 0.0.12 did not answer is still deferred, with the same reasons.
 
+**The third pass is brief `06`'s** (`47`), made while the ChatGPT half was
+written: one adoption in new code, one deliberate non-swap verified by running
+both spellings, one candidate that gained the real caller it was waiting for,
+and two that gained none. Nothing below is filed upstream from here; this file
+is the record, and filing is a separate decision.
+
 ## A. Adopted
 
 | Site | Was | Now | Since |
@@ -29,6 +35,7 @@ deferred and 0.0.12 did not answer is still deferred, with the same reasons.
 | `config.bootstrap_workspace` | three early returns | `coalesce_lazy(...)` | 0.0.12 |
 | `cdp.Page.set_file_input_files` | `root.get("root", {}).get("nodeId")` | `deep_get(root, "root.nodeId")` | 0.0.11 |
 | `probe.pending_dialogs` | `.get("params", {}).get("type", "dialog")` | `deep_get(item, "params.type", "dialog")` | 0.0.11 |
+| `export.chatgpt._attachment_ids` | — (new in `43`) | `deep_get(node, "message.metadata.attachments")` | 0.0.12 |
 
 **`to_bool` was a behaviour change, and remains the only user-visible one here.**
 Under the old expression `DATAPORTER_LOG_STRICT=false` turned the content guard's
@@ -144,6 +151,7 @@ break one of them.
 | Any `@timing` | It logs an f-string through `logging.getLogger("orval.utils")` — outside the `dataporter` logger, so past `ContentGuard`, and against this repo's rule that log messages are constants and variable data goes in `extra` |
 | `runner`/`helpers` elapsed times → `pretty_duration` | `elapsed_s` and `elapsed_ms` are numeric fields in JSON-lines records, read by `19`'s parser and by `21`'s instruments. Nothing formats a duration for a human to read, so there is nothing to pretty-print |
 | `config._describe` / `source._describe` | Genuinely duplicated, but shaped by pydantic's `ValidationError`. orval has no dependencies and should keep none |
+| `extract.DOWNLOADED`'s `{size / MEGABYTE:.1f}` → `pretty_bytes(size, "ds", precision=1)` | **Verified not byte-identical** by running both over the same sizes: `pretty_bytes` picks a unit — `999_999` renders `1000.0 KB`, `1_582` renders `1.6 KB`, `5_000_000_000` renders `5.0 GB` — and §31's line is always megabytes to one decimal, `Downloaded 0.0 MB.` for a small archive included, which is what `docs/rehearsal-03.md` prints twice. A golden string, and the unit is the brief's |
 
 ## C. Candidates for orval
 
@@ -170,6 +178,9 @@ the version dataporter had written twice — see A.
 *From `log.JsonlFormatter.format`, `state._format_instant`, `browser.helpers` and
 `browser.launcher`.*
 
+*Third pass:* no new site. The ChatGPT half writes every timestamp through
+`trace.timestamp`, which is one of the four; the count stays four.
+
 `value.isoformat(timespec=...).replace("+00:00", "Z")`. **This is now the
 strongest candidate on the list: dataporter writes the line four times**, at two
 different `timespec`s, up from one site when this file was first written. Every
@@ -194,14 +205,24 @@ Now that `strip_control` exists, `is_safe_component` is three lines on top of it
 which makes the case for it stronger rather than weaker: the remaining two lines
 are the ones people get wrong.
 
+*Third pass:* no new caller, deliberately. `45`'s download is named by the
+browser's own guid (`allowAndName`), so a name the vendor chose never reaches a
+path; and `43` reads the archive's members from the stream, as `02` does, so a
+member name is never joined to one either. The case for the helper stands on
+`plan`'s two sites and is not strengthened here.
+
 ### C5 — `orval.containers.unique(seq, key=None)`
 
-*From `plan._distinct`, `source._collect_duplicates` and `model.Conversation._split`.*
+*From `plan._distinct`, `source._collect_duplicates`, `model.Conversation._split` —
+and, since `43`, `export.chatgpt._unique`, the fourth hand-rolling.*
 
 Order-preserving deduplication. orval has `chunkify`, `flatten`, `compact` and
 `is_empty` but no dedupe, which is the collection utility people reach for most, and
 the one whose naive spelling (`set`) silently loses order. dataporter hand-rolls
-three variants of it. `key` matters: `plan._distinct` deduplicates on either of two
+four variants of it now: the fourth deduplicates the attachment keys a ChatGPT
+archive refers to, so that two reads of one archive report the same missing files
+in the same order — the plainest caller of the four, with a comment at the site
+naming this entry. `key` matters: `plan._distinct` deduplicates on either of two
 keys, so a `key` returning a tuple, or accepting a callable per element, would be
 worth designing rather than assuming.
 

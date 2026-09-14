@@ -12,8 +12,9 @@ account and no model. Two sites today, and one project (brief `05` §53,
   (§54): built *ahead* of the tool's ChatGPT half, out of what OpenAI documents and
   what others have reported, so that half meets a sign-in on two host names, a
   composer that turns a long paste into an attachment, and a download that wants a
-  session, before it meets the real ones. Nothing in the tool drives it yet; a
-  person with a Chrome walks it, and [the walk](#the-walk) is below.
+  session, before it meets the real ones. The tool's ChatGPT half (brief `06`) drives
+  it since 2026-09-14 — `docs/rehearsal-03.md` is the record — and [the walk](#the-walk)
+  below is what a person takes through it by hand.
 
 What the two share — a certificate minted for a site's host names and a key Chrome
 is told to trust, a session that survives the browser closing, the witness routes
@@ -301,9 +302,10 @@ The behaviours both mocks have, and worth knowing before you read the code:
 
 ## The walk
 
-Nothing in the tool drives the mock chatgpt.com yet (§56), so until the brief that
-gives the tool a ChatGPT half, the mock is proven by its suite and by a person with a
-Chrome. Start it, add its two lines to a Chrome — a throwaway profile is enough:
+The tool's own run through this mock is `rehearsal/run.py --protocol extraction`
+(brief `06`, `46`); the walk is the same trip taken by a person with a Chrome, which is
+how the mock was proven before the tool could drive it (§56). Start it, add its two
+lines to a Chrome — a throwaway profile is enough:
 
 ```sh
 uv run --package mocks chatgpt-mock serve
