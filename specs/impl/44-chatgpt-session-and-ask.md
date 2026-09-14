@@ -5,7 +5,7 @@
 **Depends on:** [42](42-source-seam.md), [43](43-chatgpt-archive.md),
 [24](24-non-interactive.md), [31](31-source-session-and-ask.md)
 **Enables:** [45](45-fetch-through-the-session.md), [46](46-extraction-rehearsal.md)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -115,6 +115,7 @@ Every step a move, so a ChatGPT run leaves what a Claude run leaves (§67).
 - The two surfaces refuse each other's pages and `/c/<id>`.
 - *(Live, `46`'s.)* The extraction rehearsal signs in to the mock chatgpt.com through the
   walk and asks; that is what turns this slice `Done`.
+  Met on 2026-09-14: the extraction rehearsal (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)) signed in to the mock chatgpt.com through the walk and asked, twice; `Done`.
 
 ## Risks
 

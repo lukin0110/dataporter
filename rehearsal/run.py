@@ -177,6 +177,11 @@ class Settings:
         return self.root / "bin"
 
     @property
+    def accounts_dir(self) -> Path:
+        """Where the tool keeps its source accounts (`46`): the second place a trace lands."""
+        return self.root / "accounts"
+
+    @property
     def unattended(self) -> bool:
         return self.mode == "non-interactive"
 
@@ -196,16 +201,19 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def chrome_args(settings: Settings, pin: str) -> list[str]:
+def chrome_args(settings: Settings, pin: str, *, hosts: Sequence[str] = ("claude.ai",)) -> list[str]:
     """Return the `extra_args` the mock told the operator to paste, plus this machine's.
 
     The first two are the mock's own block. The rest are what a headless,
     sandbox-less, proxied machine needs in order to run *any* browser, and are
     the operator's business rather than the mock's — the rehearsal record names
-    them for the same reason it names the pacing.
+    them for the same reason it names the pacing. A mock that answers two host
+    names (`39`) prints one rule mapping both, comma-separated, because Chrome
+    keeps one value per argument.
     """
+    rule = ", ".join(f"MAP {host} {settings.host}:{settings.port}" for host in hosts)
     arguments = [
-        f"--host-resolver-rules=MAP claude.ai {settings.host}:{settings.port}",
+        f"--host-resolver-rules={rule}",
         f"--ignore-certificate-errors-spki-list={pin}",
     ]
     if settings.proxy_free:
@@ -349,13 +357,16 @@ class Runner:
 
         Moved, not copied: a trace left where it was would be found again by
         the next step's `keep` and filed twice, and the workspace is the
-        rehearsal's own. Only the workspace is looked in — the protocol drives
-        no source account, so nothing lands in an account home; the day it
-        extracts, the accounts directory is the second place to look. A step
+        rehearsal's own. Two places are looked in: the workspace, where a
+        destination command's trace lands, and every account home under the
+        accounts directory, where a source command's does (`31`, `46`). A step
         that leaves more than one is filed whole (`-2`, `-3`, …) and reported
         as a finding, since `33` makes one trace per invocation the rule.
         """
-        found = sorted((self.settings.workspace / "logs").glob("trace-*.jsonl"))
+        found = sorted([
+            *(self.settings.workspace / "logs").glob("trace-*.jsonl"),
+            *self.settings.accounts_dir.glob("*/*/logs/trace-*.jsonl"),
+        ])
         if not found:
             return
         directory = self.settings.root / "traces"
@@ -379,7 +390,10 @@ class Runner:
         mode = ["--non-interactive"] if self.settings.unattended else []
         return [*base, "--workspace", str(self.settings.workspace), *mode, *arguments]
 
-    def run(self, name: str, *arguments: str, note: str = "", deliberate: bool = False) -> Outcome:
+    def run(
+        self, name: str, *arguments: str, note: str = "", deliberate: bool = False, secrets: Sequence[str] = ()
+    ) -> Outcome:
+        """Run one step. `secrets` are masked in the recorded `argv` (`46`): a link is a credential."""
         argv = self.command(*arguments)
         started = time.monotonic()
         finished = subprocess.run(
@@ -392,7 +406,7 @@ class Runner:
         )
         outcome = Outcome(
             name=name,
-            argv=tuple(argv),
+            argv=masked(argv, secrets),
             exit_code=finished.returncode,
             seconds=round(time.monotonic() - started, 1),
             stdout=finished.stdout,
@@ -461,6 +475,14 @@ class Runner:
         self.drill = {key: after[key] - before.get(key, 0) for key in after}
         print(f"  {name:<34} killed={killed}  {outcome.seconds:>6.1f}s  — the killed run: {_counts(self.drill)}")
         return outcome
+
+
+LINK_MARK = "<link>"
+
+
+def masked(argv: Sequence[str], secrets: Sequence[str]) -> tuple[str, ...]:
+    """Return `argv` with every secret replaced by the mark, for the record."""
+    return tuple(LINK_MARK if item in secrets and item else item for item in argv)
 
 
 def finish(process: subprocess.Popen[str], *, timeout_s: float) -> tuple[str, str, bool]:
@@ -970,7 +992,7 @@ def trace_row(root: Path, step: Outcome) -> str:
 def versions_of(settings: Settings, env: Mapping[str, str]) -> dict[str, str]:
     """Return the four versions a record names, each read rather than assumed."""
     return {
-        "tool": _captured(
+        "tool": captured(
             [
                 shutil.which(PROGRAM, path=str(env.get("PATH", ""))) or PROGRAM,
                 "--version",
@@ -978,12 +1000,13 @@ def versions_of(settings: Settings, env: Mapping[str, str]) -> dict[str, str]:
             env,
         ),
         "agent": f"scripted agent {AGENT_VERSION}",
-        "chrome": _captured([settings.chrome or "google-chrome", "--version"], env),
-        "mock": _captured([shutil.which("claude-mock") or "claude-mock", "--version"], env),
+        "chrome": captured([settings.chrome or "google-chrome", "--version"], env),
+        "mock": captured([shutil.which("claude-mock") or "claude-mock", "--version"], env),
     }
 
 
-def _captured(argv: Sequence[str], env: Mapping[str, str]) -> str:
+def captured(argv: Sequence[str], env: Mapping[str, str]) -> str:
+    """Return the first line a command prints for `--version`, or `unknown`."""
     try:
         finished = subprocess.run(list(argv), capture_output=True, text=True, env=dict(env), timeout=60, check=False)
     except (OSError, subprocess.SubprocessError):
@@ -1018,6 +1041,13 @@ def parser() -> argparse.ArgumentParser:
         help="write a rehearsal record here (a complete rehearsal leaves one)",
     )
     root.add_argument("--number", type=int, default=1, help="the record's number")
+    root.add_argument(
+        "--protocol",
+        choices=("migration", "extraction"),
+        default="migration",
+        help="the full run's protocol (§23), or an extraction's against both mocks (§68)",
+    )
+    root.add_argument("--chatgpt-port", type=int, default=8444, help="the mock chatgpt.com's port")
     return root
 
 
@@ -1037,6 +1067,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         email=arguments.email,
         password=arguments.password,
     )
+    if arguments.protocol == "extraction":
+        # Local: `extraction` imports this module for the runner it drives.
+        from rehearsal import extraction  # ruff: ignore[import-outside-top-level] - see above
+
+        return extraction.main(
+            settings, chatgpt_port=arguments.chatgpt_port, record=arguments.record, number=arguments.number
+        )
     print(f"rehearsal: {settings.mode}, against the mock on {settings.host}:{settings.port}")
     prepared = prepare(settings)
     env = environment(settings)

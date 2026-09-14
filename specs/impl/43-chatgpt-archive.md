@@ -6,7 +6,7 @@
 **Depends on:** [42](42-source-seam.md), [30](30-store-and-snapshot.md),
 [`docs/chatgpt-export-format.md`](../../docs/chatgpt-export-format.md)
 **Enables:** [44](44-chatgpt-session-and-ask.md), [45](45-fetch-through-the-session.md)
-**Status:** Built
+**Status:** Done
 
 ## Goal
 
@@ -126,6 +126,7 @@ source is registered here; its ask and its fetch answer `not implemented` until 
   not-yet line.
 - *(Live, `46`'s.)* The extraction rehearsal files the mock chatgpt.com's archive
   through this reader; that is what turns this slice `Done`.
+  Met on 2026-09-14: the extraction rehearsal (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)) filed the mock chatgpt.com's archive through this reader, twice; `Done`.
 
 ## Risks
 

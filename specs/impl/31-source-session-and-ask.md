@@ -214,6 +214,7 @@ model. The fetch that follows is `30`'s.
 - *(Manual: it needs a real account.)* Brief §39's questions 1, 2 and 5 answered with
   numbers in `docs/extraction-01.md`, and the four UI map rows turned
   `*observed on <date>*`.
+- Rehearsed on 2026-09-14 against the mock claude.ai (`46`, [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md)): the first tool-driven `login` and ask end to end, twice. Still `Built`: the real page has never been looked at.
 
 ## Risks
 

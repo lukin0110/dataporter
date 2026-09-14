@@ -290,14 +290,14 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [36](impl/36-rehearsal-traces.md) | The rehearsal's traces | §47, §48 | Done |
 | [37](impl/37-traces-as-evidence.md) | Traces as evidence | §49, §50 | Built |
 | [38](impl/38-mock-core.md) | The core and the rename | §53 | Done |
-| [39](impl/39-chatgpt-mock-site.md) | The mock chatgpt.com: sign-in and chats | §54, §57 | Built |
-| [40](impl/40-chatgpt-export-and-archive.md) | The mock chatgpt.com: the export page and the archive | §54, §55 | Built |
-| [41](impl/41-chatgpt-mock-walk.md) | The README's walk | §53, §54, §56 | Built |
-| [42](impl/42-source-seam.md) | The source seam | §60 | Built |
-| [43](impl/43-chatgpt-archive.md) | The ChatGPT archive | §59, §64 | Built |
-| [44](impl/44-chatgpt-session-and-ask.md) | The ChatGPT source session and the ask | §60, §61, §62, §65, §67 | Built |
-| [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Built |
-| [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Not started |
+| [39](impl/39-chatgpt-mock-site.md) | The mock chatgpt.com: sign-in and chats | §54, §57 | Done |
+| [40](impl/40-chatgpt-export-and-archive.md) | The mock chatgpt.com: the export page and the archive | §54, §55 | Done |
+| [41](impl/41-chatgpt-mock-walk.md) | The README's walk | §53, §54, §56 | Done |
+| [42](impl/42-source-seam.md) | The source seam | §60 | Done |
+| [43](impl/43-chatgpt-archive.md) | The ChatGPT archive | §59, §64 | Done |
+| [44](impl/44-chatgpt-session-and-ask.md) | The ChatGPT source session and the ask | §60, §61, §62, §65, §67 | Done |
+| [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Done |
+| [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Done |
 | [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Not started |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
@@ -372,11 +372,11 @@ and is claimed by all four; §58 is its list of what is deliberately left and st
 unclaimed until one of its items is built. `38` is `Done`: its live criterion is a
 rehearsal against the refactored mock claude.ai, and one ran on 2026-09-13 and passed
 every one of §25's criteria with the ledger reconciled (the slice has the numbers). `39`,
-`40` and `41` are `Built` and not `Done`: §56 lends their live criterion to the brief
-that gives the tool a ChatGPT half, and a slice of `05` reaches `Done` when that brief's
-first run has walked the mock. What has walked it so far is a headless Chromium driven
-through the README's walk by hand on 2026-09-13 (the three slices record it), which
-proves the pages and turns no row of `docs/chatgpt-ui-map.md` *observed*.
+`40` and `41` are `Done` since 2026-09-14: brief `06`'s extraction rehearsal (`46`,
+`docs/rehearsal-03.md`) signed in to the mock through the tool's own walk, asked twice
+and fetched both links through the session, which is the tool-driven run §56 lent them
+as their live criterion. A rehearsal proves the pages and turns no row of
+`docs/chatgpt-ui-map.md` *observed*.
 
 ## Working rules
 
