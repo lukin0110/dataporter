@@ -62,10 +62,15 @@ def test_an_archive_is_recognised_by_its_member_names() -> None:
 def test_the_host_and_the_export_page_are_spelled_once() -> None:
     assert probe.CLAUDE_HOST == CLAUDE.host == "claude.ai"
     assert CLAUDE.login_url == browser_session.NEW_CHAT_URL
-    assert export_page.EXPORT_PAGE_PATH == CLAUDE.export_page_path == "/settings/data-privacy-controls"
-    assert export_page.EXPORT_PAGE_URL == "https://claude.ai/settings/data-privacy-controls"
+    assert export_page.EXPORT_PAGE_PATH == CLAUDE.export_page_path == "/new#settings/data-privacy-controls"
+    assert export_page.EXPORT_PAGE_URL == "https://claude.ai/new#settings/data-privacy-controls"
     assert sites.not_the_export_page(CLAUDE) == export_page.NOT_THE_EXPORT_PAGE
-    assert export_page.NOT_THE_EXPORT_PAGE == "the browser did not arrive at /settings/data-privacy-controls"
+    assert export_page.NOT_THE_EXPORT_PAGE == "the browser did not arrive at /new#settings/data-privacy-controls"
+    # The fragment is the only thing telling the export page apart from the app
+    # page it opens over, so the check reads path and fragment together (§77).
+    assert export_page.on_export_page("https://claude.ai/new#settings/data-privacy-controls")
+    assert not export_page.on_export_page("https://claude.ai/new")
+    assert not export_page.on_export_page("https://claude.ai/login")
 
 
 def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
@@ -76,7 +81,9 @@ def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
         "MESSAGE_SELECTOR": '[data-testid="user-message"], [data-testid="assistant-message"]',
         "TITLE_SELECTOR": '[data-testid="chat-menu-trigger"], [data-testid="conversation-title"], header h1, header h2',
         "FILE_INPUT_SELECTOR": 'input[type="file"]',
-        "EXPORT_BUTTON_SELECTOR": '[data-testid="export-data"], button[aria-label="Export data"]',
+        "EXPORT_BUTTON_SELECTOR": (
+            '[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]'
+        ),
         "CONFIRM_BUTTON_SELECTOR": '[role="dialog"] [data-testid="confirm-export"], [role="dialog"] button[type="submit"]',
         "REQUESTED_SELECTOR": '[data-testid="export-requested"], [role="status"]',
         "EMAIL_SELECTOR": 'input[type="email"], input[autocomplete="username"]',
@@ -92,11 +99,15 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     """Two regular expressions, byte for byte, because a wall is easier to trust when it is one line long."""
     assert (
         export_page.EXTRACTION_SURFACE.allowed.pattern
-        == r"^https://claude\.ai/(login(/.*)?|settings/data\-privacy\-controls)(\?.*)?$"
+        == r"^https://claude\.ai/(login(/.*)?|new\#settings/data\-privacy\-controls)(\?.*)?$"
     )
     assert (
         login_form.LOGIN_SURFACE.allowed.pattern == r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
     )
+    # The export page is a fragment of the app (§77), and the wall stays as
+    # narrow as it was: the address is admitted, the app page under it is not.
+    assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/data-privacy-controls")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new")
     assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
     assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
 

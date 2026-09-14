@@ -329,7 +329,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [48](impl/48-the-words.md) | The words | §72, §73, §74, §77 | Done |
 | 49 | The mock signs people in | §79 | Not started |
 | 50 | The two commands | §73, §74 | Not started |
-| 51 | The export page's real address | §77 | Not started |
+| [51](impl/51-export-page-address.md) | The export page's real address | §77 | Built |
 | 52 | The paperwork | §75, §76, §78 | Not started |
 | [59](impl/59-hermes-configuration.md) | Asking Hermes for its configuration | — tooling | Built |
 

@@ -178,7 +178,10 @@ def test_both_clicks_are_recorded_with_the_page_and_the_selector(
         export_page.BUTTON_ACTION,
         export_page.CONFIRM_ACTION,
     ]
-    assert all(item["url"] == export_page.EXPORT_PAGE_URL for item in records)
+    # Not `EXPORT_PAGE_URL`: `46`'s guard strips the query and the fragment from
+    # every URL it records, and since `51` the export page *is* a fragment (§77),
+    # so what the log holds is the app page the dialog opened over.
+    assert all(item["url"] == "https://claude.ai/new" for item in records)
     assert records[0]["selector"] == export_page.EXPORT_BUTTON_SELECTOR
     assert all(item["ok"] for item in records)
     assert not (settings.workspace / "logs").exists()
@@ -586,7 +589,9 @@ def test_both_clicks_are_moves_in_the_account_home_s_trace(
     assert [move["helper"] for move in moves] == [export_page.BUTTON_ACTION, export_page.CONFIRM_ACTION]
     assert moves[0]["result"] == {
         "selector": export_page.EXPORT_BUTTON_SELECTOR,
-        "path": export_page.EXPORT_PAGE_PATH,
+        # `/new` and not the address: a trace records a URL without its query or
+        # its fragment (§66), and since `51` the export page is a fragment.
+        "path": "/new",
         "query": [],
     }
     assert all(move["conversation_id"] is None for move in moves)

@@ -54,7 +54,15 @@ def _wall(source: "Source", paths: "Sequence[str]") -> re.Pattern[str]:
 
 
 def extraction_pattern(source: "Source") -> re.Pattern[str]:
-    """§36's wall for the ask: the sign-in's paths and the export page. Two doors."""
+    """§36's wall for the ask: the sign-in's paths and the export page. Two doors.
+
+    The export page's *whole address* and not its path, fragment included, which
+    is what keeps this wall as narrow as it was when the page had a path of its
+    own: a wall matches the URL as a string, so admitting
+    `/new#settings/data-privacy-controls` admits neither `/new` nor any chat on
+    it. `on_export_page` is the one place that needs the path instead, because
+    it compares a *parsed* URL, where a fragment has already fallen off.
+    """
     return _wall(source, (*source.sign_in_paths, re.escape(source.export_page_path.lstrip("/"))))
 
 

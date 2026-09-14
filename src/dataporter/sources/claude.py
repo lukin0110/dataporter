@@ -1,9 +1,16 @@
 """Claude as a source (`42`): what `31` spelled across five modules, in one place.
 
-Every row this object depends on is `*unknown*` in `docs/claude-ui-map.md`: the
-export page's path, its button, whether a confirmation follows, and what the
-page shows when the request was accepted. The first real ask is what corrects
-them, and the constants below are what it corrects — one line each.
+Two of the four rows this object depends on were read off a real account on
+2026-09-14 and corrected by `51`, after `31`'s guesses sent a run to a page that
+does not exist: the export page's address and its button. Both rows stay
+`*unknown*` in `docs/claude-ui-map.md` even so — a row is marked when an artefact
+under `docs/spike/` can be cited for it, and the only one available carries the
+account's own name and its conversation titles, which §10 keeps out of that
+directory.
+
+The other two — whether a confirmation follows, and what the panel shows once the
+request is accepted — are unknown in the stronger sense: seeing either means
+asking a real account for a real export, and nobody has.
 """
 
 from collections.abc import Sequence
@@ -16,17 +23,37 @@ if TYPE_CHECKING:
 
 HOST = "claude.ai"
 
-EXPORT_PAGE_PATH = "/settings/data-privacy-controls"
-"""Where claude.ai lets a user ask for their data. A placeholder: nobody has
-looked. Everything else — the URL, the surface that admits it, the message that
-names it — is built from this string, so the observation that corrects it is
-one edit."""
+EXPORT_PAGE_PATH = "/new#settings/data-privacy-controls"
+"""Where claude.ai lets a user ask for their data (*observed 2026-09-14*).
 
-EXPORT_BUTTON_SELECTOR = '[data-testid="export-data"], button[aria-label="Export data"]'
-"""The control that asks the vendor for the account's data."""
+Not a path of its own: the settings are a dialog over the app, at a fragment.
+`31`'s `/settings/data-privacy-controls` was a guess and served nothing. The
+whole string is where the browser is sent; `Source.export_path` is the `/new`
+a URL check compares, because a fragment is no part of a path (§77)."""
+
+EXPORT_BUTTON_SELECTOR = '[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]'
+"""The control that asks the vendor for the account's data (*observed 2026-09-14*).
+
+Matched by position, because the panel offers nothing better. Its rows carry no
+test id; the only thing distinguishing the Export row from the five *Manage*
+rows under it is the words in it, which a selector cannot read, and the ids that
+are there (`_r_7v_`) are React's and regenerated on every render. What is stable
+is the shape: every row above Export holds a switch rather than a button, so the
+Export button is the first button in the panel, and `click_js` presses the first
+visible match.
+
+If claude.ai reorders that panel this presses *Manage* on another row instead,
+which opens a list rather than asking for anything — and the ask then stops at
+`REQUESTED_SELECTOR` rather than reporting a request nobody made."""
 
 CONFIRM_BUTTON_SELECTOR = '[role="dialog"] [data-testid="confirm-export"], [role="dialog"] button[type="submit"]'
-"""The confirmation inside whatever dialog the button opens, if it opens one."""
+"""The confirmation inside whatever dialog the button opens, if it opens one.
+
+Still `*unknown*`: seeing it means pressing Export on a real account, which asks
+the vendor for a real export, and nobody has. Note that the settings panel is
+itself a `[role="dialog"]`, so this selector's first clause would match inside
+it — which is why the ask requires `view.dialog` *and* `view.confirm` together
+and clicks the confirm only once."""
 
 REQUESTED_SELECTOR = '[data-testid="export-requested"], [role="status"]'
 """What the page shows once the request has been accepted.
@@ -34,6 +61,11 @@ REQUESTED_SELECTOR = '[data-testid="export-requested"], [role="status"]'
 Read as an element that is there, never as the sentence it holds: the ask obeys
 `probe`'s rule that nothing off the page crosses the wire, and "the request was
 accepted" is a fact about the page rather than a message from it.
+
+Still `*unknown*`, for `CONFIRM_BUTTON_SELECTOR`'s reason. Until it is observed
+an ask presses the button and then waits out `timeouts.ask_s` without
+recognising its own success, so the export is requested and the run says it was
+not. That is the last thing between this source and a working `extract`.
 """
 
 EMAILED = "Claude will email a download link to the account's address."

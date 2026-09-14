@@ -80,7 +80,13 @@ class Source:
     beside `sign_in_paths` and the extraction's does not."""
 
     export_page_path: str
-    """Where the vendor lets a user ask for their data. Spelled once, here."""
+    """Where the vendor lets a user ask for their data. Spelled once, here.
+
+    An address rather than strictly a path: a vendor may serve the page at a
+    fragment of its app rather than at a path of its own, as claude.ai does
+    (§77). Compared against a URL's path *and* fragment together, because on
+    such a site the fragment is the only thing telling the export page apart
+    from the app page it opens over."""
 
     selectors: Mapping[str, str]
     """The source's own page controls, by name: the export page's three, and
