@@ -31,11 +31,12 @@ workspace, `DATAPORTER_TRACE` set to the run's trace when this process has one
   as well; this makes forgetting it harmless rather than silently wrong.
 """
 
+import json
 import os
 import shlex
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -209,100 +210,101 @@ class HermesCli:
         self.checked(*self.profile_flags(), "config", "set", key, value)
 
     def config_show_text(self) -> str:
-        """`config show`, verbatim. `09`'s idempotence test compares these."""
+        """`config show`, verbatim. `09`'s idempotence test compares these.
+
+        Never parsed. `59` looked at what it prints and found a decorated display
+        — box borders, `◆` headings, capitalised labels, one value a Python dict
+        repr — carrying no dotted key at all. Two runs of it are still the same
+        two runs, which is the whole of what the idempotence criterion asks.
+        """
         return self.checked(*self.profile_flags(), "config", "show").stdout
 
-    def config(self) -> dict[str, str]:
-        """Return the profile's configuration, flattened to dotted keys."""
-        return parse_config(self.config_show_text())
+    def config_get(self, key: str) -> str | None:
+        """Return one resolved value, or `None` where the profile has not set it."""
+        finished = self.checked(*self.profile_flags(), "config", "get", key, "--json")
+        return parse_value(finished.stdout)
+
+    def config(self, keys: Iterable[str]) -> dict[str, str]:
+        """Return those of `keys` the profile has set, one call each.
+
+        A key that is unset is absent rather than empty, because that is what
+        `mismatches` reads to say `unset` instead of naming a value nobody wrote.
+        One subprocess a key is the price of asking Hermes rather than reading its
+        screen; `setup` asks thirteen times, once, and `doctor` three.
+        """
+        resolved = ((key, self.config_get(key)) for key in keys)
+        return {key: value for key, value in resolved if value is not None}
 
 
 # --------------------------------------------------------------------------- #
 # Reading what the CLI prints
 # --------------------------------------------------------------------------- #
 
-_LIST_MARKERS = "*-•>"
-"""Leading decoration a `profile list` line may carry for the active profile."""
+_LIST_MARKERS = "*-•>◆"
+"""Leading decoration a `profile list` line may carry for the active profile.
+`◆` is the one `59` observed; the rest were `09`'s guesses and cost nothing."""
+
+_RULE_CHARACTERS = "─—-=_ "
+"""What a table draws the rule under its header with. A line of nothing else
+divides the header from the rows."""
 
 
 def parse_profile_list(text: str) -> list[str]:
     """Profile names out of `hermes profile list`.
 
-    Lenient on purpose: the output may be a bare list, a bulleted one, or one
-    with the active profile marked and annotated. The first whitespace-separated
-    token of a line, with leading decoration removed, is the name; a line whose
-    token ends in `:` is a heading and not a profile.
+    Lenient on purpose: the output may be a bare list, a bulleted one, or the
+    column table `59` observed — a header row, a rule, then a row per profile
+    with the active one marked. The first whitespace-separated token of a line,
+    with leading decoration removed, is the name; a line whose token ends in `:`
+    is a heading and not a profile.
+
+    A rule discards everything above it, which is what keeps the header's own
+    words — `Profile`, and the column titles beside it — from being read as the
+    name of a profile nobody has.
     """
     names: list[str] = []
     for line in text.splitlines():
-        stripped = line.strip().lstrip(_LIST_MARKERS).strip()
+        stripped = line.strip()
         if not stripped:
             continue
-        token = stripped.split()[0]
+        if all(character in _RULE_CHARACTERS for character in stripped):
+            names.clear()
+            continue
+        marked = stripped.lstrip(_LIST_MARKERS).strip()
+        if not marked:
+            continue
+        token = marked.split()[0]
         if token.endswith(":") or token.startswith("("):
             continue
         names.append(token)
     return names
 
 
-def parse_config(text: str) -> dict[str, str]:
-    """`hermes -p … config show`, flattened to `{"browser.backend": "off"}`.
+def parse_value(text: str) -> str | None:
+    """One `config get --json` value as a string, or `None` where there is none.
 
-    Hermes's config is YAML and `config show` may print it nested, flat with
-    dotted keys, or as `key = value`; `10` records which. Rather than guess, this
-    reads all three: indentation opens a prefix, a dotted key is kept as typed,
-    and a value-less key is a parent rather than an empty string.
+    Hermes exits `0` for a key it has not got and prints `Config key not set: …`,
+    so *not JSON* is the signal rather than the exit code.
 
-    Deliberately not a YAML parser. Nothing here needs lists, multi-line strings
-    or anchors — two keys are read, `browser.backend` and `browser.cdp_url`, plus
-    whichever one names the model — and a real parser would mean a dependency
-    `01` did not take for the export itself.
+    An object or an array is `None` too, and deliberately: `config get model`
+    answers `{"default": …, "provider": …}`, which names a section rather than a
+    value. The value is `model.default`, and a caller that asked for the section
+    asked for the wrong thing — better that it reads as unset than that a dict
+    repr is printed to an operator as the name of their model, which is what `59`
+    was written to stop.
+
+    A bool arrives as `true` and a number as `120`, spelled the way the config
+    file spells them, because `mismatches` compares strings.
     """
-    flat: dict[str, str] = {}
-    stack: list[tuple[int, str]] = []
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        if not line.strip() or line.strip().startswith("#"):
-            continue
-        if line.strip().startswith("-"):
-            continue  # a list item: no key, nothing to flatten it under
-        indent = len(line) - len(line.lstrip())
-        key, separator, value = _split_setting(line.strip())
-        if not separator:
-            continue
-        while stack and stack[-1][0] >= indent:
-            stack.pop()
-        prefix = ".".join(name for _, name in stack)
-        dotted = f"{prefix}.{key}" if prefix else key
-        cleaned = _unquote(value.strip())
-        if cleaned:
-            flat[dotted] = cleaned
-        else:
-            stack.append((indent, key))
-    return flat
-
-
-def _split_setting(text: str) -> tuple[str, str, str]:
-    """`key: value` or `key = value`, whichever comes first."""
-    colon = text.find(":")
-    equals = text.find("=")
-    if colon == -1 and equals == -1:
-        return text, "", ""
-    if colon != -1 and (equals == -1 or colon < equals):
-        return text[:colon].strip(), ":", text[colon + 1 :]
-    return text[:equals].strip(), "=", text[equals + 1 :]
-
-
-QUOTE_PAIR = 2
-"""The opening quote and the closing one: a shorter value has no pair to strip."""
-
-
-def _unquote(value: str) -> str:
-    """Strip one layer of matching quotes, and a trailing comment."""
-    if len(value) >= QUOTE_PAIR and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
-    head = value.split(" #", 1)[0].strip()
-    return head
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str | int | float):
+        return str(value)
+    return None
 
 
 def mismatches(config: Mapping[str, str], expected: Mapping[str, str]) -> list[str]:

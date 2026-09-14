@@ -31,7 +31,7 @@ def make_settings(tmp_path: Path, fake: FakeHermes, port: int = 9222) -> Setting
 @pytest.fixture
 def fake(tmp_path: Path) -> FakeHermes:
     """Return a Hermes with a model already chosen, which `hermes setup model` does."""
-    return FakeHermes(root=tmp_path / "bin").write(version="hermes 1.0.0", config_extra={"agent.model": MODEL})
+    return FakeHermes(root=tmp_path / "bin").write(version="hermes 1.0.0", config_extra={"model.default": MODEL})
 
 
 # --------------------------------------------------------------------------- #
@@ -108,14 +108,22 @@ def test_a_failing_config_set_stops_setup(tmp_path: Path, fake: FakeHermes) -> N
 # --------------------------------------------------------------------------- #
 
 
-def test_the_model_is_read_from_whichever_key_holds_it() -> None:
-    for key in profiling.MODEL_KEYS:
-        assert profiling.configured_model({key: MODEL}) == MODEL
+def test_the_model_is_read_from_the_key_hermes_keeps_it_under() -> None:
+    """`model.default`, observed. Named literally, not taken from the constant.
+
+    The test this replaced looped over `MODEL_KEYS` and asserted the model was
+    readable under each — a tautology against the tuple, which passed for as long
+    as every one of the five guesses was wrong. Spelling the key here means a
+    change to it has to be made twice, on purpose, which is the point.
+    """
+    assert profiling.configured_model({"model.default": MODEL}) == MODEL
 
 
 def test_no_model_reads_as_none() -> None:
     assert not profiling.configured_model({"browser.backend": "off"})
-    assert not profiling.configured_model({"agent.model": "  "})
+    assert not profiling.configured_model({"model.default": "  "})
+    # The keys `09` guessed at. None of them is where Hermes keeps it.
+    assert not profiling.configured_model({"agent.model": MODEL})
 
 
 # --------------------------------------------------------------------------- #
@@ -149,7 +157,7 @@ def test_setup_prints_what_it_did(runner: CliRunner, tmp_path: Path, fake: FakeH
 
 
 def test_setup_with_no_model_exits_6_with_09s_words(runner: CliRunner, tmp_path: Path, fake: FakeHermes) -> None:
-    fake.write(version="hermes 1.0.0")  # no agent.model anywhere
+    fake.write(version="hermes 1.0.0")  # no model.default anywhere
     workspace = config_toml(tmp_path, fake)
     result = runner.invoke(cli.app, ["--workspace", str(workspace), "setup"], catch_exceptions=False)
     assert result.exit_code == ExitCode.ENVIRONMENT

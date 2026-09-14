@@ -23,7 +23,6 @@ from rehearsal import export as exporting
 from rehearsal import hermes as scripted
 from rehearsal import run as running
 
-from dataporter.hermes.client import parse_config
 from dataporter.hermes.profile import configured_model
 from dataporter.hermes.version import at_least, parse_version
 from fake_agent import ScriptedProbe
@@ -96,7 +95,7 @@ def test_the_version_is_new_enough_for_doctor(profile: Path, capsys: pytest.Capt
 def test_setup_creates_a_profile_and_reads_its_own_configuration(
     profile: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The round-trip `09`'s `setup` and `doctor` make: create, set, show."""
+    """The round-trip `09`'s `setup` and `doctor` make: create, set, ask."""
     assert scripted.main(["profile", "create", "dataporter"]) == 0
     assert scripted.main(["-p", "dataporter", "config", "set", "browser.backend", "off"]) == 0
     assert (
@@ -113,8 +112,12 @@ def test_setup_creates_a_profile_and_reads_its_own_configuration(
     assert scripted.main(["profile", "list"]) == 0
     assert capsys.readouterr().out == "dataporter\n"
 
-    assert scripted.main(["-p", "dataporter", "config", "show"]) == 0
-    config = parse_config(capsys.readouterr().out)
+    # One key a call, which is what the tool asks since `59`. `config show` is a
+    # display and nothing reads it.
+    config = {}
+    for key in ("browser.backend", "browser.cdp_url", scripted.MODEL_KEY):
+        assert scripted.main(["-p", "dataporter", "config", "get", key, "--json"]) == 0
+        config[key] = json.loads(capsys.readouterr().out)
     assert config["browser.backend"] == "off"
     assert config["browser.cdp_url"] == "http://127.0.0.1:9222"
     # `doctor` fails a profile with no model, and a rehearsal has none: the value

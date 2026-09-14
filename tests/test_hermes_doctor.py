@@ -40,7 +40,7 @@ def chrome() -> Iterator[FakeChrome]:
 def fake(tmp_path: Path) -> FakeHermes:
     return FakeHermes(root=tmp_path / "bin").write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answer=ANSWER,
         append_probe=True,
     )
@@ -230,7 +230,7 @@ def test_a_key_the_profile_lost_is_named(tmp_path: Path, fake: FakeHermes, chrom
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL, "browser.backend": "browser-use"},
+        config_extra={"model.default": MODEL, "browser.backend": "browser-use"},
         config_drop=["browser.cdp_url"],
     )
     results = run_checks(settings)
@@ -309,7 +309,7 @@ def test_an_answer_without_the_nonce_fails_the_attach_check(
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answer="I snapshotted the tab.\n",
     )
     adopt_instead(monkeypatch, chrome)
@@ -331,7 +331,7 @@ def test_an_answer_without_our_tab_means_it_is_not_our_chrome(
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answer="__NONCE__\nabout:blank\n",
     )
     adopt_instead(monkeypatch, chrome)
@@ -350,7 +350,7 @@ def test_a_hermes_that_exits_non_zero_fails_the_check_it_was_running(
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answer=ANSWER,
         exit=1,
         stderr="the model refused\n",
@@ -375,7 +375,7 @@ def test_a_hermes_that_never_finishes_fails_the_check(
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answer=ANSWER,
         sleep=30,
     )
@@ -396,7 +396,7 @@ def test_a_helper_that_never_ran_fails_even_with_the_nonce(
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answer=ANSWER,
         append_probe=False,
     )
@@ -595,7 +595,7 @@ def test_a_helper_answer_without_the_nonce_fails_that_check(
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answers=[ANSWER, "I ran it, honestly.\n"],
         append_probe=True,
     )
@@ -659,7 +659,7 @@ def test_a_failing_helper_task_is_reported_as_that_check(
     profiling.run_setup(settings)
     fake.write(
         version="hermes 1.0.0",
-        config_extra={"agent.model": MODEL},
+        config_extra={"model.default": MODEL},
         answer=ANSWER,
         append_probe=True,
         exits=[0, 1],

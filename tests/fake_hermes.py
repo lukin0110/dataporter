@@ -66,8 +66,29 @@ def save():
     STATE.write_text(json.dumps(state), encoding="utf-8")
 
 
-def rendered(config):
-    return "".join(key + ": " + config[key] + "\\n" for key in sorted(config))
+def merged():
+    config = dict(state["config"])
+    config.update(spec.get("config_extra", {}))
+    for key in spec.get("config_drop", []):
+        config.pop(key, None)
+    return config
+
+
+def displayed(config):
+    # What the real `hermes config show` prints, in shape: a decorated display
+    # with capitalised labels, and the model as a dict repr rather than a value.
+    # `59` observed it. The fake prints it so that nothing in the tool can
+    # quietly go back to parsing a screen.
+    lines = ["", "  Hermes Configuration", "", "* Model"]
+    model = config.get("model.default")
+    if model is not None:
+        lines.append("  Model:        {'default': '" + model + "', 'provider': 'custom'}")
+    for key in sorted(config):
+        if key == "model.default":
+            continue
+        label = key.rsplit(".", 1)[-1].replace("_", " ").capitalize()
+        lines.append("  " + label + ":        " + config[key])
+    return "\\n".join(lines) + "\\n"
 
 
 if "--version" in argv:
@@ -75,7 +96,12 @@ if "--version" in argv:
     sys.exit(spec.get("version_exit", 0))
 
 if argv[:2] == ["profile", "list"]:
-    sys.stdout.write("".join(name + "\\n" for name in state["profiles"]))
+    # The column table the real one prints: a header, a rule, then a row a
+    # profile with the active one marked. `59` observed it.
+    rows = [" Profile        Model", " " + "─" * 15 + "    " + "─" * 20]
+    for index, name in enumerate(state["profiles"]):
+        rows.append(" " + ("◆" if index == 0 else " ") + name + "      a/model")
+    sys.stdout.write("\\n".join(rows) + "\\n")
     sys.exit(spec.get("list_exit", 0))
 
 if argv[:2] == ["profile", "create"]:
@@ -92,12 +118,17 @@ if rest[:2] == ["config", "set"]:
     sys.exit(spec.get("set_exit", 0))
 
 if rest[:2] == ["config", "show"]:
-    merged = dict(state["config"])
-    merged.update(spec.get("config_extra", {}))
-    for key in spec.get("config_drop", []):
-        merged.pop(key, None)
-    sys.stdout.write(spec.get("config_show", rendered(merged)))
+    sys.stdout.write(spec.get("config_show", displayed(merged())))
     sys.exit(spec.get("show_exit", 0))
+
+if rest[:2] == ["config", "get"]:
+    value = merged().get(rest[2])
+    if value is None:
+        # What Hermes does for a key it has not got, exit `0` included.
+        sys.stdout.write("Config key not set: " + rest[2] + "\\n")
+    else:
+        sys.stdout.write(json.dumps(value) + "\\n")
+    sys.exit(spec.get("get_exit", 0))
 
 if "-z" in rest:
     index = rest.index("-z")

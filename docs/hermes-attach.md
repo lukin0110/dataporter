@@ -52,8 +52,33 @@ The ladder, ordered by how much of [`07`](../specs/impl/07-browser-session.md) s
 Pasted verbatim from `hermes -p dataporter config show`, so that the keys `setup` writes
 can be compared against the keys Hermes really holds.
 
+The spike itself is still unrun — this is not its record. What is captured here is the
+*shape* of the output, looked at on 2026-09-14 against Hermes Agent v0.21.2 because
+`setup` was failing on it, and acted on by [`59`](../specs/impl/59-hermes-configuration.md):
+`config show` is a display and the tool no longer reads it. The keys are compared by asking
+`hermes -p dataporter config get <key> --json`, one at a time.
+
 ```text
-not yet captured
+┌─────────────────────────────────────────────────────────┐
+│              ☤ Hermes Configuration                     │
+└─────────────────────────────────────────────────────────┘
+
+◆ Paths
+  Config:       ~/.hermes/profiles/dataporter/config.yaml
+  Secrets:      ~/.hermes/profiles/dataporter/.env
+  Install:      ~/.hermes/hermes-agent
+
+◆ Model
+  Model:        {'default': 'us.anthropic.claude-sonnet-5', 'provider': 'custom:bedrock-mantle'}
+```
+
+```text
+$ hermes -p dataporter config get browser.backend --json
+"off"
+$ hermes -p dataporter config get model.default --json
+"us.anthropic.claude-sonnet-5"
+$ hermes -p dataporter config get nope.not_a_key --json
+Config key not set: nope.not_a_key        # and exits 0
 ```
 
 ## Notes

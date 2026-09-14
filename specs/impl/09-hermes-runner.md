@@ -172,6 +172,9 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
   and `key = value` all read, because nobody has seen Hermes's output yet and `10` is
   where it gets pinned. Not a YAML parser — two keys are read, plus whichever names the
   model — so no dependency `01` declined for the export itself.
+  **Corrected by [`59`](59-hermes-configuration.md):** it is none of the three. `config
+  show` is a display, and the configuration is asked for a key at a time with
+  `config get --json`.
 - `doctor`'s checks are a generator, consumed one line at a time: the two Hermes tasks
   take a minute each, and ten lines arriving at once after two minutes reads like a hang.
   It stops itself after the first failure as well as being stopped by the CLI, so
@@ -212,6 +215,10 @@ our Chrome, and turn its final answer into a typed result. `setup` creates the p
   above `0.1.0`.
 - `MODEL_KEYS` and the skills directory are both guesses at Hermes's own spelling. Each is
   one tuple and one function, named in `profile.py` and `skill.py`, for `10` to correct.
+  **The first of these happened**, and not by the spike: the guess held for five wrong
+  names until a real profile reported `no model configured` with a model configured.
+  [`59`](59-hermes-configuration.md) replaced the tuple with `model.default`, observed. The
+  skills directory is still a guess.
 - **Nothing tells Hermes where its home is.** `hermes.home` is only *our* view of the
   profile tree: the subprocess environment is built from scratch and carries no
   Hermes-home variable, so `setup` installing a skill and `doctor` finding it again prove

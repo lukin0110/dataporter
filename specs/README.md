@@ -99,6 +99,7 @@ Tooling — no milestone, may land at any time
   22  Test performance: the fast/slow split, and the cost underneath it (both landed)
   23  Library operations: every command's body in the module that owns it, the CLI an interface
   25  Distribution: metadata, `py.typed`, a licence, and a wheel proven outside the checkout
+  59  Hermes's configuration: asked for a key at a time, never read off its screen
 
 M6 — Operability
   24  Non-interactive mode: credentials, an agentic sign-in, headless Chrome, never a keypress
@@ -345,6 +346,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | 56 | `session status` and `session logout` | §74, §76 | Not started |
 | 57 | The export ask without a page | §77 | Not started |
 | 58 | The paperwork | §76, §78, §80 | Not started |
+| [59](impl/59-hermes-configuration.md) | Asking Hermes for its configuration | — tooling | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -375,9 +377,12 @@ Every section §2–§19 of the first brief is claimed by at least one slice. §
 and is claimed by all of them. Of the second brief, §21–§27 are claimed by `26`–`29`;
 §20 is that brief's goal and is claimed by all four, and §28 is its list of what is
 deliberately left — a section no slice should claim until one of its items is built.
-`22`, `23` and `25` claim none: they are the slices that exist because of how the repo is
-worked on and how it is consumed rather than because of what the brief asks for, and they
-are outside the milestone gates for the same reason.
+`22`, `23`, `25` and `59` claim none: they are the slices that exist because of how the repo
+is worked on and how it is consumed rather than because of what the brief asks for, and they
+are outside the milestone gates for the same reason. `59` is `Built` rather than `Done`
+because what would finish it is a `setup` and a `doctor` against a real Hermes reported by
+somebody other than its author; the reading it corrects has been exercised against one
+(v0.21.2, 2026-09-14), which is more than `09` ever had.
 
 Of the third brief, §30–§39 are claimed by `30` and `31`: `30` takes the store, the
 snapshot, the fetch and import from a snapshot, `31` takes the ask, the source session

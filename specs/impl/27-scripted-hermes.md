@@ -34,9 +34,13 @@ about whether a model can follow the skill (§27).
 - **`rehearsal/hermes.py`** — the executable. `--version` (`hermes 1.0.0`),
   `profile list`, `profile create`, `config set`, `config show`, and
   `-p … -z <prompt> --toolsets … --usage-file …`. The profile is a JSON file
-  whose path arrives in `REHEARSAL_HERMES_STATE`; `config show` prints flat
-  dotted keys and adds `agent.model: none/scripted-agent`, because `setup` never
-  sets a model and `doctor` fails a profile that has none.
+  whose path arrives in `REHEARSAL_HERMES_STATE`; it adds
+  `model.default: none/scripted-agent`, because `setup` never sets a model and
+  `doctor` fails a profile that has none. Since
+  [`59`](59-hermes-configuration.md) it also answers `config get <key> --json`,
+  which is what the tool reads, and `config show` prints a display nothing parses
+  — flat dotted keys were what `09` guessed the real one printed, and they are
+  not what it prints.
 - **Five tasks, dispatched on what the prompt contains**: a migration
   (`short_id:`), `20`'s follow-up probe (`question file:`), `24`'s sign-in
   (`login url:`), and `doctor`'s two — the attach check (`remote debugging on`,
