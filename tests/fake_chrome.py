@@ -336,6 +336,8 @@ class FakeChrome:
             "Input.insertText",
             "Input.dispatchKeyEvent",
             "DOM.setFileInputFiles",
+            "Browser.setDownloadBehavior",
+            "Browser.cancelDownload",
         }:
             return {"result": {}}
         return {"error": {"code": -32601, "message": f"'{call.method}' wasn't found"}}

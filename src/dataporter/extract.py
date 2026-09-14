@@ -57,7 +57,8 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from dataporter import PROGRAM_NAME, log, plan, signin, sources, store
-from dataporter.browser import export_page, launcher, sites
+from dataporter import trace as tracing
+from dataporter.browser import download, export_page, launcher, sites
 from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
 from dataporter.config import Settings
@@ -125,6 +126,15 @@ UNREACHABLE = "cannot reach the download host ({reason})"
 TOO_LARGE = "the download is larger than store.max_download_bytes ({limit} bytes)"
 NOT_A_ZIP = "the download is not a zip archive"
 LOOKS_LIKE = "the archive looks like a {looks} export, not a {asked} one: {display}"
+LINK_IS_A_PAGE = (
+    "the link led to a page, not an archive (HTTP {code}); sign in with: "
+    "{program} login --source {source} --account {account}, then try again"
+)
+DOWNLOAD_STALLED = "the download stalled for {seconds:g}s; try again"
+DOWNLOAD_CANCELLED = "the browser cancelled the download; try again"
+"""What a fetch through the session says when the link did not become an
+archive (§63). A page where an archive should be is what a signed-out link
+looks like, so the remedy named is the sign-in."""
 NOT_AN_ARCHIVE = "--from takes the vendor's archive (.zip); a directory is not one"
 NOT_A_ZIP_FILE = "--from takes the vendor's archive (.zip): {path}"
 NO_SUCH_FILE = "no such file: {path}"
@@ -147,11 +157,6 @@ button — a race nobody will see, and one that has no record in hand to quote.
 NO_ASK_OPEN = "no ask is open for {source}/{account}"
 INVALID_ASK = "invalid {filename}: {path}"
 ABANDONED = "Abandoned the open ask for {source}/{account}."
-
-NOT_YET = "not implemented in this build: {what}"
-"""Exit `69`, `30`'s answer for a mode a later slice builds: the fetch through
-a ChatGPT session is `45`'s, and a source whose link wants the session says so
-rather than downloading a page."""
 
 EXPORT_BUTTON_MISSING = "export button not found on {path}"
 NOT_CONFIRMED = "no confirmation that the export was requested"
@@ -360,15 +365,23 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     return ExtractOutcome()
 
 
-def _sign_in_to_source(settings: Settings, browser: "BrowserSession", source: "Source", *, sink: Sink) -> None:
+def _sign_in_to_source(
+    settings: Settings,
+    browser: "BrowserSession",
+    source: "Source",
+    *,
+    sink: Sink,
+    url: str | None = None,
+) -> None:
     """Have the source account signed in, in whichever mode this is (§35).
 
-    The probe is made against the export page rather than against `/new`, which
-    is what keeps the wall at two doors: `/new` is outside the extraction
-    surface, and a tool that opens it to find out whether it is signed in has
-    opened a new chat in the account it promised to take one action in.
+    The ask probes the export page rather than `/new`, which is what keeps the
+    wall at two doors: `/new` is outside the extraction surface, and a tool
+    that opens it to find out whether it is signed in has opened a new chat in
+    the account it promised to take one action in. The fetch (`45`) probes the
+    source's own root, since it has no business on the export page.
     """
-    url = sites.export_page_url(source)
+    url = sites.export_page_url(source) if url is None else url
     state = browser_session.current_state(browser, url, hosts=source.hosts)
     if not export_page.signed_out(state, source):
         return
@@ -424,30 +437,43 @@ def fetch(
     *,
     open_url: Callable[..., Any] = urllib.request.urlopen,  # ruff: ignore[suspicious-url-open-usage] - the scheme is checked before any request
     sink: Sink = DISCARD,
+    flags: Sequence[str] = (),
 ) -> ExtractOutcome:
-    """Download the link the vendor emailed and file it as a snapshot (§31).
+    """Download the link the vendor emailed and file it as a snapshot (§31, §63).
 
     The scheme is checked before any request is made: a link that is not
     `https` is not a link this tool follows, and finding that out from the
     server would mean having spoken to it.
+
+    Two ways to download, and the source says which (§63): without a browser,
+    through `urllib`, where the vendor allows it; through the source session's
+    own tab, the browser making the download and the tool catching it, where
+    the vendor requires the download to be made signed in. What follows the
+    download — the check that it is a zip, the parse, the filing — is one path.
+    Unattended, a session-bound fetch requires the credentials before the
+    browser starts, as the ask does: a fetch that stopped at a sign-in form
+    after following the link would have spent a link that may be single-use.
     """
     home = _account_home(settings)
     source = sources.of(settings)
     log.enable_run_log(settings.logs_dir)
     if urllib.parse.urlsplit(link).scheme != LINK_SCHEME:
         raise FetchError(LINK_NOT_HTTPS)
-    if source.fetch_needs_session:
-        # Until `45`: the fetch through the session is not built.
-        sink.note(NOT_YET.format(what=f"a fetch through the {source.display_name} session"))
-        return ExtractOutcome(exit_code=ExitCode.NOT_IMPLEMENTED)
+    if source.fetch_needs_session and settings.non_interactive:
+        signin.require_credentials(settings)
 
     ask = read_ask(settings)
     asked_at = None if ask is None else ask.asked_at
     moment = datetime.now(UTC) if ask is None else ask.asked_at
-    temp = home / TMP_DIRNAME / f"{uuid.uuid4()}.zip"
-    temp.parent.mkdir(parents=True, exist_ok=True)
+    temp_dir = home / TMP_DIRNAME
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp: Path | None = None
     try:
-        size, digest = _download(settings, link, temp, open_url=open_url)
+        if source.fetch_needs_session:
+            temp, size, digest = _download_through_session(settings, source, link, temp_dir, sink=sink, flags=flags)
+        else:
+            temp = temp_dir / f"{uuid.uuid4()}.zip"
+            size, digest = _download(settings, link, temp, open_url=open_url)
         if not zipfile.is_zipfile(temp):
             raise FetchError(NOT_A_ZIP)
         filing = _filing(
@@ -466,7 +492,8 @@ def fetch(
         # Whatever happened — a refused link, a body that was not an export, a
         # store that would not take it — the bytes under the account home are
         # not something anybody asked us to keep.
-        temp.unlink(missing_ok=True)
+        if temp is not None:
+            temp.unlink(missing_ok=True)
     if ask is not None:
         # After `COMPLETE`, never before: an ask deleted on the way to a filing
         # that then failed is an ask nobody can fetch against any more.
@@ -515,6 +542,59 @@ def file(settings: Settings, path: Path, *, sink: Sink = DISCARD) -> ExtractOutc
     directory, snapshot = store.Store(settings.store_dir).file_archive(path, filing)
     sink.block(block(settings, snapshot, first=FILED.format(name=path.name), no_ask=False))
     return ExtractOutcome(snapshot=snapshot, path=directory)
+
+
+def _download_through_session(
+    settings: Settings,
+    source: "Source",
+    link: str,
+    into: Path,
+    *,
+    sink: Sink,
+    flags: Sequence[str],
+) -> tuple[Path, int, str]:
+    """Open the source session, make sure it is signed in, and catch the download (§63).
+
+    The session is opened and signed in exactly as the ask opens it — the
+    window and the wait interactively, the credentials and the walk unattended
+    — and probed at the site's root rather than at the export page, since the
+    fetch has no business there. Then, and only under `trace.redacting`, the
+    tab is pointed at the link (§66). The file comes back where the browser
+    put it, named by its guid; the caller files it and deletes it.
+    """
+    browser = launcher.launch(settings, source.login_url)
+    try:
+        with watching.watched(
+            settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
+        ) as traced:
+            _sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            with tracing.redacting():
+                try:
+                    got = download.fetch(settings, browser, link, into=into, hosts=source.hosts)
+                except download.DownloadStopped as exc:
+                    raise _not_an_archive(settings, source, exc) from exc
+            traced.exit_code = ExitCode.OK
+    finally:
+        browser.close()
+    return got.path, got.bytes, _digest(got.path)
+
+
+def _not_an_archive(settings: Settings, source: "Source", stopped: download.DownloadStopped) -> FetchError:
+    """Return the line an operator reads when the link did not become an archive."""
+    account = _account(settings)
+    if stopped.reason == download.REFUSED:
+        return FetchError(
+            LINK_REFUSED.format(code=stopped.status, program=PROGRAM_NAME, source=source.name, account=account)
+        )
+    if stopped.reason == download.PAGE:
+        return FetchError(
+            LINK_IS_A_PAGE.format(code=stopped.status, program=PROGRAM_NAME, source=source.name, account=account)
+        )
+    if stopped.reason == download.TOO_LARGE:
+        return FetchError(TOO_LARGE.format(limit=settings.store.max_download_bytes))
+    if stopped.reason == download.STALLED:
+        return FetchError(DOWNLOAD_STALLED.format(seconds=settings.timeouts.download_idle_s))
+    return FetchError(DOWNLOAD_CANCELLED)
 
 
 def _download(
@@ -711,7 +791,7 @@ def extract_command(
     if request.abandon:
         return abandon(settings, sink=sink)
     if request.link is not None:
-        return fetch(settings, request.link, sink=sink)
+        return fetch(settings, request.link, sink=sink, flags=flags)
     if request.from_path is not None:
         return file(settings, request.from_path, sink=sink)
     return ask(settings, sink=sink, flags=flags)

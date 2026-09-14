@@ -254,7 +254,11 @@ class Watch:
         request = params.get("request") or {}
         url = str(request.get("url", ""))
         kind = str(params.get("type", ""))
-        if urlsplit(url).hostname not in self.site.hosts or kind not in WATCHED_TYPES:
+        if kind not in WATCHED_TYPES:
+            return
+        if urlsplit(url).hostname not in self.site.hosts and not (kind == "Document" and tracing.is_redacting()):
+            # Every hop of a fetch is recorded, whatever host the vendor sends
+            # the link through (§65, §66); otherwise the site's own hosts only.
             return
         self._numbered += 1
         identifier = f"r{self._numbered}"
