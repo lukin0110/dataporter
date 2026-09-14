@@ -186,7 +186,7 @@ class SignIn:
             )
             return SignInOutcome(signed_in=False, reason=_phrase(reason), detail=form.error)
         result = login_form.fill_and_submit(session, credentials, timeout_s=self.settings.timeouts.signin_s)
-        signed_in = result.signed_in and browser_session.signed_in(session)
+        signed_in = result.signed_in and _signed_in(self.settings, session)
         _logger.info(
             "sign-in",
             extra={
@@ -226,6 +226,12 @@ def needs_person(outcome: SignInOutcome) -> str:
     return NEEDS_PERSON.format(reason=outcome.reason, program=PROGRAM_NAME)
 
 
+def _signed_in(settings: Settings, session: BrowserSession) -> bool:
+    """Probe whichever site this invocation signs in to (`42`)."""
+    whose = browser_session.whose(settings)
+    return browser_session.signed_in(session, whose.url, hosts=whose.hosts)
+
+
 def ensure_signed_in(
     settings: Settings,
     session: BrowserSession,
@@ -240,7 +246,7 @@ def ensure_signed_in(
     keyboard is what the form wanted. `True` when this call did the signing in,
     so that a run can count it.
     """
-    if browser_session.signed_in(session):
+    if _signed_in(settings, session):
         return False
     if not settings.non_interactive:
         raise AuthError(detail=browser_session.SIGNED_OUT)

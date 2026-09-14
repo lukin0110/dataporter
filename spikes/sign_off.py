@@ -51,7 +51,7 @@ from dataporter import report as reporting
 from dataporter import seed as seeding
 from dataporter import state as stating
 from dataporter.exit_codes import ExitCode
-from dataporter.export import CONVERSATIONS_FILE, ExportSource
+from dataporter.export import CONVERSATIONS_FILE, ExportView
 from dataporter.plan import MigrationPlan
 from dataporter.render import short_id
 from dataporter.report import Report
@@ -648,7 +648,7 @@ def export_digest(export: Path) -> str:
     this. Which makes the comparison meaningful: it is the number the run itself
     recorded, not one this script invented afterwards.
     """
-    with ExportSource.open(export) as source:
+    with ExportView.open(export) as source:
         return hashlib.sha256(source.read(CONVERSATIONS_FILE)).hexdigest()
 
 

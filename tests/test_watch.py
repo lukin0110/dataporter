@@ -566,3 +566,68 @@ def test_a_thread_that_will_not_stop_keeps_its_reference(monkeypatch: pytest.Mon
     stuck.join(timeout=WAIT_S)
     watch.stop()
     assert not watch.running
+
+
+def test_a_second_host_is_named_and_gets_a_certificate_of_its_own(tmp_path: Path) -> None:
+    """`42`: a site whose sign-in passes through a second host says which host each line is on.
+
+    A one-host site writes no `host` on a navigation or a request — every line above
+    is what `35` wrote — and a certificate once; a two-host site names the other host
+    and records its certificate too.
+    """
+    site = Site("chatgpt", "chatgpt.com", {}, hosts=("chatgpt.com", "auth.openai.com"))
+    security = {"issuer": "chatgpt-mock", "subjectName": "auth.openai.com"}
+    with Browser(FakePage(url="https://chatgpt.com/")) as made:
+        trace = tracing.Trace.open(
+            made.settings(tmp_path), command="login", flags=(), site=site, chrome=None, agent=None
+        )
+        watch = watching.Watch.start(trace, made.client, site)
+        assert watch.running
+        try:
+            made.chrome.push(navigated("https://auth.openai.com/log-in?u=1"))
+            made.chrome.push(request("1", "https://auth.openai.com/log-in/email", kind="Document"))
+            made.chrome.push(response("1", "https://auth.openai.com/log-in/email", security=security))
+            made.chrome.push(response("2", "https://chatgpt.com/", security={**security, "subjectName": "chatgpt.com"}))
+            made.chrome.push(request("3", "https://chatgpt.com/api/chats", kind="XHR", method="GET"))
+            made.chrome.push(request("4", "https://accounts.google.com/o/oauth2", kind="Document"))
+            wait_for(trace.path, 5)
+            time.sleep(0.3)
+        finally:
+            watch.stop()
+            trace.close()
+    assert observations(trace.path) == [
+        {"kind": "observation", "what": "navigation", "host": "auth.openai.com", "path": "/log-in", "query": ["u"]},
+        {
+            "kind": "observation",
+            "what": "request",
+            "id": "r1",
+            "method": "POST",
+            "host": "auth.openai.com",
+            "path": "/log-in/email",
+            "query": [],
+            "type": "document",
+        },
+        {
+            "kind": "observation",
+            "what": "certificate",
+            "host": "auth.openai.com",
+            "issuer": "chatgpt-mock",
+            "subject": "auth.openai.com",
+        },
+        {
+            "kind": "observation",
+            "what": "certificate",
+            "host": "chatgpt.com",
+            "issuer": "chatgpt-mock",
+            "subject": "chatgpt.com",
+        },
+        {
+            "kind": "observation",
+            "what": "request",
+            "id": "r2",
+            "method": "GET",
+            "path": "/api/chats",
+            "query": [],
+            "type": "xhr",
+        },
+    ]

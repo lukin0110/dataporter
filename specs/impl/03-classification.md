@@ -128,7 +128,7 @@ Resolved while building:
   entries, which is a correction owed to `05`.
 - **Both path components are checked before they are joined.** `file_name` and the
   conversation uuid come from the export, so `../../etc/passwd` must not resolve out of the
-  attachments directory — the finding `02`'s review raised against `ExportSource.read`. A
+  attachments directory — the finding `02`'s review raised against `ExportView.read`. A
   rejected name is reported as `bytes_not_in_export`, because that is what it is.
 - **An empty conversation reports no seed at all** (`estimated_seed_chars` and `chunk_count`
   both `0`) rather than the length of an envelope wrapped around nothing. Every other

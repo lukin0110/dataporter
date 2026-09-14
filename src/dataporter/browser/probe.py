@@ -49,10 +49,13 @@ from pydantic import BaseModel, ConfigDict
 from dataporter import log
 from dataporter.browser.cdp import Page
 from dataporter.browser.site import Site
+from dataporter.sources import claude as claude_source
 
 _logger = log.get_logger(__name__)
 
-CLAUDE_HOST = "claude.ai"
+CLAUDE_HOST = claude_source.HOST
+"""Spelled once, in the source (`42`): the destination is a Claude account
+too, and a host spelled twice is a host that drifts."""
 NEW_CHAT_URL = f"https://{CLAUDE_HOST}/new"
 
 _CHAT_PATH = re.compile(

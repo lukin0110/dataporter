@@ -44,7 +44,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from dataporter import __version__, log
+from dataporter import __version__, log, sources
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import FetchError, StoreError, UsageError
@@ -52,16 +52,17 @@ from dataporter.exit_codes import ExitCode
 
 _logger = log.get_logger(__name__)
 
-SOURCES: tuple[str, ...] = ("claude",)
+SOURCES: tuple[str, ...] = tuple(sources.REGISTRY)
 """The vendors this build can read (brief `03` §34).
 
 Extraction from a source the tool does not have is refused, not attempted, so
-this is a list and not a pattern. ChatGPT and Gemini are each a source beside
-this one — a sign-in, a page where the export is asked for, and an archive shape
-— and nothing in the store, the manifest or the commands changes when one lands.
+this is a list and not a pattern. Since `42` it is the `sources` registry's
+keys: ChatGPT and Gemini are each a `Source` beside Claude's — a sign-in, a
+page where the export is asked for, and an archive shape — and nothing in the
+store, the manifest or the commands changes when one lands.
 """
 
-SOURCE_NAMES: dict[str, str] = {"claude": "Claude"}
+SOURCE_NAMES: dict[str, str] = {name: item.display_name for name, item in sources.REGISTRY.items()}
 """How each source is spelled in a block an operator reads.
 
 A table rather than `str.capitalize`, which renders `chatgpt` as `Chatgpt`: a
