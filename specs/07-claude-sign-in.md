@@ -7,55 +7,58 @@ words used here are defined in [`CONTEXT.md`](../CONTEXT.md).
 ## 72. Goal
 
 Give the tool a **Claude sign-in that works**. claude.ai has no password sign-in: a person
-enters an address, the vendor emails a sign-in link, and redeeming that link is what signs
-them in. Everything the tool does with a Claude account today assumes otherwise — `24`'s
-unattended run types an email and a password into a form, and
+enters an address, the vendor emails a link, and redeeming that link is what signs them in.
+Everything the tool does with a Claude account today assumes otherwise — `24`'s unattended
+run types an email and a password into a form, and
 [`docs/LIMITATIONS.md`](../docs/LIMITATIONS.md) states *password sign-in only* as a
-limitation by construction. That path cannot succeed, on the source side or the
-destination side, and this brief replaces it.
+limitation by construction. That path cannot succeed, on the source side or the destination
+side, and this brief replaces it.
 
-It replaces it with the shape brief 03 already built for the export and brief 06 already
-proved: an ask, an email, a link a person hands back.
+It replaces it with two commands and a browser:
 
 ```text
 Claude account
       │
-      │ login: the sign-in ask                ─┐
-      ▼                                        │ the source session:
-   an email ──── the person ──── a link        │ a credential, not a profile
-      │                                        │ ([ADR 0008](../docs/adr/0008-claude-is-an-api-source.md))
-      │ login --link: signed in, and kept     ─┘
+      │ login: a window opens at the sign-in page
+      ▼
+   the person enters the address, and clears whatever is asked of them
+      │
+      │ an email ──── a link ──── login --link: spent in the same profile
       ▼
    extract: the export ask ───► an email ───► extract --link ───► Snapshot
 
 ```
 
-Claude becomes an **API source** (ADR 0008): the tool asks it directly and holds the
-credential the vendor issues, rather than driving a browser and never learning its cookie
-as §63 requires of a source driven in one. §63 is unchanged for ChatGPT and for Gemini
-when it lands; this brief is the exception, and ADR 0008 is where the exception is
-recorded.
+The sign-in is **in the browser, and it has to be**
+([ADR 0008](../docs/adr/0008-the-sign-in-stays-in-the-browser.md)). A command-line tool
+making those calls itself was designed and withdrawn: `send_magic_link` carries an hCaptcha
+attestation and needs a cleared Cloudflare cookie beside it, and the tool produces neither.
+Brief 06 §63 therefore stands unamended — the session's cookie never leaves the browser,
+and the tool never learns what it is.
 
 Nothing about the store, the snapshot or the archive changes. A Claude snapshot is what it
 was, filed where it was, by the command that filed it.
 
-## 73. The sign-in ask and the sign-in link
-
-Two commands, in `extract`'s shape (§31, §60) — an ask, then the same verb with the link
-the vendor sent:
+## 73. The two commands
 
 ```bash
-dataporter login --source claude --account work --email me@example.com
+dataporter login --source claude --account work
 dataporter login --source claude --account work --link <url>
 
 ```
 
+The first opens a window at Claude's sign-in page and leaves when the vendor says the link
+is on its way. It does not wait for the account to be signed in, because it cannot be: the
+next step is in a mailbox.
+
 ```text
 Claude sign-in — work
 
-Link requested 2026-09-30 18:12 UTC.
-Claude will email a sign-in link to me@example.com.
-The link signs in once and expires. Do not open it in a browser. When it arrives:
+A window is open at Claude's sign-in page. Enter the account's address
+there, and clear anything Claude asks of you.
+
+Claude will email a sign-in link. The link signs in once and expires, and
+it must be spent here rather than opened. When it arrives:
 
   dataporter login --source claude --account work --link <url>
 
@@ -63,130 +66,105 @@ The link signs in once and expires. Do not open it in a browser. When it arrives
 
 ```text
 Signed in to Claude — work
-Session expires 2026-10-30 18:12 UTC.
+Session stored in ~/.dataporter/accounts/claude/work/browser-profile/.
 
 ```
 
-Both blocks are golden (`specs/README.md`), as brief 03's and brief 06's are. The third
-line of the first block is the one that earns its place: the link is single-use, so a
-person who opens it in a mail client has spent it, and the remedy — asking again — is the
-next thing the block would otherwise have to explain.
+Both blocks are golden (`specs/README.md`), as brief 03's and brief 06's are. Two sentences
+earn their place. *Clear anything Claude asks of you* is the attestation of §78, named
+without naming a mechanism that will change. *Spent here rather than opened* is the trap:
+the link is single-use, and a person who clicks it in their mail client has signed in a
+browser the tool does not have and spent the link doing it.
 
-The address is given once. `--email` is required on the first sign-in for an account and
-remembered in the account home; afterwards the account's label is the whole of what a
-person types. The destination account, which has no label, falls back to
-`DATAPORTER_AUTH__EMAIL` as `24` left it.
+The second command drives the account's own profile to the link. That works **because the
+first used the same profile**: the half-finished sign-in is already in that cookie jar, and
+the link completes it where it started. A link that is refused or expired stops with exit
+`3` and names the first command as the remedy.
 
-A second sign-in ask **supersedes** the first rather than being refused. This is where the
-sign-in ask parts company with the export ask, which §31 refuses while one is open and
-makes a person say `--abandon`: an export ask is expensive and rate-limited at the vendor,
-and *the mail never arrived, send another* is the ordinary course of a sign-in rather than
-a mistake to be guarded against. A link that is refused or expired stops with exit `3` and
-names the ask as the remedy; the record survives, so asking again is one command.
+There is no `--email` flag and no sign-in ask on the tool's side. The address is typed into
+the vendor's page by the person whose address it is, which is also why nothing here ever
+holds one.
 
-## 74. What the tool holds, and what never sees it
+## 74. What the tool never sees
 
-The credential the vendor issues is the source session (`CONTEXT.md`). It lives in the
-account home at `0600`, beside the open ask and never in the store, and it is written the
-way `31` writes an ask: created exclusively, and only once the vendor has answered.
+The sign-in link is a credential while it lives, and is handled as the export link is
+(§66): validated as `https` before anything is driven to it, never written to the store,
+never kept after it is spent, and never logged — it joins the run log's forbidden fields,
+and `46`'s guard already strips a query from every URL a trace records, which is what keeps
+a link out of one.
 
-It is a credential in §32's sense, so it is handled as the link is (§66). It joins the run
-log's forbidden fields; it reaches no log line, no action log and no trace; it is never
-printed, never passed to a helper, and never present in the environment the agent is built
-with. What a trace of a sign-in carries is what a trace has always carried: hosts, and
-never paths, queries or fragments — `46`'s guard already strips a query from every URL it
-records, which is what keeps a sign-in link out of one.
-
-`session logout` deletes the credential **and** the browser profile. Deleting one and not
-the other would sign a person back in on their next command, and *I logged out and it came
-back* is not a thing this tool does. Its promise is unchanged and still literally true: the
-deletion is local, the account is untouched, and a session on another machine is not ended
-by it.
+What the tool holds afterwards is what it has always held: a browser profile.
+No credential, no token, no expiry — §63's rule, unchanged, and `session logout` still
+deletes a profile and says, truthfully, that the deletion is local and the account is
+untouched.
 
 ## 75. The destination account
 
-The destination account is a Claude account, so it signs in by link too, with the same
-command and the same words. It differs in one thing: Hermes drives claude.ai in a browser
-to perform the migration, and a credential in a file signs no browser in. So for the
-destination the tool **plants** the cookie into its profile over CDP — at the moment the
-link is redeemed, and again on demand before a run that needs the profile signed in, so a
-wiped or expired profile costs no second email.
-
-This is the half of ADR 0008 that was considered and taken here rather than for the source:
-the tool sees the cookie, hands it to Chrome, and keeps it only where §74 says it is kept.
+Nothing new. The destination is a Claude account, its session is the profile `07` opens,
+and a person has always signed it in through that window — with a link now, as everywhere
+else. What it loses is the same thing the source loses: `24`'s unattended password path,
+which never worked here either.
 
 ## 76. What a cron job loses
 
-There is no unattended Claude sign-in any more, and there will not be one: signing in
-requires reading an email, and [`docs/LIMITATIONS.md`](../docs/LIMITATIONS.md) promises
-that nothing in the tool reads a mailbox and nothing will. That promise is kept here —
-the person hands the link over, exactly as they hand over an export link.
+There is no unattended Claude sign-in any more, and there will not be one. Signing in needs
+a person to read an email, and may need one to clear a challenge. `docs/LIMITATIONS.md`
+promises that nothing in the tool reads a mailbox or solves a challenge; both halves of
+that promise are kept here, and the second is now load-bearing rather than incidental.
 
-So a backup whose Claude session has expired stops and names `login` as the remedy, which
-is §12's answer for a step only a person can take. To keep that from being discovered by a
-backup at three in the morning, `session status` reports the session's remaining lifetime
-and warns while there is still time to act. `24`'s unattended sign-in stays in the tree for
+A backup whose Claude session has expired stops and names `login` as the remedy, which is
+§12's answer for a step only a person can take. `24`'s agent sign-in stays in the tree for
 a source that can still use it; Claude is marked as having none.
 
-## 77. The export ask, without a page
-
-An API source has no export page (`CONTEXT.md`): the ask is a request rather than a click,
-so `extract --source claude --account work` stops opening a browser. The ask block, the
-open ask, the link, the fetch, the snapshot and the store are unchanged — §31's shape
-holds, and what changes underneath it is how the ask is made.
+## 77. The export page's real address
 
 Claude's export is asked for from the account's data controls, which claude.ai serves at a
-fragment of its app rather than a path of its own
-(`https://claude.ai/new#settings/data-privacy-controls`, *reported*, 2026-09-14). A
-fragment is not a path: it is not something a surface can admit or a trace can record, and
-this is the second reason the ask is a request rather than a walk to a page.
+fragment of its app rather than a path of its own:
+`https://claude.ai/new#settings/data-privacy-controls` (*reported*, 2026-09-14). `31`'s
+placeholder path was a guess and is wrong.
 
-## 78. The shapes, and the guard
+A fragment is not a path. It is not something a surface can admit or a trace can record —
+`46`'s guard strips it, so a trace of the ask shows `https://claude.ai/new` — and a source
+holds one address for where its export is asked for, fragment included, rather than a path
+the tool then has to reassemble.
 
-Three requests are the whole of what the tool asks of claude.ai: send the link, redeem the
-link, ask for the export. Each is pinned byte-exact in the slice that builds it — method,
-address, the headers that matter, the body, and what comes back — and each is marked in
-the discipline this repository uses for a claim about a real site: *observed on a date*,
-*reported*, or *unknown*. **All three are `*unknown*` as this brief is written.** No one
-has watched claude.ai make them, and the slices from `49` on are blocked until someone has.
+## 78. What a vendor can make a person's step
 
-Every call is guarded the way §61 guards a sign-in walk: a response that is not the shape
-expected stops the run with exit `3` and the `login` instruction, rather than being
-interpreted generously. A vendor's private interface changes without notice, and a tool
-that guesses at a changed shape is a tool that writes a snapshot nobody can trust.
+`send_magic_link` requires an attestation (`CONTEXT.md`): a token the vendor's own page
+computes, and a cookie that exists because a challenge was cleared. The tool cannot make
+either, and will not learn to.
 
-The window sign-in `07` built — the tool opens Chrome, the person signs in themselves —
-stays, behind a flag, and is what a person reaches for the day a guard trips, a challenge
-appears, or an account signs in through Google. `docs/LIMITATIONS.md` already names
-`login` by hand as that remedy.
+The rule this brief sets, which is not about Claude: **a step behind an attestation is a
+step the tool hands to a person.** Not retried, not worked around, not automated with a
+better disguise. The window opens, the person clears it, and the run continues or stops
+with `login` as the remedy. A tool that got good at clearing bot management would be a tool
+whose runs a vendor cannot tell from an attack, and that is a worse thing to be than
+manual.
 
-## 79. Reaching the mock without a door
+This is also why §61's deterministic walk is not extended to Claude. A walk that fills a
+form is fine where the form is all there is; where an attestation sits in front of it, the
+walk ends at a wall and the honest move is to have opened a window in the first place.
 
-The mock claude.ai grows the three requests of §78, so this flow is rehearsed without an
-account as every flow before it was, and its sign-in link is minted rather than mailed —
-the shape `32` already established for the export link.
+## 79. The mock
 
-A browserless client cannot be pointed at the mock the way a browser is.
-[ADR 0001](../docs/adr/0001-no-door-in-the-wall.md) forbids the obvious answer: the tool
-takes no host setting, so that shipped code can never distinguish a rehearsal from a real
-run. The redemption stays **outside the program** — the rehearsal resolves the host and
-trusts the mock's certificate at the level of the process it launches, the way
-`--host-resolver-rules` lives in Chrome's launch flags rather than in the code. The
-shipped client keeps one hardcoded address and one behaviour, and ADR 0001 stands
-unamended.
+The mock claude.ai grows the sign-in by link: an address submitted, a link minted rather
+than mailed — the shape `32` already established for the export link — and a redemption
+that signs the browser in. So the flow is rehearsed without an account, as every flow
+before it was.
+
+The mock has no attestation to imitate, deliberately. It is what the tool is pointed at
+when nobody is proving anything to anyone, and a rehearsal that cleared a fake challenge
+would prove only that the fake could be cleared.
 
 ## 80. Later
 
 Deliberately left, and unclaimed until one of them is built:
 
-- **Gemini**, whose sign-in shape nobody has looked at, and which may be a third kind
-  beside a browser source and an API source.
-- **A ChatGPT session that outlives its cookie.** §63's rule costs ChatGPT the thing this
-  brief gives Claude — a session a person can re-establish from a terminal — and whether
-  that is worth revisiting is a question, not a plan.
-- **Revoking a session from the tool.** `session logout` is local by construction (§74); an
-  API source could end the session at the vendor, which is a different promise and needs
-  one.
-- **The window sign-in for a source account.** §78 keeps it for the destination's sake; a
-  source account reaches it only by signing in to the destination's profile, which is not
-  the same thing.
+- **Gemini**, whose sign-in nobody has looked at, and which may be a third shape again.
+- **Whether the export ask needs the browser.** It is a request made from a signed-in
+  session and may carry no attestation; nobody has captured it. It is asked for by a click
+  today (§31) and that keeps working, so this is an optimisation, not a gap.
+- **Telling a person their session is about to expire.** Wanted, and not available: the tool
+  holds no credential and therefore no expiry, and asking the vendor would be a request of
+  its own. What it can still do is fail with `login` as the remedy, which it does.
+- **Revoking a session from the tool.** `session logout` is local by construction (§74).
