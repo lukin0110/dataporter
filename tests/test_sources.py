@@ -85,7 +85,7 @@ def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
             '[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]'
         ),
         "CONFIRM_BUTTON_SELECTOR": '[data-testid="export-confirm-button"]',
-        "REQUESTED_SELECTOR": '[data-testid="export-requested"], [role="status"]',
+        "REQUESTED_SELECTOR": '[data-testid="export-requested"]',
         "EMAIL_SELECTOR": 'input[type="email"], input[autocomplete="username"]',
         "PASSWORD_SELECTOR": 'input[type="password"], input[autocomplete="current-password"]',
     }
@@ -99,7 +99,7 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     """Two regular expressions, byte for byte, because a wall is easier to trust when it is one line long."""
     assert (
         export_page.EXTRACTION_SURFACE.allowed.pattern
-        == r"^https://claude\.ai/(login(/.*)?|new\#settings/data\-privacy\-controls)(\?.*)?$"
+        == r"^https://claude\.ai/(login(/.*)?|new(\?[^#]*)?\#settings/data\-privacy\-controls)(\?.*)?$"
     )
     assert (
         login_form.LOGIN_SURFACE.allowed.pattern == r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
@@ -108,6 +108,10 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     # narrow as it was: the address is admitted, the app page under it is not.
     assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/data-privacy-controls")
     assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new")
+    # A query goes before the fragment, so the door is escaped either side of one.
+    assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new?from=nav#settings/data-privacy-controls")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new?from=nav")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/other")
     assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
     assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
 

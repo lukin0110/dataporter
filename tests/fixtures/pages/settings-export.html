@@ -27,9 +27,27 @@
 <style>
   [hidden] { display: none; }
   .invisible { display: none; }
+  /* As claude.ai clips its screen-reader regions: 1×1 and clipped, not hidden,
+     so anything asking whether it is *visible* is told yes. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 </style>
 <main>
   <h1>Data privacy controls</h1>
+
+  <!-- The live regions the real site carries all along. `31`'s
+       `REQUESTED_SELECTOR` had `[role="status"]` as a fallback, one of these
+       matched it before anything had been asked for, and the ask reported an
+       export nobody had requested. They are here so that a selector generous
+       enough to do that again fails the three-stage test instead. -->
+  <div role="status" aria-live="polite" class="sr-only"></div>
+  <div role="status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
 
   <div data-perf-overlay="settings_modal" data-perf-screen="data-privacy-controls">
     <section>
