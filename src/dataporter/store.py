@@ -57,9 +57,10 @@ SOURCES: tuple[str, ...] = tuple(sources.REGISTRY)
 
 Extraction from a source the tool does not have is refused, not attempted, so
 this is a list and not a pattern. Since `42` it is the `sources` registry's
-keys: ChatGPT and Gemini are each a `Source` beside Claude's — a sign-in, a
-page where the export is asked for, and an archive shape — and nothing in the
-store, the manifest or the commands changes when one lands.
+keys — Claude's and ChatGPT's today. A source is one `Source` object: a
+sign-in, a page where the export is asked for, and an archive shape. Gemini
+will be one beside them, and nothing in the store, the manifest or the
+commands changes when it lands.
 """
 
 SOURCE_NAMES: dict[str, str] = {name: item.display_name for name, item in sources.REGISTRY.items()}
