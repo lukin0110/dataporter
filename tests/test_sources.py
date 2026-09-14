@@ -84,7 +84,7 @@ def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
         "EXPORT_BUTTON_SELECTOR": (
             '[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]'
         ),
-        "CONFIRM_BUTTON_SELECTOR": '[role="dialog"] [data-testid="confirm-export"], [role="dialog"] button[type="submit"]',
+        "CONFIRM_BUTTON_SELECTOR": '[data-testid="export-confirm-button"]',
         "REQUESTED_SELECTOR": '[data-testid="export-requested"], [role="status"]',
         "EMAIL_SELECTOR": 'input[type="email"], input[autocomplete="username"]',
         "PASSWORD_SELECTOR": 'input[type="password"], input[autocomplete="current-password"]',
