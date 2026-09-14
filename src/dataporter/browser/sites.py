@@ -66,9 +66,17 @@ def extraction_pattern(source: "Source") -> re.Pattern[str]:
     goes: `/new?from=nav#settings/…` is the same page as `/new#settings/…`, and a
     door that expected the two halves to be adjacent would refuse it. Raised by
     Copilot in review on #52.
+
+    A fragment route admits what is under it as well. claude.ai's export is two
+    screens — the panel, and `…/export-data` where the button that asks lives —
+    and a door that admitted only the first refused the second the moment it was
+    clicked through to. So *the export page* is the subtree rather than the
+    address, which is still the sign-in and the export page and nothing else:
+    `/new` is not admitted, and neither is another settings route beside it. A
+    source whose export page is a plain path keeps exactly the door it had.
     """
     path, _, fragment = source.export_page_path.lstrip("/").partition("#")
-    door = re.escape(path) + (rf"(\?[^#]*)?\#{re.escape(fragment)}" if fragment else "")
+    door = re.escape(path) + (rf"(\?[^#]*)?\#{re.escape(fragment)}(/.*)?" if fragment else "")
     return _wall(source, (*source.sign_in_paths, door))
 
 

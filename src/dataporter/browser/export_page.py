@@ -411,9 +411,15 @@ def on_export_page(url: str, source: "Source" = CLAUDE) -> bool:
     are the app page and the export page, and a check that looked only at the
     path could not tell a person who has just signed in — and been left on
     `/new` — from one already looking at the panel.
+
+    The address *or a screen under it*: claude.ai's export is two screens, the
+    panel and `…/export-data`, and the second click happens on the second one. A
+    check that accepted only the address refused to press the button that asks.
     """
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         return False
-    address = parsed.path or "/"
-    return (f"{address}#{parsed.fragment}" if parsed.fragment else address) == source.export_page_path
+    path = parsed.path or "/"
+    address = f"{path}#{parsed.fragment}" if parsed.fragment else path
+    target = source.export_page_path
+    return address == target or address.startswith(f"{target}/")

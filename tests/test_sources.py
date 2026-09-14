@@ -69,8 +69,11 @@ def test_the_host_and_the_export_page_are_spelled_once() -> None:
     # The fragment is the only thing telling the export page apart from the app
     # page it opens over, so the check reads path and fragment together (§77).
     assert export_page.on_export_page("https://claude.ai/new#settings/data-privacy-controls")
+    # The export is two screens, and the button that asks is on the second.
+    assert export_page.on_export_page("https://claude.ai/new#settings/data-privacy-controls/export-data")
     assert not export_page.on_export_page("https://claude.ai/new")
     assert not export_page.on_export_page("https://claude.ai/login")
+    assert not export_page.on_export_page("https://claude.ai/new#settings/account")
 
 
 def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
@@ -99,7 +102,7 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     """Two regular expressions, byte for byte, because a wall is easier to trust when it is one line long."""
     assert (
         export_page.EXTRACTION_SURFACE.allowed.pattern
-        == r"^https://claude\.ai/(login(/.*)?|new(\?[^#]*)?\#settings/data\-privacy\-controls)(\?.*)?$"
+        == r"^https://claude\.ai/(login(/.*)?|new(\?[^#]*)?\#settings/data\-privacy\-controls(/.*)?)(\?.*)?$"
     )
     assert (
         login_form.LOGIN_SURFACE.allowed.pattern == r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
@@ -112,6 +115,8 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new?from=nav#settings/data-privacy-controls")
     assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new?from=nav")
     assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/other")
+    # The export is a subtree: the panel, and the screen the button that asks is on.
+    assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/data-privacy-controls/export-data")
     assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
     assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
 

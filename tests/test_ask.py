@@ -450,14 +450,13 @@ def test_a_page_that_moves_outside_the_wall_says_where_it_went(
     SafetyError` — the least useful thing a wall can say about a page that moved.
     """
     page.leaves_after_view = 1
-    page.leaves_for = "https://claude.ai/new?from=nav#settings/data-privacy-controls/export"
+    # A neighbouring settings route: the export's subtree does not extend to it.
+    page.leaves_for = "https://claude.ai/new?from=nav#settings/account"
 
     with pytest.raises(BrowserError) as raised:
         extract.ask(settings)
 
-    assert raised.value.detail == (
-        "the browser left the extraction surface for /new#settings/data-privacy-controls/export"
-    )
+    assert raised.value.detail == "the browser left the extraction surface for /new#settings/account"
     # The query is not in it: §66 keeps one out of everything, a refusal included.
     assert "from=nav" not in (raised.value.detail or "")
     assert page.clicks == []
