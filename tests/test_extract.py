@@ -12,6 +12,7 @@ Every test that produces output checks the link is not in it, and the last one
 checks the run log too.
 """
 
+import dataclasses
 import io
 import json
 import urllib.error
@@ -21,20 +22,54 @@ from datetime import UTC, datetime, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from threading import Thread
+from types import MappingProxyType
 from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
-from dataporter import cli, extract, log, store
+from dataporter import cli, extract, log, sources, store
 from dataporter.config import Settings, load_settings, with_account, with_store_dir
 from dataporter.console import Collected
 from dataporter.errors import FetchError, NetworkError, StoreError, UsageError
 from dataporter.exit_codes import ExitCode
+from dataporter.sources.claude import CLAUDE
 
 LINK = "https://downloads.example.com/export.zip?signature=secret-token"
 MOMENT = datetime(2026, 9, 12, 20, 51, 7, tzinfo=UTC)
 STAMP = "2026-09-12T20-51-07Z"
+
+
+BROWSERLESS = dataclasses.replace(CLAUDE, fetch_needs_session=False)
+"""Claude in every respect but the one this file's fetch tests need.
+
+What they are about is the fetch's own mechanics — the size cap, the zip that is
+not an export, the ask's lifecycle, the link's absence from every record — and
+they drive it through the browserless path because that is the one without a
+browser in it. Claude's own fetch goes through the source session since a real
+link answered `HTTP 403` to a plain request; brief 03 §35's other shape is still
+a shape, still built, and still what Gemini may turn out to need.
+"""
+
+
+@pytest.fixture(autouse=True)
+def _browserless(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve every source in this module to `BROWSERLESS`. See its docstring.
+
+    Autouse and module-wide rather than named on eleven tests: the object differs
+    from `CLAUDE` in one boolean, so a test that is not about the fetch cannot
+    tell it apart.
+
+    The registry and not `of`, because `of` is not the only way a source is
+    reached: `--from` gets one out of `recognised`, and `extract` compares the
+    two with `is`. Patching one of them makes an archive look like a Claude
+    export and not a Claude one.
+    """
+    monkeypatch.setattr(
+        sources,
+        "REGISTRY",
+        MappingProxyType({**sources.REGISTRY, CLAUDE.name: BROWSERLESS}),
+    )
 
 
 @pytest.fixture
