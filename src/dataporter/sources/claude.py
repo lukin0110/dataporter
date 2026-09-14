@@ -93,6 +93,20 @@ COUNTS = "Conversations: {conversations}     Projects: {projects}     Memories: 
 """§31's block, byte for byte: the two sentences of the ask and the count line
 of the fetch. The rest of either block is `extract`'s and every source's."""
 
+FETCH_NEEDS_SESSION = True
+"""Whether the archive is served only to the signed-in session (*observed 2026-09-14*).
+
+Brief 03 §35 assumed not: Claude was the source whose link a browserless fetch
+could take, and `31` shipped `False` on that assumption because nobody had a link
+to try it with. A real one, minutes old and well inside its 24 hours, answered
+`HTTP 403` to a plain request — the download address is on `claude.ai` and is
+served to the session or to nobody.
+
+So the fetch goes through the source session, which is the shape `45` built for
+ChatGPT and which §63 already governs: the browser makes the request, the cookie
+never leaves it, and the tool never learns what it is.
+"""
+
 LOGIN_PROMPT = "Log in to Claude in the browser window that just opened."
 
 
@@ -140,7 +154,7 @@ CLAUDE = Source(
         "CONFIRM_BUTTON_SELECTOR": CONFIRM_BUTTON_SELECTOR,
         "REQUESTED_SELECTOR": REQUESTED_SELECTOR,
     },
-    fetch_needs_session=False,
+    fetch_needs_session=FETCH_NEEDS_SESSION,
     signed_out_at_root=False,
     unattended_signin="agent",
     ask_lines=(EMAILED, WHEN_IT_ARRIVES),
