@@ -140,20 +140,14 @@ M11 — Extraction from ChatGPT (brief 06, §59–§71) — the tool's ChatGPT h
   46  The extraction rehearsal: both mocks, seeded, reconciled, traced, recorded
   47  The paperwork: the amendment, the glossary, the records, the candidates
 
-M12 — Claude sign-in by link (brief 07, §72–§80) — Claude becomes an API source, because
-      claude.ai has no password sign-in; built against the mock claude.ai and rehearsed
-      against it, and no slice in it touches a real account
+M12 — Claude sign-in by link (brief 07, §72–§80) — claude.ai has no password sign-in, and
+      an attestation in front of the sign-in means the browser does it (ADR 0008); built
+      against the mock claude.ai and rehearsed against it, and no slice touches an account
   48  The words: the glossary, the brief, ADR 0008, this index
-  49  The mock signs people in: the sign-in ask, and the link it mints instead of mailing
-  50  The mock's export ask: the request behind the data controls, and what comes back
-  51  Reaching the mock without a door: the redirection outside the program
-  52  The client and its guard: three requests pinned, and a shape that is not expected
-  53  The sign-in ask: `--email`, the record, the block, a second ask that supersedes
-  54  The sign-in link: redeemed, the credential kept, the block
-  55  Planting: the destination's cookie into its profile, at redeem and on demand
-  56  `session status` and `session logout`: the lifetime, the warning, both artifacts
-  57  The export ask without a page: `extract` stops opening a browser for Claude
-  58  The paperwork: the limitations rewritten, the window sign-in behind its flag
+  49  The mock signs people in: an address submitted, a link minted instead of mailed
+  50  The two commands: the window, the link spent in the same profile, the two blocks
+  51  The export page's real address: a fragment, and not the path `31` guessed
+  52  The paperwork: the limitations rewritten, Claude marked as signing in no other way
 ```
 
 ## Dependencies
@@ -242,22 +236,19 @@ the paperwork.
                                    (44 needs 24; 46 needs 29 and 36)
 ```
 
-M12 is a chain of eleven, and the first is the paper the rest cite: `48` is the glossary,
-the brief and ADR 0008, written before anything is built because this file's own working
-rule puts words first; `49` and `50` are the mock's side, built out of §78's shapes and
-importing nothing from the tool; `51` is how a browserless client reaches them without the
-door ADR 0001 forbids; `52` is the client and the guard every call passes through; `53`
-and `54` are the two commands of §73; `55` is the destination's planted cookie; `56` is
-what `session status` and `session logout` mean once a credential exists; `57` moves
-Claude's export ask off the browser; and `58` is the paperwork. Everything after `48` is
-blocked on §78's three shapes, which a person observes on a real account and no slice can
-supply.
+M12 is a chain of five, and the first is the paper the rest cite: `48` is the glossary, the
+brief and ADR 0008, written before anything is built because this file's own working rule
+puts words first; `49` is the mock's side, built out of §79 and importing nothing from the
+tool; `50` is the two commands of §73, which need `07`'s browser session and `49` to
+rehearse against; `51` corrects the export page `31` guessed at; `52` is the paperwork.
+
+Nothing in it waits on an observation. The one question a capture could have settled — may
+the tool make the sign-in calls itself — was settled by the first captured request, which
+carries an hCaptcha attestation: it may not, and §78 is the rule that follows.
 
 ```text
-47 ─> 48 ─┬─> 49 ─> 50 ─┐
-          └─> 51 ───────┴─> 52 ─> 53 ─> 54 ─┬─> 55 ─> 56
-                                            └─> 57 ─> 58
-        (55 needs 07; 57 needs 30 and 31)
+47 ─> 48 ─> 49 ─> 50 ─> 51 ─> 52
+          (50 needs 07 and 24; 51 needs 31)
 ```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
@@ -337,15 +328,9 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Done |
 | [48](impl/48-the-words.md) | The words | §72, §73, §74, §77 | Done |
 | 49 | The mock signs people in | §79 | Not started |
-| 50 | The mock's export ask | §79 | Not started |
-| 51 | Reaching the mock without a door | §79 | Not started |
-| 52 | The client and its guard | §78 | Not started |
-| 53 | The sign-in ask | §73 | Not started |
-| 54 | The sign-in link | §73, §74 | Not started |
-| 55 | Planting | §75 | Not started |
-| 56 | `session status` and `session logout` | §74, §76 | Not started |
-| 57 | The export ask without a page | §77 | Not started |
-| 58 | The paperwork | §76, §78, §80 | Not started |
+| 50 | The two commands | §73, §74 | Not started |
+| 51 | The export page's real address | §77 | Not started |
+| 52 | The paperwork | §75, §76, §78 | Not started |
 | [59](impl/59-hermes-configuration.md) | Asking Hermes for its configuration | — tooling | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
@@ -441,16 +426,21 @@ rehearsal can answer — §69's questions about the real site — waits in
 `docs/extraction-02.md` on a throwaway account, as `docs/extraction-01.md` does for
 Claude, and is what would turn `docs/chatgpt-ui-map.md`'s rows *observed*.
 
-Of the seventh brief, §73–§79 are claimed by `48`–`58`: `48` takes the words of §73, §74
-and §77 and the decision §72 rests on, `49` and `50` the mock of §79, `51` its door, `52`
-the shapes and the guard of §78, `53` and `54` the two commands of §73 under §74's
-discipline, `55` the destination of §75, `56` §74's logout and §76's warning, `57` the ask
-of §77, and `58` what §76 and §78 leave in `docs/LIMITATIONS.md`. §72 is that brief's goal
-and is claimed by all of them; §80 is its list of what is deliberately left and stays
-unclaimed until one of its items is built. `48` is `Done`: its documents are in. Every
-slice after it is `Not started` and blocked on the same thing — §78's three request shapes,
-which are `*unknown*` because nobody has watched claude.ai make them, and which a person
-observes on a real account rather than a slice supplying them.
+Of the seventh brief, §73–§79 are claimed by `48`–`52`: `48` takes the words of §73 and §78
+and the decision §72 rests on, `49` the mock of §79, `50` the two commands of §73 under
+§74's discipline, `51` the address of §77, and `52` what §75, §76 and §78 leave in
+`docs/LIMITATIONS.md`. §72 is that brief's goal and is claimed by all of them; §80 is its
+list of what is deliberately left and stays unclaimed until one of its items is built.
+`48` is `Done`: its documents are in, and they are a second draft.
+
+The first draft described Claude as a source the tool asks directly, holding the credential
+the vendor issues, and planned eleven slices to build it. One captured request ended it:
+`send_magic_link` carries an hCaptcha attestation and needs a cleared Cloudflare cookie, so
+the tool cannot make the call at all and the sign-in stays in the browser
+([ADR 0008](../docs/adr/0008-the-sign-in-stays-in-the-browser.md)). The numbers `53`–`58`
+are unused — they were that draft's client, its guard, its planted cookie and its
+credential's lifetime, and nothing took their place when eleven slices became five. `59` is
+a tooling slice and belongs to no brief.
 
 ## Working rules
 
