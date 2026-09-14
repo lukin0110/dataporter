@@ -440,6 +440,39 @@ def test_a_session_that_expires_before_the_click_is_never_clicked_on(
     assert extract.read_ask(settings) is None
 
 
+def test_a_page_that_moves_outside_the_wall_says_where_it_went(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """The wall's refusal names the screen, rather than arriving as an internal error.
+
+    A real run met this: the panel's second screen has an address of its own, the
+    wall refused it, and `SafetyError` reached the CLI as `internal error:
+    SafetyError` — the least useful thing a wall can say about a page that moved.
+    """
+    page.leaves_after_view = 1
+    page.leaves_for = "https://claude.ai/new?from=nav#settings/data-privacy-controls/export"
+
+    with pytest.raises(BrowserError) as raised:
+        extract.ask(settings)
+
+    assert raised.value.detail == (
+        "the browser left the extraction surface for /new#settings/data-privacy-controls/export"
+    )
+    # The query is not in it: §66 keeps one out of everything, a refusal included.
+    assert "from=nav" not in (raised.value.detail or "")
+    assert page.clicks == []
+    assert extract.read_ask(settings) is None
+
+
+def test_where_a_url_went_is_its_path_and_fragment() -> None:
+    assert export_page.where_of("https://claude.ai/new#settings/x") == "/new#settings/x"
+    assert export_page.where_of("https://claude.ai/new?a=1#settings/x") == "/new#settings/x"
+    assert export_page.where_of("https://claude.ai/new?a=1") == "/new"
+    assert export_page.where_of("https://claude.ai") == "/"
+    # Not a web page: said whole, since `about:blank` has the path `blank`.
+    assert export_page.where_of("about:blank") == "about:blank"
+
+
 def test_two_claude_tabs_are_not_driven_blind(
     settings: Settings, page: FakeExportPage, launches: list[str], chrome: FakeChrome
 ) -> None:
