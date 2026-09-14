@@ -715,7 +715,7 @@ def test_the_index_is_kept_and_every_file_it_names_is_fetched(
     """One session, the index first, then each file it names, under its own name."""
     asked = _index(tmp_path, monkeypatch, MANIFEST)
 
-    manifest_path, parts = extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path)
+    manifest_path, parts = extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path, collected=[])
 
     assert asked == [LINK, *(item["export_url"] for item in MANIFEST["data_files"])]
     assert manifest_path.name == extract.MANIFEST_FILENAME
@@ -730,7 +730,7 @@ def test_a_link_that_serves_neither_an_archive_nor_an_index_says_so(
     _index(tmp_path, monkeypatch, "not a manifest at all")
 
     with pytest.raises(FetchError) as raised:
-        extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path)
+        extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path, collected=[])
 
     assert str(raised.value) == extract.NOT_A_MANIFEST
 
@@ -742,6 +742,25 @@ def test_an_index_naming_nothing_is_refused(
     _index(tmp_path, monkeypatch, {"total_files": 0, "data_files": []})
 
     with pytest.raises(FetchError) as raised:
-        extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path)
+        extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path, collected=[])
 
     assert str(raised.value) == extract.NO_FILES_IN_MANIFEST
+
+
+def test_what_the_walk_downloaded_is_collected_before_it_is_judged(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An index naming nothing still leaves a file on disk, and the caller deletes it.
+
+    `extra` is only known once the archive among the parts is, so a failure
+    before that point had nothing to clean up by and left the download under the
+    account home. (Raised by Copilot in review on #52.)
+    """
+    _index(tmp_path, monkeypatch, {"total_files": 0, "data_files": []})
+    collected: list[Path] = []
+
+    with pytest.raises(FetchError):
+        extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path, collected=collected)
+
+    assert [item.name for item in collected] == [extract.MANIFEST_FILENAME]
+    assert collected[0].exists()
