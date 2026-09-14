@@ -60,10 +60,16 @@ def extraction_pattern(source: "Source") -> re.Pattern[str]:
     is what keeps this wall as narrow as it was when the page had a path of its
     own: a wall matches the URL as a string, so admitting
     `/new#settings/data-privacy-controls` admits neither `/new` nor any chat on
-    it. `on_export_page` is the one place that needs the path instead, because
-    it compares a *parsed* URL, where a fragment has already fallen off.
+    it. `on_export_page` compares the same two halves of a *parsed* URL.
+
+    The halves are escaped either side of a query, because that is where a query
+    goes: `/new?from=nav#settings/…` is the same page as `/new#settings/…`, and a
+    door that expected the two halves to be adjacent would refuse it. Raised by
+    Copilot in review on #52.
     """
-    return _wall(source, (*source.sign_in_paths, re.escape(source.export_page_path.lstrip("/"))))
+    path, _, fragment = source.export_page_path.lstrip("/").partition("#")
+    door = re.escape(path) + (rf"(\?[^#]*)?\#{re.escape(fragment)}" if fragment else "")
+    return _wall(source, (*source.sign_in_paths, door))
 
 
 def login_pattern(source: "Source") -> re.Pattern[str]:

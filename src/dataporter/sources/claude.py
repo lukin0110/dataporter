@@ -29,8 +29,9 @@ EXPORT_PAGE_PATH = "/new#settings/data-privacy-controls"
 
 Not a path of its own: the settings are a dialog over the app, at a fragment.
 `31`'s `/settings/data-privacy-controls` was a guess and served nothing. The
-whole string is where the browser is sent; `Source.export_path` is the `/new`
-a URL check compares, because a fragment is no part of a path (§77)."""
+whole string is where the browser is sent, and `on_export_page` compares a URL's
+path and fragment together against it — `/new` is the app, `/new#settings/…` is
+the panel, and only the fragment tells them apart (§77)."""
 
 EXPORT_BUTTON_SELECTOR = '[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]'
 """The control that asks the vendor for the account's data (*observed 2026-09-14*).
@@ -61,17 +62,29 @@ guessing. It is not qualified by `[role="dialog"]`: the settings panel is one, s
 the qualifier would hold, but a test id this specific is better read on its own.
 """
 
-REQUESTED_SELECTOR = '[data-testid="export-requested"], [role="status"]'
+REQUESTED_SELECTOR = '[data-testid="export-requested"]'
 """What the page shows once the request has been accepted.
 
 Read as an element that is there, never as the sentence it holds: the ask obeys
 `probe`'s rule that nothing off the page crosses the wire, and "the request was
 accepted" is a fact about the page rather than a message from it.
 
-Still `*unknown*`, for `CONFIRM_BUTTON_SELECTOR`'s reason. Until it is observed
-an ask presses the button and then waits out `timeouts.ask_s` without
-recognising its own success, so the export is requested and the run says it was
-not. That is the last thing between this source and a working `extract`.
+Still a placeholder, and deliberately one that matches nothing on the real site.
+`31` paired the test id with `[role="status"]` as a fallback, and on 2026-09-14 a
+real run showed what that costs: claude.ai carries several `[role="status"]` live
+regions — screen-reader announcers, the toast region, a composer hint — and
+`sr-only` clips them rather than hiding them, so they pass the visibility filter.
+The catch-all matched one before anything had been asked for. The run pressed the
+`Export data` row, never reached the `Export` button on the second screen, and
+reported the export as requested; `ask.json` recorded an ask the vendor never
+received, and the person waited for an email nobody had asked it to send.
+
+A selector that is too generous does not fail loudly — it fabricates. So the
+fallback is gone and what is left cannot match until somebody observes the real
+signal: an ask now presses both buttons and then waits out `timeouts.ask_s`
+before reporting that it could not confirm. That is the wrong answer in the safe
+direction — the export is requested and the run says it is not — and it is the
+last thing between this source and a working `extract`.
 """
 
 EMAILED = "Claude will email a download link to the account's address."
