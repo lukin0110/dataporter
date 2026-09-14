@@ -30,6 +30,8 @@ wherever the vendor redirects it, every hop recorded by the watch as a host and
 a marker (§66). The link is the one string this navigates to.
 """
 
+import operator
+import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -257,20 +259,27 @@ class _Wait:
         Two polls at the same size before it is believed, because a file is
         created before it is written; a `.crdownload` means the write is still
         going, which is progress and not silence, so the idle budget is pushed out.
+
+        Only a `.crdownload` this navigation brought counts as that progress. One
+        left behind by an interrupted run is still sitting in the staging dir —
+        nothing sweeps it — and treating it as a write in flight would push the
+        deadline out on every poll, so the fetch could reach neither the page nor
+        the stall and would hang for good. (Raised by Copilot in review on #53.)
         """
-        try:
-            items = list(self.into.iterdir())
-        except OSError:  # pragma: no cover - the dir is made before the navigation
+        entries = self._entries()
+        if entries is None:
             return None
-        if any(item.name.endswith(CRDOWNLOAD) for item in items):
+        if any(item.name.endswith(CRDOWNLOAD) and item not in self.before for item in entries):
             self.touch()
             self.settled_path = None
             return None
-        fresh = [item for item in items if item not in self.before and item.is_file()]
-        if not fresh:
+        # Never a `.crdownload` itself: a write still in flight is not the
+        # download, however new it is.
+        fresh = [item for item in entries if item not in self.before and not item.name.endswith(CRDOWNLOAD)]
+        measured = _measured(fresh)
+        if not measured:
             return None
-        newest = max(fresh, key=lambda item: item.stat().st_mtime)
-        size = newest.stat().st_size
+        newest, size, _ = max(measured, key=operator.itemgetter(2))
         if size == 0:
             return None
         if self.settled_path == newest and self.settled_size == size:
@@ -278,6 +287,13 @@ class _Wait:
         self.settled_path, self.settled_size = newest, size
         self.touch()
         return None
+
+    def _entries(self) -> list[Path] | None:
+        """Return what the staging dir holds, or `None` when it could not be read."""
+        try:
+            return list(self.into.iterdir())
+        except OSError:  # pragma: no cover - the dir is made before the navigation
+            return None
 
     def settled_on_a_page(self, settle_s: float) -> bool:
         """Return whether a document loaded, went quiet, and no download began.
@@ -290,6 +306,26 @@ class _Wait:
         if self.loaded_at is None or self.guid is not None:
             return False
         return time.monotonic() - max(self.loaded_at, self.last_event) >= settle_s
+
+
+def _measured(items: "Sequence[Path]") -> list[tuple[Path, int, float]]:
+    """Each regular file that is still there, with its size and when it changed.
+
+    One `stat` per name, and a name that has gone is skipped rather than raised:
+    the browser renames `<guid>.crdownload` to `<guid>` underneath the listing, so
+    a file seen a moment ago can be absent before it is measured. That is the
+    download progressing, not a fetch that failed. (Raised by Copilot in review
+    on #53.)
+    """
+    found = []
+    for item in items:
+        try:
+            info = item.stat()
+        except OSError:
+            continue
+        if stat.S_ISREG(info.st_mode):
+            found.append((item, info.st_size, info.st_mtime))
+    return found
 
 
 def _await(
