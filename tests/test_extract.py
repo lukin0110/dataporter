@@ -15,6 +15,7 @@ checks the run log too.
 import dataclasses
 import io
 import json
+import types
 import urllib.error
 import zipfile
 from collections.abc import Callable, Iterator
@@ -40,15 +41,16 @@ MOMENT = datetime(2026, 9, 12, 20, 51, 7, tzinfo=UTC)
 STAMP = "2026-09-12T20-51-07Z"
 
 
-BROWSERLESS = dataclasses.replace(CLAUDE, fetch_needs_session=False)
-"""Claude in every respect but the one this file's fetch tests need.
+BROWSERLESS = dataclasses.replace(CLAUDE, fetch_needs_session=False, link_serves_manifest=False)
+"""Claude in every respect but the two this file's fetch tests need.
 
 What they are about is the fetch's own mechanics — the size cap, the zip that is
 not an export, the ask's lifecycle, the link's absence from every record — and
 they drive it through the browserless path because that is the one without a
 browser in it. Claude's own fetch goes through the source session since a real
-link answered `HTTP 403` to a plain request; brief 03 §35's other shape is still
-a shape, still built, and still what Gemini may turn out to need.
+link answered `HTTP 403` to a plain request, and its link serves a manifest
+rather than the archive; brief 03 §35's other shape is still a shape, still
+built, and still what Gemini may turn out to need.
 """
 
 
@@ -623,3 +625,123 @@ def test_one_missing_file_is_not_one_files(settings: Settings, tmp_path: Path) -
     assert outcome.snapshot is not None
     assert outcome.snapshot.gap_count == 1
     assert "Gaps: 1 file the export does not carry\n" in sink.stdout
+
+
+# --------------------------------------------------------------------------- #
+# A link that serves an index
+# --------------------------------------------------------------------------- #
+
+
+def test_a_manifest_is_read_or_is_not_one(tmp_path: Path, export_zip: Path) -> None:
+    """Claude's link serves a JSON index of the real files, not the archive."""
+    good = tmp_path / "m.json"
+    good.write_text(
+        json.dumps({
+            "instructions": "Download each file using the export_url.",
+            "total_files": 1,
+            "data_files": [
+                {
+                    "batch_index": 0,
+                    "export_url": "https://claude.ai/export/x/download/y",
+                    "category": "conversations",
+                    "part": 0,
+                    "filename": "conversations-000.zip",
+                }
+            ],
+            "version": "1.0",
+        })
+    )
+    manifest = extract.manifest_of(good)
+    assert manifest is not None
+    assert [item.filename for item in manifest.data_files] == ["conversations-000.zip"]
+    assert manifest.data_files[0].category == "conversations"
+
+    # An archive is not an index, and neither is the sign-in page a dead link
+    # answers with — both are what this has to tell apart.
+    assert extract.manifest_of(export_zip) is None
+    page = tmp_path / "p.html"
+    page.write_text("<!doctype html><title>Claude</title>")
+    assert extract.manifest_of(page) is None
+
+
+def test_the_archive_among_the_parts_is_the_one_the_source_owns(tmp_path: Path, export_zip: Path) -> None:
+    """Claude splits its export by category, and one part carries the conversations.
+
+    The others are the account's data too and are kept beside it, but an importer
+    reads `conversations.json` and only one part has it.
+    """
+    metadata = tmp_path / "light_metadata-000.zip"
+    with zipfile.ZipFile(metadata, "w") as archive:
+        archive.writestr("users.json", "{}")
+        archive.writestr("login_history.json", "[]")
+
+    assert extract.archive_among([metadata, export_zip], CLAUDE) == export_zip
+
+    with pytest.raises(FetchError) as raised:
+        extract.archive_among([metadata], CLAUDE)
+    assert str(raised.value) == "none of the 1 files the manifest names is a Claude export"
+
+
+def _index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, manifest: object) -> list[str]:
+    """Fake `download.fetch` so the index walk can be read without a browser.
+
+    Every body after the first is a zip, because what the walk does with them is
+    rename them; which one is the archive is `archive_among`'s question.
+    """
+    asked: list[str] = []
+
+    def fetched(settings: Settings, browser: object, link: str, *, into: Path, hosts: object) -> object:
+        asked.append(link)
+        target = into / f"guid-{len(asked)}.tmp"
+        target.write_bytes(json.dumps(manifest).encode() if len(asked) == 1 else b"PK\x03\x04 not really a zip")
+        return types.SimpleNamespace(path=target, bytes=target.stat().st_size)
+
+    monkeypatch.setattr(extract.download, "fetch", fetched)
+    return asked
+
+
+MANIFEST = {
+    "total_files": 2,
+    "data_files": [
+        {"export_url": "https://claude.ai/export/x/download/a", "filename": "light_metadata-000.zip", "part": 0},
+        {"export_url": "https://claude.ai/export/x/download/b", "filename": "conversations-000.zip", "part": 0},
+    ],
+}
+
+
+def test_the_index_is_kept_and_every_file_it_names_is_fetched(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One session, the index first, then each file it names, under its own name."""
+    asked = _index(tmp_path, monkeypatch, MANIFEST)
+
+    manifest_path, parts = extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path)
+
+    assert asked == [LINK, *(item["export_url"] for item in MANIFEST["data_files"])]
+    assert manifest_path.name == extract.MANIFEST_FILENAME
+    # Named as the vendor named them: a snapshot holding `guid-2.tmp` describes nothing.
+    assert [part.name for part in parts] == ["light_metadata-000.zip", "conversations-000.zip"]
+    assert json.loads(manifest_path.read_text())["total_files"] == 2
+
+
+def test_a_link_that_serves_neither_an_archive_nor_an_index_says_so(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _index(tmp_path, monkeypatch, "not a manifest at all")
+
+    with pytest.raises(FetchError) as raised:
+        extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path)
+
+    assert str(raised.value) == extract.NOT_A_MANIFEST
+
+
+def test_an_index_naming_nothing_is_refused(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty index is a fetch with nothing to fetch, and never an empty snapshot."""
+    _index(tmp_path, monkeypatch, {"total_files": 0, "data_files": []})
+
+    with pytest.raises(FetchError) as raised:
+        extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path)
+
+    assert str(raised.value) == extract.NO_FILES_IN_MANIFEST

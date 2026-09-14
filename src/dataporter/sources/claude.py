@@ -155,6 +155,7 @@ CLAUDE = Source(
         "REQUESTED_SELECTOR": REQUESTED_SELECTOR,
     },
     fetch_needs_session=FETCH_NEEDS_SESSION,
+    link_serves_manifest=True,
     signed_out_at_root=False,
     unattended_signin="agent",
     ask_lines=(EMAILED, WHEN_IT_ARRIVES),

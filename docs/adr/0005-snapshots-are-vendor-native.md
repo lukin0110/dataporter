@@ -27,3 +27,21 @@ snapshot of a Claude account migrates exactly as the export inside it would (bri
   of a source the tool cannot yet import is still a backup.
 - A normalised view, if one is ever wanted for tools that are not importers, is a
   derivation from a snapshot and never a replacement for one (brief `03`, §40).
+
+## Amended 2026-09-14: the vendor's archive may be several files
+
+*"The vendor's own archive, byte for byte"* assumed one file, because both sources
+shipped one. Claude does not: its emailed link serves a **manifest** naming several
+single-use URLs, one per category and part — `light_metadata-000.zip`,
+`conversations-000.zip`, and more parts as an account grows.
+
+A snapshot therefore holds the manifest and every part, each byte for byte and under the
+name the vendor gave it, with `snapshot.json` gaining a `parts` list so it still accounts
+for everything in its own directory. `archive` stays what an importer reads — the part
+carrying `conversations.json` — so nothing that knows only `archive` learns anything new.
+
+What was *not* done, and is the point of the amendment: repackaging the parts into one
+zip. It would have kept the old shape and every reader untouched, at the cost of filing an
+archive the vendor never served — which is the one thing this decision says a snapshot
+never contains. A backup that has been re-packed is re-interpreted, and the reasoning
+against a normalised store is the reasoning against it here.

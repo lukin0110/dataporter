@@ -11,6 +11,11 @@ addressed by source, account and stamp:
     COMPLETE          zero bytes, written last
 ```
 
+A vendor that serves its export as several files adds them beside `export.zip`, under the
+names it gave them, and `snapshot.json` lists them in `parts` (ADR 0005, amended). Claude
+is one: its link serves a manifest naming a zip per category and part. `export.zip` is
+still the part an importer reads.
+
 Three properties are the whole of this module, and each one is a line of code
 rather than a convention:
 
@@ -75,7 +80,10 @@ ARCHIVE_NAME = "export.zip"
 MANIFEST_NAME = "snapshot.json"
 COMPLETE_NAME = "COMPLETE"
 SNAPSHOT_FILES = (ARCHIVE_NAME, MANIFEST_NAME, COMPLETE_NAME)
-"""The three files of a snapshot, in the order they are created."""
+"""The three files every snapshot has, in the order they are created.
+
+A snapshot of a vendor that served several files has those beside them, named as
+the vendor named them and listed in the manifest's `parts`."""
 
 STAMP_FORMAT = "%Y-%m-%dT%H-%M-%SZ"
 """§33's stamp: UTC, to the second, with `-` where a time has `:`.
@@ -223,6 +231,17 @@ class Snapshot(StoreModel):
     filed_at: datetime
     tool_version: str
     archive: Archive = Archive()
+    parts: list[Archive] = []
+    """The rest of what the vendor served, where it served more than one file.
+
+    Claude's export is a manifest naming several single-use zips rather than one
+    archive, so a snapshot of it holds the manifest and every part beside
+    `archive` — which stays the part an importer reads, so nothing that knows
+    only `archive` has to learn anything. Empty for a source that ships one file,
+    which is every other source today. Described here rather than merely present,
+    so a snapshot still accounts for everything in its own directory.
+    """
+
     export_fingerprint: str = ""
     """The SHA-256 of `conversations.json` — `Export.fingerprint`, the same
     number a workspace records for the archive given directly. That identity is
@@ -331,7 +350,7 @@ class Store:
         """
         return self.root / source / account / stamp
 
-    def file_archive(self, path: Path, filing: Filing) -> tuple[Path, Snapshot]:
+    def file_archive(self, path: Path, filing: Filing, *, extra: Sequence[Path] = ()) -> tuple[Path, Snapshot]:
         """Copy `path` into a fresh stamp directory and finish the snapshot.
 
         The order is the contract: the archive, then the manifest, then both
@@ -342,6 +361,11 @@ class Store:
         directory = self.directory(filing.source, filing.account, filing.stamp)
         self._make_directory(directory)
         digest, written = _copy(path, directory / ARCHIVE_NAME)
+        parts = [
+            Archive(name=item.name, bytes=size, sha256=part_digest)
+            for item in extra
+            for part_digest, size in [_copy(item, directory / item.name)]
+        ]
         if digest != filing.sha256:
             # The store now holds a stamp directory with no `COMPLETE` in it,
             # which is what an unfinished snapshot is meant to look like. The
@@ -356,6 +380,7 @@ class Store:
             filed_at=datetime.now(UTC),
             tool_version=tool_version(),
             archive=Archive(name=ARCHIVE_NAME, bytes=written, sha256=digest),
+            parts=parts,
             export_fingerprint=filing.export_fingerprint,
             counts=filing.counts,
             gaps=list(filing.gaps),
