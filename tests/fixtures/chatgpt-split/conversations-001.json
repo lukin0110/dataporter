@@ -1,0 +1,11 @@
+[
+  {
+    "title": "Split one",
+    "create_time": 1704067200.0,
+    "update_time": 1704067200.0,
+    "mapping": {"root-1": {"id": "root-1", "message": null, "parent": null, "children": []}},
+    "current_node": "root-1",
+    "conversation_id": "01000001-0000-4000-8000-000000000001",
+    "id": "01000001-0000-4000-8000-000000000001"
+  }
+]

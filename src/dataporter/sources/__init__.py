@@ -11,14 +11,15 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from dataporter.sources.base import Reading, Source
+from dataporter.sources.chatgpt import CHATGPT
 from dataporter.sources.claude import CLAUDE
 
 if TYPE_CHECKING:
     from dataporter.config import Settings
 
-__all__ = ["CLAUDE", "REGISTRY", "Reading", "Source", "of", "recognised"]
+__all__ = ["CHATGPT", "CLAUDE", "REGISTRY", "Reading", "Source", "of", "recognised"]
 
-REGISTRY: Mapping[str, Source] = MappingProxyType({CLAUDE.name: CLAUDE})
+REGISTRY: Mapping[str, Source] = MappingProxyType({CLAUDE.name: CLAUDE, CHATGPT.name: CHATGPT})
 """Every source this build has, by the name `--source` takes."""
 
 

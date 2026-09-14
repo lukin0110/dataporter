@@ -1,0 +1,20 @@
+[
+  {
+    "title": "Split two",
+    "create_time": 1704067300.0,
+    "update_time": 1704067300.0,
+    "mapping": {"root-2": {"id": "root-2", "message": null, "parent": null, "children": []}},
+    "current_node": "root-2",
+    "conversation_id": "02000002-0000-4000-8000-000000000002",
+    "id": "02000002-0000-4000-8000-000000000002"
+  },
+  {
+    "title": "Split three",
+    "create_time": 1704067400.0,
+    "update_time": 1704067400.0,
+    "mapping": {"root-3": {"id": "root-3", "message": null, "parent": null, "children": []}},
+    "current_node": "root-3",
+    "conversation_id": "03000003-0000-4000-8000-000000000003",
+    "id": "03000003-0000-4000-8000-000000000003"
+  }
+]

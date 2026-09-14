@@ -182,6 +182,33 @@ def export_zip(export_dir: Path, tmp_path: Path) -> Path:
     return target
 
 
+def zip_tree(root: Path, target: Path) -> Path:
+    """Zip a fixture directory with its subdirectories, members named relative to the root."""
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+        for item in sorted(root.rglob("*")):
+            if item.is_file():
+                archive.write(item, item.relative_to(root).as_posix())
+    return target
+
+
+@pytest.fixture
+def chatgpt_dir() -> Path:
+    """Return the ChatGPT-shaped fixture (`43`): three conversations, one carried file, two missing."""
+    return FIXTURES / "chatgpt-small"
+
+
+@pytest.fixture
+def chatgpt_zip(chatgpt_dir: Path, tmp_path: Path) -> Path:
+    """Return the same fixture as an archive, its media directory kept as a path inside the zip."""
+    return zip_tree(chatgpt_dir, tmp_path / "chatgpt-small.zip")
+
+
+@pytest.fixture
+def chatgpt_split_zip(tmp_path: Path) -> Path:
+    """Return a ChatGPT export split over two numbered conversation members."""
+    return zip_tree(FIXTURES / "chatgpt-split", tmp_path / "chatgpt-split.zip")
+
+
 @pytest.fixture
 def snapshot_dir(export_zip: Path, tmp_path: Path) -> Path:
     """Return the same fixture, filed as a snapshot (`30`).

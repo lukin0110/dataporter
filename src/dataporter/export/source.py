@@ -44,6 +44,7 @@ from pydantic import ValidationError
 
 from dataporter import log, store
 from dataporter.errors import ExportError
+from dataporter.export import chatgpt
 from dataporter.export.model import (
     KNOWN_BLOCK_TYPES,
     Conversation,
@@ -60,6 +61,16 @@ OPTIONAL_FILES = ("users.json", "projects.json", "memories.json")
 KNOWN_FILES = frozenset({CONVERSATIONS_FILE, *OPTIONAL_FILES})
 
 SENDERS = frozenset({"human", "assistant"})
+
+IMPORTABLE = frozenset({"claude"})
+"""The sources this build can migrate. Each source needs its own importer
+before its snapshots can be restored, and a snapshot of a source the tool
+cannot import is still a backup (ADR 0005); this reader is Claude's."""
+
+NOT_IMPORTABLE = (
+    "{what} cannot be imported by this build ({display}); "
+    "a snapshot of a source the tool cannot import is still a backup (ADR 0005)"
+)
 
 _TOKEN = re.compile(r"[^A-Za-z0-9_.:/-]")
 
@@ -281,6 +292,13 @@ class _SnapshotSource(ExportView):
             # snapshot without it is one a fetch did not finish, and reading it
             # would be reading whatever happened to have landed.
             raise ExportError(detail=f"snapshot is incomplete: {display}")
+        manifest = store.read_manifest(path / store.MANIFEST_NAME)
+        if manifest is not None and manifest.source not in IMPORTABLE:
+            # By the manifest's word and before the archive is opened: the
+            # archive inside would be refused by its shape a moment later, but
+            # "a ChatGPT snapshot" is what the operator pointed at.
+            name = store.SOURCE_NAMES.get(manifest.source, manifest.source)
+            raise ExportError(detail=NOT_IMPORTABLE.format(what=f"a {name} snapshot", display=display))
         self._archive = _ZipSource(path / store.ARCHIVE_NAME, display)
 
     @property
@@ -344,6 +362,11 @@ def read_export(source: ExportView) -> Export:
             "files": names,
         },
     )
+
+    if chatgpt.looks_like(names):
+        # Before the member walk, which would otherwise report `user.json` as
+        # an unknown file and then fail on the first conversation's shape.
+        raise ExportError(detail=NOT_IMPORTABLE.format(what="a ChatGPT export", display=source.display))
 
     for name in names:
         if name not in KNOWN_FILES:
