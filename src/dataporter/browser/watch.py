@@ -202,7 +202,7 @@ class Watch:
             frame = params.get("frame") or {}
             if not frame.get("parentId"):
                 url = str(frame.get("url", ""))
-                self._write(NAVIGATION, **self._elsewhere(url), **tracing.url_fields(url))
+                self._write(NAVIGATION, **self._where(url))
                 self._await_load = url
         elif method == "Page.loadEventFired":
             if self._await_load is not None:
@@ -210,7 +210,7 @@ class Watch:
                 self._sketch(page, url)
         elif method == "Page.navigatedWithinDocument":
             url = str(params.get("url", ""))
-            self._write(URL_CHANGED, **self._elsewhere(url), **tracing.url_fields(url))
+            self._write(URL_CHANGED, **self._where(url))
             self._sketch(page, url)
         elif method == "Page.javascriptDialogOpening":
             kind = log.safe_token(str(params.get("type", "dialog")))
@@ -250,6 +250,18 @@ class Watch:
         host = urlsplit(url).hostname or ""
         return {"host": host} if host and host != self.site.host else {}
 
+    def _where(self, url: str) -> dict[str, Any]:
+        """`url` as a trace carries it, with the host when it is not the site's own.
+
+        The two sources of these fields overlap, and splatting both into one call
+        is a `TypeError` rather than a duplicate key: while a fetch is redacting,
+        `url_fields` carries the host itself (§66 — hosts and never paths), and a
+        download that leaves the site's own host had `_elsewhere` adding one too.
+        `url_fields` wins, because when it names a host it is the redacted form
+        that §66 asks for; when it does not, `_elsewhere`'s is the only one.
+        """
+        return {**self._elsewhere(url), **tracing.url_fields(url)}
+
     def _request(self, params: dict[str, Any]) -> None:
         request = params.get("request") or {}
         url = str(request.get("url", ""))
@@ -269,8 +281,7 @@ class Watch:
             REQUEST,
             id=identifier,
             method=log.safe_token(str(request.get("method", ""))),
-            **self._elsewhere(url),
-            **tracing.url_fields(url),
+            **self._where(url),
             type=kind.lower(),
         )
 
