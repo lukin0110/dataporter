@@ -1,16 +1,17 @@
 """Claude as a source (`42`): what `31` spelled across five modules, in one place.
 
-Two of the four rows this object depends on were read off a real account on
-2026-09-14 and corrected by `51`, after `31`'s guesses sent a run to a page that
-does not exist: the export page's address and its button. Both rows stay
-`*unknown*` in `docs/claude-ui-map.md` even so — a row is marked when an artefact
-under `docs/spike/` can be cited for it, and the only one available carries the
-account's own name and its conversation titles, which §10 keeps out of that
-directory.
+Three of the four rows this object depends on were read off a real account on
+2026-09-14, after `31`'s guesses sent a run to a page that does not exist: the
+export page's address, the row that opens it, and the button on the second screen
+that actually asks. All three stay `*unknown*` in `docs/claude-ui-map.md` even so
+— a row is marked when an artefact under `docs/spike/` can be cited for it, and
+the only one available carries the account's own name and its conversation
+titles, which §10 keeps out of that directory.
 
-The other two — whether a confirmation follows, and what the panel shows once the
-request is accepted — are unknown in the stronger sense: seeing either means
-asking a real account for a real export, and nobody has.
+The fourth is unknown in the stronger sense: what the panel shows once the
+request is accepted can only be seen by asking a real account for a real export,
+and nobody has. Until it is, an ask presses both buttons — the export *is*
+requested — and then waits out `timeouts.ask_s` without recognising it.
 """
 
 from collections.abc import Sequence
@@ -46,14 +47,19 @@ If claude.ai reorders that panel this presses *Manage* on another row instead,
 which opens a list rather than asking for anything — and the ask then stops at
 `REQUESTED_SELECTOR` rather than reporting a request nobody made."""
 
-CONFIRM_BUTTON_SELECTOR = '[role="dialog"] [data-testid="confirm-export"], [role="dialog"] button[type="submit"]'
-"""The confirmation inside whatever dialog the button opens, if it opens one.
+CONFIRM_BUTTON_SELECTOR = '[data-testid="export-confirm-button"]'
+"""The control that actually asks (*observed 2026-09-14*).
 
-Still `*unknown*`: seeing it means pressing Export on a real account, which asks
-the vendor for a real export, and nobody has. Note that the settings panel is
-itself a `[role="dialog"]`, so this selector's first clause would match inside
-it — which is why the ask requires `view.dialog` *and* `view.confirm` together
-and clicks the confirm only once."""
+The `Export data` row does not ask for anything: it opens a second screen inside
+the settings dialog — a description, a *Conversations from* period, a list of
+what the export will include, and this button. So the ask's two clicks are a
+navigation and then the request, which is the shape `31` built for a modal and
+which fits this one unchanged.
+
+Unlike the row above it, this one has a test id and needs no positional
+guessing. It is not qualified by `[role="dialog"]`: the settings panel is one, so
+the qualifier would hold, but a test id this specific is better read on its own.
+"""
 
 REQUESTED_SELECTOR = '[data-testid="export-requested"], [role="status"]'
 """What the page shows once the request has been accepted.

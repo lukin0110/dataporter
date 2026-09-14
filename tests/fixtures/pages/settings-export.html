@@ -10,11 +10,12 @@
      it exactly: a switch row first, then Export, then a *Manage* row under it
      that must not be the one a click finds.
 
-     What is still `*unknown*` is the rest of the walk — whether a confirmation
-     follows and what the panel shows once the request is accepted — so those
-     two stages are built from the selectors as they stand and are evidence
-     about us rather than about claude.ai: that `click_js` clicks the first
-     *visible* match, and that `EXPORT_PAGE_JS` tells the three stages apart in
+     The second stage is observed too: the row opens a second screen inside the
+     same dialog, whose `Export` button carries a real test id. What is still
+     `*unknown*` is only the last one — what the panel shows once the request is
+     accepted — so that stage is built from the selector as it stands and is
+     evidence about us rather than about claude.ai: that `click_js` clicks the
+     first *visible* match, and that `EXPORT_PAGE_JS` tells the stages apart in
      a real Chrome.
 
      Deliberately not modelled: the real panel is itself a `[role="dialog"]`, so
@@ -64,9 +65,13 @@
     </section>
   </div>
 
+  <!-- The second screen. On claude.ai this replaces the rows above inside the
+       same settings dialog rather than opening over them, and it carries a
+       period control and a list of what the export will include; what the ask
+       needs from it is the one button, whose test id is the observed one. -->
   <div role="dialog" aria-label="Export data" hidden>
-    <p>Claude will email a download link to the address on this account.</p>
-    <button type="submit" data-testid="confirm-export">Confirm</button>
+    <p>A download link will be sent to your email. Link expires in 24 hours.</p>
+    <button type="button" data-cds="Button" data-testid="export-confirm-button">Export</button>
   </div>
 
   <div role="status" data-testid="export-requested" hidden>
@@ -83,7 +88,7 @@
     button.addEventListener('click', () => { dialog.hidden = false; });
   }
   document
-    .querySelector('[data-testid="confirm-export"]')
+    .querySelector('[data-testid="export-confirm-button"]')
     .addEventListener('click', () => {
       dialog.hidden = true;
       requested.hidden = false;

@@ -26,9 +26,16 @@ rather than a button, so the Export button is the panel's first.
 ## In scope
 
 - **`sources/claude.py`**: `EXPORT_PAGE_PATH` → `/new#settings/data-privacy-controls`;
-  `EXPORT_BUTTON_SELECTOR` → `[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]`.
-  `CONFIRM_BUTTON_SELECTOR` and `REQUESTED_SELECTOR` stay as they were and say in
-  their docstrings that they are still `*unknown*`.
+  `EXPORT_BUTTON_SELECTOR` → `[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]`;
+  `CONFIRM_BUTTON_SELECTOR` → `[data-testid="export-confirm-button"]`.
+  `REQUESTED_SELECTOR` stays as it was and says in its docstring that it is still
+  `*unknown*`.
+- **The `Export data` row asks for nothing.** It opens a second screen inside the
+  same dialog — a description, a `Conversations from` period, a list of what the
+  export will include, and the button that actually asks. `31` built the ask's two
+  clicks for a modal confirmation; the shape fits this unchanged, and `view.dialog`
+  is true throughout because the settings panel is itself a `[role="dialog"]`.
+  Unlike the row, that button has a test id and needs no positional guessing.
 - **`export_page.on_export_page`**: compares a URL's path **and fragment** against
   the address, rather than the path alone.
 - **`docs/claude-ui-map.md`**: the `export page` and `export button` rows now
@@ -41,8 +48,15 @@ rather than a button, so the Export button is the panel's first.
 
 ## Out of scope
 
-- The confirmation and the accepted signal: `52`, and only after somebody presses
-  Export on a real account.
+- **The accepted signal.** `REQUESTED_SELECTOR` needs somebody to press Export on a
+  real account, which asks the vendor for a real export.
+- **The period control.** The second screen offers `All` / `30 days` / `90 days` /
+  `Custom`, and the ask touches none of it: `All` is the default and a backup wants
+  all of it. Recorded in the UI map because a changed default would make `extract`
+  file partial snapshots while reporting success.
+- **Whether the second screen changes the address.** If its fragment differs from
+  the first's, `_click`'s `on_export_page` guard refuses the second click. Unknown,
+  and the next real run is what says.
 
 ## Design notes
 
