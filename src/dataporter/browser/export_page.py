@@ -32,13 +32,11 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orval import utcnow
 
 from dataporter import log
-from dataporter import trace as tracing
 from dataporter.browser import helpers, sites
 from dataporter.browser import probe as probing
 from dataporter.browser.cdp import Page
@@ -76,8 +74,11 @@ EXPORT_PAGE_TAG = "dataporter:export_page"
 CLICK_TAG = "dataporter:click"
 
 
-def _expression(source: "Source", tag: str, body: str) -> str:
-    """One expression: `probe`'s prelude, this source's selectors, then `body`."""
+def expression(source: "Source", tag: str, body: str) -> str:
+    """Return one expression: `probe`'s prelude, this source's selectors, then `body`.
+
+    Public since `44`, which reads the landing page with the same consts.
+    """
     consts = "".join(f"  const {name} = {json.dumps(value)};\n" for name, value in source.selectors.items())
     return probing.expression(tag, consts + body)
 
@@ -90,7 +91,7 @@ def export_page_js(source: "Source") -> str:
     it, and "the dialog is open" and "its confirm button is there" have to be
     true together for the second click to be the click this thinks it is.
     """
-    return _expression(
+    return expression(
         source,
         EXPORT_PAGE_TAG,
         "  const shown = (selector) => all(selector).filter(visible).length > 0;\n"
@@ -116,7 +117,7 @@ def click_js(selector: str, *, source: "Source" = CLAUDE) -> str:
     says. `false` when nothing visible matches, so a click is reported by
     whether it happened rather than by the call returning.
     """
-    return _expression(
+    return expression(
         source,
         CLICK_TAG,
         f"  const selector = {json.dumps(selector)};\n"
@@ -242,7 +243,7 @@ def request_export(
         if view.dialogs:
             return _stopped(JS_DIALOG)
         if not view.button:
-            _record(settings, BUTTON_ACTION, ok=False, url=page.url)
+            helpers.record_step(settings, BUTTON_ACTION, ok=False, url=page.url)
             return _stopped(BUTTON_NOT_FOUND)
 
         pressed_at = _click(settings, page, source, source.selectors["EXPORT_BUTTON_SELECTOR"], BUTTON_ACTION)
@@ -298,7 +299,7 @@ def _click(settings: Settings, page: Page, source: "Source", selector: str, acti
     started = time.monotonic()
     clicked = page.evaluate(click_js(selector, source=source)) is True
     elapsed_ms = round((time.monotonic() - started) * 1000)
-    _record(
+    helpers.record_step(
         settings,
         action,
         ok=clicked,
@@ -313,44 +314,6 @@ def _click(settings: Settings, page: Page, source: "Source", selector: str, acti
     # To the second: the stamp the snapshot is filed under is to the second, and
     # a moment with microseconds in it would be a precision nothing else keeps.
     return utcnow().replace(microsecond=0)
-
-
-def _record(
-    settings: Settings,
-    action: str,
-    *,
-    ok: bool,
-    url: str,
-    selector: str | None = None,
-    elapsed_ms: int = 0,
-    before: str | None = None,
-    after: str | None = None,
-) -> None:
-    """One line in the account home's `logs/actions.jsonl`, and a move in the trace.
-
-    The page's URL and the selector, never the element's text: §38 keeps
-    everything the tool writes *about* an account to numbers, labels and our own
-    strings.
-    """
-    ts = tracing.timestamp()
-    helpers.record_action(
-        Path(settings.logs_dir),
-        action,
-        ok=ok,
-        elapsed_ms=elapsed_ms,
-        url=url,
-        selector=selector,
-        ts=ts,
-    )
-    current = tracing.current()
-    if current is not None:
-        # `33`: the same line, as a move — the selector is ours, the URL is
-        # reduced to its path and its query's key names (§46).
-        result: dict[str, object] = {"selector": selector} if selector else {}
-        result.update(tracing.url_fields(url))
-        current.move(
-            action, ok=ok, elapsed_ms=elapsed_ms, conversation_id=None, result=result, ts=ts, before=before, after=after
-        )
 
 
 def _bring_to_export_page(session: BrowserSession, source: "Source", *, deadline: float, poll_s: float) -> None:

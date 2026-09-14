@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- A stand-in for chatgpt.com's Data controls page (`44`). The map's export
+     rows are *reported* from OpenAI's own article: **Export** under **Export
+     data**, a confirmation with **Confirm export**, then a status. The path is
+     *unknown*; this is served at the one the tool spells. Built out of the
+     selectors as they stand today, for the mechanics in a real Chrome and not
+     as evidence about the site. -->
+<meta charset="utf-8">
+<title>Data controls</title>
+<style>
+  [hidden] { display: none; }
+</style>
+<main>
+  <h1>Data controls</h1>
+  <label><input type="checkbox" role="switch" checked> Improve the model for everyone</label>
+  <section>
+    <h2>Export data</h2>
+    <button type="button" id="export">Export</button>
+  </section>
+  <div role="dialog" aria-label="Request data export" hidden>
+    <p>A download link will be sent to the email on this account.</p>
+    <button type="button" id="confirm-export">Confirm export</button>
+  </div>
+  <div role="status" id="export-requested" hidden>
+    Your data export has been requested.
+  </div>
+</main>
+<script>
+  const dialog = document.querySelector('[role="dialog"]');
+  const requested = document.querySelector('#export-requested');
+  document.querySelector('#export').addEventListener('click', () => { dialog.hidden = false; });
+  document.querySelector('#confirm-export').addEventListener('click', () => {
+    dialog.hidden = true;
+    requested.hidden = false;
+  });
+</script>

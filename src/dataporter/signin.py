@@ -31,9 +31,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from dataporter import PROGRAM_NAME, log
+from dataporter import PROGRAM_NAME, log, sources
 from dataporter import intervention as intervening
-from dataporter.browser import login_form
+from dataporter.browser import chatgpt_login, login_form
 from dataporter.browser import session as browser_session
 from dataporter.browser.launcher import BrowserSession
 from dataporter.config import Credentials, Settings
@@ -152,6 +152,8 @@ BLOCKED_REASONS: dict[str, str] = {
     login_form.NO_PROGRESS: intervening.AUTH_REQUIRED,
     login_form.NO_TAB: "browser_error",
     login_form.FIELD_NOT_FOCUSED: intervening.DEFAULT_REASON,
+    chatgpt_login.NO_LOGIN_BUTTON: intervening.AUTH_REQUIRED,
+    chatgpt_login.NO_EMAIL_STEP: intervening.AUTH_REQUIRED,
 }
 """Why the deterministic half stopped, as the `needs_human` reason it is.
 
@@ -170,22 +172,34 @@ class SignIn:
         self.attempts = 0
 
     def perform(self, session: BrowserSession) -> SignInOutcome:
-        """Sign the session in, or say what a person would have to do."""
+        """Sign the session in, or say what a person would have to do.
+
+        Two first halves, and the source says which (`44`, §61): the agent
+        brings a claude.ai tab to its form, and the tool itself walks
+        chatgpt.com's documented sign-in. The second half, and the proof, are
+        the same for both.
+        """
         credentials = require_credentials(self.settings)
         self.attempts += 1
-        try:
-            form = self._form()
-        except HermesError as exc:
-            _logger.warning("sign-in agent failed", extra={"attempt": self.attempts})
-            return SignInOutcome(signed_in=False, reason=HERMES_FAILED, detail=exc.detail or HERMES_FAILED)
-        if form.outcome != FORM_READY:
-            reason = form.needs_human_reason if form.outcome == "needs_human" else intervening.DEFAULT_REASON
-            _logger.info(
-                "sign-in form not reached",
-                extra={"outcome": form.outcome, "reason": reason or ""},
+        source = sources.of(self.settings) if self.settings.account is not None else None
+        if source is not None and source.unattended_signin == "walk":
+            result = chatgpt_login.walk(self.settings, session, source, credentials)
+        else:
+            try:
+                form = self._form()
+            except HermesError as exc:
+                _logger.warning("sign-in agent failed", extra={"attempt": self.attempts})
+                return SignInOutcome(signed_in=False, reason=HERMES_FAILED, detail=exc.detail or HERMES_FAILED)
+            if form.outcome != FORM_READY:
+                reason = form.needs_human_reason if form.outcome == "needs_human" else intervening.DEFAULT_REASON
+                _logger.info(
+                    "sign-in form not reached",
+                    extra={"outcome": form.outcome, "reason": reason or ""},
+                )
+                return SignInOutcome(signed_in=False, reason=_phrase(reason), detail=form.error)
+            result = login_form.fill_and_submit(
+                session, credentials, timeout_s=self.settings.timeouts.signin_s, settings=self.settings
             )
-            return SignInOutcome(signed_in=False, reason=_phrase(reason), detail=form.error)
-        result = login_form.fill_and_submit(session, credentials, timeout_s=self.settings.timeouts.signin_s)
         signed_in = result.signed_in and _signed_in(self.settings, session)
         _logger.info(
             "sign-in",
