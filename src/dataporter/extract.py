@@ -923,10 +923,17 @@ def _log_downloaded(path: Path) -> None:
 
     The staging path and not the store's: this is said while the download is the
     only copy there is, minutes before the filing that `_log_filed` names, and
-    where an operator watching `-v` would go to look at it. Under `--verbose`
-    alone, as every log line is.
+    where an operator watching `-v` would go to look at it. Printed on stderr
+    under `--verbose`, and written to the run log either way.
+
+    The last component is the vendor's, taken from the manifest, so it goes
+    through `safe_token` as the filed line's does: a name carrying a newline
+    would otherwise forge a line of its own in what an operator reads, since
+    `HumanFormatter` prints an extra as it is given. The directory is ours and is
+    left whole, so the path stays one an operator can paste.
+    (Raised by Copilot in review on #53.)
     """
-    _logger.info("downloaded", extra={"path": str(path)})
+    _logger.info("downloaded", extra={"path": str(path.parent / log.safe_token(path.name))})
 
 
 def _log_filed(settings: Settings, snapshot: store.Snapshot) -> None:
@@ -934,8 +941,8 @@ def _log_filed(settings: Settings, snapshot: store.Snapshot) -> None:
 
     One line per file — the archive first, then each part in the order the store
     kept them. The path is spelled as the store was configured (`~` unexpanded),
-    the same as §31's block. Only under `--verbose`, where the log stream reaches
-    stderr; without it there is no handler and nothing prints.
+    the same as §31's block. `--verbose` is what puts it on stderr; the run log
+    under the account home records it either way, as it does every event.
 
     The vendor's own part names appear here, the one place they do: §66 keeps them
     out of the trace and the action log, but `snapshot.json` records them already,

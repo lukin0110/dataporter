@@ -888,3 +888,21 @@ def test_a_body_names_where_it_landed(settings: Settings, export_zip: Path) -> N
     assert len(downloaded) == 1
     assert downloaded[0].endswith(".zip")
     assert extract.TMP_DIRNAME in downloaded[0]
+
+
+def test_a_vendor_name_cannot_forge_a_line_of_verbose_output(settings: Settings, tmp_path: Path) -> None:
+    """The last component of a staging path is the vendor's, so it is bounded.
+
+    `HumanFormatter` prints an extra as it is given, so a manifest naming a file
+    with a newline in it could otherwise add a line to what an operator reads.
+    (Raised by Copilot in review on #53.)
+    """
+    log.configure_logging()
+    log.enable_run_log(settings.logs_dir)
+
+    extract._log_downloaded(tmp_path / "conversations\n19:39:41 info    all is well.zip")
+
+    written = _events(settings, "downloaded")
+    assert len(written) == 1
+    assert "\n" not in written[0]
+    assert str(tmp_path) in written[0], "the directory is ours and stays whole"
