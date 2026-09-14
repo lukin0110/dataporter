@@ -33,6 +33,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from orval import utcnow
 
@@ -377,5 +378,15 @@ def on_export_page(url: str, source: "Source" = CLAUDE) -> bool:
     The sign-in page is inside the surface too, and so is wherever the site
     leaves a person once they are through it, so "the wall admits this" is not
     the question the navigation asks.
+
+    Path *and* fragment, since `51`: claude.ai serves the export page at a
+    fragment of its app (§77), so `/new` and `/new#settings/data-privacy-controls`
+    are the app page and the export page, and a check that looked only at the
+    path could not tell a person who has just signed in — and been left on
+    `/new` — from one already looking at the panel.
     """
-    return probing.path_of(url) == source.export_page_path
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    address = parsed.path or "/"
+    return (f"{address}#{parsed.fragment}" if parsed.fragment else address) == source.export_page_path

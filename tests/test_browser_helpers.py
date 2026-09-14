@@ -1230,7 +1230,7 @@ def test_live_the_export_page_walks_its_three_stages(
     confirmable while it is open.
     """
     session, server = live
-    visit(session, server.url(export_page.EXPORT_PAGE_PATH))
+    visit(session, server.url(fake_pages.EXPORT_PANEL_PATH))
     tab = session.client.pages()[0]
     page = session.client.attach(tab.id)
     try:
@@ -1260,7 +1260,7 @@ def test_live_a_click_finds_nothing_to_click(
     that threw.
     """
     session, server = live
-    visit(session, server.url(export_page.EXPORT_PAGE_PATH))
+    visit(session, server.url(fake_pages.EXPORT_PANEL_PATH))
     page = session.client.attach(session.client.pages()[0].id)
     try:
         assert page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR)) is False

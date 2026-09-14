@@ -1,15 +1,26 @@
 <!doctype html>
-<!-- A stand-in for the page where claude.ai lets a user ask for their data
-     (`31`). Its real path, its real button and whatever it really shows when
-     the request goes through are all `*unknown*` in `docs/claude-ui-map.md`;
-     what this fixture is for is the mechanics either way — that
-     `export_page.click_js` clicks the first *visible* match of a selector, and
-     that `EXPORT_PAGE_JS` reads the three states apart in a real Chrome.
+<!-- A stand-in for the panel where claude.ai lets a user ask for their data.
 
-     So it is built out of the selectors as they stand today, and it walks the
-     three stages an ask walks: a button, a dialog with a confirmation in it,
-     and a region that appears once the request has been accepted. Nothing here
-     is evidence about claude.ai; correcting the map corrects this file too. -->
+     Since `51` its shape is the observed one (2026-09-14): a settings panel
+     marked `data-perf-screen`, rows marked `data-settings-row`, and the Export
+     control as the first row of the panel that holds a button — every row above
+     it holds a switch. That shape is the whole of what
+     `EXPORT_BUTTON_SELECTOR` has to go on, because the rows carry no test id
+     and their React ids are regenerated on every render, so the fixture models
+     it exactly: a switch row first, then Export, then a *Manage* row under it
+     that must not be the one a click finds.
+
+     What is still `*unknown*` is the rest of the walk — whether a confirmation
+     follows and what the panel shows once the request is accepted — so those
+     two stages are built from the selectors as they stand and are evidence
+     about us rather than about claude.ai: that `click_js` clicks the first
+     *visible* match, and that `EXPORT_PAGE_JS` tells the three stages apart in
+     a real Chrome.
+
+     Deliberately not modelled: the real panel is itself a `[role="dialog"]`, so
+     on claude.ai `view.dialog` is true before anything is clicked. This file
+     leaves that out because it is testing the three-stage mechanics, and a
+     fixture whose dialog is open from the start cannot show them. -->
 <meta charset="utf-8">
 <title>Data privacy controls</title>
 <style>
@@ -19,11 +30,39 @@
 <main>
   <h1>Data privacy controls</h1>
 
-  <!-- A hidden button matching the same selector, first in document order: the
-       click helper filters by visibility, and a page that offers one control
-       per device width is exactly how a real one would break that rule. -->
-  <button class="invisible" data-testid="export-data">Export data</button>
-  <button data-testid="export-data">Export data</button>
+  <div data-perf-overlay="settings_modal" data-perf-screen="data-privacy-controls">
+    <section>
+      <h3>Preferences</h3>
+      <!-- A row above Export that holds no button. The selector's whole claim is
+           that the Export button is the panel's first, so a row that would break
+           it if it were matched belongs here. -->
+      <div role="group" data-settings-row>
+        <span class="settings-row-title">Help improve our AI models</span>
+        <span role="switch" data-cds="Switch" aria-checked="false"></span>
+      </div>
+    </section>
+
+    <section>
+      <h3>Your data</h3>
+      <!-- A hidden button matching the same selector, first in document order:
+           the click helper filters by visibility, and a panel that offers one
+           control per device width is exactly how a real one would break that
+           rule. -->
+      <div role="group" data-settings-row class="invisible">
+        <span class="settings-row-title">Export data</span>
+        <button type="button" data-cds="Button">Export data</button>
+      </div>
+      <div role="group" data-settings-row>
+        <span class="settings-row-title">Export data</span>
+        <button type="button" data-cds="Button">Export data</button>
+      </div>
+      <!-- Under it, the row a mis-aimed click would find instead. -->
+      <div role="group" data-settings-row>
+        <span class="settings-row-title">Shared chats</span>
+        <button type="button" data-cds="Button" id="manage">Manage</button>
+      </div>
+    </section>
+  </div>
 
   <div role="dialog" aria-label="Export data" hidden>
     <p>Claude will email a download link to the address on this account.</p>
@@ -37,9 +76,10 @@
 <script>
   const dialog = document.querySelector('[role="dialog"]');
   const requested = document.querySelector('[data-testid="export-requested"]');
-  const buttons = document.querySelectorAll('[data-testid="export-data"]');
+  const panel = document.querySelector('[data-perf-screen="data-privacy-controls"]');
 
-  for (const button of buttons) {
+  for (const button of panel.querySelectorAll('[data-settings-row] button[data-cds="Button"]')) {
+    if (button.id === 'manage') continue;
     button.addEventListener('click', () => { dialog.hidden = false; });
   }
   document

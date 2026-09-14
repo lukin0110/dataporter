@@ -13,7 +13,6 @@ from pathlib import Path
 from types import TracebackType
 from typing import Self
 
-from dataporter.browser import export_page
 from dataporter.sources.chatgpt import CHATGPT
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pages"
@@ -36,6 +35,12 @@ CHATGPT_LANDING_PATH = "/chatgpt"
 the site's root, which this server already gives to `new.html`; the fixture
 answers the same expressions from a path of its own."""
 
+EXPORT_PANEL_PATH = "/settings-export"
+"""Where the Claude export-panel fixture is served (`51`). The real panel is a
+dialog at a fragment of `/new`, which this server already gives to `new.html` —
+and a fragment never reaches a server in any case — so the fixture answers the
+same expressions from a path of its own, as `CHATGPT_LANDING_PATH` does."""
+
 ROUTES: dict[str, str] = {
     "/login": "login.html",
     "/login/form": "login-form.html",
@@ -48,7 +53,7 @@ ROUTES: dict[str, str] = {
     "/leaky": "leaky.html",
     "/replace-state": "replace-state.html",
     "/redirect": "redirect.html",
-    export_page.EXPORT_PAGE_PATH: "settings-export.html",
+    EXPORT_PANEL_PATH: "settings-export.html",
     CHATGPT_LANDING_PATH: "chatgpt-landing.html",
     CHATGPT.export_page_path: "chatgpt-data-controls.html",
 }
