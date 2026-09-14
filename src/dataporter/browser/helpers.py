@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
 
@@ -945,6 +946,12 @@ def record_step(
     outcome: this is a step of the tool's own — a click, a typed field — with
     nothing printed and no outcome object, on a page no helper may touch.
 
+    The action log gets the URL without its query or its fragment (§38, §70):
+    the trace reduces a URL to its path and its query's key names, and a
+    sign-in step on an auth host whose URLs nobody has observed may carry a
+    `state` or a `login_hint` in the query. The path is the step's; a value
+    never is.
+
     What the ask's two clicks, the sign-in's typed steps and `44`'s **Log in**
     all write: the URL and the selector, never the element's text or a field's
     value — §38 keeps everything the tool writes *about* an account to numbers,
@@ -952,7 +959,8 @@ def record_step(
     key names on the way into the trace (§46).
     """
     ts = tracing.timestamp()
-    record_action(Path(settings.logs_dir), action, ok=ok, elapsed_ms=elapsed_ms, url=url, selector=selector, ts=ts)
+    bare = urlsplit(url)._replace(query="", fragment="").geturl()
+    record_action(Path(settings.logs_dir), action, ok=ok, elapsed_ms=elapsed_ms, url=bare, selector=selector, ts=ts)
     current = tracing.current()
     if current is not None:
         result: dict[str, object] = {"selector": selector} if selector else {}

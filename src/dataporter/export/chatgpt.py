@@ -39,7 +39,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import log
 from dataporter.errors import ExportError
-from dataporter.sources.base import Reading
+from dataporter.sources.base import LOOKS_LIKE, Reading
 
 if TYPE_CHECKING:
     from dataporter.export.source import ExportView
@@ -72,7 +72,6 @@ CLAUDE_KEY = "chat_messages"
 """What a Claude archive has that a ChatGPT one never does: the plural account
 member, and a flat message list on each conversation (`02`)."""
 
-LOOKS_LIKE = "the archive looks like a {looks} export, not a {asked} one: {display}"
 NO_CONVERSATIONS = "no conversations member in the archive ({expected}): {display}"
 NOT_AN_ARRAY = "{member} is not a JSON array of conversations: {display}"
 NOT_AN_OBJECT = "{member}[{position}] is not an object: {display}"
@@ -203,7 +202,7 @@ def _attachment_ids(mapping: Mapping[str, Any]) -> Iterable[str]:
 def _unique(values: Iterable[str]) -> list[str]:
     """Order-preserving deduplication.
 
-    Hand-rolled for the third time in this tool (`docs/orval-candidates.md`,
+    Hand-rolled for the fourth time in this tool (`docs/orval-candidates.md`,
     C5): `set` loses the order, and the order is what makes two reads of one
     archive report the same missing files in the same order.
     """

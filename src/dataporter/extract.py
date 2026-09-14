@@ -125,7 +125,6 @@ LINK_REFUSED = (
 UNREACHABLE = "cannot reach the download host ({reason})"
 TOO_LARGE = "the download is larger than store.max_download_bytes ({limit} bytes)"
 NOT_A_ZIP = "the download is not a zip archive"
-LOOKS_LIKE = "the archive looks like a {looks} export, not a {asked} one: {display}"
 LINK_IS_A_PAGE = (
     "the link led to a page, not an archive (HTTP {code}); sign in with: "
     "{program} login --source {source} --account {account}, then try again"
@@ -706,7 +705,7 @@ def _read(path: Path, display: str, source: "Source") -> "Reading":
             looks = sources.recognised(view.names())
             if looks is not None and looks is not source:
                 raise FetchError(
-                    LOOKS_LIKE.format(looks=looks.display_name, asked=source.display_name, display=display)
+                    sources.LOOKS_LIKE.format(looks=looks.display_name, asked=source.display_name, display=display)
                 )
             return source.read(view)
     except ExportError as exc:

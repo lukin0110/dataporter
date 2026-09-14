@@ -97,10 +97,12 @@ class Client:
             return int(answer.code), _lowered(answer.headers), answer.read()
 
     def form(self, path: str, **fields: str) -> tuple[int, Mapping[str, str], bytes]:
+        """Post a form, as the mock's sign-in pages take one."""
         body = urllib.parse.urlencode(fields).encode("utf-8")
         return self.request("POST", path, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
 
     def post_json(self, path: str, payload: Mapping[str, Any]) -> tuple[int, Mapping[str, str], bytes]:
+        """Post a JSON body, as the mock's chat routes take one."""
         body = json.dumps(payload).encode("utf-8")
         return self.request("POST", path, data=body, headers={"Content-Type": "application/json"})
 
@@ -112,7 +114,7 @@ def _lowered(headers: Any) -> dict[str, str]:
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args: Any, **kwargs: Any) -> None:
-        return None
+        """Refuse every redirect: the caller reads `Location` itself."""
 
 
 def sign_in_claude(client: Client, email: str, password: str) -> None:
@@ -386,6 +388,7 @@ def digest_of(account: Path) -> tuple[str, str]:
 
 
 def _sha256(path: Path) -> str:
+    """Return the file's SHA-256, or an empty string when it cannot be read."""
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
@@ -411,6 +414,7 @@ def manifests(account: Path) -> list[dict[str, Any]]:
 
 
 def trace_lines(root: Path, step: running.Outcome) -> list[dict[str, Any]]:
+    """Return the parsed lines of the step's trace, or nothing when it left none."""
     if step.trace is None:
         return []
     parsed: list[dict[str, Any]] = []
@@ -684,6 +688,7 @@ def ledger_block(mock: Mock, counted: Mapping[str, int]) -> str:
 
 
 def render_half(half: Half, checks: Sequence[running.Criterion], mark: str) -> str:
+    """Render one mock's half of the record."""
     steps = half.runner.steps
     return HALF.format(
         title=f"mock {half.mock.hosts[0]}",
@@ -731,6 +736,7 @@ def render(
 
 
 def findings_of(halves: Sequence[tuple[Half, Sequence[running.Criterion]]]) -> list[str]:
+    """Return what this run has to say, in one line each, and the standing findings after."""
     found: list[str] = []
     for half, checks in halves:
         name = half.mock.hosts[0]

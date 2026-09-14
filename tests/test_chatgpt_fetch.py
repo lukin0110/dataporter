@@ -1,6 +1,6 @@
 """The fetch through the session (`45`): the browser downloads, the tool catches and files.
 
-Every branch against `fake_chatgpt_pages.FakeChatgptSite`, which answers a link the way
+Every branch against `fake_chatgpt_pages.FakeChatgptPages`, which answers a link the way
 the mock chatgpt.com does — an archive to a signed-in tab, a 403 to anyone else — and
 pushes the events a browser sends for a download. Two live tests at the end drive a real
 Chrome against a cookie-gated server, because `Browser.setDownloadBehavior` and its
@@ -42,7 +42,7 @@ from dataporter.config import (
 from dataporter.console import Collected
 from dataporter.errors import FetchError, UsageError
 from dataporter.exit_codes import ExitCode
-from fake_chatgpt_pages import LOGIN_BUTTON, ROOT, FakeChatgptSite, Step, browser
+from fake_chatgpt_pages import LOGIN_BUTTON, ROOT, FakeChatgptPages, Step, browser
 from fake_chrome import FakeChrome
 from live_browser import live_browser, requires_a_browser, visit
 
@@ -56,14 +56,14 @@ LINK = f"https://chatgpt.com/__mock/exports/{TOKEN}.zip"
 
 
 @pytest.fixture
-def site(chatgpt_zip: Path) -> FakeChatgptSite:
-    made = FakeChatgptSite(archive=chatgpt_zip.read_bytes())
+def site(chatgpt_zip: Path) -> FakeChatgptPages:
+    made = FakeChatgptPages(archive=chatgpt_zip.read_bytes())
     made.go(Step.HOME)
     return made
 
 
 @pytest.fixture
-def chrome(site: FakeChatgptSite) -> Iterator[FakeChrome]:
+def chrome(site: FakeChatgptPages) -> Iterator[FakeChrome]:
     with browser(site) as fake:
         yield fake
 
@@ -131,7 +131,7 @@ def trace_lines(settings: Settings) -> list[dict[str, Any]]:
 
 
 def test_a_signed_in_tab_downloads_the_link_and_the_archive_is_filed(
-    site: FakeChatgptSite, chrome: FakeChrome, settings: Settings, launches: list[str], chatgpt_zip: Path
+    site: FakeChatgptPages, chrome: FakeChrome, settings: Settings, launches: list[str], chatgpt_zip: Path
 ) -> None:
     extract.write_ask(settings, datetime(2026, 9, 30, 18, 12, 44, tzinfo=UTC))
     sink = Collected()
@@ -162,7 +162,7 @@ def test_a_signed_in_tab_downloads_the_link_and_the_archive_is_filed(
 
 
 def test_unattended_and_signed_out_the_fetch_walks_in_first(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     site.go(Step.LANDING)
     outcome = extract.fetch(settings, LINK, sink=Collected())
@@ -187,7 +187,7 @@ def test_unattended_without_credentials_is_refused_before_any_browser(
 
 
 def test_a_refused_link_is_the_same_line_as_the_browserless_fetch(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     site.link_answers = "refused"
     extract.write_ask(settings, datetime.now(UTC))
@@ -204,7 +204,7 @@ def test_a_refused_link_is_the_same_line_as_the_browserless_fetch(
 
 
 def test_a_link_that_leads_to_a_page_names_the_sign_in(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     site.link_answers = "page"
     with pytest.raises(FetchError) as raised:
@@ -217,7 +217,7 @@ def test_a_link_that_leads_to_a_page_names_the_sign_in(
 
 
 def test_a_download_over_the_cap_is_cancelled(
-    site: FakeChatgptSite, chrome: FakeChrome, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, chrome: FakeChrome, settings: Settings, launches: list[str]
 ) -> None:
     site.link_answers = "huge"
     with pytest.raises(FetchError) as raised:
@@ -229,7 +229,7 @@ def test_a_download_over_the_cap_is_cancelled(
 
 
 def test_a_stalled_download_is_refused_on_the_idle_budget(
-    site: FakeChatgptSite, chrome: FakeChrome, tmp_path: Path, launches: list[str]
+    site: FakeChatgptPages, chrome: FakeChrome, tmp_path: Path, launches: list[str]
 ) -> None:
     site.link_answers = "stall"
     settings = make_settings(chrome, tmp_path, idle_s=0.3)
@@ -247,7 +247,7 @@ def test_a_stalled_download_is_refused_on_the_idle_budget(
 
 
 def test_the_link_is_in_no_line_the_fetch_leaves(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     log.configure_logging()
     sink = Collected()
@@ -292,7 +292,7 @@ def test_the_link_is_in_no_line_the_fetch_leaves(
 
 
 def test_the_link_is_in_no_line_when_it_was_refused_either(
-    site: FakeChatgptSite, settings: Settings, launches: list[str]
+    site: FakeChatgptPages, settings: Settings, launches: list[str]
 ) -> None:
     site.link_answers = "refused"
     sink = Collected()
