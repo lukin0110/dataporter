@@ -266,6 +266,39 @@ def test_other_hosts_and_static_assets_are_not_recorded(
     ]
 
 
+def test_a_redacted_hop_to_another_host_names_it_once(
+    browser: Browser, traced: tracing.Trace, watch: watching.Watch
+) -> None:
+    """Two halves of a request line name a host, and only one may reach the record.
+
+    §66 has `url_fields` carry the host while a fetch redacts, and a hop that
+    leaves the site's own host had `_elsewhere` naming it as well — two `host`
+    keywords into one call, which is a `TypeError` and not a duplicate key. It
+    was raised in the watch's own daemon thread, so the watch died, the fetch
+    carried on without it, and the trace lost every observation after the first
+    hop. Seen on a real download, 2026-09-14.
+    """
+    with tracing.redacting():
+        browser.chrome.push(request("1", "https://downloads.example.com/a.zip", kind="Document", method="GET"))
+        wait_for(traced.path, 1)
+    time.sleep(0.3)
+
+    assert observations(traced.path) == [
+        {
+            "kind": "observation",
+            "what": "request",
+            "id": "r1",
+            "method": "GET",
+            "host": "downloads.example.com",
+            "path": tracing.LINK_MARKER,
+            "query": [],
+            "type": "document",
+        }
+    ]
+    # The watch is still listening: the point of the bug was that it stopped.
+    assert watch.running
+
+
 def test_a_failed_load_is_a_response_of_nothing(browser: Browser, traced: tracing.Trace, watch: watching.Watch) -> None:
     browser.chrome.push(request("9", "https://claude.ai/api/chats", stamp=5.0))
     browser.chrome.push(event("Network.loadingFailed", requestId="9", timestamp=5.5, errorText="net::ERR_FAILED"))
