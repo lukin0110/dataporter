@@ -2,7 +2,7 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58, [`06`](06-chatgpt-extraction.md) §59–§71 | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58, [`06`](06-chatgpt-extraction.md) §59–§71, [`07`](07-claude-sign-in.md) §72–§80 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
@@ -11,14 +11,15 @@ Two kinds of document live here, and they are not interchangeable.
 | **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands; `Built` when its tests pass, `Done` when its live criteria are met |
 | **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
-| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative | Normative |
+| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative; brief `07`'s sign-in blocks (§73) are golden | Normative |
 
-There are six briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
+There are seven briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
 [`02-claude-mock.md`](02-claude-mock.md) (§20–§28),
 [`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40),
 [`04-trace.md`](04-trace.md) (§41–§51),
-[`05-chatgpt-mock.md`](05-chatgpt-mock.md) (§52–§58) and
-[`06-chatgpt-extraction.md`](06-chatgpt-extraction.md) (§59–§71). Section numbers
+[`05-chatgpt-mock.md`](05-chatgpt-mock.md) (§52–§58),
+[`06-chatgpt-extraction.md`](06-chatgpt-extraction.md) (§59–§71) and
+[`07-claude-sign-in.md`](07-claude-sign-in.md) (§72–§80). Section numbers
 continue across them,
 so `§N` names one section anywhere in the repository (a working rule, below). The words
 the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
@@ -42,6 +43,7 @@ specs/
 ├── 04-trace.md           the trace brief — intent, stable
 ├── 05-chatgpt-mock.md    the mock chatgpt.com brief — intent, stable
 ├── 06-chatgpt-extraction.md   the extraction-from-ChatGPT brief — intent, stable
+├── 07-claude-sign-in.md  the Claude-sign-in brief — intent, stable
 ├── README.md             this file — index, sequence, shared decisions
 └── impl/
     ├── _template.md      the shape every implementation spec follows
@@ -136,6 +138,21 @@ M11 — Extraction from ChatGPT (brief 06, §59–§71) — the tool's ChatGPT h
   45  The fetch through the session: the download caught in the tab, the link kept out of the trace
   46  The extraction rehearsal: both mocks, seeded, reconciled, traced, recorded
   47  The paperwork: the amendment, the glossary, the records, the candidates
+
+M12 — Claude sign-in by link (brief 07, §72–§80) — Claude becomes an API source, because
+      claude.ai has no password sign-in; built against the mock claude.ai and rehearsed
+      against it, and no slice in it touches a real account
+  48  The words: the glossary, the brief, ADR 0008, this index
+  49  The mock signs people in: the sign-in ask, and the link it mints instead of mailing
+  50  The mock's export ask: the request behind the data controls, and what comes back
+  51  Reaching the mock without a door: the redirection outside the program
+  52  The client and its guard: three requests pinned, and a shape that is not expected
+  53  The sign-in ask: `--email`, the record, the block, a second ask that supersedes
+  54  The sign-in link: redeemed, the credential kept, the block
+  55  Planting: the destination's cookie into its profile, at redeem and on demand
+  56  `session status` and `session logout`: the lifetime, the warning, both artifacts
+  57  The export ask without a page: `extract` stops opening a browser for Claude
+  58  The paperwork: the limitations rewritten, the window sign-in behind its flag
 ```
 
 ## Dependencies
@@ -224,6 +241,24 @@ the paperwork.
                                    (44 needs 24; 46 needs 29 and 36)
 ```
 
+M12 is a chain of eleven, and the first is the paper the rest cite: `48` is the glossary,
+the brief and ADR 0008, written before anything is built because this file's own working
+rule puts words first; `49` and `50` are the mock's side, built out of §78's shapes and
+importing nothing from the tool; `51` is how a browserless client reaches them without the
+door ADR 0001 forbids; `52` is the client and the guard every call passes through; `53`
+and `54` are the two commands of §73; `55` is the destination's planted cookie; `56` is
+what `session status` and `session logout` mean once a credential exists; `57` moves
+Claude's export ask off the browser; and `58` is the paperwork. Everything after `48` is
+blocked on §78's three shapes, which a person observes on a real account and no slice can
+supply.
+
+```text
+47 ─> 48 ─┬─> 49 ─> 50 ─┐
+          └─> 51 ───────┴─> 52 ─> 53 ─> 54 ─┬─> 55 ─> 56
+                                            └─> 57 ─> 58
+        (55 needs 07; 57 needs 30 and 31)
+```
+
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
 own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
 straight to `14`. Both need `12` and nothing else, and both were built against it
@@ -299,6 +334,17 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Done |
 | [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Done |
 | [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Done |
+| [48](impl/48-the-words.md) | The words | §72, §73, §74, §77 | Done |
+| 49 | The mock signs people in | §79 | Not started |
+| 50 | The mock's export ask | §79 | Not started |
+| 51 | Reaching the mock without a door | §79 | Not started |
+| 52 | The client and its guard | §78 | Not started |
+| 53 | The sign-in ask | §73 | Not started |
+| 54 | The sign-in link | §73, §74 | Not started |
+| 55 | Planting | §75 | Not started |
+| 56 | `session status` and `session logout` | §74, §76 | Not started |
+| 57 | The export ask without a page | §77 | Not started |
+| 58 | The paperwork | §76, §78, §80 | Not started |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -390,6 +436,17 @@ rehearsal can answer — §69's questions about the real site — waits in
 `docs/extraction-02.md` on a throwaway account, as `docs/extraction-01.md` does for
 Claude, and is what would turn `docs/chatgpt-ui-map.md`'s rows *observed*.
 
+Of the seventh brief, §73–§79 are claimed by `48`–`58`: `48` takes the words of §73, §74
+and §77 and the decision §72 rests on, `49` and `50` the mock of §79, `51` its door, `52`
+the shapes and the guard of §78, `53` and `54` the two commands of §73 under §74's
+discipline, `55` the destination of §75, `56` §74's logout and §76's warning, `57` the ask
+of §77, and `58` what §76 and §78 leave in `docs/LIMITATIONS.md`. §72 is that brief's goal
+and is claimed by all of them; §80 is its list of what is deliberately left and stays
+unclaimed until one of its items is built. `48` is `Done`: its documents are in. Every
+slice after it is `Not started` and blocked on the same thing — §78's three request shapes,
+which are `*unknown*` because nobody has watched claude.ai make them, and which a person
+observes on a real account rather than a slice supplying them.
+
 ## Working rules
 
 - **New work starts as a slice, not as an edit to the brief.** If the brief turns out to be
@@ -411,7 +468,8 @@ Claude, and is what would turn `docs/chatgpt-ui-map.md`'s rows *observed*.
 - **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
   `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
   `03` starts at §29 where `02` ends, `04` at §41 where `03` ends, `05` at §52 where
-  `04` ends, `06` at §59 where `05` ends, and a seventh starts at §72. Cite `§N`, never
+  `04` ends, `06` at §59 where `05` ends, `07` at §72 where `06` ends, and an eighth starts
+  at §81. Cite `§N`, never
   `02§N`.
 
 ## Shared decisions
