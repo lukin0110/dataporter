@@ -83,6 +83,12 @@ that knows how to read one. The **source account** is the account being read; th
 **destination account** is the Claude account being migrated into.
 _Avoid_: provider, platform, origin
 
+**API source**:
+A source the tool asks directly, over the vendor's own interface, holding the credential
+the vendor issued it. A source driven in a browser holds a profile instead, and the tool
+never learns its cookie.
+_Avoid_: headless source, direct source
+
 **Export**:
 The vendor's own data export, as the vendor ships it and a person downloads it. The tool
 reads one and files one; it never produces one.
@@ -100,8 +106,10 @@ filing it as a snapshot. Changes nothing in the account beyond the ask.
 _Avoid_: scrape, crawl, pull, sync, download
 
 **Ask**:
-The request the tool makes of a vendor for an account's export, remembered until the link
-comes back. One is open per account at a time.
+A request the tool makes of a vendor that the vendor answers by emailing a link,
+remembered until the link comes back. The **export ask** is for an account's export, and
+one is open per account at a time; the **sign-in ask** is for a link that signs an account
+in, and a second one supersedes the first rather than being refused.
 _Avoid_: export request, job, ticket
 
 **Fetch**:
@@ -112,13 +120,15 @@ _Avoid_: download, pull, grab
 
 **Export page**:
 The page where a vendor lets a signed-in user ask for their data. The one page an
-extraction acts on, and the one place the tool clicks anything in a source account.
+extraction acts on, and the one place the tool clicks anything in a source account. An API
+source has none: its ask is a request rather than a click.
 _Avoid_: settings page, data controls, privacy page
 
 **Link**:
-The download address the vendor emails after an ask, which a person hands to the tool.
-Never kept.
-_Avoid_: URL, token, download link
+The single-use address the vendor emails after an ask, which a person hands to the tool.
+Never kept. The **export link** downloads the archive; the **sign-in link** signs the
+account in.
+_Avoid_: URL, token, download link, magic link
 
 **Snapshot**:
 The data of one account, from one source, as it stood at one moment, in the vendor's own
@@ -145,7 +155,9 @@ the tool writes — what it writes is a snapshot.
 _Avoid_: using it for the snapshot itself
 
 **Source session**:
-The browser session signed in to a source account, kept apart from the destination's.
+The signed-in session the tool keeps for a source account, kept apart from the
+destination's: a browser profile where the source is driven in a browser, and the
+credential the vendor issued where the tool asks it directly.
 _Avoid_: extraction session, second profile
 
 **Account home**:
