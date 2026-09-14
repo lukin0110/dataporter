@@ -2,7 +2,8 @@
 
 A tool that migrates a Claude data export into another Claude account by driving the
 claude.ai web interface, and the experiment that measures whether that works. The same
-tool extracts an account's data as a snapshot and keeps it in a store. The words below
+tool extracts an account's data — a Claude account's, or a ChatGPT account's — as a
+snapshot and keeps it in a store. The words below
 are the ones the briefs, slices and documents use; where two words exist for one thing,
 the first is the one to use.
 
@@ -85,7 +86,13 @@ _Avoid_: provider, platform, origin
 **Export**:
 The vendor's own data export, as the vendor ships it and a person downloads it. The tool
 reads one and files one; it never produces one.
-_Avoid_: archive, dump, takeout
+_Avoid_: dump, takeout
+
+**Archive**:
+The export as a file: the zip the link serves, which a snapshot keeps byte for byte and
+the tool reads without unpacking. An export is what the vendor produced; the archive is
+the file it came as.
+_Avoid_: dump, bundle, the zip
 
 **Extraction**:
 Asking a source for an account's export, fetching it from the link the vendor sends, and
@@ -96,6 +103,12 @@ _Avoid_: scrape, crawl, pull, sync, download
 The request the tool makes of a vendor for an account's export, remembered until the link
 comes back. One is open per account at a time.
 _Avoid_: export request, job, ticket
+
+**Fetch**:
+Downloading the archive from the link and handing it to the store: without a browser
+where the vendor allows it, through the source session where the vendor requires the
+download to be made signed in.
+_Avoid_: download, pull, grab
 
 **Export page**:
 The page where a vendor lets a signed-in user ask for their data. The one page an
@@ -124,7 +137,7 @@ _Avoid_: timestamp, date, version
 **Store**:
 Where snapshots are kept: a directory on disk today, a bucket later. Never overwrites.
 Not the workspace.
-_Avoid_: vault, archive, backup directory, repository
+_Avoid_: vault, backup directory, repository
 
 **Backup**:
 The practice: extracting on a schedule into a store, and importing to restore. Not a thing
@@ -154,8 +167,8 @@ _Avoid_: snapshot, inspect
 **Surface**:
 The set of URLs a helper will drive. The migration surface is a new chat and a
 conversation on claude.ai; the login surface adds the sign-in page, for the sign-in alone;
-the extraction surface is a source site's sign-in page and the page where its export is
-asked for, for the ask alone.
+the extraction surface is a source site's sign-in page — on every host the sign-in passes
+through — and the page where its export is asked for, for the ask alone.
 _Avoid_: allowlist, whitelist, scope
 
 **Scripted agent**:
@@ -210,8 +223,9 @@ the test that uses it.
 _Avoid_: fake site, simulator, emulator, stub server, the Claude mock, the ChatGPT mock
 
 **Rehearsal**:
-The full run's protocol, run by the shipped tool against a site's mock with the scripted
-agent standing where Hermes stands. No model, no account.
+A protocol — the full run's, or an extraction's — run by the shipped tool against a site's
+mock, with the scripted agent standing where Hermes stands wherever the protocol needs
+one. No model, no account.
 _Avoid_: dry run, test run, smoke test, e2e
 
 **Rehearsal export**:
