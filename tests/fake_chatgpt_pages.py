@@ -21,6 +21,7 @@ tool reads both and a real browser keeps them together.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from dataporter.browser import chatgpt_login, export_page, login_form, probe, session, sites
@@ -32,6 +33,25 @@ from fake_composer import js_const
 ROOT = CHATGPT.login_url
 AUTH_URL = "https://auth.openai.com/log-in"
 EXPORT_URL = sites.export_page_url(CHATGPT)
+LINK_PREFIX = "https://chatgpt.com/__mock/exports/"
+"""Where the mock chatgpt.com mints its links (`40`): on the site's host, where the cookie is."""
+
+
+def frame_navigated(url: str) -> dict[str, Any]:
+    return {"method": "Page.frameNavigated", "params": {"frame": {"id": "F1", "url": url}, "type": "Navigation"}}
+
+
+def response_received(url: str, status: int, mime: str) -> dict[str, Any]:
+    return {
+        "method": "Network.responseReceived",
+        "params": {
+            "requestId": "d1",
+            "timestamp": 1.0,
+            "type": "Document",
+            "response": {"url": url, "status": status, "mimeType": mime, "headers": {}},
+        },
+    }
+
 
 LOGIN_BUTTON = CHATGPT.selectors["LOGIN_BUTTON_SELECTOR"]
 EXPORT_BUTTON = CHATGPT.selectors["EXPORT_BUTTON_SELECTOR"]
@@ -79,6 +99,21 @@ class FakeChatgptSite:
 
     signs_in_after: int | None = None
     """How many state reads before a person finishes signing in, for the interactive wait."""
+
+    link_answers: str = "download"
+    """What the site does when the tab is pointed at a link: `download` the
+    archive, `refused` (a 403, the signed-out answer), `page` (a 200 document
+    with no download, the redirect-to-landing answer), `huge` (a download that
+    grows past the cap), or `stall` (nothing at all)."""
+
+    archive: bytes = b""
+    """The bytes a download delivers."""
+
+    download_dir: Path | None = None
+    """Where `Browser.setDownloadBehavior` said downloads go."""
+
+    links: list[str] = field(default_factory=list)
+    """Every link the tab was pointed at."""
 
     state_reads: int = 0
     clicks: list[str] = field(default_factory=list)
@@ -165,6 +200,10 @@ class FakeChatgptSite:
 
     def navigate(self, url: str) -> None:
         self.navigations.append(url)
+        if url.startswith(LINK_PREFIX):
+            self.links.append(url)
+            self.answer_link(url)
+            return
         if url == EXPORT_URL:
             # A signed-out request for a settings page lands on the landing page.
             self.go(Step.EXPORT if self.signed_in else Step.LANDING)
@@ -172,6 +211,44 @@ class FakeChatgptSite:
             self.go(Step.HOME if self.signed_in else Step.LANDING)
         else:
             raise AssertionError(f"unexpected navigation: {url}")
+
+    def answer_link(self, url: str) -> None:
+        """Push what a browser sends for a download link, in the order Chrome sends it."""
+        assert self.chrome is not None
+        push = self.chrome.push
+        push(frame_navigated(url))
+        if self.link_answers == "stall":
+            return
+        if not self.signed_in or self.link_answers == "refused":
+            push(response_received(url, 403, "text/plain"))
+            return
+        if self.link_answers == "page":
+            push(response_received(url, 200, "text/html"))
+            push({"method": "Page.loadEventFired", "params": {"timestamp": 1.0}})
+            return
+        push(response_received(url, 200, "application/zip"))
+        guid = "0f5e0d7a-1234-4c9e-8a1b-2f3e4d5c6b7a"
+        push({
+            "method": "Browser.downloadWillBegin",
+            "params": {"frameId": "F1", "guid": guid, "url": url, "suggestedFilename": "chatgpt-export.zip"},
+        })
+        if self.link_answers == "huge":
+            push({
+                "method": "Browser.downloadProgress",
+                "params": {"guid": guid, "totalBytes": 0, "receivedBytes": 10**12, "state": "inProgress"},
+            })
+            return
+        assert self.download_dir is not None
+        (self.download_dir / guid).write_bytes(self.archive)
+        push({
+            "method": "Browser.downloadProgress",
+            "params": {
+                "guid": guid,
+                "totalBytes": len(self.archive),
+                "receivedBytes": len(self.archive),
+                "state": "completed",
+            },
+        })
 
     # -- answering CDP ------------------------------------------------------- #
 
@@ -198,6 +275,9 @@ class FakeChatgptSite:
         raise AssertionError(f"unexpected expression: {expression[:80]}")
 
     def respond(self, call: Call) -> dict[str, Any] | None:
+        if call.method == "Browser.setDownloadBehavior":
+            self.download_dir = Path(str(call.params["downloadPath"]))
+            return {"result": {}}
         if call.method == "Runtime.evaluate":
             return {"result": {"result": {"value": self.evaluate(str(call.params["expression"]))}}}
         if call.method == "Page.navigate":

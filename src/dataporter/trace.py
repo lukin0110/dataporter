@@ -107,13 +107,47 @@ def trace_path(logs_dir: Path, stamp: str) -> Path:
     return logs_dir / log.LOGS_DIRNAME / f"trace-{stamp}.jsonl"
 
 
+LINK_MARKER = "<link>"
+"""What stands where a path would while a fetch is redacting (§66)."""
+
+_redacting = threading.Event()
+"""Set for the length of a fetch that drives a tab to the link. A process-wide
+event rather than a context variable, because the watch writes from a thread
+of its own and has to see it."""
+
+
+@contextmanager
+def redacting() -> Iterator[None]:
+    """While a fetch drives the tab to the link: hosts, never paths (§66).
+
+    The link is a credential to the archive while it lives, and its secret is
+    in its path. Every URL any writer reduces while this is set — the watch's
+    navigations and requests, the sketches, the fetch's own move — comes out as
+    its host and `<link>`, and a path written by anyone in that time is refused
+    by the writer the way §46 refuses a forbidden field.
+    """
+    _redacting.set()
+    try:
+        yield
+    finally:
+        _redacting.clear()
+
+
+def is_redacting() -> bool:
+    return _redacting.is_set()
+
+
 def url_fields(url: str) -> dict[str, Any]:
     """Return a URL as a trace carries it: the path, and the query's key names (§46).
 
     Never a value and never the fragment: a sign-in code and an emailed token
-    are query values, and a fragment is a value too.
+    are query values, and a fragment is a value too. While a fetch is
+    redacting, the host and a marker instead (§66): a download link's secret is
+    its path.
     """
     parts = urlsplit(url)
+    if _redacting.is_set():
+        return {"host": parts.hostname or "", "path": LINK_MARKER, "query": []}
     return {
         "path": parts.path or "/",
         "query": [key for key, _ in parse_qsl(parts.query, keep_blank_values=True)],
@@ -144,7 +178,24 @@ def sanitised(value: Any, depth: int = 0) -> Any:
 
 
 def _offending(fields: Mapping[str, Any]) -> set[str]:
-    return log.forbidden_names(fields) | (TRACE_KEYS & set(fields))
+    found = log.forbidden_names(fields) | (TRACE_KEYS & set(fields))
+    if _redacting.is_set():
+        found |= _leaking(fields)
+    return found
+
+
+def _leaking(fields: Mapping[str, Any], depth: int = 0) -> set[str]:
+    """`path` and `query` fields that carry more than the marker, at every depth (§66)."""
+    found: set[str] = set()
+    if fields.get("path") not in {None, LINK_MARKER}:
+        found.add("path")
+    if fields.get("query"):
+        found.add("query")
+    if depth < _MAX_DEPTH:
+        for value in fields.values():
+            if isinstance(value, Mapping):
+                found |= _leaking(value, depth + 1)
+    return found
 
 
 def _line(payload: Mapping[str, Any]) -> bytes:

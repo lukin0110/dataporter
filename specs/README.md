@@ -296,7 +296,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [42](impl/42-source-seam.md) | The source seam | §60 | Built |
 | [43](impl/43-chatgpt-archive.md) | The ChatGPT archive | §59, §64 | Built |
 | [44](impl/44-chatgpt-session-and-ask.md) | The ChatGPT source session and the ask | §60, §61, §62, §65, §67 | Built |
-| [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Not started |
+| [45](impl/45-fetch-through-the-session.md) | The fetch through the session | §63, §65, §66, §67 | Built |
 | [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Not started |
 | [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Not started |
 

@@ -450,3 +450,37 @@ def test_the_site_is_read_only() -> None:
         SITE.selectors["x"] = "y"  # type: ignore[index]
     assert dict(SITE.selectors) == {"COMPOSER_SELECTOR": 'div[contenteditable="true"]'}
     assert os.environ.get(tracing.TRACE_ENV_VAR) is None
+
+
+# --------------------------------------------------------------------------- #
+# `45`: hosts, never paths, while a fetch is redacting (§66)
+# --------------------------------------------------------------------------- #
+
+
+def test_while_redacting_a_url_is_its_host_and_a_marker() -> None:
+    link = "https://chatgpt.com/__mock/exports/s3cret.zip?sig=abc"
+    assert not tracing.is_redacting()
+    with tracing.redacting():
+        assert tracing.is_redacting()
+        assert tracing.url_fields(link) == {"host": "chatgpt.com", "path": "<link>", "query": []}
+        assert tracing.sanitised({"url": link}) == {"host": "chatgpt.com", "path": "<link>", "query": []}
+    assert not tracing.is_redacting()
+    assert tracing.url_fields(link) == {"path": "/__mock/exports/s3cret.zip", "query": ["sig"]}
+
+
+def test_while_redacting_a_path_that_is_not_the_marker_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The writer refuses a path written by anyone in that time, as it refuses a forbidden field."""
+    monkeypatch.setenv("DATAPORTER_LOG_STRICT", "1")
+    trace = opened(tmp_path)
+    with tracing.redacting():
+        assert trace.observation("navigation", path="<link>", query=[], host="cdn.example")
+        with pytest.raises(log.ContentLeakError, match="path"):
+            trace.observation("navigation", path="/__mock/exports/s3cret.zip", query=[])
+        with pytest.raises(log.ContentLeakError, match="query"):
+            trace.observation("request", path="<link>", query=["sig"])
+        with pytest.raises(log.ContentLeakError, match="path"):
+            trace.move("download", ok=True, elapsed_ms=1, conversation_id=None, result={"path": "/x"}, ts="t")
+    assert trace.observation("navigation", path="/new", query=[])
+    trace.close()
