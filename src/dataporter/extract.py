@@ -510,6 +510,7 @@ def fetch(
         # After `COMPLETE`, never before: an ask deleted on the way to a filing
         # that then failed is an ask nobody can fetch against any more.
         ask_path(settings).unlink(missing_ok=True)
+    _log_filed(settings, snapshot)
     sink.block(
         block(
             settings,
@@ -656,6 +657,7 @@ def index_and_files(
     got = download.fetch(settings, browser, link, into=into, hosts=source.hosts)
     manifest_path = got.path.rename(into / MANIFEST_FILENAME)
     collected.append(manifest_path)
+    _log_downloaded(manifest_path)
     manifest = manifest_of(manifest_path)
     if manifest is None:
         raise FetchError(NOT_A_MANIFEST)
@@ -667,6 +669,7 @@ def index_and_files(
         each = download.fetch(settings, browser, item.export_url, into=into, hosts=source.hosts)
         parts.append(each.path.rename(into / Path(item.filename).name))
         collected.append(parts[-1])
+        _log_downloaded(parts[-1])
     return manifest_path, parts
 
 
@@ -719,6 +722,9 @@ def _download_through_session(
             traced.exit_code = ExitCode.OK
     finally:
         browser.close()
+    # Its own guid: a source that serves one archive has no manifest to name it,
+    # so what is printed is the name the browser gave it, which is the file.
+    _log_downloaded(got.path)
     return got.path, got.bytes, _digest(got.path)
 
 
@@ -792,6 +798,7 @@ def _download(
             "bytes": size,
         },
     )
+    _log_downloaded(target)
     return size, digest.hexdigest()
 
 
@@ -909,6 +916,36 @@ def _display(settings: Settings, snapshot: store.Snapshot) -> str:
     """Where the snapshot is, spelled as the store was configured."""
     root = Path(settings.store_display)
     return str(root / snapshot.source / snapshot.account / snapshot.stamp)
+
+
+def _log_downloaded(path: Path) -> None:
+    """Name where a file landed, the moment the browser finished writing it.
+
+    The staging path and not the store's: this is said while the download is the
+    only copy there is, minutes before the filing that `_log_filed` names, and
+    where an operator watching `-v` would go to look at it. Under `--verbose`
+    alone, as every log line is.
+    """
+    _logger.info("downloaded", extra={"path": str(path)})
+
+
+def _log_filed(settings: Settings, snapshot: store.Snapshot) -> None:
+    """Name each filed file's store path, for an operator reading `-v`.
+
+    One line per file — the archive first, then each part in the order the store
+    kept them. The path is spelled as the store was configured (`~` unexpanded),
+    the same as §31's block. Only under `--verbose`, where the log stream reaches
+    stderr; without it there is no handler and nothing prints.
+
+    The vendor's own part names appear here, the one place they do: §66 keeps them
+    out of the trace and the action log, but `snapshot.json` records them already,
+    so a line naming `light_metadata-000.zip` discloses nothing to disk that the
+    manifest beside it does not. `safe_token` bounds the name and strips control
+    characters so a vendor's name cannot forge a line an operator reads.
+    """
+    directory = Path(_display(settings, snapshot))
+    for name in (snapshot.archive.name, *(part.name for part in snapshot.parts)):
+        _logger.info("filed", extra={"path": str(directory / log.safe_token(name))})
 
 
 # --------------------------------------------------------------------------- #
