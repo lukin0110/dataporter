@@ -992,12 +992,19 @@ def _landed(path: Path, *, name: str, size: int, sink: Sink, quiet: bool) -> Non
     `-v` follows the fetch by, since a manifest fetch is several downloads and,
     without it, a minute of silence.
 
-    The last component is the vendor's, taken from the manifest, so it goes
-    through `safe_token` in both, as the filed line's does: a name carrying a
-    newline would otherwise forge a line of its own in what an operator reads,
-    since `HumanFormatter` prints an extra as it is given. The directory is ours
-    and is left whole, so the path stays one an operator can paste.
-    (Raised by Copilot in review on #53.)
+    Two names, and they are not the same name. The record carries `path.name`,
+    what the file is called on disk — the vendor's, from the manifest, or the
+    browser's guid for a source that serves one archive. The line carries
+    `name`, what the file is called to an operator — again the vendor's for a
+    manifest part, and `store.ARCHIVE_NAME` for that single archive, since the
+    name its vendor suggested is never kept (§66).
+
+    Both go through `safe_token` regardless, as the filed line's does, because
+    one of the two can be the vendor's: a name carrying a newline would
+    otherwise forge a line of its own in what an operator reads, since
+    `HumanFormatter` prints an extra as it is given. The directory is ours and
+    is left whole, so the path stays one an operator can paste.
+    (Raised by Copilot in review on #53, and its two-names half on #57.)
     """
     _logger.info("downloaded", extra={"path": str(path.parent / log.safe_token(path.name))})
     if not quiet:
