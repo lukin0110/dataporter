@@ -29,7 +29,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "orval>=0.0.12",
+    "orval>=0.0.13",
     "pydantic>=2",
     "pydantic-settings>=2",
     # `13`'s retry loop, and nothing else: `Importer._migrate` builds one

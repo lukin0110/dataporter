@@ -34,7 +34,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from orval import deep_get
+from orval import deep_get, unique
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import log
@@ -131,14 +131,15 @@ def read(view: "ExportView") -> Reading:
             referenced.extend(_attachment_ids(envelope.mapping))
     _account(view)
     carried = [name for name in names if is_file(name)]
-    missing = [key for key in _unique(referenced) if not any(key in name for name in carried)]
+    referenced_unique = unique(referenced)
+    missing = [key for key in referenced_unique if not any(key in name for name in carried)]
     _logger.info(
         "chatgpt export shape",
         extra={
             "conversations": conversations,
             "members": len(names),
             "files": len(carried),
-            "referenced": len(_unique(referenced)),
+            "referenced": len(referenced_unique),
             "missing": len(missing),
         },
     )
@@ -197,19 +198,3 @@ def _attachment_ids(mapping: Mapping[str, Any]) -> Iterable[str]:
             match = ATTACHMENT_ID.match(identifier) if isinstance(identifier, str) else None
             if match is not None:
                 yield match.group("key")
-
-
-def _unique(values: Iterable[str]) -> list[str]:
-    """Order-preserving deduplication.
-
-    Hand-rolled for the fourth time in this tool (`docs/orval-candidates.md`,
-    C5): `set` loses the order, and the order is what makes two reads of one
-    archive report the same missing files in the same order.
-    """
-    seen: set[str] = set()
-    kept: list[str] = []
-    for value in values:
-        if value not in seen:
-            seen.add(value)
-            kept.append(value)
-    return kept

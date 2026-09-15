@@ -19,7 +19,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Literal
 
-from orval import strip_control
+from orval import has_control
 from pydantic import BaseModel, ConfigDict
 
 from dataporter import log, render
@@ -93,13 +93,12 @@ _UNSAFE_IN_NAME = ("/", "\\")
 systems these exports come from, and refusing them would report a file that is
 really there as bytes we do not have.
 
-Control characters are refused as well, through `orval.strip_control` rather
+Control characters are refused as well, through `orval.has_control` rather
 than a pattern of our own — an export is trusted or distrusted once, and
-`log.safe_token` reduces the same set for the other reason. The predicate is
-spelled as a comparison because orval offers no `has_control`; see candidate C8.
-NUL alone was the original rule; a newline or a carriage return is the same kind
-of thing and reaches further, since such a name is joined into a path here and
-printed by `04` when the conversation is skipped.
+`log.safe_token` reduces the same set for the other reason (candidate C8,
+shipped in 0.0.13). NUL alone was the original rule; a newline or a carriage
+return is the same kind of thing and reaches further, since such a name is
+joined into a path here and printed by `04` when the conversation is skipped.
 """
 
 
@@ -582,7 +581,7 @@ def safe_component(value: str) -> bool:
     """
     if not value or value in {".", ".."}:
         return False
-    if strip_control(value) != value:
+    if has_control(value):
         return False
     return not any(character in value for character in _UNSAFE_IN_NAME)
 

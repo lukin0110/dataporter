@@ -31,7 +31,6 @@ would make `05`'s "Conversations found" undercount an export the operator is abo
 to migrate.
 """
 
-import hashlib
 import json
 import re
 import zipfile
@@ -40,6 +39,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
 
+from orval import hashify
 from pydantic import ValidationError
 
 from dataporter import log, store
@@ -377,10 +377,12 @@ def read_export(source: ExportView) -> Export:
         raise ExportError(detail=f"{CONVERSATIONS_FILE} missing from export: {source.display}")
 
     raw = source.read(CONVERSATIONS_FILE)
-    # Not `orval.hashify`, which `04` uses for seed text: it hashes a `str`
-    # directly but *pickles* everything else, so on these bytes it would
-    # return the digest of a pickle rather than the sha256 of the file.
-    fingerprint = hashlib.sha256(raw).hexdigest()
+    # `orval.hashify` hashed a `str` directly but *pickled* everything else
+    # through 0.0.12, which on these bytes returned the digest of a pickle
+    # rather than the sha256 of the file. 0.0.13 hashes `bytes` (and
+    # `bytearray`/`memoryview`) directly, so this is the plain sha256 again —
+    # confirmed against `hashlib.sha256(raw).hexdigest()` over random payloads.
+    fingerprint = hashify(raw)
     decoded = source.parse(source.decode(raw, CONVERSATIONS_FILE), CONVERSATIONS_FILE)
     if not isinstance(decoded, list):
         raise ExportError(detail=f"{CONVERSATIONS_FILE} is not a JSON array: {source.display}")
