@@ -532,9 +532,22 @@ def _trace_of(command: str, workspace: Path, *, among: int) -> list[dict[str, ob
     traces = sorted((workspace / "logs").glob("trace-*.jsonl"))
     assert len(traces) == among, traces
     lines = {path: [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] for path in traces}
-    wrote = [written for written in lines.values() if written[0]["command"] == command]
-    assert len(wrote) == 1, [written[0]["command"] for written in lines.values()]
+    # `_header` rather than `written[0]["command"]`: a trace that came out empty,
+    # or whose first line is not a header, is a failure worth a sentence — and an
+    # `IndexError` out of the helper that exists to explain this one would
+    # explain nothing. (Raised by Copilot in review on #54.)
+    headed = {path: _header(path, written) for path, written in lines.items()}
+    wrote = [lines[path] for path, header in headed.items() if header == command]
+    assert len(wrote) == 1, headed
     return wrote[0]
+
+
+def _header(path: Path, written: list[dict[str, object]]) -> object:
+    """Return the `command` a trace's header names, or say why it has none."""
+    assert written, f"{path.name} is empty: a trace is its header and then its moves"
+    first = written[0]
+    assert "command" in first, f"{path.name} opens with {sorted(first)}, which is not a header"
+    return first["command"]
 
 
 def test_followup_leaves_a_trace_of_its_own(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -560,9 +573,9 @@ def test_a_followup_in_the_same_second_as_the_import_is_still_its_own_trace(
 
     A stamp is to the second, so the later trace is `trace-<stamp>-2.jsonl` and
     the earlier one `trace-<stamp>.jsonl`. `-` sorts before `.`, so by name the
-    later file comes *first* — and reading "the last trace" then read the
-    import's. The header is what says whose a trace is, so that is what this
-    reads. (CI on `main`, 2026-09-14: `assert 'import' == 'followup'`.)
+    later file comes *first* — so reading "the last trace" reads the import's.
+    The header is what says whose trace it is, so that is what this reads.
+    (CI on `main`, 2026-09-14: `assert 'import' == 'followup'`.)
     """
     cli_env(world, monkeypatch)
     world.answers(MIGRATED, answer())
