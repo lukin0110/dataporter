@@ -331,9 +331,16 @@ def _await_button(page: Page, source: "Source", *, deadline: float, poll_s: floa
 
     So the ask used to read the DOM once, the instant the document was
     complete, and call a panel that had not rendered yet a panel that is not
-    there. Headed it usually won that race and headless it lost it, which is how
-    a real run came back `export button not found` on a page that had the button
-    a second later (`62`).
+    there. Measured on a real account: the panel arrives about 2.9 s after the
+    navigation and the read was happening at about 1.4 s, so every ask that
+    worked won a race by roughly a second, and a slow network or a busy machine
+    would have lost it with a window open (`62`).
+
+    That race is the whole of what this wait fixes, and it is not why a headless
+    run fails: headless is served a Cloudflare interstitial and never reaches
+    the app at all (`docs/LIMITATIONS.md`), which no amount of waiting resolves.
+    Reading this as "headless lost the race" would send the next person after
+    the wrong thing. (Raised by Copilot in review on #57.)
 
     A JavaScript dialog still returns at once rather than being waited out: §36
     never answers one, and a dialog is an answer about the page, not a page that
