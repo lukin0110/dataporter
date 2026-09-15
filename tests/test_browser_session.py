@@ -371,7 +371,7 @@ def test_login_reports_a_session_that_is_already_signed_in(
     settings = adoptable(chrome, tmp_path, monkeypatch)
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
-    assert result.stdout == (f"Logged in. Session stored in {settings.browser_profile_dir}/.\n")
+    assert result.stdout == (f"Signed in to Claude\nSession stored in {settings.browser_profile_dir}/.\n")
     # Chrome flushes its profile on exit, so `login` always closes it.
     assert "Browser.close" in chrome.methods()
 
@@ -387,7 +387,18 @@ def test_login_asks_the_operator_and_gives_up(
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__LOGIN_S", "0.05")
     result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stdout == f"{browser_session.LOGIN_PROMPT}\n"
+    # §73's first block, for the destination: no label, and its own command.
+    assert result.stdout == (
+        "Claude sign-in\n"
+        "\n"
+        "A window is open at Claude's sign-in page. Enter the account's address\n"
+        "there, and clear anything Claude asks of you.\n"
+        "\n"
+        "Claude will email a sign-in link. The link signs in once and expires, and\n"
+        "it must be spent here rather than opened. When it arrives:\n"
+        "\n"
+        "  dataporter login --link <url>\n"
+    )
     assert result.stderr == "error: timed out after 0.05s waiting for login\n"
     # No password was asked for, here or anywhere (§8).
     assert "password" not in result.output.lower()

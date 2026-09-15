@@ -4,8 +4,11 @@
 [`10`](../specs/impl/10-attach-spike.md).
 **Answers:** Q4 (generation signals), Q5 (the chat URL), Q6 (the failure states), Q7
 (rename), Q8 (the file input), Q10 (bot checks).
-**Spike run:** none.
-**Hermes version:** unknown. **Chrome version:** unknown.
+**Spike run:** 2026-09-15, one page read by hand — the sign-in page after the link was
+sent, kept as [`spike/claude-sign-in-link-sent.html`](spike/claude-sign-in-link-sent.html);
+no Hermes task was run, and no row of `10`'s own questions was observed.
+**Hermes version:** unknown. **Chrome version:** unknown (the page was read in Chrome; its
+version was not recorded).
 
 This is the file that
 [`browser/probe.py`](../src/dataporter/browser/probe.py) and
@@ -78,7 +81,7 @@ these selectors found, by the constant's name, visible or not.
 
 | State | Signal the code looks for today | Observed signal | Mark |
 | ----- | ------------------------------- | --------------- | ---- |
-| `signed out` | path starts `/login`; a helper will not drive it at all — the login page is outside `helpers.MIGRATION_SURFACE`, so every helper answers `outside_migration_surface` and reports the URL | not yet looked at | *unknown* |
+| `signed out` | path starts `/login`; a helper will not drive it at all — the login page is outside `helpers.MIGRATION_SURFACE`, so every helper answers `outside_migration_surface` and reports the URL | a signed-out request for `/new` landed on `/login` on 2026-09-15 (`docs/spike/claude-sign-in-link-sent.html` was captured there); the redirect itself was not recorded | *unknown* |
 | `new chat` | path is `/` or `/new` | not yet looked at | *unknown* |
 | `conversation` | path matches `/chat/<uuid>` | not yet looked at | *unknown* |
 | `composer present` | a visible `div[contenteditable="true"]` | not yet looked at | *unknown* |
@@ -95,7 +98,12 @@ these selectors found, by the constant's name, visible or not.
 | `every upload accepted` | the same test over a list of names in one evaluate — `16`'s check that the composer carries as many chips as the conversation has files, made once before the first paste | not yet looked at | *unknown* |
 | `rate limited` | `probe.rate_limited`: a disabled Send beside a composer that is not empty. An enabled Send is "not limited"; an empty composer is neither answer, because an idle new chat looks the same. The banner itself is not read — it is text | not yet looked at | *unknown* |
 | `captcha or security challenge` | nothing — the code cannot see this yet. What one looks like was recorded on 2026-09-15: a headless Chrome asking for the export page is served a Cloudflare interstitial — a `script` from `challenges.cloudflare.com`, a `ray-id` footer, obfuscated class names, forty-seven nodes — that never resolves, where the same profile headed loads the app. A structural check for that script would let the ask say "a bot check is in the way" in a poll instead of waiting out `timeouts.ask_s`, and it would read no text; `62` leaves it undone | the markers were read on a real account by listing element ids, classes and script hosts — never text, so nothing of the account is in them — but nothing was committed under `spike/`, so this row stays unmarked as `51`'s do | *unknown* |
-| `sign-in form` (`24`) | `login_form.LOGIN_FIELDS_JS`: a visible `input[type="email"], input[autocomplete="username"]` for the email step, a visible `input[type="password"], input[autocomplete="current-password"]` for the password step, Enter to submit each; anything else after the email — a code prompt, a challenge — is `code_or_challenge` and a pause. The agent's half (`signin.prompt`) is told to take the email path and never Google, Apple, SSO or a passkey, by looking | not yet looked at | *unknown* |
+| `sign-in form` (`24`, `50`) | `login_form.LOGIN_FIELDS_JS`: a visible `input[type="email"], input[autocomplete="username"]` for the email step; the password step `24` wrote — `input[type="password"], input[autocomplete="current-password"]` — is kept for a source that has one, and claude.ai has none (brief 07 §72): what follows the address is the `link sent` row below, which `login_form` reports as `code_or_challenge` and types nothing into. The agent's half (`signin.prompt`) is told to take the email path and never Google, Apple, SSO or a passkey, by looking; no source uses it since `52` | the email step itself has not been read off the page — the artefact below was captured after the address had gone in | *unknown* |
+| `link sent` (`50`) | `login_form.CODE_SELECTOR`: a visible `input[data-testid="code"], input[autocomplete="one-time-code"]` on a `/login` path, read as a boolean beside the other two fields; `login` prints its link-sent line on the first sight of it and restarts its clock. Read on a sign-in page only: a match anywhere else is not this row | `docs/spike/claude-sign-in-link-sent.html`: still at `/login`, `lang="es-419"`, a `form` holding `input[data-testid="code"][autocomplete="one-time-code"][inputmode="numeric"]`, a `button[type="submit"][data-testid="continue"]`, two `button[type="button"]` for resending and changing the address, and two hidden `[data-client-attestation="hcaptcha-invisible"]` containers, one on the channel `send_magic_link`. Its own words say a link opened elsewhere shows a code to be typed here. Read in Spanish, which is the point: none of it is a word | *observed on 2026-09-15* |
+| `link requested` (`50`) | nothing — evidence for the trace, never a decision: the watch records the request as any other on the host | the same page's script names `POST /api/auth/send_magic_link`, carrying a `client_attestation` (ADR 0008); the request itself was seen in a capture that was not committed | *unknown* |
+| `sign-in link` (`53`) | `claude.SIGN_IN_LINK_PATH`: the link lands on `/magic-link`, a door in the sign-in's wall, and the tab is pointed at the link with `Page.navigate` and no wall, as the fetch's is (`45`). The token is in the fragment, which `46`'s guard never records; the page reads it and posts it itself | the page's own script (`docs/spike/claude-sign-in-link-sent.html`): `/magic-link#<token>:<base64 address>`, the hash moved into `sessionStorage` under `__ml_handoff` and the URL replaced with the clean one, and `data-ion-pending-login` on the served head when the pending sign-in's cookie is there. The emailed address itself — whether it is this URL or a mail host's redirect to it — has not been seen | *unknown* |
+| `signed in by the link` (`53`) | the `new chat` row: the probe's `logged_in` on whatever the link redirects to | not yet looked at: nobody has spent a real link with the tool | *unknown* |
+| `link opened elsewhere` (`53`) | the `link sent` row seen again after the navigation — the tab back on `/login` with the code field showing — is `signin_link.CODE_PROMPT`, exit `3`; anything else inside `timeouts.signin_s` is `NOT_ACCEPTED` | the page's own words say the link, opened where the pending sign-in is not, *shows* a code rather than signing in; what that page looks like — and whether the tab comes back to `/login` at all — has not been seen, so the code path recognises the one shape it knows and reports the rest as not accepted | *unknown* |
 | `browser error page` | the tab's URL is no longer on `claude.ai`, so `chosen_tab` answers `no_claude_tab` | not yet looked at | *unknown* |
 | `generation failed` | nothing — the code cannot see this yet | not yet looked at | *unknown* |
 | `every message` | `[data-testid="user-message"], [data-testid="assistant-message"]`, visible, in document order — `17`'s `probe --messages` reads the whole transcript this way and reports a role, a length and which of the caller's own strings each turn contains | not yet looked at | *unknown* |
@@ -111,7 +119,10 @@ Every selector in the middle column has exactly one spelling in the source, in
 `probe.py`'s `_SELECTORS` and the two expression bodies beside it — or, for the four
 `31` rows, in
 [`browser/export_page.py`](../src/dataporter/browser/export_page.py)'s own `_SELECTORS`
-and the path constant above them — so correcting a row here is a one-line edit there.
+and the path constant above them, and for the sign-in rows in
+[`browser/login_form.py`](../src/dataporter/browser/login_form.py)'s three selectors and
+[`sources/claude.py`](../src/dataporter/sources/claude.py)'s `SIGN_IN_LINK_PATH` — so
+correcting a row here is a one-line edit there.
 The four export rows are the ones nobody can observe from a destination account: they
 need a *source* account and `dataporter extract --account <label>`, which is why
 [`spike/README.md`](spike/) lists them as their own steps. `32`'s mock serves those four

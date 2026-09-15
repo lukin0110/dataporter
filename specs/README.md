@@ -11,7 +11,7 @@ Two kinds of document live here, and they are not interchangeable.
 | **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands; `Built` when its tests pass, `Done` when its live criteria are met |
 | **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
-| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative; brief `07`'s sign-in blocks (§73) are golden | Normative |
+| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative; brief `07`'s sign-in blocks and its link-sent line (§73) are golden | Normative |
 
 There are seven briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
 [`02-claude-mock.md`](02-claude-mock.md) (§20–§28),
@@ -144,10 +144,11 @@ M12 — Claude sign-in by link (brief 07, §72–§80) — claude.ai has no pass
       an attestation in front of the sign-in means the browser does it (ADR 0008); built
       against the mock claude.ai and rehearsed against it, and no slice touches an account
   48  The words: the glossary, the brief, ADR 0008, this index
-  49  The mock signs people in: an address submitted, a link minted instead of mailed
-  50  The two commands: the window, the link spent in the same profile, the two blocks
+  49  The mock signs in by link: an address submitted, a link minted instead of mailed, spent in the browser
+  50  The link-sent state, and a login that waits: §73's first command, the window kept until the link is spent
   51  The export page's real address: a fragment, and not the path `31` guessed
   52  The paperwork: the limitations rewritten, Claude marked as signing in no other way
+  53  `login --link`: §73's second command, the link spent in the window `login` is holding
 ```
 
 ## Dependencies
@@ -236,19 +237,24 @@ the paperwork.
                                    (44 needs 24; 46 needs 29 and 36)
 ```
 
-M12 is a chain of five, and the first is the paper the rest cite: `48` is the glossary, the
+M12 is a chain of six, and the first is the paper the rest cite: `48` is the glossary, the
 brief and ADR 0008, written before anything is built because this file's own working rule
-puts words first; `49` is the mock's side, built out of §79 and importing nothing from the
-tool; `50` is the two commands of §73, which need `07`'s browser session and `49` to
-rehearse against; `51` corrects the export page `31` guessed at; `52` is the paperwork.
+puts words first; `50` and `53` are the two commands of §73, which need `07`'s browser
+session — `50` the window that waits until the link is spent, `53` the link spent in it;
+`49` is the mock's side, built out of §79 and importing nothing from the tool, and the
+rehearsals' switch to that sign-in; `51` corrects the export page `31` guessed at; `52` is
+the paperwork, and it cannot land before `49`, because until the mock has a link both
+rehearsals sign in through the password path `52` deletes for Claude.
 
-Nothing in it waits on an observation. The one question a capture could have settled — may
-the tool make the sign-in calls itself — was settled by the first captured request, which
+One observation shaped it after `48` was written: the page claude.ai shows once the link is
+sent, read on 2026-09-15 (`docs/spike/claude-sign-in-link-sent.html`), which is what `50`
+recognises the link-sent state by. The one question a capture could have settled — may the
+tool make the sign-in calls itself — was settled by the first captured request, which
 carries an hCaptcha attestation: it may not, and §78 is the rule that follows.
 
 ```text
-47 ─> 48 ─> 49 ─> 50 ─> 51 ─> 52
-          (50 needs 07 and 24; 51 needs 31)
+47 ─> 48 ─> 50 ─> 53 ─> 49 ─> 52
+          (50 needs 07; 51 needs 31 and sits beside them)
 ```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
@@ -327,10 +333,11 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Done |
 | [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Done |
 | [48](impl/48-the-words.md) | The words | §72, §73, §74, §77 | Done |
-| 49 | The mock signs people in | §79 | Not started |
-| 50 | The two commands | §73, §74 | Not started |
+| [49](impl/49-the-mock-signs-in-by-link.md) | The mock signs in by link | §79 | In progress |
+| [50](impl/50-the-login-that-waits.md) | The link-sent state, and a login that waits | §73, §74, §75 | Built |
 | [51](impl/51-export-page-address.md) | The export page's real address | §77 | Built |
-| 52 | The paperwork | §75, §76, §78 | Not started |
+| [52](impl/52-the-paperwork.md) | The paperwork | §75, §76, §78 | Built |
+| [53](impl/53-login-link.md) | `login --link` | §73, §74 | Built |
 | [59](impl/59-hermes-configuration.md) | Asking Hermes for its configuration | — tooling | Built |
 | [60](impl/60-download-progress.md) | Download progress | §31 (amended), §63 (amended) | Built |
 | [61](impl/61-headless-extraction.md) | Headless extraction | §31, §63 (amended) | Built |

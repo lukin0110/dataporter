@@ -29,7 +29,9 @@ from fake_composer import Browser
 from fake_hermes import FakeHermes
 from fake_login import LoginForm
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.usefixtures("agent_signin")]
+"""Slow, and on the dormant path: `24`'s agent half has no source since `52`, and
+`conftest.agent_signin` hands it Claude for the length of each test here."""
 
 EMAIL = "someone@example.test"
 SECRET = "hunter2"

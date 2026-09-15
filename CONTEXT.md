@@ -128,6 +128,17 @@ vendor's own word is *magic link* — signs the account in, and the tool spends 
 driving the source session to it rather than by fetching it.
 _Avoid_: URL, token, download link
 
+**Pending sign-in**:
+The state a session is in between the address being given and the sign-in link being
+spent: the vendor has been told who is signing in, and the link is on its way.
+_Avoid_: half-finished sign-in, login in progress
+
+**Code**:
+The digits the vendor shows when a sign-in link is opened where the pending sign-in is
+not, and which finish that sign-in when typed where it is. The second way to spend a
+sign-in link.
+_Avoid_: OTP, verification code, one-time code
+
 **Snapshot**:
 The data of one account, from one source, as it stood at one moment, in the vendor's own
 shape. Written once, complete on its own, never changed afterwards.

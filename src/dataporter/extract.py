@@ -58,7 +58,7 @@ from typing import TYPE_CHECKING, Any
 from orval import pretty_bytes, pretty_duration
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from dataporter import PROGRAM_NAME, log, plan, signin, sources, store
+from dataporter import PROGRAM_NAME, links, log, plan, signin, sources, store
 from dataporter import trace as tracing
 from dataporter.browser import download, export_page, launcher, sites
 from dataporter.browser import session as browser_session
@@ -112,14 +112,15 @@ ACCOUNT_REQUIRED = "extract needs an account: --account LABEL"
 LINK_AND_FILE = "--link and --from name two different archives; give one"
 ABANDON_ALONE = "--abandon gives up the open ask; it takes no --link and no --from"
 
-LINK_SCHEME = "https"
+LINK_SCHEME = links.LINK_SCHEME
 """The only scheme the tool will download from.
 
-A constant rather than a literal in the check: it is the whole of the rule, and
-`31`'s extraction surface will want to name it beside the pages it allows.
+A constant rather than a literal in the check: it is the whole of the rule,
+spelled once in `links` because `login --link` (`53`) checks the same thing of
+the sign-in link, and bound here by name so a test can pretend otherwise.
 """
 
-LINK_NOT_HTTPS = "the link must be an https URL"
+LINK_NOT_HTTPS = links.LINK_NOT_HTTPS
 LINK_REFUSED = (
     "link refused: HTTP {code} — the link may have expired; ask again with: "
     "{program} extract --source {source} --account {account}"
@@ -420,6 +421,11 @@ def _sign_in_to_source(
     state = browser_session.current_state(browser, url, hosts=source.hosts)
     if not export_page.signed_out(state, source):
         return
+    if source.sign_in_by_link:
+        # Brief 07: a sign-in by link has its own two commands and its own
+        # window, and neither this window nor `24`'s mode can finish one. The
+        # remedy is the same in either mode, so it is said here, once.
+        raise AuthError(detail=browser_session.signed_out_line(settings))
     if settings.non_interactive:
         # `24`'s agent half, or `44`'s walk: whichever the source says. An
         # unattended ask on a signed-in profile needs nothing — no walk, and no

@@ -45,12 +45,23 @@ LOGIN_URL = "https://claude.ai/login"
 
 EMAIL_SELECTOR = 'input[type="email"], input[autocomplete="username"]'
 PASSWORD_SELECTOR = 'input[type="password"], input[autocomplete="current-password"]'  # ruff: ignore[hardcoded-password-string] - a CSS selector, not a credential
+CODE_SELECTOR = 'input[data-testid="code"], input[autocomplete="one-time-code"]'
+"""The field a code goes into (`50`, *observed on 2026-09-15*).
+
+claude.ai shows it on `/login` the moment the sign-in link has been sent: the
+page that says the link is on its way is the page that also takes the code the
+link shows when it is opened somewhere else. So a visible match is the tool's
+only language-free way of knowing the vendor has been told who is signing in —
+`docs/claude-ui-map.md`'s `link sent` row — and the module that types nothing
+into it reads it as a boolean, like every other fact about a form here.
+"""
 
 SELECTORS: Mapping[str, str] = MappingProxyType({
     "EMAIL_SELECTOR": EMAIL_SELECTOR,
     "PASSWORD_SELECTOR": PASSWORD_SELECTOR,
+    "CODE_SELECTOR": CODE_SELECTOR,
 })
-"""The two, by name, for `33`'s extraction site: what a sketch of a sign-in
+"""The three, by name, for `33`'s extraction site: what a sketch of a sign-in
 page counts. Spelled here, inside the credential seam, and merged elsewhere."""
 
 LOGIN_SURFACE = sites.login_surface(CLAUDE)
@@ -72,12 +83,14 @@ LOGIN_FIELDS_JS = probe.expression(
     LOGIN_FIELDS_TAG,
     f"  const EMAIL = {json.dumps(EMAIL_SELECTOR)};\n"
     f"  const PASSWORD = {json.dumps(PASSWORD_SELECTOR)};\n"
+    f"  const CODE = {json.dumps(CODE_SELECTOR)};\n"
     "  return {\n"
     "    email: all(EMAIL).filter(visible).length > 0,\n"
     "    password: all(PASSWORD).filter(visible).length > 0,\n"
+    "    code: all(CODE).filter(visible).length > 0,\n"
     "  };",
 )
-"""Which of the two fields the page is showing. Facts about the form, never its
+"""Which of the three fields the page is showing. Facts about the form, never its
 contents."""
 
 
@@ -128,10 +141,16 @@ password field nor a signed-in page."""
 
 @dataclass(frozen=True)
 class Fields:
-    """What `LOGIN_FIELDS_JS` answered."""
+    """What `LOGIN_FIELDS_JS` answered.
+
+    `code` is the one field nothing here types into: it says the link is on
+    its way (`50`), and `any` leaves it out because a form that shows it wants
+    something this module does not have.
+    """
 
     email: bool = False
     password: bool = False
+    code: bool = False
 
     @property
     def any(self) -> bool:
@@ -157,7 +176,7 @@ def fields_of(page: Page) -> Fields:
     answer = page.evaluate(LOGIN_FIELDS_JS)
     if not isinstance(answer, dict):
         return Fields()
-    return Fields(email=bool(answer.get("email")), password=bool(answer.get("password")))
+    return Fields(email=bool(answer.get("email")), password=bool(answer.get("password")), code=bool(answer.get("code")))
 
 
 def login_tab(session: BrowserSession, surface: Surface) -> Target | None:
@@ -278,7 +297,7 @@ def fill_and_submit(  # ruff: ignore[too-many-return-statements] - one return pe
             elif fields.email:
                 return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=NO_PROGRESS)
             else:
-                blocked = CODE_OR_CHALLENGE if filled else NO_FORM
+                blocked = CODE_OR_CHALLENGE if filled or fields.code else NO_FORM
                 return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=blocked)
             if not _submit(page, which, selector, value, surface=surface, settings=settings):
                 return FillResult(signed_in=False, filled=tuple(filled), rounds=rounds, blocked=FIELD_NOT_FOCUSED)

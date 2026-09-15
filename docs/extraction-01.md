@@ -32,7 +32,9 @@ all, because it is a credential to the whole archive for as long as it lives.
 ## How it is run
 
 ```text
-dataporter login --account spike           # the source account, its own profile
+dataporter login --account spike           # the source account, its own profile: the window
+#   … the vendor emails a sign-in link, to a person, who spends it from a second terminal …
+dataporter login --account spike --link '<url>'
 dataporter extract --account spike         # the ask
 #   … the vendor emails a link, to a person …
 dataporter extract --account spike --link '<url>'

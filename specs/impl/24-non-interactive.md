@@ -6,7 +6,12 @@
 [09](09-hermes-runner.md), [11](11-skill.md), [12](12-import-loop.md),
 [14](14-human-intervention.md)
 **Enables:** unattended runs — a cron job, a CI step, a machine with no display
-**Status:** Done
+**Status:** Done. *Amended by brief 07 and [`52`](52-the-paperwork.md): the agent half's
+one source, Claude, signs in by a link behind an attestation and has no unattended sign-in
+at all — `login --non-interactive` is refused, no credential is asked for at any door, and
+a signed-out Claude session stops with `login` as the remedy. The agent half stays in the
+tree for a source that could use it (§76); the ChatGPT walk (`44`) is the one unattended
+sign-in in use.*
 
 ## Goal
 

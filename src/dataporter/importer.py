@@ -1058,8 +1058,16 @@ class Importer:
         return True
 
     def _machine_can_clear(self, request: intervening.Request) -> bool:
-        """Whether this ask is one `24`'s mode answers without a person."""
-        return request.reason == intervening.AUTH_REQUIRED and self.settings.non_interactive
+        """Whether this ask is one `24`'s mode answers without a person.
+
+        Not for a source with no unattended sign-in (`52`): a login expiry on a
+        Claude account is a person's step, and the pause says so.
+        """
+        return (
+            request.reason == intervening.AUTH_REQUIRED
+            and self.settings.non_interactive
+            and signin.can_sign_in(self.settings)
+        )
 
     def _signed_in(self) -> bool:
         return browser_session.signed_in(self._session())
@@ -2207,7 +2215,7 @@ def import_command(
         if settings.non_interactive:
             # Exit `2` before a browser or a workspace is touched: a run that
             # would stop at the first sign-in form should not have started.
-            signin.require_credentials(settings)
+            signin.gate(settings)
         effective = with_pacing(
             with_skip_attachments(
                 with_attachments_dir(settings, request.attachments_dir),
@@ -2259,7 +2267,7 @@ def resume_command(
     selection.
     """
     if settings.non_interactive:
-        signin.require_credentials(settings)
+        signin.gate(settings)
     log.enable_run_log(settings.workspace)
     try:
         outcome = Importer(settings, progress=reporting.Reporter(quiet=quiet), flags=flags).resume()

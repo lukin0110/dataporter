@@ -32,7 +32,7 @@ from dataporter.config import (
     with_account,
 )
 from dataporter.console import Collected
-from dataporter.errors import AuthError, BrowserError, StoreError, UsageError
+from dataporter.errors import AuthError, BrowserError, StoreError
 from dataporter.exit_codes import ExitCode
 from fake_chrome import FakeChrome, FakeTarget
 from fake_export_page import SIGNED_OUT_URL, FakeExportPage, Stage, browser, visit
@@ -247,38 +247,35 @@ def test_abandoning_the_ask_lets_the_next_one_through(
 # --------------------------------------------------------------------------- #
 
 
-def test_an_interactive_ask_waits_for_the_person_and_comes_back_to_the_page(
+def test_an_interactive_ask_on_a_signed_out_profile_names_login(
     settings: Settings, page: FakeExportPage, launches: list[str], chrome: FakeChrome
 ) -> None:
     """Signed out, claude.ai answers the export page with `/login`.
 
-    The person signs in, lands where the application puts them, and the ask navigates
-    back to the page it came for — `/new` is never driven, only left.
+    Claude signs in by link (brief 07), and that has its own two commands and its own
+    window: this one stops, names them with the account's flags, and drives nothing —
+    not `/new`, not the sign-in page a person could not finish here anyway.
     """
     visit(chrome, page, SIGNED_OUT_URL)
     page.signs_in_after = 2
     sink = Collected()
 
-    outcome = extract.ask(settings, sink=sink)
+    with pytest.raises(AuthError) as raised:
+        extract.ask(settings, sink=sink)
 
-    assert outcome.exit_code == ExitCode.OK
-    assert sink.out[0] == "Log in to Claude in the browser window that just opened.\n"
-    assert page.url == export_page.EXPORT_PAGE_URL
-    assert page.clicks == [
-        export_page.EXPORT_BUTTON_SELECTOR,
-        export_page.CONFIRM_BUTTON_SELECTOR,
-    ]
+    assert raised.value.detail == f"not logged in — run: dataporter login --source claude --account {ACCOUNT}"
+    assert sink.out == []
+    assert page.clicks == []
 
 
-def test_a_sign_in_nobody_completes_is_exit_3_and_no_record(
+def test_a_signed_out_profile_leaves_no_record(
     settings: Settings, page: FakeExportPage, launches: list[str], chrome: FakeChrome
 ) -> None:
     visit(chrome, page, SIGNED_OUT_URL)
 
-    with pytest.raises(AuthError) as raised:
+    with pytest.raises(AuthError):
         extract.ask(settings)
 
-    assert "timed out after 0.1s waiting for login" in (raised.value.detail or "")
     assert extract.read_ask(settings) is None
     assert page.clicks == []
 
@@ -301,21 +298,23 @@ def test_the_mode_without_credentials_asks_on_a_signed_in_profile(
     assert extract.read_ask(unattended) is not None
 
 
-def test_the_mode_without_credentials_is_refused_once_a_sign_in_is_needed(
+def test_the_mode_on_a_signed_out_profile_names_login_with_the_account_s_flags(
     settings: Settings, page: FakeExportPage, launches: list[str], chrome: FakeChrome
 ) -> None:
-    """Signed out, the same refusal as ever — `login`'s rule, at the moment it applies.
+    """Signed out: `login`'s rule at the moment it applies, with the account named (`52`).
 
-    Later than it used to be: the browser has opened and closed by the time this is
-    known, because "is this profile signed in" is a question only a browser answers.
+    Exit `3`, the remedy a cron job's log should carry, and no credential asked for.
+
+    Later than the door: the browser has opened and closed by the time this is known,
+    because "is this profile signed in" is a question only a browser answers.
     """
     visit(chrome, page, SIGNED_OUT_URL)
     unattended = settings.model_copy(update={"non_interactive": True})
 
-    with pytest.raises(UsageError) as raised:
+    with pytest.raises(AuthError) as raised:
         extract.ask(unattended)
 
-    assert str(raised.value) == signin.MISSING_CREDENTIALS
+    assert raised.value.detail == f"not logged in — run: dataporter login --source claude --account {ACCOUNT}"
     assert launches == [export_page.EXPORT_PAGE_URL]
 
 
@@ -339,26 +338,22 @@ def test_the_mode_on_a_signed_in_profile_attempts_no_sign_in(
     assert outcome.exit_code == ExitCode.OK
 
 
-def test_the_mode_on_a_signed_out_profile_signs_in_first(
+def test_the_mode_on_a_signed_out_profile_attempts_no_sign_in_either(
     settings: Settings,
     page: FakeExportPage,
     launches: list[str],
     chrome: FakeChrome,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A source that signs in by link never reaches `24`'s sign-in, credentials or not."""
     visit(chrome, page, SIGNED_OUT_URL)
-    signed_in: list[str] = []
 
-    def sign_in(settings: Settings, session: BrowserSession, **kwargs: object) -> bool:
-        signed_in.append(settings.account or "")
-        visit(chrome, page, export_page.EXPORT_PAGE_URL)
-        return True
+    def never(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("no sign-in should be attempted")
 
-    monkeypatch.setattr(signin, "ensure_signed_in", sign_in)
-    outcome = extract.ask(with_credentials(settings))
-
-    assert outcome.exit_code == ExitCode.OK
-    assert signed_in == [ACCOUNT]
+    monkeypatch.setattr(signin, "ensure_signed_in", never)
+    with pytest.raises(AuthError):
+        extract.ask(with_credentials(settings))
 
 
 # --------------------------------------------------------------------------- #
@@ -473,8 +468,7 @@ def test_a_browser_that_never_arrives_at_the_page_is_exit_6(
 
     Reading a page the target list merely believes in is how a wall gets walked through.
     """
-    visit(chrome, page, SIGNED_OUT_URL)
-    page.signs_in_after = 1
+    visit(chrome, page, "https://claude.ai/new")
     page.follows_navigation = False
 
     with pytest.raises(BrowserError) as raised:

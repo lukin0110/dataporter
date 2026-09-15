@@ -111,8 +111,10 @@ dataporter setup
 # 2. Hermes, Chrome, the profile, the skill, the pacing — every check, in order.
 dataporter doctor
 
-# 3. Sign in to the *destination* account, by hand, in the window this opens.
+# 3. Sign in to the *destination* account: a window opens, you enter the address, Claude
+#    emails a link, and a second terminal spends it in that same window (brief 07).
 dataporter login
+dataporter login --link 'https://…'
 
 # 4. What would be migrated, and what cannot be. Touches no account.
 dataporter import <export> --dry-run
@@ -167,8 +169,10 @@ wants a backup never migrates — and a person stands between them, because the 
 puts an inbox there:
 
 ```sh
-# 0. Sign in to the source account, in its own browser profile.
+# 0. Sign in to the source account, in its own browser profile: the window, the address,
+#    then the emailed link spent in that window from a second terminal.
 dataporter login --account old-personal
+dataporter login --account old-personal --link 'https://…'
 
 # 1. Ask Claude for the account's export. The tool presses the button itself.
 dataporter extract --source claude --account old-personal      # the ask
@@ -224,10 +228,10 @@ as before. **One at a time**: every session shares `browser.cdp_port`, so a Chro
 running for one account makes the next command exit `2` — close it and run again.
 
 The ask itself never uses a model: the tool goes to the page, presses the button, and
-records that it did. Unattended (`--non-interactive`) it is the same one press, and it
-needs Hermes only when the source session has expired and somebody has to be signed in
-first — which is `24`'s agent half, and the one part of a backup a cron job cannot do
-without a model.
+records that it did. Unattended (`--non-interactive`) it is the same one press, on a
+profile a person signed in; a Claude session that has expired stops the run with exit `3`
+and `login` as the remedy, because Claude's sign-in is a link behind an attestation and no
+credential can make it (brief 07).
 
 Both moves can be rehearsed with no account: `mock/` serves the export page and prints
 the link where the vendor would have emailed it ([`mock/README.md`](mock/README.md)).
@@ -238,18 +242,21 @@ attachment, and a download that wants a session — so that half meets them here
 ## Running unattended
 
 ```sh
-export DATAPORTER_NON_INTERACTIVE=1 DATAPORTER_AUTH__EMAIL=you@example.com DATAPORTER_AUTH__PASSWORD=…
-dataporter login                                  # signs in, closes Chrome
-dataporter import <export> --all --limit 50       # signs in again if it must
+dataporter login                                  # once, by hand: the window and the link
+dataporter login --link 'https://…'
+export DATAPORTER_NON_INTERACTIVE=1
+dataporter import <export> --all --limit 50       # while the session lasts
 ```
 
-In this mode Chrome runs without a window, `login` and `import` sign in from the
-credentials — Hermes brings the page to the form, and the tool types into it from its own
-process, so the agent never holds the password — and nothing waits for a keypress: a page
-only a person can clear is recorded as a pause and the run exits `5`, for `resume` to pick
-up. Missing credentials are exit `2` before a browser starts. An account whose sign-in is
-an emailed code, a CAPTCHA or a challenge cannot be signed in unattended; the run says so
-and stops. [`docs/runbook.md`](docs/runbook.md) has the exit codes and the details.
+In this mode Chrome runs without a window and nothing waits for a keypress: a page only a
+person can clear is recorded as a pause and the run exits `5`, for `resume` to pick up.
+What the mode cannot do is sign a Claude account in. Claude's sign-in is an emailed link
+behind an attestation (brief 07, ADR 0008), so `login --non-interactive` is refused with
+exit `2` and the command a person runs instead, and a run whose session has expired stops
+with exit `3` and names `login`. The credentials `DATAPORTER_AUTH__EMAIL` and
+`DATAPORTER_AUTH__PASSWORD` are ChatGPT's alone, for the walk its unattended extraction makes
+when its session has expired. [`docs/runbook.md`](docs/runbook.md) has the exit codes and
+the details.
 
 ## From another project
 

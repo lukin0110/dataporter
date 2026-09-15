@@ -1,8 +1,9 @@
 """A sign-in form `login_form` can be pointed at without a browser.
 
 A `FakePage` with stages: `email` shows the email field, `password` the password
-field, `code` a page asking for something the tool does not have, and `done` a
-signed-in `/new`. Enter advances the stage. What was typed is kept, by field,
+field, `code` the field an emailed code goes into (`50`), `challenge` a page
+asking for something the tool cannot even name, and `done` a signed-in `/new`.
+Enter advances the stage. What was typed is kept, by field,
 so a test can prove the value went in through `Input.insertText` and nowhere
 else — and `evaluate` records every expression it was asked, so a test can
 prove no expression carried it.
@@ -63,6 +64,7 @@ class LoginForm(FakePage):
             return {
                 "email": self.stage == "email",
                 "password": self.stage == "password",
+                "code": self.stage == "code",
             }
         if login_form.FOCUS_FIELD_TAG in expression:
             if not self.focusable_fields:

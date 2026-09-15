@@ -433,7 +433,7 @@ def ask_all(
     into a real account, sent by the same browser.
     """
     if settings.non_interactive:
-        signin.require_credentials(settings)
+        signin.gate(settings)
     log.enable_run_log(settings.workspace)
     store = state.StateStore(settings.workspace)
     store.run()

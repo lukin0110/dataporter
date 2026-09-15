@@ -47,9 +47,11 @@ dataporter login --source claude --account work --link <url>
 
 ```
 
-The first opens a window at Claude's sign-in page and leaves when the vendor says the link
-is on its way. It does not wait for the account to be signed in, because it cannot be: the
-next step is in a mailbox.
+The first opens a window at Claude's sign-in page, prints the block below, and **keeps the
+window open until the link has been spent in it**. It waits in two phases on one number,
+`timeouts.login_s`: one for the address and whatever Claude asks of the person, and — restarted
+the moment the page says the link is on its way — one for the link to arrive and be spent. It
+ends signed in, with the second block, or timed out with exit `3`.
 
 ```text
 Claude sign-in — work
@@ -64,26 +66,48 @@ it must be spent here rather than opened. When it arrives:
 
 ```
 
+When Claude says the link is on its way — a page the tool recognises by its controls and
+never by its words, so it reads the same in any language — one more line, and the clock
+restarts:
+
+```text
+The link is on its way. This window stays open for 10 minutes; spend the link before it closes.
+
+```
+
+The second command, run from another terminal while that window is open, spends the link in
+it: the same profile on the same debug port, adopted rather than launched, and the tab the
+person used pointed at the link. The first command sees the account signed in, closes the
+window, and both commands print the same ending, so that each terminal is complete on its
+own:
+
 ```text
 Signed in to Claude — work
 Session stored in ~/.dataporter/accounts/claude/work/browser-profile/.
 
 ```
 
-Both blocks are golden (`specs/README.md`), as brief 03's and brief 06's are. Two sentences
-earn their place. *Clear anything Claude asks of you* is the attestation of §78, named
-without naming a mechanism that will change. *Spent here rather than opened* is the trap:
-the link is single-use, and a person who clicks it in their mail client has signed in a
-browser the tool does not have and spent the link doing it.
+The window stays open rather than closing when the link is sent, because whether the pending
+sign-in survives Chrome closing is unobserved (ADR 0008). With no window open — the first
+command timed out, or the link arrived the next day — the second launches the profile and
+tries anyway. That works exactly when the pending sign-in survived; when it did not, the tool
+says so rather than guessing.
 
-The second command drives the account's own profile to the link. That works **because the
-first used the same profile**: the half-finished sign-in is already in that cookie jar, and
-the link completes it where it started. A link that is refused or expired stops with exit
-`3` and names the first command as the remedy.
+Both blocks and the line are golden (`specs/README.md`), as brief 03's and brief 06's are. Two
+sentences earn their place. *Clear anything Claude asks of you* is the attestation of §78,
+named without naming a mechanism that will change. *Spent here rather than opened* is the
+trap: the link is single-use, and a person who opens it in their mail client is shown a code
+rather than signed in. Whether that spends the link is unobserved; what is certain is that
+the tool has no window open for the code to be typed into (§80).
+
+A link that is refused or expired stops with exit `3` and names the first command as the
+remedy; a link that lands the tab back on a code prompt — the pending sign-in is not in this
+profile — says that instead, with the same remedy.
 
 There is no `--email` flag and no sign-in ask on the tool's side. The address is typed into
 the vendor's page by the person whose address it is, which is also why nothing here ever
-holds one.
+holds one. Neither command has an unattended half: `--non-interactive login`, with or
+without `--link`, exits `2` and names the command a person runs instead (§76).
 
 ## 74. What the tool never sees
 
@@ -107,7 +131,8 @@ which never worked here either.
 
 ## 76. What a cron job loses
 
-There is no unattended Claude sign-in any more, and there will not be one. Signing in needs
+There is no unattended Claude sign-in any more, and there will not be one — not the first
+command, and not the second either, which spends a link a person read. Signing in needs
 a person to read an email, and may need one to clear a challenge. `docs/LIMITATIONS.md`
 promises that nothing in the tool reads a mailbox or solves a challenge; both halves of
 that promise are kept here, and the second is now load-bearing rather than incidental.
@@ -161,6 +186,13 @@ would prove only that the fake could be cleared.
 Deliberately left, and unclaimed until one of them is built:
 
 - **Gemini**, whose sign-in nobody has looked at, and which may be a third shape again.
+- **`--code`.** The page that says the link is on its way also takes a code: the digits
+  Claude shows when the link is opened where the pending sign-in is not. A second way to
+  spend a link, typed through CDP as `24` typed a password and never through the agent;
+  wanted, and waiting on an observation of the code page that nobody has made.
+- **Whether the pending sign-in survives the window closing.** §73 keeps the window open
+  so as not to depend on it; the branch that launches a profile for a link would stop being
+  a hope the day somebody reads the cookie's lifetime off the page.
 - **Whether the export ask needs the browser.** It is a request made from a signed-in
   session and may carry no attestation; nobody has captured it. It is asked for by a click
   today (§31) and that keeps working, so this is an optimisation, not a gap.

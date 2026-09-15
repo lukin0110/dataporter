@@ -1,5 +1,6 @@
 """`24`'s deterministic half: the credentials go into the form, and nowhere else."""
 
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -116,10 +117,19 @@ def test_an_emailed_code_is_reported_not_guessed(tmp_path: Path) -> None:
 
 
 def test_a_page_with_no_form_is_reported(tmp_path: Path) -> None:
-    page = LoginForm(stage="code")
+    page = LoginForm(stage="challenge")
     result = fill(page, tmp_path)
 
     assert result.blocked == login_form.NO_FORM
+    assert result.filled == ()
+
+
+def test_a_page_already_asking_for_a_code_is_a_code_prompt(tmp_path: Path) -> None:
+    """`50`: the code field is the one field that says what the page wants, even with nothing typed."""
+    page = LoginForm(stage="code")
+    result = fill(page, tmp_path)
+
+    assert result.blocked == login_form.CODE_OR_CHALLENGE
     assert result.filled == ()
 
 
@@ -182,6 +192,22 @@ def test_a_page_mid_navigation_is_asked_again(tmp_path: Path) -> None:
 
     assert result.signed_in is True
     assert result.filled == ("email", "password")
+
+
+def test_the_code_field_is_read_and_never_typed_into(tmp_path: Path) -> None:
+    """`50`: the page that says the link is on its way is read as a fact, like the other two."""
+    page = LoginForm(stage="code")
+    with Browser(page) as browser:
+        session = session_for(page, browser, tmp_path)
+        target = login_form.login_tab(session, login_form.LOGIN_SURFACE)
+        assert target is not None
+        with helpers.driving(session.client, target, login_form.LOGIN_SURFACE) as driven:
+            assert login_form.fields_of(driven) == login_form.Fields(code=True)
+    assert login_form.Fields(code=True).any is False
+    assert page.typed == {}
+    # Spelled once, as a `const` the sketch counts by name (`33`).
+    assert "CODE_SELECTOR" in login_form.SELECTORS
+    assert f"const CODE = {json.dumps(login_form.CODE_SELECTOR)};" in login_form.LOGIN_FIELDS_JS
 
 
 def test_an_answer_that_is_not_a_form_reading_is_no_fields() -> None:
