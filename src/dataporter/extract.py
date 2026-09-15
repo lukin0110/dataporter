@@ -43,6 +43,7 @@ Three rules that are not obvious from the code alone:
 
 import hashlib
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -54,6 +55,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from orval import pretty_bytes, pretty_duration
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import PROGRAM_NAME, log, plan, signin, sources, store
@@ -157,12 +159,28 @@ NO_ASK_OPEN = "no ask is open for {source}/{account}"
 INVALID_ASK = "invalid {filename}: {path}"
 ABANDONED = "Abandoned the open ask for {source}/{account}."
 
-EXPORT_BUTTON_MISSING = "export button not found on {path}"
+EXPORT_PANEL_MISSING = "the export panel did not appear on {path} within {seconds:g}s"
+PANEL_MISSING_HEADLESS = "; headless Chrome is served a bot check on this page — try without --non-interactive"
+PANEL_MISSING_HEADED = (
+    "; if the session has expired, sign in with: {program} login --source {source} --account {account}"
+)
 NOT_CONFIRMED = "no confirmation that the export was requested"
 ASK_DIALOG = "a javascript dialog is in the way on {path}; clear it and ask again"
 """Why an ask exited `1`. A dialog is never answered (`31`, §36): what it says is
 unknown, and a tool that clicks OK on an unread question in an account it is
-allowed one action in has taken a second one."""
+allowed one action in has taken a second one.
+
+The panel line says a panel and a duration rather than a button, because since
+`62` that is what was established: the ask polls for the control until
+`timeouts.ask_s` runs out, so reaching this means it never rendered. Its second
+half is whichever the run can actually be true about. Headless, it is a bot
+check, measured: claude.ai serves `--headless=new` a Cloudflare interstitial
+(`challenges.cloudflare.com`, a `ray-id` footer, forty-seven nodes) that never
+resolves, while the same profile headed renders the panel in about three
+seconds. Headed, the page is the vendor's own, so the thing that can have gone
+wrong is the session — and `signed_out()` would not have caught it, since it
+reads the page kind and Claude's export page is a fragment of `/new` whichever
+way the session went."""
 
 # -- §31's blocks ------------------------------------------------------------ #
 
@@ -176,16 +194,29 @@ in: minutes, because the line is for the eye and the seconds belong to
 sentences between the moment and the command are the vendor's own
 (`Source.ask_lines`, §60)."""
 
-DOWNLOADED = "Downloaded {size} MB."
+DOWNLOADED = "Downloaded {size} MB in {took}."
 FILED = "Filed {name}."
 NO_ASK_ON_RECORD = "Filed without an ask on record."
 GAP_LINE = "Gaps: {count} {reason}"
 SNAPSHOT_LINE = "Snapshot: {path}"
 """The brief's own block, byte for byte. `Downloaded` is base-10 megabytes to
-one decimal — the unit a vendor's download page uses — and the `Gaps:` line is
-omitted when there are none, because a zero there is a question an operator has
-to answer rather than an answer. The count line is the source's
-(`Source.counts_line`): what an archive holds is the vendor's to say."""
+one decimal — the unit a vendor's download page uses — then how long the fetch
+took, whole seconds in `pretty_duration`'s spelling (`1m 6s`), counted from the
+moment `fetch` began to the moment the block is printed (`60`): the browser, the
+sign-in, the downloads and the filing, which is the number on the shell prompt.
+The `Gaps:` line is omitted when there are none, because a zero there is a
+question an operator has to answer rather than an answer. The count line is the
+source's (`Source.counts_line`): what an archive holds is the vendor's to say."""
+
+DOWNLOADED_LINE = "downloaded  {name}  {size}"
+"""One line on stdout the moment a file lands, before it is read or checked
+(`60`). Two spaces between columns and no full stop, as `18`'s event lines and
+`verify`'s: it is progress and not the block, and `--quiet` drops it as it drops
+theirs. The size is `pretty_bytes`, so a part of 716 bytes reads `716.0 B` and
+not `0.0 MB`; the block keeps the brief's unit. The name is the vendor's, from
+its manifest, through `safe_token`; a fetch without a manifest names
+`export.zip`, what its one archive is filed as, because the name the vendor
+suggested for it is never kept (§66)."""
 
 MEGABYTE = 1_000_000
 
@@ -307,13 +338,17 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
        second export request is an account-level action taken on a premise the
        operator has not seen, and the fetch would have no way to tell which of
        the two links belongs to which moment.
-    2. Unattended, the credentials are required next — `login`'s rule, and for
-       `login`'s reason: a run that would stop at the first sign-in form is a run
-       that should not have opened a window.
-    3. Then the browser, and the sign-in if the page asks for one.
-    4. Then one press, and the page's own word that it took (`31`'s
+    2. Then the browser, and the sign-in if the page asks for one. Credentials
+       are **not** required to get this far (`61`): the session this runs on is
+       the account's Chrome profile, and a profile a person signed in to needs
+       no credential at all. They are required where a sign-in is attempted —
+       `_sign_in_to_source`, unattended — and the refusal there is the same
+       `MISSING_CREDENTIALS`, exit `2`. Demanding them at the door would make
+       an unattended backup impossible for a source whose sign-in no tool can
+       automate (brief 07), which is every Claude account.
+    3. Then one press, and the page's own word that it took (`31`'s
        `export_page`).
-    5. Only then `ask.json`, with the moment of the press. A record written
+    4. Only then `ask.json`, with the moment of the press. A record written
        before the confirmation would send the fetch looking for an email nobody
        sent.
 
@@ -334,9 +369,6 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
             )
         )
     source = sources.of(settings)
-    if settings.non_interactive:
-        signin.require_credentials(settings)
-
     browser = launcher.launch(settings, sites.export_page_url(source))
     try:
         with watching.watched(
@@ -356,7 +388,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
         # requested was pressed, or the press is where the moment came from. It
         # is written as one condition so that "there is a moment" is a fact the
         # type carries rather than one a comment promises.
-        sink.note(_why_not(result.blocked, source))
+        sink.note(_why_not(settings, result.blocked, source))
         return ExtractOutcome(exit_code=ExitCode.FAILED)
     written = write_ask(settings, result.pressed_at)
     _logger.info("ask recorded", extra={"source": settings.source, "account": account})
@@ -379,6 +411,10 @@ def _sign_in_to_source(
     that opens it to find out whether it is signed in has opened a new chat in
     the account it promised to take one action in. The fetch (`45`) probes the
     source's own root, since it has no business on the export page.
+
+    This is also where an unattended run finds out it needs credentials (`61`):
+    `ensure_signed_in` asks for them, and a run that never gets here never
+    needed them.
     """
     url = sites.export_page_url(source) if url is None else url
     state = browser_session.current_state(browser, url, hosts=source.hosts)
@@ -386,8 +422,9 @@ def _sign_in_to_source(
         return
     if settings.non_interactive:
         # `24`'s agent half, or `44`'s walk: whichever the source says. An
-        # unattended ask on a signed-in profile needs nothing, which is why
-        # this is reached only after the probe above.
+        # unattended ask on a signed-in profile needs nothing — no walk, and no
+        # credentials either (`61`) — which is why this is reached only after
+        # the probe above.
         signin.ensure_signed_in(settings, browser)
         return
     sink.line(source.login_prompt)
@@ -401,11 +438,16 @@ def _sign_in_to_source(
         raise AuthError(detail=browser_session.LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
 
 
-def _why_not(blocked: str | None, source: "Source") -> str:
+def _why_not(settings: Settings, blocked: str | None, source: "Source") -> str:
     """Return the line an operator reads when the ask did not go through."""
     path = source.export_page_path
     if blocked == export_page.BUTTON_NOT_FOUND:
-        return EXPORT_BUTTON_MISSING.format(path=path)
+        line = EXPORT_PANEL_MISSING.format(path=path, seconds=settings.timeouts.ask_s)
+        if settings.headless:
+            return line + PANEL_MISSING_HEADLESS
+        return line + PANEL_MISSING_HEADED.format(
+            program=PROGRAM_NAME, source=settings.source, account=_account(settings)
+        )
     if blocked == export_page.JS_DIALOG:
         return ASK_DIALOG.format(path=path)
     return NOT_CONFIRMED
@@ -437,6 +479,8 @@ def fetch(
     open_url: Callable[..., Any] = urllib.request.urlopen,  # ruff: ignore[suspicious-url-open-usage] - the scheme is checked before any request
     sink: Sink = DISCARD,
     flags: Sequence[str] = (),
+    quiet: bool = False,
+    clock: Callable[[], float] = time.monotonic,
 ) -> ExtractOutcome:
     """Download the link the vendor emailed and file it as a snapshot (§31, §63).
 
@@ -449,17 +493,25 @@ def fetch(
     own tab, the browser making the download and the tool catching it, where
     the vendor requires the download to be made signed in. What follows the
     download — the check that it is a zip, the parse, the filing — is one path.
-    Unattended, a session-bound fetch requires the credentials before the
-    browser starts, as the ask does: a fetch that stopped at a sign-in form
-    after following the link would have spent a link that may be single-use.
+
+    A link that may be single-use is never spent on a run that then stops at a
+    sign-in form, and it is the **order** that keeps that true rather than a
+    credential check at the door (`61`): the browser opens on the source's own
+    root, the probe and any sign-in happen there, and the link is navigated to
+    only once the session is good. So credentials are required where a sign-in
+    is attempted and not before the browser — a profile a person signed in to
+    needs none, which is the whole of an unattended backup for Claude.
+
+    Every file prints `DOWNLOADED_LINE` as it lands, unless `quiet`, and the
+    block says how long the whole of this took (`60`). `clock` is injectable
+    for the same reason `open_url` is: so a test can pin the block's bytes.
     """
+    started = clock()
     home = _account_home(settings)
     source = sources.of(settings)
     log.enable_run_log(settings.logs_dir)
     if urllib.parse.urlsplit(link).scheme != LINK_SCHEME:
         raise FetchError(LINK_NOT_HTTPS)
-    if source.fetch_needs_session and settings.non_interactive:
-        signin.require_credentials(settings)
 
     ask = read_ask(settings)
     asked_at = None if ask is None else ask.asked_at
@@ -472,16 +524,18 @@ def fetch(
         if source.link_serves_manifest:
             # The link is an index, not the archive: what it names is downloaded
             # beside it and filed with it, because all of it is the account's.
-            _, parts = _download_manifest_and_parts(
-                settings, source, link, temp_dir, sink=sink, flags=flags, collected=downloaded
-            )
+            parts = _download_manifest_and_parts(
+                settings, source, link, temp_dir, sink=sink, flags=flags, collected=downloaded, quiet=quiet
+            )[1]
             temp = archive_among(parts, source)
             size, digest = temp.stat().st_size, _digest(temp)
         elif source.fetch_needs_session:
-            temp, size, digest = _download_through_session(settings, source, link, temp_dir, sink=sink, flags=flags)
+            temp, size, digest = _download_through_session(
+                settings, source, link, temp_dir, sink=sink, flags=flags, quiet=quiet
+            )
         else:
             temp = temp_dir / f"{uuid.uuid4()}.zip"
-            size, digest = _download(settings, link, temp, open_url=open_url)
+            size, digest = _download(settings, link, temp, open_url=open_url, sink=sink, quiet=quiet)
         if not zipfile.is_zipfile(temp):
             raise FetchError(NOT_A_ZIP)
         filing = _filing(
@@ -515,7 +569,7 @@ def fetch(
         block(
             settings,
             snapshot,
-            first=DOWNLOADED.format(size=f"{size / MEGABYTE:.1f}"),
+            first=DOWNLOADED.format(size=f"{size / MEGABYTE:.1f}", took=pretty_duration(round(clock() - started))),
             no_ask=ask is None,
         )
     )
@@ -609,6 +663,7 @@ def _download_manifest_and_parts(
     sink: Sink,
     flags: Sequence[str],
     collected: list[Path],
+    quiet: bool = False,
 ) -> tuple[Path, list[Path]]:
     """Download the manifest and every file it names, in one session.
 
@@ -625,7 +680,9 @@ def _download_manifest_and_parts(
             _sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
             with tracing.redacting():
                 try:
-                    manifest_path, parts = index_and_files(settings, browser, source, link, into, collected=collected)
+                    manifest_path, parts = index_and_files(
+                        settings, browser, source, link, into, collected=collected, sink=sink, quiet=quiet
+                    )
                 except download.DownloadStopped as exc:
                     raise _not_an_archive(settings, source, exc) from exc
             traced.exit_code = ExitCode.OK
@@ -642,6 +699,8 @@ def index_and_files(
     into: Path,
     *,
     collected: list[Path],
+    sink: Sink = DISCARD,
+    quiet: bool = False,
 ) -> tuple[Path, list[Path]]:
     """Download the index, then every file it names, into `into`.
 
@@ -657,7 +716,7 @@ def index_and_files(
     got = download.fetch(settings, browser, link, into=into, hosts=source.hosts)
     manifest_path = got.path.rename(into / MANIFEST_FILENAME)
     collected.append(manifest_path)
-    _log_downloaded(manifest_path)
+    _landed(manifest_path, name=manifest_path.name, size=got.bytes, sink=sink, quiet=quiet)
     manifest = manifest_of(manifest_path)
     if manifest is None:
         raise FetchError(NOT_A_MANIFEST)
@@ -669,7 +728,7 @@ def index_and_files(
         each = download.fetch(settings, browser, item.export_url, into=into, hosts=source.hosts)
         parts.append(each.path.rename(into / Path(item.filename).name))
         collected.append(parts[-1])
-        _log_downloaded(parts[-1])
+        _landed(parts[-1], name=parts[-1].name, size=each.bytes, sink=sink, quiet=quiet)
     return manifest_path, parts
 
 
@@ -698,6 +757,7 @@ def _download_through_session(
     *,
     sink: Sink,
     flags: Sequence[str],
+    quiet: bool = False,
 ) -> tuple[Path, int, str]:
     """Open the source session, make sure it is signed in, and catch the download (§63).
 
@@ -722,9 +782,10 @@ def _download_through_session(
             traced.exit_code = ExitCode.OK
     finally:
         browser.close()
-    # Its own guid: a source that serves one archive has no manifest to name it,
-    # so what is printed is the name the browser gave it, which is the file.
-    _log_downloaded(got.path)
+    # The record names the guid the browser gave the file: a source that serves
+    # one archive has no manifest to name it, and the vendor's own suggestion is
+    # never kept (§66). The line names what the file is about to become.
+    _landed(got.path, name=store.ARCHIVE_NAME, size=got.bytes, sink=sink, quiet=quiet)
     return got.path, got.bytes, _digest(got.path)
 
 
@@ -752,6 +813,8 @@ def _download(
     target: Path,
     *,
     open_url: Callable[..., Any],
+    sink: Sink = DISCARD,
+    quiet: bool = False,
 ) -> tuple[int, str]:
     """Stream the link to `target`, hashing and counting as it goes.
 
@@ -798,7 +861,7 @@ def _download(
             "bytes": size,
         },
     )
-    _log_downloaded(target)
+    _landed(target, name=store.ARCHIVE_NAME, size=size, sink=sink, quiet=quiet)
     return size, digest.hexdigest()
 
 
@@ -918,22 +981,27 @@ def _display(settings: Settings, snapshot: store.Snapshot) -> str:
     return str(root / snapshot.source / snapshot.account / snapshot.stamp)
 
 
-def _log_downloaded(path: Path) -> None:
-    """Name where a file landed, the moment the browser finished writing it.
+def _landed(path: Path, *, name: str, size: int, sink: Sink, quiet: bool) -> None:
+    """Say that a file landed, the moment the browser finished writing it.
 
-    The staging path and not the store's: this is said while the download is the
-    only copy there is, minutes before the filing that `_log_filed` names, and
-    where an operator watching `-v` would go to look at it. Printed on stderr
-    under `--verbose`, and written to the run log either way.
+    Said twice: a `downloaded` record naming the staging path, and
+    `DOWNLOADED_LINE` on stdout unless `--quiet` (`60`). The staging path and
+    not the store's: this is said while the download is the only copy there is,
+    minutes before the filing that `_log_filed` names, and where an operator
+    watching `-v` would go to look at it. The line is what an operator without
+    `-v` follows the fetch by, since a manifest fetch is several downloads and,
+    without it, a minute of silence.
 
     The last component is the vendor's, taken from the manifest, so it goes
-    through `safe_token` as the filed line's does: a name carrying a newline
-    would otherwise forge a line of its own in what an operator reads, since
-    `HumanFormatter` prints an extra as it is given. The directory is ours and is
-    left whole, so the path stays one an operator can paste.
+    through `safe_token` in both, as the filed line's does: a name carrying a
+    newline would otherwise forge a line of its own in what an operator reads,
+    since `HumanFormatter` prints an extra as it is given. The directory is ours
+    and is left whole, so the path stays one an operator can paste.
     (Raised by Copilot in review on #53.)
     """
     _logger.info("downloaded", extra={"path": str(path.parent / log.safe_token(path.name))})
+    if not quiet:
+        sink.line(DOWNLOADED_LINE.format(name=log.safe_token(name), size=pretty_bytes(size, "ds", precision=1)))
 
 
 def _log_filed(settings: Settings, snapshot: store.Snapshot) -> None:
@@ -961,7 +1029,12 @@ def _log_filed(settings: Settings, snapshot: store.Snapshot) -> None:
 
 
 def extract_command(
-    settings: Settings, request: ExtractRequest, *, sink: Sink = DISCARD, flags: Sequence[str] = ()
+    settings: Settings,
+    request: ExtractRequest,
+    *,
+    sink: Sink = DISCARD,
+    flags: Sequence[str] = (),
+    quiet: bool = False,
 ) -> ExtractOutcome:
     """Ask, fetch, file or abandon — whichever the flags name (§31).
 
@@ -969,7 +1042,8 @@ def extract_command(
     honoured, as `import_command` does for `--pilot`, so that a Python caller is
     refused by the same rule as a typed command. With no mode flag at all this
     is the ask (`31`), which is the command's first move and the one every other
-    mode is about.
+    mode is about. `quiet` reaches the fetch alone: it is the one mode with
+    progress to suppress.
     """
     if request.link is not None and request.from_path is not None:
         raise UsageError(LINK_AND_FILE)
@@ -978,7 +1052,7 @@ def extract_command(
     if request.abandon:
         return abandon(settings, sink=sink)
     if request.link is not None:
-        return fetch(settings, request.link, sink=sink, flags=flags)
+        return fetch(settings, request.link, sink=sink, flags=flags, quiet=quiet)
     if request.from_path is not None:
         return file(settings, request.from_path, sink=sink)
     return ask(settings, sink=sink, flags=flags)

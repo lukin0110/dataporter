@@ -48,7 +48,14 @@ MISSING_CREDENTIALS = (
     "DATAPORTER_AUTH__PASSWORD, or pass --email and --password-file"
 )
 """Exit `2`, before any browser starts: a run that would stop at the first
-sign-in form is a run that should not have started."""
+sign-in form is a run that should not have started.
+
+`extract` is the exception (`61`). Its session is the source account's own
+Chrome profile, so a profile a person signed in to needs no credential at all,
+and demanding one at the door would refuse every unattended Claude backup —
+Claude's sign-in cannot be automated, so a credential there is a toll and never
+a key (brief 07). It asks where a sign-in is actually attempted, through
+`ensure_signed_in`, and the refusal is this one, unchanged."""
 
 NEEDS_PERSON = "automatic sign-in stopped: {reason} — run: {program} login"
 """Exit `3`, when the sign-in could not be completed and nothing had begun.

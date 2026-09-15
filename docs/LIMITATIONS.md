@@ -290,6 +290,17 @@ page, which nobody has watched yet: `docs/extraction-01.md` is where they stop b
   for `login` — the right failure, but a silent one until somebody reads the log. A
   signed-in profile needs no model at all, which is the case the backup is built for.
   *by construction*
+- **The ask cannot run headless against claude.ai.** Measured 2026-09-15 on a signed-in
+  profile, Chrome 152: `--headless=new` is served a Cloudflare interstitial at the export
+  page — `challenges.cloudflare.com`, a `ray-id` footer, forty-seven nodes — which never
+  resolves, while the same profile headed renders the panel in about 2.9 s. So
+  `--non-interactive` extraction of a Claude account is refused by the vendor's bot
+  management, not by anything in this tool, and the ask reports the panel never appeared
+  and names dropping the flag (`62`). Clearing that check is the one thing this tool will
+  not learn to do ([ADR 0008](adr/0008-the-sign-in-stays-in-the-browser.md)); a cron job
+  that needs a Claude export needs a display. Whether the **fetch** is refused the same way
+  is not yet known: it downloads from a signed URL on another host, and the link that would
+  answer it expires before anyone can plan around it. *observed on 2026-09-15*
 
 ## The ChatGPT source (`43`–`45`)
 

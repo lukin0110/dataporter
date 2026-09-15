@@ -92,6 +92,15 @@ class FakeExportPage:
 
     view_reads: int = 0
 
+    button_after_view: int = 0
+    """How many looks at the page before the export control has rendered.
+
+    `0` is a panel that was there on the first look. A number is claude.ai as a
+    real headless run met it (`62`): the address is right and the document is
+    complete, and the React app has painted nothing yet — so the control appears
+    a few polls in, and an ask that read the DOM once called it missing.
+    """
+
     loading_for: int = 0
     """How many looks the page spends still loading (`07`'s `settled`)."""
 
@@ -140,8 +149,9 @@ class FakeExportPage:
         self.view_reads += 1
         if self.leaves_after_view is not None and self.view_reads >= (self.leaves_after_view):
             self.url = self.leaves_for
+        rendered = self.view_reads > self.button_after_view
         return {
-            "button": self.button and self.stage is Stage.SETTINGS,
+            "button": self.button and rendered and self.stage is Stage.SETTINGS,
             "dialog": self.stage is Stage.CONFIRM,
             "confirm": self.stage is Stage.CONFIRM,
             "requested": self.stage is Stage.REQUESTED,
