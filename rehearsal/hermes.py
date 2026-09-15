@@ -190,7 +190,9 @@ def sign_in_task(prompt: str, *, config: Mapping[str, str]) -> dict[str, Any]:
     """`24`'s agent half: reach the form, and stop at it.
 
     No credential is here, and none is passed to this process — the tool types them
-    itself.
+    itself. Kept for a source that could still use it (brief 07 §76); since `49`
+    no rehearsal reaches it, because the mock claude.ai signs in by link and the
+    runner plays the person (`rehearsal.person`).
     """
     return ScriptedSignIn(CdpSignInBrowser(driver_for(config))).run(prompt)
 

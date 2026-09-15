@@ -1,11 +1,16 @@
 """`claude-mock`: start the mock, or ask it what it has been asked to do.
 
-Four commands and no configuration file. `serve` starts the site and prints the
+Five commands and no configuration file. `serve` starts the site and prints the
 one thing an operator needs in order to reach it — nobody composes a resolver
 rule by hand (§21, *Reachability*) — `ledger` prints the count the rehearsal
 record reconciles against (§25), `exports` prints the links the site has
-handed out instead of emails (`32`), for the terminal that did not start it,
-and `rows` prints the UI map rows the mock is built out of.
+handed out instead of emails (`32`), `sign-in-links` the links it minted where
+a sign-in email would have gone (`49`), both for the terminal that did not
+start it, and `rows` prints the UI map rows the mock is built out of.
+
+`--password` is still accepted by `serve`, because the parser is every mock's
+(`38`), and ignored: claude.ai signs in with an address and a link, and so does
+this (brief 07 §72).
 
 What the printed lines must *do* is the brief's (§21): send the `claude.ai` host
 to the mock, and trust the mock's own key and never every certificate. The port,
@@ -20,7 +25,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from mockcore import certificate
+from mockcore import certificate, wire
 from mockcore import cli as core
 
 from claudemock import DEFAULT_PORT, IDENTITY, server, uimap
@@ -82,8 +87,12 @@ def proxy_note(names: Sequence[str]) -> str:
     return core.proxy_note(IDENTITY, names) + FETCH_PROXY_NOTE
 
 
+LISTINGS = (("sign-in-links", "print the sign-in links a running mock has minted"),)
+"""This site's own listing command (`49`), beside the core's `exports`."""
+
+
 def parser() -> argparse.ArgumentParser:
-    return core.parser(IDENTITY, description=__doc__, email=DEFAULT_EMAIL, password=DEFAULT_PASSWORD)
+    return core.parser(IDENTITY, description=__doc__, email=DEFAULT_EMAIL, password=DEFAULT_PASSWORD, listings=LISTINGS)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -92,6 +101,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return ledger(host=arguments.host, port=arguments.port)
     if arguments.command == "exports":
         return exports(host=arguments.host, port=arguments.port)
+    if arguments.command == "sign-in-links":
+        return sign_in_links(host=arguments.host, port=arguments.port)
     if arguments.command == "rows":
         return rows()
     return serve(arguments)
@@ -104,7 +115,6 @@ def serve(arguments: argparse.Namespace) -> int:
     material = certificate.ensure(IDENTITY, arguments.cert_dir)
     site = Site(
         email=arguments.email,
-        password=arguments.password,
         reply_delay_s=arguments.reply_delay_s,
         reply_steps=arguments.reply_steps,
     )
@@ -114,6 +124,7 @@ def serve(arguments: argparse.Namespace) -> int:
         port=arguments.port,
         material=material,
         announce=core.announce,
+        announce_sign_in=core.announce_sign_in,
     )
     print(reachability(host=arguments.host, port=running.port, material=material), end="")
     proxies = core.proxies()
@@ -136,6 +147,15 @@ def ledger(*, host: str, port: int = DEFAULT_PORT) -> int:
 def exports(*, host: str, port: int = DEFAULT_PORT) -> int:
     """Ask a running mock for the links it handed out, one per line, oldest first."""
     return core.exports(IDENTITY, host=host, port=port)
+
+
+def sign_in_links(*, host: str, port: int = DEFAULT_PORT) -> int:
+    """Ask a running mock for the sign-in links it minted, one per line, oldest first (`49`).
+
+    `claude-mock sign-in-links | tail -n 1` is the newest: what a person hands
+    to `dataporter login --link`, in the terminal the mock is not in.
+    """
+    return core.fetch_text(IDENTITY, host=host, port=port, path=wire.SIGN_IN_LINKS_PATH)
 
 
 def rows() -> int:

@@ -16,6 +16,10 @@ Two things about this site's wire are its own:
   session**: brief 03 §35 says the fetch needs none, and it is true of Claude.
   The link is on the mock's own host and port — never on `claude.ai`, because
   the tool downloads a link with Python and no resolver rule.
+- **It signs people in by link** (`49`, brief 07 §79): the address step mints a
+  sign-in link — on `claude.ai`, token in the fragment, as the real one is —
+  and the browser that asked spends it at `/magic-link`, whose own script
+  posts the token back. No password step, because claude.ai has none.
 
 The routes are plain `def`s rather than `async def`s on purpose: `Site` is
 synchronous and guards its state with a lock, so FastAPI runs each route on a
@@ -25,18 +29,19 @@ upload's body, which is the only thing in the mock worth awaiting.
 
 from collections.abc import Callable
 from http import HTTPStatus
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Form, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from mockcore import certificate, wire
 from mockcore.exports import Export
-from mockcore.sessions import Pending
 from mockcore.wire import (
     LOGIN_COOKIE,
     MAX_BODY_BYTES,
     SESSION_COOKIE,
+    SIGN_IN_LINKS_JSON_PATH,
+    SIGN_IN_LINKS_PATH,
     MockServer,
     SignedOutError,
     not_found,
@@ -46,7 +51,10 @@ from mockcore.wire import (
 from pydantic import BaseModel
 
 from claudemock import archive, pages
-from claudemock.site import Chat, Site
+from claudemock.site import SIGN_IN_LINK_PATH, Chat, SignInLink, Site
+
+if TYPE_CHECKING:
+    from mockcore.sessions import Pending
 
 BANNER_COOKIE = "mock_banner"
 
@@ -57,6 +65,9 @@ EXPORT_PAGE_PATH = "/settings/data-privacy-controls"
 spellings, one line each."""
 
 REFUSED = "Those details do not match an account here."
+NO_CODE = "That code was not accepted."
+"""What the code field answers to anything typed into it: the mock mints no
+code, because the code door is deferred (brief 07 §80)."""
 
 
 class MessageIn(BaseModel):
@@ -85,6 +96,7 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
     *,
     link_base: str = "",
     announce: Callable[[str], None] = wire.quiet,
+    announce_sign_in: Callable[[str], None] = wire.quiet,
 ) -> FastAPI:
     """Return the site as an ASGI application: every route the mock answers.
 
@@ -92,13 +104,17 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
     constructed per process — and per test, which is what keeps the tests of
     the wire independent of one another. `link_base` is the origin an export link
     is spelled with, and `announce` is told each link as it is minted — the CLI
-    prints it where the vendor would have sent an email.
+    prints it where the vendor would have sent an email. `announce_sign_in` is
+    the same for a sign-in link (`49`).
     """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    pending = Pending()
+    pending: Pending = site.pending_sign_ins
 
     def link_of(export: Export) -> str:
         return link_base + wire.ARCHIVE_PATH.format(token=export.token)
+
+    def sign_in_link_json(link: SignInLink) -> dict[str, Any]:
+        return {"token": link.token, "link": site.link_of(link), "minted_at": link.minted_at, "spent": link.spent}
 
     Session = Annotated[str, Depends(wire.session_of(site.signed_in))]  # ruff: ignore[non-lowercase-variable-in-function] - it names a type
 
@@ -123,23 +139,36 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
         payload = archive.render(site.all_chats(), email=site.email, now=site.now())
         return Response(payload, media_type="application/zip")
 
-    # -- sign-in ----------------------------------------------------------- #
+    # -- sign-in by link (`49`) --------------------------------------------- #
+
+    @app.get(SIGN_IN_LINKS_PATH)
+    def sign_in_links_text() -> Response:
+        """Return the sign-in links minted so far, one per line, oldest first: the inbox's stand-in."""
+        return PlainTextResponse("".join(f"{site.link_of(link)}\n" for link in site.sign_in_links()))
+
+    @app.get(SIGN_IN_LINKS_JSON_PATH)
+    def sign_in_links_json() -> list[dict[str, Any]]:
+        return [sign_in_link_json(link) for link in site.sign_in_links()]
+
+    def pending_token(request: Request) -> tuple[str, dict[str, str]]:
+        """Return the browser's pending-sign-in token: the cookie it carries, or a new one to set."""
+        token = request.cookies.get(LOGIN_COOKIE)
+        if token:
+            return token, {}
+        token = pending.new_token()
+        return token, {LOGIN_COOKIE: token}
 
     @app.get("/login")
     def login_page(request: Request, error: str = "") -> Response:
         if site.signed_in(request.cookies.get(SESSION_COOKIE)):
             return redirect("/new")
-        token = request.cookies.get(LOGIN_COOKIE)
-        cookies: dict[str, str] = {}
-        if not token:
-            token = pending.new_token()
-            cookies[LOGIN_COOKIE] = token
-        step = "password" if pending.pending(token) else "email"
+        token, cookies = pending_token(request)
         response = HTMLResponse(
             pages.login_page(
-                step=step,
+                step=site.sign_in_step(token),
                 banner=request.cookies.get(BANNER_COOKIE) != "dismissed",
-                error=REFUSED if error else "",
+                error={"refused": REFUSED, "code": NO_CODE}.get(error, ""),
+                address=pending.pending(token) or site.email,
             )
         )
         for name, value in cookies.items():
@@ -152,23 +181,60 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
 
     @app.post("/login/email")
     def submit_email(request: Request, email: Annotated[str, Form()] = "") -> Response:
-        """Return the first step. Exactly one address gets past it (§21)."""
-        token = request.cookies.get(LOGIN_COOKIE) or pending.new_token()
-        if email != site.email:
-            pending.forget(token)
+        """Take the address: exactly one gets a link (§21), minted where an email would go (`link requested`)."""
+        token, _ = pending_token(request)
+        link = site.request_sign_in(email, pending=token)
+        if link is None:
             return redirect("/login?error=refused", **{LOGIN_COOKIE: token})
-        pending.remember(token, email)
+        announce_sign_in(site.link_of(link))
         return redirect("/login", **{LOGIN_COOKIE: token})
 
-    @app.post("/login/password")
-    def submit_password(request: Request, password: Annotated[str, Form()] = "") -> Response:
-        token = request.cookies.get(LOGIN_COOKIE) or ""
-        email = pending.pending(token)
-        if not email or not site.credentials_match(email, password):
-            pending.forget(token)
-            return redirect("/login?error=refused")
-        pending.forget(token)
-        return redirect("/new", **{SESSION_COOKIE: site.sign_in()})
+    @app.post("/login/resend")
+    def resend(request: Request) -> Response:
+        """Mint another link for the same sign-in: the link-sent page's *try sending it again*."""
+        token, _ = pending_token(request)
+        link = site.resend(token)
+        if link is not None:
+            announce_sign_in(site.link_of(link))
+        return redirect("/login", **{LOGIN_COOKIE: token})
+
+    @app.post("/login/change")
+    def change_address(request: Request) -> Response:
+        """Forget the sign-in this browser began: the link-sent page's *change email address*."""
+        token, _ = pending_token(request)
+        site.forget_pending(token)
+        return redirect("/login", **{LOGIN_COOKIE: token})
+
+    @app.post("/login/code")
+    def submit_code(request: Request, code: Annotated[str, Form()] = "") -> Response:
+        """Refuse whatever was typed into the code field: no code was ever minted (§80)."""
+        token, _ = pending_token(request)
+        return redirect("/login?error=code", **{LOGIN_COOKIE: token})
+
+    @app.get(SIGN_IN_LINK_PATH)
+    def magic_link_page() -> Response:
+        """Where a sign-in link lands (`sign-in link`). No session: this is how one is made."""
+        return HTMLResponse(pages.magic_link_page())
+
+    @app.post("/login/redeem")
+    def redeem(request: Request, token: Annotated[str, Form()] = "", email: Annotated[str, Form()] = "") -> Response:
+        """Spend the link the page's script read off its fragment, in this browser.
+
+        The pending sign-in is the browser's cookie. A link that finishes it
+        signs the browser in and says where to go (`signed in by the link`);
+        one that does not leaves the browser at the code page, with the cookie
+        set so that `/login` shows it (`link opened elsewhere`).
+        """
+        browser, cookies = pending_token(request)
+        session = site.redeem(token, email, pending=browser)
+        if session is None:
+            response = JSONResponse({"ok": False, "next": "/login"})
+            for name, value in {**cookies, LOGIN_COOKIE: browser}.items():
+                set_cookie(response, name, value)
+            return response
+        response = JSONResponse({"ok": True, "next": "/new"})
+        set_cookie(response, SESSION_COOKIE, session)
+        return response
 
     # -- the site ---------------------------------------------------------- #
 
@@ -271,17 +337,22 @@ def serve(
     host: str = "127.0.0.1",
     material: certificate.Material,
     announce: Callable[[str], None] = wire.quiet,
+    announce_sign_in: Callable[[str], None] = wire.quiet,
 ) -> MockServer:
     """Return a started server, listening. The caller closes it.
 
     The link base is spelled from the address and port the socket really got —
     `0` asks for any port — so an export link points at this process and no
     other. A host other than the loopback address is one the tool's fetch cannot
-    trust (the certificate names `127.0.0.1` alone), and `cli.serve` says so.
+    trust (the certificate names `127.0.0.1` alone), and `cli.serve` says so. A
+    sign-in link is on `claude.ai` itself, where Chrome's resolver rule sends it.
     """
     return wire.serve(
         lambda bound_host, bound_port: create_app(
-            site, link_base=f"https://{bound_host}:{bound_port}", announce=announce
+            site,
+            link_base=f"https://{bound_host}:{bound_port}",
+            announce=announce,
+            announce_sign_in=announce_sign_in,
         ),
         port=port,
         host=host,

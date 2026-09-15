@@ -41,7 +41,7 @@ def clock() -> list[float]:
 
 @pytest.fixture
 def site(clock: list[float]) -> Site:
-    return Site(email=EMAIL, password="p", reply_delay_s=1.0, reply_steps=2, clock=lambda: clock[0], wall=lambda: WALL)
+    return Site(email=EMAIL, reply_delay_s=1.0, reply_steps=2, clock=lambda: clock[0], wall=lambda: WALL)
 
 
 def unpack(payload: bytes) -> dict[str, object]:

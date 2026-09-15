@@ -15,10 +15,17 @@ asked for — a token each, minted when the export page's confirmation is presse
 and renders nothing itself. `archive.py` turns the chats into the archive a token
 is fetched as.
 
+A fourth is `49`'s (brief 07 §79): the site **signs people in by link**. An
+address submitted mints a sign-in link instead of mailing one, remembered as
+pending against the browser that asked; redeeming that link in that browser
+signs it in, once. There is no password anywhere, because claude.ai has none.
+
 Nothing here is a claim about claude.ai. `uimap.py` says which row of the UI map
 each of these behaviours stands on.
 """
 
+import base64
+import secrets
 import threading
 import time
 import uuid
@@ -28,9 +35,43 @@ from dataclasses import dataclass, field
 from mockcore.exports import Export, Exports
 from mockcore.ledger import Ledger
 from mockcore.reply import DEFAULT_REPLY_DELAY_S, DEFAULT_REPLY_STEPS, Reply, Turn, answer
-from mockcore.sessions import Sessions
+from mockcore.sessions import Pending, Sessions
 
 from claudemock import IDENTITY
+
+SIGN_IN_LINK_PATH = "/magic-link"
+"""Where a sign-in link lands: the real site's path, re-typed (ADR 0003). The
+token rides in the fragment, `#<token>:<base64url address>`, which is the shape
+the tool's `sign-in link` row records the real page reading off itself — and
+which never reaches this server: the page's own script posts it."""
+
+EMAIL_STEP = "email"
+LINK_SENT_STEP = "link_sent"
+"""The two states of the sign-in page: the address not yet given, and the link on
+its way (the tool's `link sent` row)."""
+
+
+@dataclass
+class SignInLink:
+    """One sign-in link the site minted: whose, for which browser, and whether it was spent.
+
+    `pending` is the token of the browser that asked (its `mock_login` cookie):
+    the link finishes the sign-in that began there and no other, which is what
+    brief 07 §73 means by *spent here rather than opened*.
+    """
+
+    token: str
+    email: str
+    pending: str
+    minted_at: float
+    spent: bool = False
+
+    @property
+    def fragment(self) -> str:
+        """The part after `#`: the token, then the address, base64url without padding."""
+        address = base64.urlsafe_b64encode(self.email.encode("utf-8")).decode("ascii").rstrip("=")
+        return f"{self.token}:{address}"
+
 
 NEW_CHAT_TITLE = "New chat"
 """What a chat is called before anything renames it. Not a title of anything —
@@ -77,7 +118,6 @@ class Site:
         self,
         *,
         email: str,
-        password: str,
         reply_delay_s: float = DEFAULT_REPLY_DELAY_S,
         reply_steps: int = DEFAULT_REPLY_STEPS,
         ledger: Ledger | None = None,
@@ -85,7 +125,6 @@ class Site:
         wall: Callable[[], float] = time.time,
     ) -> None:
         self.email = email
-        self.password = password
         self.reply_delay_s = reply_delay_s
         self.reply_steps = reply_steps
         self.ledger = ledger if ledger is not None else Ledger(IDENTITY.heading)
@@ -93,7 +132,12 @@ class Site:
         self.wall = wall
         self.chats: dict[str, Chat] = {}
         self.sessions = Sessions()
+        self.pending_sign_ins = Pending()
+        """The half-finished sign-ins: the browser's token, and the address it gave."""
         self.pending_files: dict[str, list[str]] = {}
+        self._links: dict[str, SignInLink] = {}
+        self._strays: set[str] = set()
+        """Browsers that opened a link whose sign-in was not theirs (`link opened elsewhere`)."""
         self._exports = Exports(wall=wall)
         self._lock = threading.Lock()
 
@@ -103,11 +147,84 @@ class Site:
         """Return the mock's own clock. Injectable so the tests need no sleeps."""
         return float(self.clock())
 
-    # -- sign-in ------------------------------------------------------------ #
+    # -- sign-in by link (`49`) -------------------------------------------- #
 
-    def credentials_match(self, email: str, password: str) -> bool:
-        """Exactly one pair signs in. Any other is refused (§21)."""
-        return email == self.email and password == self.password
+    def address_known(self, email: str) -> bool:
+        """Exactly one address gets a link. Any other is refused (§21)."""
+        return email == self.email
+
+    def request_sign_in(self, email: str, *, pending: str) -> SignInLink | None:
+        """Take an address from a browser: remember the sign-in it began, and mint its link.
+
+        `None` for an address that is not the account's, and the browser's
+        earlier attempt forgotten with it. A second ask from the same browser
+        — the page's *resend* — mints a second link for the same pending
+        sign-in, which is what a person who did not get the email needs.
+        """
+        if not self.address_known(email):
+            self.forget_pending(pending)
+            return None
+        self.pending_sign_ins.remember(pending, email)
+        link = SignInLink(token=secrets.token_hex(16), email=email, pending=pending, minted_at=float(self.wall()))
+        with self._lock:
+            self._links[link.token] = link
+            self._strays.discard(pending)
+        self.ledger.count("links_minted")
+        return link
+
+    def resend(self, pending: str) -> SignInLink | None:
+        """Mint another link for a sign-in this browser began; `None` if it began none."""
+        email = self.pending_sign_ins.pending(pending)
+        return self.request_sign_in(email, pending=pending) if email else None
+
+    def forget_pending(self, pending: str) -> None:
+        """Forget whatever this browser began: the page's *change address*."""
+        self.pending_sign_ins.forget(pending)
+        with self._lock:
+            self._strays.discard(pending)
+
+    def sign_in_step(self, pending: str) -> str:
+        """Which of the sign-in page's two states this browser is at."""
+        with self._lock:
+            stray = pending in self._strays
+        return LINK_SENT_STEP if stray or self.pending_sign_ins.pending(pending) else EMAIL_STEP
+
+    def redeem(self, token: str, email: str, *, pending: str) -> str | None:
+        """Spend a link in a browser: a session, or `None` and the browser left at the code page.
+
+        The link signs in the browser whose sign-in it finishes — the one that
+        gave the address, still holding the same pending token — and once. A
+        link opened elsewhere, twice, or with the wrong address signs nobody in;
+        what the real site shows then is unobserved (`link opened elsewhere`),
+        and the mock leaves that browser at the one page the tool recognises,
+        the code field, with no code behind it: the code door is deferred (§80).
+        """
+        with self._lock:
+            link = self._links.get(token)
+            good = (
+                link is not None
+                and not link.spent
+                and link.email == email
+                and link.pending == pending
+                and self.pending_sign_ins.pending(pending) == email
+            )
+            if link is not None and good:
+                link.spent = True
+            else:
+                self._strays.add(pending)
+        if not good:
+            return None
+        self.pending_sign_ins.forget(pending)
+        return self.sign_in()
+
+    def sign_in_links(self) -> Sequence[SignInLink]:
+        """Every sign-in link minted, in the order minted — the listing that stands in for the inbox."""
+        with self._lock:
+            return tuple(self._links.values())
+
+    def link_of(self, link: SignInLink) -> str:
+        """Return the address a person would find in the email: on the site's own host, token in the fragment."""
+        return f"https://{IDENTITY.hosts[0]}{SIGN_IN_LINK_PATH}#{link.fragment}"
 
     def sign_in(self) -> str:
         """Mint a session, and count the sign-in."""

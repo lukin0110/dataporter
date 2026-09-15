@@ -40,7 +40,6 @@ def test_a_reply_grows_in_steps_and_only_then_holds_the_line() -> None:
     clock = [100.0]
     site = Site(
         email="a@example.invalid",
-        password="p",
         reply_delay_s=10.0,
         reply_steps=2,
         clock=lambda: clock[0],
@@ -84,16 +83,76 @@ def test_every_turn_survives_the_next_message(site: Site) -> None:
     ]
 
 
-def test_exactly_one_pair_signs_in(site: Site) -> None:
-    assert site.credentials_match("rehearsal@example.invalid", "rehearsal-not-a-real-password")
-    assert not site.credentials_match("rehearsal@example.invalid", "guess")
-    assert not site.credentials_match("someone@example.invalid", "guess")
+# -- the sign-in by link (`49`) ------------------------------------------------ #
+
+
+def test_exactly_one_address_gets_a_link(site: Site) -> None:
+    """§21: one address is the account's; any other is refused, and refused *before* a link exists."""
+    assert site.request_sign_in("someone@example.invalid", pending="browser-1") is None
+    assert site.sign_in_links() == ()
+    assert site.sign_in_step("browser-1") == "email"
+    link = site.request_sign_in("rehearsal@example.invalid", pending="browser-1")
+    assert link is not None
+    assert site.sign_in_step("browser-1") == "link_sent"
+    assert site.counters()["links_minted"] == 1
+
+
+def test_the_link_is_the_real_shape_and_lands_on_the_site(site: Site) -> None:
+    """`sign-in link`: on claude.ai, at /magic-link, the token and the base64url address in the fragment."""
+    link = site.request_sign_in("rehearsal@example.invalid", pending="browser-1")
+    assert link is not None
+    assert site.link_of(link) == f"https://claude.ai/magic-link#{link.token}:cmVoZWFyc2FsQGV4YW1wbGUuaW52YWxpZA"
+    assert len(link.token) == 32
+    assert "=" not in link.fragment
+
+
+def test_the_link_signs_in_the_browser_that_asked_and_only_once(site: Site) -> None:
+    link = site.request_sign_in("rehearsal@example.invalid", pending="browser-1")
+    assert link is not None
+    session = site.redeem(link.token, "rehearsal@example.invalid", pending="browser-1")
+    assert session is not None
+    assert site.signed_in(session)
+    assert site.counters()["sign_ins"] == 1
+    assert site.sign_in_step("browser-1") == "email"  # the pending sign-in is over
+    # Spent: a second redemption signs nobody in.
+    assert site.redeem(link.token, "rehearsal@example.invalid", pending="browser-1") is None
+    assert site.counters()["sign_ins"] == 1
+
+
+def test_a_link_opened_elsewhere_signs_nobody_in_and_leaves_that_browser_at_the_code_page(site: Site) -> None:
+    """`link opened elsewhere`: another browser, a wrong address, a token nobody minted."""
+    link = site.request_sign_in("rehearsal@example.invalid", pending="browser-1")
+    assert link is not None
+    assert site.redeem(link.token, "rehearsal@example.invalid", pending="browser-2") is None
+    assert site.sign_in_step("browser-2") == "link_sent"
+    assert site.redeem(link.token, "someone@example.invalid", pending="browser-1") is None
+    assert site.redeem("deadbeef", "rehearsal@example.invalid", pending="browser-1") is None
+    assert not link.spent
+    assert site.counters()["sign_ins"] == 0
+    # The one that asked can still spend it.
+    assert site.redeem(link.token, "rehearsal@example.invalid", pending="browser-1") is not None
+
+
+def test_resend_mints_another_link_for_the_same_sign_in_and_change_forgets_it(site: Site) -> None:
+    assert site.resend("browser-1") is None
+    first = site.request_sign_in("rehearsal@example.invalid", pending="browser-1")
+    second = site.resend("browser-1")
+    assert first is not None
+    assert second is not None
+    assert first.token != second.token
+    assert [item.token for item in site.sign_in_links()] == [first.token, second.token]
+    assert site.counters()["links_minted"] == 2
+    site.forget_pending("browser-1")
+    assert site.sign_in_step("browser-1") == "email"
+    assert site.redeem(second.token, "rehearsal@example.invalid", pending="browser-1") is None
 
 
 def test_the_ledger_counts_what_the_mock_was_asked_to_do() -> None:
     ledger = Ledger(IDENTITY.heading)
-    site = Site(email="a@example.invalid", password="p", ledger=ledger)
-    site.sign_in()
+    site = Site(email="a@example.invalid", ledger=ledger)
+    link = site.request_sign_in("a@example.invalid", pending="b")
+    assert link is not None
+    site.redeem(link.token, "a@example.invalid", pending="b")
     site.accept_file("notes.txt", session="s")
     chat = site.create_chat(SEED, session="s")
     site.receive(chat, SEED)
@@ -107,6 +166,7 @@ def test_the_ledger_counts_what_the_mock_was_asked_to_do() -> None:
         "files_accepted": 1,
         "renames": 1,
         "exports_requested": 1,
+        "links_minted": 1,
     }
     assert chat.files == ["notes.txt"]
 
@@ -148,7 +208,6 @@ def test_the_reply_is_whole_at_the_last_step(steps: int) -> None:
     clock = [0.0]
     site = Site(
         email="a@example.invalid",
-        password="p",
         reply_delay_s=1.0,
         reply_steps=steps,
         clock=lambda: clock[0],

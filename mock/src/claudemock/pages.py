@@ -254,6 +254,40 @@ LOGIN_JS = """\
       document.getElementById('signin').hidden = false;
     });
   }
+  /* The link-sent page's two buttons are `type="button"`, as the real page's
+     are: each is a request of its own, and then the page is read again. */
+  for (const [id, path] of [['resend', '/login/resend'], ['change', '/login/change']]) {
+    const button = document.getElementById(id);
+    if (button) {
+      button.addEventListener('click', () => {
+        fetch(path, { method: 'POST' }).then(() => location.reload()).catch(() => {});
+      });
+    }
+  }
+"""
+
+MAGIC_LINK_JS = """\
+  /* `sign-in link`: the token never reached the server. The page reads it off
+     its own fragment, clears the fragment from the address bar as the real page
+     does, and posts the pair; the pending sign-in is the browser's cookie. */
+  const hash = location.hash.slice(1);
+  history.replaceState(null, '', location.pathname + location.search);
+  const [token, address] = hash.split(':');
+  if (!token || !address) {
+    location.replace('/login');
+  } else {
+    let email = '';
+    try {
+      email = atob(address.replace(/-/g, '+').replace(/_/g, '/'));
+    } catch (error) {
+      email = '';
+    }
+    const body = new URLSearchParams({ token: token, email: email });
+    fetch('/login/redeem', { method: 'POST', body: body, credentials: 'same-origin' })
+      .then((answer) => answer.json())
+      .then((payload) => { location.replace(payload.next || '/login'); })
+      .catch(() => { location.replace('/login'); });
+  }
 """
 
 EXPORT_JS = """\
@@ -295,19 +329,40 @@ def shell(title: str, body: str, script: str = "") -> bytes:
 # --------------------------------------------------------------------------- #
 
 PROVIDERS = ("Google", "Apple", "SSO")
-"""The paths the unattended sign-in is told never to take. They lead to a page
-that cannot sign anybody in, so a run that takes one fails the rehearsal instead
-of quietly passing it."""
+"""The paths a sign-in is told never to take. They lead to a page that cannot
+sign anybody in, so a run that takes one fails the rehearsal instead of quietly
+passing it."""
 
 
-def login_page(*, step: str, banner: bool, error: str = "") -> bytes:
-    """Return the login page at whichever of its two steps the session is at.
+def login_page(*, step: str, banner: bool, error: str = "", address: str = "") -> bytes:
+    """Return the login page at whichever of its two states the browser is at.
 
-    The banner comes first and hides the form until it is dismissed, which is the
-    thing §24's agent half exists to get past. Everything below it is the email
-    path and the three ways of not taking it.
+    The email step (`sign-in form`): the banner comes first and hides the form
+    until it is dismissed, which is the thing `24`'s agent half existed to get
+    past, then the email path and the three ways of not taking it. The link-sent
+    state (`link sent`, `49`): the controls the real page showed on 2026-09-15,
+    re-typed from `docs/spike/claude-sign-in-link-sent.html` — a code field the
+    tool reads as a boolean and never types into, a submit, and two buttons for
+    resending and changing the address.
     """
     parts: list[str] = []
+    alert = f'<p role="alert">{html.escape(error)}</p>\n' if error else ""
+    if step == "link_sent":
+        parts.append(
+            f'<main id="signin">\n<h1>Sign in</h1>\n{alert}'
+            '<form id="link-sent" method="post" action="/login/code">\n'
+            "  <p>To continue, click the link sent to</p>\n"
+            f'  <p class="address">{html.escape(address)}</p>\n'
+            '  <p>Did not get the email? <button type="button" id="resend">Try sending it again</button>.</p>\n'
+            '  <p>Wrong address? <button type="button" id="change">Change email address</button></p>\n'
+            "  <p>If the link shows a verification code instead of signing you in, enter it here.</p>\n"
+            '  <input data-testid="code" aria-label="Verification code" '
+            'placeholder="Enter verification code" inputmode="numeric" '
+            'autocomplete="one-time-code" id="code" name="code" type="text" value="">\n'
+            '  <button type="submit" data-testid="continue">Verify email address</button>\n'
+            "</form>\n</main>"
+        )
+        return shell("Sign in", "\n".join(parts), LOGIN_JS)
     if banner:
         parts.append(
             '<div id="cookie-banner" role="region" aria-label="Cookie notice">\n'
@@ -316,30 +371,20 @@ def login_page(*, step: str, banner: bool, error: str = "") -> bytes:
             "</div>"
         )
     hidden = " hidden" if banner else ""
-    alert = f'<p role="alert">{html.escape(error)}</p>\n' if error else ""
     buttons = "\n".join(
         f'  <button type="button" formaction="/login/unsupported" '
         f"onclick=\"location.href='/login/unsupported'\">Continue with {name}"
         f"</button>"
         for name in PROVIDERS
     )
-    if step == "password":
-        form = (
-            '<form id="password-step" method="post" action="/login/password">\n'
-            '  <input type="password" name="password" '
-            'autocomplete="current-password" placeholder="Password">\n'
-            '  <button type="submit" aria-label="Sign in">Sign in</button>\n'
-            "</form>"
-        )
-    else:
-        form = (
-            '<form id="email-step" method="post" action="/login/email">\n'
-            '  <input type="email" name="email" autocomplete="username" '
-            'placeholder="Email">\n'
-            '  <button type="submit" aria-label="Continue with email">Continue'
-            "</button>\n"
-            "</form>"
-        )
+    form = (
+        '<form id="email-step" method="post" action="/login/email">\n'
+        '  <input type="email" name="email" autocomplete="username" '
+        'placeholder="Email">\n'
+        '  <button type="submit" aria-label="Continue with email">Continue'
+        "</button>\n"
+        "</form>"
+    )
     parts.append(
         f'<main id="signin"{hidden}>\n<h1>Sign in</h1>\n{alert}{buttons}\n'
         '  <button type="button" onclick="location.href=\'/login/unsupported\'">'
@@ -349,12 +394,17 @@ def login_page(*, step: str, banner: bool, error: str = "") -> bytes:
     return shell("Sign in", "\n".join(parts), LOGIN_JS)
 
 
+def magic_link_page() -> bytes:
+    """Return where a sign-in link lands: nothing to see, and a script that spends it (`sign-in link`)."""
+    return shell("Sign in", '<main id="magic-link">\n<p>Signing you in…</p>\n</main>', MAGIC_LINK_JS)
+
+
 def unsupported_page() -> bytes:
     """Where every path but email ends: no form, and nothing to sign in with."""
     return shell(
         "Sign in",
         "<main>\n<h1>Not available</h1>\n"
-        "<p>This account signs in with an email address and a password.</p>\n"
+        "<p>This account signs in with an email address and a link.</p>\n"
         '<p><a href="/login">Back</a></p>\n</main>',
     )
 

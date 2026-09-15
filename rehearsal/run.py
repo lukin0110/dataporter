@@ -48,6 +48,7 @@ from cryptography.hazmat.primitives import serialization
 
 from dataporter import PROGRAM_NAME
 from rehearsal import export as exporting
+from rehearsal import person
 from rehearsal.hermes import VERSION as AGENT_VERSION
 from rehearsal.hermes import write_executable
 
@@ -69,6 +70,15 @@ STEP_TIMEOUT_S = 1_800.0
 
 DRILL_TIMEOUT_S = 300.0
 DRILL_POLL_S = 0.5
+
+LINK_SENT_GRACE_S = 3.0
+"""How long the runner, playing the person, leaves the link-sent page showing
+before spending the link: longer than the tool's poll (`session.LOGIN_POLL_S`,
+two seconds), so that `login` sees the link sent and prints its line."""
+
+LINK_SENT_LINE = "The link is on its way."
+"""The start of the line `login` prints on seeing the link sent (brief 07 §73),
+which the extraction criteria look for in the step's stdout."""
 """The interruption drill: how long to wait for the run to be mid-conversation
 before killing it, and how often to look."""
 
@@ -281,7 +291,11 @@ def environment(settings: Settings) -> dict[str, str]:
     """Return what every step of the protocol runs with.
 
     The credentials are here and nowhere else: never in `config.toml`, which the
-    tool refuses to read them from, and never on a command line.
+    tool refuses to read them from, and never on a command line. The mock
+    claude.ai no longer takes a password (`49`, brief 07) and the tool's `login`
+    no longer asks for one; they stay in the environment for the mock
+    chatgpt.com's walk (`44`), and an unattended step that never signs in reads
+    nothing from them.
     """
     env = dict(os.environ)
     env["PATH"] = f"{settings.bin}{os.pathsep}{env.get('PATH', '')}"
@@ -316,10 +330,24 @@ class Outcome:
     root; `None` for a step that drove no tab."""
     traces: int = 0
     """How many traces the step left. One is the rule (`33`); more is a finding."""
+    flags: tuple[str, ...] | None = None
+    """The `flags` a trace of this step carries in its header, when the step ran
+    beside another that wrote into the same `logs/` (`49`): `login` and
+    `login --link` share a workspace and a moment, and the header is the one
+    thing that says whose trace is whose. `None` takes whatever is there."""
 
     @property
     def ok(self) -> bool:
         return self.exit_code == 0
+
+
+@dataclass
+class Started:
+    """A step running in the background, until `Runner.join` collects it (`49`)."""
+
+    outcome: Outcome
+    process: subprocess.Popen[str]
+    began: float
 
 
 @dataclass
@@ -367,6 +395,12 @@ class Runner:
             *(self.settings.workspace / "logs").glob("trace-*.jsonl"),
             *self.settings.accounts_dir.glob("*/*/logs/trace-*.jsonl"),
         ])
+        if outcome.flags is not None:
+            # As sets: the tool lists a header's flags in the order its command
+            # declares them, and what tells two steps apart is which flags, not
+            # the order.
+            wanted = set(outcome.flags)
+            found = [path for path in found if (read := header_flags(path)) is not None and set(read) == wanted]
         if not found:
             return
         directory = self.settings.root / "traces"
@@ -379,22 +413,39 @@ class Runner:
                 outcome.trace = target.relative_to(self.settings.root)
         outcome.traces = len(found)
 
-    def command(self, *arguments: str) -> list[str]:
+    def command(self, *arguments: str, attended: bool = False) -> list[str]:
         """Return the installed command, with the workspace and the mode it was asked for.
 
         `python -m dataporter` when the console script is not on the path, which `25`
-        guarantees is the same program.
+        guarantees is the same program. `attended` leaves the mode off: a Claude
+        sign-in has no unattended half (brief 07 §76), so `login` and
+        `login --link` run as a person runs them, in whatever mode the rest of the
+        protocol is in; the rehearsal's `browser.headless` still keeps the window
+        off the screen.
         """
         head = shutil.which(PROGRAM, path=str(self.env.get("PATH", "")))
         base = [head] if head else [sys.executable, "-m", "dataporter"]
-        mode = ["--non-interactive"] if self.settings.unattended else []
+        mode = ["--non-interactive"] if self.settings.unattended and not attended else []
         return [*base, "--workspace", str(self.settings.workspace), *mode, *arguments]
 
     def run(
-        self, name: str, *arguments: str, note: str = "", deliberate: bool = False, secrets: Sequence[str] = ()
+        self,
+        name: str,
+        *arguments: str,
+        note: str = "",
+        deliberate: bool = False,
+        secrets: Sequence[str] = (),
+        attended: bool = False,
+        own_trace: bool = False,
     ) -> Outcome:
-        """Run one step. `secrets` are masked in the recorded `argv` (`46`): a link is a credential."""
-        argv = self.command(*arguments)
+        """Run one step. `secrets` are masked in the recorded `argv` (`46`): a link is a credential.
+
+        `own_trace` keeps only the trace whose header carries this command
+        line's flags (`Outcome.flags`), for a step that shares its `logs/` with
+        another running at the same time.
+        """
+        argv = self.command(*arguments, attended=attended)
+        flags = expected_flags(argv) if own_trace else None
         started = time.monotonic()
         finished = subprocess.run(
             argv,
@@ -413,10 +464,57 @@ class Runner:
             stderr=finished.stderr,
             note=note,
             deliberate=deliberate,
+            flags=flags,
         )
         self.steps.append(outcome)
         self.keep(outcome)
         print(f"  {name:<34} exit {outcome.exit_code}  {outcome.seconds:>6.1f}s" + (f"  — {note}" if note else ""))
+        return outcome
+
+    def start(
+        self,
+        name: str,
+        *arguments: str,
+        secrets: Sequence[str] = (),
+        attended: bool = False,
+        own_trace: bool = False,
+    ) -> Started:
+        """Start a step and return at once; `join` collects it (`49`).
+
+        Its outcome takes its place in `steps` now, so that the record reads
+        in the order the protocol began things rather than the order they
+        ended: `login` before the `login --link` that finishes it.
+        """
+        argv = self.command(*arguments, attended=attended)
+        flags = expected_flags(argv) if own_trace else None
+        process = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=dict(self.env),
+            start_new_session=True,
+        )
+        outcome = Outcome(name=name, argv=masked(argv, secrets), exit_code=-1, seconds=0.0, flags=flags)
+        self.steps.append(outcome)
+        return Started(outcome=outcome, process=process, began=time.monotonic())
+
+    def join(self, started: Started, *, note: str = "", kill: bool = False) -> Outcome:
+        """Wait for a started step to end — or, with `kill`, end it — and keep what it left."""
+        if kill:
+            os.killpg(os.getpgid(started.process.pid), signal.SIGKILL)
+        stdout, stderr, timed_out = finish(started.process, timeout_s=STEP_TIMEOUT_S)
+        outcome = started.outcome
+        outcome.exit_code = started.process.returncode
+        outcome.seconds = round(time.monotonic() - started.began, 1)
+        outcome.stdout = stdout
+        outcome.stderr = stderr
+        outcome.note = note or (f"did not end in {STEP_TIMEOUT_S:g}s: killed" if timed_out else "")
+        self.keep(outcome)
+        print(
+            f"  {outcome.name:<34} exit {outcome.exit_code}  {outcome.seconds:>6.1f}s"
+            + (f"  — {outcome.note}" if outcome.note else "")
+        )
         return outcome
 
     def interrupt(self, name: str, *arguments: str) -> Outcome:
@@ -477,6 +575,58 @@ class Runner:
         return outcome
 
 
+def expected_flags(argv: Sequence[str]) -> tuple[str, ...]:
+    """Return the long options in a command line: what the tool writes as a trace header's `flags`.
+
+    Every `--option` given, the root's (`--workspace`, `--non-interactive`) as
+    well as the command's, which is what `given_flags` records; a value is its
+    own token and never starts with two dashes.
+    """
+    return tuple(item for item in argv if item.startswith("--"))
+
+
+def header_flags(trace: Path) -> list[str] | None:
+    """Return the `flags` a trace's header carries, or `None` for a file with no readable header."""
+    try:
+        with trace.open(encoding="utf-8") as lines:
+            first = json.loads(lines.readline())
+    except (OSError, ValueError):
+        return None
+    flags = first.get("flags") if isinstance(first, dict) else None
+    return [str(item) for item in flags] if isinstance(flags, list) else None
+
+
+def sign_in_by_link(runner: "Runner", *source: str) -> Outcome:
+    """Brief 07 §73's two commands, as a rehearsal has to run them (`49`).
+
+    `login` waits until the link is spent, so it runs in the background; the
+    runner then does what a person would — the address into the window, the
+    link read where the inbox would be — and spends it with `login --link`
+    from what stands for the other terminal. The background step is joined
+    last; both are recorded, and both leave a trace, told apart by the flags
+    in their headers.
+
+    A person who could not be played — the window never showed the field —
+    ends the background step by force and says so in its note, so the
+    rehearsal records a failed sign-in rather than waiting out the tool's own
+    ten minutes.
+    """
+    settings = runner.settings
+    started = runner.start("login", "login", *source, attended=True, own_trace=True)
+    try:
+        person.enter_address(settings.workspace, settings.email)
+        link = person.newest_sign_in_link(settings.host, settings.port)
+    except person.PersonError as failure:
+        return runner.join(started, note=f"the runner could not play the person: {failure}", kill=True)
+    # A person takes longer to reach an inbox than the tool takes to look. The
+    # runner does not: without this pause the link is spent between two of the
+    # tool's polls, and the line `login` prints when it sees the link sent — a
+    # golden line of §73 — is never exercised. One poll and a margin.
+    time.sleep(LINK_SENT_GRACE_S)
+    runner.run("login --link", "login", *source, "--link", link, secrets=(link,), attended=True, own_trace=True)
+    return runner.join(started)
+
+
 LINK_MARK = "<link>"
 
 
@@ -521,7 +671,7 @@ def protocol(runner: Runner, export: Path) -> dict[str, Any]:
         note="a signed-out tab has redirected to /login",
         deliberate=True,
     )
-    runner.run("login", "login")
+    sign_in_by_link(runner)
     runner.run("doctor (after login)", "doctor")
     runner.run("import --dry-run", "import", str(export), "--dry-run")
     # `--limit`, so that the pilot leaves work for the run the drill interrupts:

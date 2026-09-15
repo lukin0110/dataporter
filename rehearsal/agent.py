@@ -232,7 +232,8 @@ def renamed_js(title: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# The sign-in task (`24`)
+# The sign-in task (`24`) — kept, and unused since `49`: the mock claude.ai
+# signs in by link, and `rehearsal.person` stands where this stood
 # --------------------------------------------------------------------------- #
 
 CODE_SELECTOR = 'input[autocomplete="one-time-code"], input[name*="code"]'

@@ -12,9 +12,11 @@ message received is a message this process parsed, a file accepted is bytes this
 process read to the end, an export requested is an ask this process minted a
 link for.
 
-The six counts are every site's (§54, *The ledger*); the heading is the site's
+The seven counts are every site's (§54, *The ledger*); the heading is the site's
 own, because two mocks running at once keep two ledgers and a reader has to be
-able to tell which is which.
+able to tell which is which. The seventh — sign-in links minted — is what a site
+that signs people in by link (brief 07 §79) hands out instead of an email, and a
+site that signs people in with a password prints a zero there.
 """
 
 import threading
@@ -34,16 +36,19 @@ LABELS: tuple[tuple[str, str], ...] = (
     ("files_accepted", "Files accepted:"),
     ("renames", "Renames:"),
     ("exports_requested", "Exports requested:"),
+    ("links_minted", "Sign-in links minted:"),
 )
-"""Field name to printed label, in the order §21 lists them, and then `32`'s row
-last: §21's five are a migration's verbs, and the sixth is the one thing an
-extraction asks of the site. One tuple rather than two dicts, because the order is
-part of the block and a second list would be a second thing to keep in step."""
+"""Field name to printed label, in the order §21 lists them, then `32`'s row,
+then `49`'s last: §21's five are a migration's verbs, the sixth is the one thing
+an extraction asks of the site, and the seventh is what a sign-in by link asks —
+a link the mock mints where the vendor would send an email. One tuple rather than
+two dicts, because the order is part of the block and a second list would be a
+second thing to keep in step."""
 
 
 @dataclass
 class Ledger:
-    """Six counters under a heading that names the site, and the block they print as.
+    """Seven counters under a heading that names the site, and the block they print as.
 
     Thread-safe because the server is threaded: two uploads finishing at once
     would otherwise lose one, and a witness that under-counts is worse than no
@@ -57,6 +62,7 @@ class Ledger:
     files_accepted: int = 0
     renames: int = 0
     exports_requested: int = 0
+    links_minted: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def count(self, name: str, amount: int = 1) -> None:
@@ -73,7 +79,8 @@ class Ledger:
 
         `26`'s golden string, in the shape §21 illustrates: the heading, a blank
         line, one labelled count per row with the numbers right-aligned, a blank
-        line. `32` added the sixth row; `38` made the heading the site's.
+        line. `32` added the sixth row; `38` made the heading the site's; `49`
+        added the seventh.
         """
         counters = self.counters()
         lines = [self.heading, ""]

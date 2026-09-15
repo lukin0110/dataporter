@@ -54,6 +54,16 @@ Export requested — the link, instead of an email:
 has no inbox to send to, so the terminal it runs in is where the link arrives.
 `<program> exports` says the same to any other terminal."""
 
+SIGN_IN_LINK_NOTE = """\
+Sign-in requested — the link, instead of an email:
+
+  {link}
+
+"""
+"""What a site that signs people in by link prints when an address is submitted
+(`49`, brief 07 §79): the same shape as an export's, because the same person
+reads it where an inbox would be. `<program> sign-in-links` lists them."""
+
 
 def resolver_rule(identity: Identity, *, host: str, port: int) -> str:
     """Return the one `--host-resolver-rules` value that sends every host to the mock.
@@ -111,8 +121,20 @@ def link_note(link: str) -> str:
     return LINK_NOTE.format(link=link)
 
 
-def parser(identity: Identity, *, description: str | None, email: str, password: str) -> argparse.ArgumentParser:
-    """Return the four commands every mock has: `serve`, `ledger`, `exports`, `rows`."""
+def parser(
+    identity: Identity,
+    *,
+    description: str | None,
+    email: str,
+    password: str,
+    listings: Sequence[tuple[str, str]] = (),
+) -> argparse.ArgumentParser:
+    """Return the four commands every mock has: `serve`, `ledger`, `exports`, `rows`.
+
+    `listings` adds a site's own: a command that prints what a running mock
+    serves at one of its witness paths — the mock claude.ai's `sign-in-links`
+    (`49`) — each with the same `--host` and `--port` as `exports`.
+    """
     root = argparse.ArgumentParser(prog=identity.program, description=description)
     root.add_argument("--version", action="version", version=__version__)
     # Required, so that a bare `claude-mock` prints its usage and exits `2` rather
@@ -146,6 +168,11 @@ def parser(identity: Identity, *, description: str | None, email: str, password:
     links.add_argument("--host", default=DEFAULT_HOST)
     links.add_argument("--port", type=int, default=identity.port)
 
+    for name, help_text in listings:
+        listing = commands.add_parser(name, help=help_text)
+        listing.add_argument("--host", default=DEFAULT_HOST)
+        listing.add_argument("--port", type=int, default=identity.port)
+
     commands.add_parser("rows", help="the UI map rows the mock is built out of")
     return root
 
@@ -177,6 +204,16 @@ def announce(link: str) -> None:
     interleaves.
     """
     print(link_note(link), end="", flush=True)
+
+
+def sign_in_link_note(link: str) -> str:
+    """Return what `serve` prints for one sign-in asked for, byte for byte."""
+    return SIGN_IN_LINK_NOTE.format(link=link)
+
+
+def announce_sign_in(link: str) -> None:
+    """Print the sign-in link note where an email would have arrived (`49`)."""
+    print(sign_in_link_note(link), end="", flush=True)
 
 
 def wait(running: MockServer) -> None:

@@ -5,8 +5,11 @@ these cannot cover is a real Chrome running the page's own script — that is wh
 a rehearsal is.
 """
 
+import base64
 import io
 import json
+import urllib.error
+import urllib.request
 import zipfile
 from urllib.parse import urlencode
 
@@ -14,18 +17,50 @@ from claudemock import server
 from claudemock.site import Site
 from mockcore import certificate
 
-from conftest import EMAIL, PASSWORD, WALL, Client
+from conftest import EMAIL, WALL, Client, NoRedirect
 
 SEED = "Part 1 of 1\n\nReply with exactly one line:\nMIGRATION-ACK aa000001 1/1\n"
 
+LINK_SENT_CONTROLS = (
+    (
+        '<input data-testid="code" aria-label="Verification code" placeholder="Enter verification code" '
+        'inputmode="numeric" autocomplete="one-time-code" id="code" name="code" type="text" value="">'
+    ),
+    '<button type="submit" data-testid="continue">Verify email address</button>',
+    '<button type="button" id="resend">',
+    '<button type="button" id="change">',
+)
+"""`link sent`, re-typed from `docs/spike/claude-sign-in-link-sent.html`."""
 
-def sign_in(client: Client, *, email: str = EMAIL, password: str = PASSWORD) -> str:
-    """Return the last `Location`, walking the two steps as a browser does."""
+
+def ask_for_link(client: Client, *, email: str = EMAIL) -> str:
+    """Submit the address as a browser does, and return the `Location` it was sent to."""
     client.request("/login")
-    client.post("/login/email", urlencode({"email": email}).encode())
-    client.request("/login")
-    _, _, location = client.post("/login/password", urlencode({"password": password}).encode())
+    _, _, location = client.post("/login/email", urlencode({"email": email}).encode())
     return location
+
+
+def newest_link(client: Client) -> tuple[str, str]:
+    """Return the newest sign-in link's token and address, read off the fragment as the page does."""
+    _, body, _ = client.request("/__mock/sign-in-links.json")
+    listed = json.loads(body)
+    assert listed, "no sign-in link was minted"
+    fragment = listed[-1]["link"].split("#", 1)[1]
+    token, address = fragment.split(":", 1)
+    padded = address + "=" * (-len(address) % 4)
+    return token, base64.urlsafe_b64decode(padded).decode("utf-8")
+
+
+def sign_in(client: Client, *, email: str = EMAIL) -> str:
+    """Return where a redeemed link sends the browser, walking the sign-in as a browser does.
+
+    The address, the link read where the inbox would be, and the redeem post the
+    landing page's script makes, with the pending-sign-in cookie the address step set.
+    """
+    ask_for_link(client, email=email)
+    token, address = newest_link(client)
+    _, body, _ = client.post("/login/redeem", urlencode({"token": token, "email": address}).encode())
+    return str(json.loads(body)["next"])
 
 
 def test_signed_out_every_page_is_the_login_page(running: Client) -> None:
@@ -42,6 +77,7 @@ def test_the_login_page_hides_the_form_behind_the_banner(running: Client) -> Non
     assert 'input type="email"' in body
     assert "Continue with Google" in body
     assert "Use a passkey" in body
+    assert 'type="password"' not in body
 
 
 def test_the_banner_is_dismissed_once(running: Client) -> None:
@@ -51,37 +87,124 @@ def test_the_banner_is_dismissed_once(running: Client) -> None:
     assert '<main id="signin">' in body
 
 
-def test_the_email_step_becomes_the_password_step(running: Client) -> None:
-    running.request("/login")
-    status, _, location = running.post("/login/email", urlencode({"email": EMAIL}).encode())
-    assert (status, location) == (303, "/login")
+def test_the_address_step_mints_a_link_and_shows_the_link_sent_page(running: Client, site: Site) -> None:
+    """`link requested`, then `link sent`: the real page's controls, and no password anywhere."""
+    assert ask_for_link(running) == "/login"
+    assert site.counters() == {**site.counters(), "links_minted": 1, "sign_ins": 0}
     _, body, _ = running.request("/login")
-    assert 'type="password"' in body
+    for control in LINK_SENT_CONTROLS:
+        assert control in body
     assert 'type="email"' not in body
+    assert 'type="password"' not in body
+    assert EMAIL in body
 
 
-def test_a_wrong_email_is_refused_and_the_form_says_so(running: Client) -> None:
-    running.request("/login")
-    _, _, location = running.post("/login/email", urlencode({"email": "someone@example.invalid"}).encode())
-    assert location == "/login?error=refused"
+def test_the_link_is_listed_where_the_inbox_would_be(running: Client) -> None:
+    ask_for_link(running)
+    _, text, _ = running.request("/__mock/sign-in-links")
+    lines = text.splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith("https://claude.ai/magic-link#")
+    token, address = newest_link(running)
+    assert (len(token), address) == (32, EMAIL)
+    _, body, _ = running.request("/__mock/sign-in-links.json")
+    assert [item["spent"] for item in json.loads(body)] == [False]
+
+
+def test_a_wrong_address_is_refused_and_the_form_says_so(running: Client) -> None:
+    assert ask_for_link(running, email="someone@example.invalid") == "/login?error=refused"
     _, body, _ = running.request("/login?error=refused")
     assert 'role="alert"' in body
     assert 'type="email"' in body
+    _, text, _ = running.request("/__mock/sign-in-links")
+    assert not text
 
 
-def test_a_wrong_password_is_refused(running: Client, site: Site) -> None:
-    assert sign_in(running, password="guess") == "/login?error=refused"
-    assert site.counters()["sign_ins"] == 0
-
-
-def test_the_configured_pair_signs_in(running: Client, site: Site) -> None:
+def test_the_link_signs_the_browser_that_asked_in(running: Client, site: Site) -> None:
+    """`signed in by the link`: the redeem post answers with the session and where to go."""
     assert sign_in(running) == "/new"
+    assert "mock_session" in running.cookies
     assert site.counters()["sign_ins"] == 1
     status, body, _ = running.request("/new")
     assert status == 200
     assert 'div contenteditable="true"' in body
     assert 'aria-label="Send message"' in body
     assert 'input type="file"' in body
+    _, listed, _ = running.request("/__mock/sign-in-links.json")
+    assert [item["spent"] for item in json.loads(listed)] == [True]
+
+
+def test_a_spent_link_signs_nobody_in_again(running: Client, site: Site) -> None:
+    sign_in(running)
+    token, address = newest_link(running)
+    other = Client(running.base)
+    other.request("/login")
+    _, body, _ = other.post("/login/redeem", urlencode({"token": token, "email": address}).encode())
+    assert json.loads(body) == {"ok": False, "next": "/login"}
+    assert site.counters()["sign_ins"] == 1
+
+
+def test_a_link_opened_elsewhere_lands_that_browser_on_the_code_page(running: Client, site: Site) -> None:
+    """`link opened elsewhere`: no pending sign-in here, so no session — and the page the tool recognises."""
+    ask_for_link(running)
+    token, address = newest_link(running)
+    elsewhere = Client(running.base)
+    _, body, _ = elsewhere.post("/login/redeem", urlencode({"token": token, "email": address}).encode())
+    assert json.loads(body) == {"ok": False, "next": "/login"}
+    assert "mock_session" not in elsewhere.cookies
+    assert "mock_login" in elsewhere.cookies
+    _, page, _ = elsewhere.request("/login")
+    assert LINK_SENT_CONTROLS[0] in page
+    assert site.counters()["sign_ins"] == 0
+    # The browser that asked can still spend it.
+    _, body, _ = running.post("/login/redeem", urlencode({"token": token, "email": address}).encode())
+    assert json.loads(body)["next"] == "/new"
+
+
+def test_the_landing_page_carries_the_script_that_spends_the_link(running: Client) -> None:
+    """`sign-in link`: /magic-link needs no session, reads its own fragment and posts to /login/redeem."""
+    status, body, _ = running.request("/magic-link", follow=False)
+    assert status == 200
+    assert "location.hash" in body
+    assert "history.replaceState" in body
+    assert "/login/redeem" in body
+    assert "credentials: 'same-origin'" in body
+
+
+def test_resend_and_change_address_do_what_their_buttons_say(running: Client, site: Site) -> None:
+    ask_for_link(running)
+    _, _, location = running.post("/login/resend", b"")
+    assert location == "/login"
+    assert site.counters()["links_minted"] == 2
+    _, _, location = running.post("/login/change", b"")
+    assert location == "/login"
+    _, body, _ = running.request("/login")
+    assert 'type="email"' in body
+    assert LINK_SENT_CONTROLS[0] not in body
+
+
+def test_a_code_is_never_accepted(running: Client) -> None:
+    """§80: the code door is deferred, so the mock mints no code and takes none."""
+    ask_for_link(running)
+    _, _, location = running.post("/login/code", urlencode({"code": "123456"}).encode())
+    assert location == "/login?error=code"
+    _, body, _ = running.request("/login?error=code")
+    assert 'role="alert"' in body
+    assert LINK_SENT_CONTROLS[0] in body
+
+
+def test_the_pending_sign_in_outlives_the_browser(running: Client) -> None:
+    """The pending cookie has a lifetime, so `login --link` can reopen the profile (brief 07 §73)."""
+    running.request("/login")
+    _, _, _ = running.post("/login/email", urlencode({"email": EMAIL}).encode())
+    request = urllib.request.Request(running.base + "/login/email", data=urlencode({"email": EMAIL}).encode())
+    request.add_header("Cookie", f"mock_login={running.cookies['mock_login']}")
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=running.context), NoRedirect())
+    try:
+        opener.open(request, timeout=10)
+    except urllib.error.HTTPError as answer:
+        headers = answer.headers.get_all("Set-Cookie") or []
+    assert any(header.startswith("mock_login=") and "Max-Age=3600" in header for header in headers), headers
 
 
 def test_a_submit_makes_a_chat_that_survives_a_reload(running: Client, site: Site) -> None:
@@ -241,9 +364,10 @@ def test_the_open_links_are_listed_as_text_and_as_json(running: Client) -> None:
 
 
 def test_a_link_is_announced_as_it_is_minted(site: Site, material: certificate.Material) -> None:
-    """The mock has no inbox: the link goes to whoever `serve` was told to tell."""
+    """The mock has no inbox: the link goes to whoever `serve` was told to tell — sign-in links too (`49`)."""
     announced: list[str] = []
-    started = server.serve(site, port=0, material=material, announce=announced.append)
+    sign_ins: list[str] = []
+    started = server.serve(site, port=0, material=material, announce=announced.append, announce_sign_in=sign_ins.append)
     try:
         client = Client(f"https://127.0.0.1:{started.port}")
         sign_in(client)
@@ -251,3 +375,4 @@ def test_a_link_is_announced_as_it_is_minted(site: Site, material: certificate.M
     finally:
         started.close()
     assert announced == [json.loads(body)["link"]]
+    assert sign_ins == [site.link_of(site.sign_in_links()[0])]

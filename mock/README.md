@@ -97,8 +97,40 @@ and prints a new pin.
 
 The credentials are invented and configured here. Both mocks default to
 `rehearsal@example.invalid` and `rehearsal-not-a-real-password`; `--email` and
-`--password` change them. Exactly that pair signs in, and any other is refused, so
-a wrong credential fails a run rather than passing it.
+`--password` change them. On the mock chatgpt.com exactly that pair signs in, and
+any other is refused, so a wrong credential fails a run rather than passing it.
+The mock claude.ai takes the address alone and ignores `--password`: claude.ai has
+no password sign-in (the tool's brief `07`), and neither does its mock.
+
+## Sign in to the mock claude.ai
+
+The mock claude.ai signs people in by link (`49`, brief `07` §79), as the real site
+does. The address step mints a sign-in link — `https://claude.ai/magic-link#<token>:…`,
+the token in the fragment, as the real one is — and, having no inbox to send it to,
+prints it in its own terminal and lists it for any other:
+
+```sh
+uv run --package mocks claude-mock sign-in-links    # one link per line, oldest first
+```
+
+After the address the page shows the controls the real one showed on 2026-09-15
+(`docs/spike/claude-sign-in-link-sent.html`): a code field, a **Verify email
+address** button, **Try sending it again** and **Change email address**. The link,
+opened in the browser that gave the address, signs it in once and lands on `/new`;
+opened anywhere else, or twice, it signs nobody in and leaves that browser at the
+code page — the one shape the tool recognises for *a link opened elsewhere*. No
+code is ever minted: the code door is deferred (§80). The tool's two commands, end
+to end, with no account and no `--non-interactive` — a Claude sign-in has none:
+
+```sh
+dataporter login --account mock &                   # the window; it waits for the link
+LINK=$(uv run --package mocks claude-mock sign-in-links | tail -n 1)
+dataporter login --account mock --link "$LINK"      # spends it in that window
+wait                                                # the first command ends signed in
+```
+
+The pending sign-in survives the browser closing: its cookie lives an hour, so a
+`login --link` run after the window has gone still finds the sign-in it finishes.
 
 ### Two mocks at once
 
@@ -141,9 +173,7 @@ stops, and a link nobody asked for is `404`. Here the two sites part:
   and `serve` says so. Both moves of an extraction, end to end, with no account:
 
   ```sh
-  export DATAPORTER_AUTH__EMAIL=rehearsal@example.invalid
-  export DATAPORTER_AUTH__PASSWORD=rehearsal-not-a-real-password
-  dataporter --non-interactive login --account mock          # the source session
+  #   the source session: the two sign-in commands above, first
   dataporter --non-interactive extract --account mock         # the ask; the mock prints the link
   LINK=$(uv run --package mocks claude-mock exports | tail -n 1)
   SSL_CERT_FILE=~/.cache/claude-mock/claude-mock.pem no_proxy=127.0.0.1 \
@@ -151,9 +181,10 @@ stops, and a link nobody asked for is `404`. Here the two sites part:
   dataporter snapshots
   ```
 
-  An unattended `login` needs a `hermes` on the path for the sign-in, which is
-  `24`'s agent half; `rehearsal/` writes a model-free one. Interactively, the
-  window is open and you sign in yourself.
+  The sign-in itself is never unattended (brief `07` §76): `login` opens the
+  window and waits, and `login --link` spends the link in it. A rehearsal has no
+  person at that window, so `rehearsal/` plays one — it enters the address over
+  the debug port and reads the link where the inbox would be.
 
 - **The mock chatgpt.com's link wants a session.** OpenAI documents that the
   export must be downloaded "while you are signed in to the same account that
@@ -183,16 +214,18 @@ Messages received:            11
 Files accepted:                2
 Renames:                       8
 Exports requested:             1
+Sign-in links minted:          0
 
 ```
 
 This is the witness. Nothing in the tool can tell a rehearsal from a real run, so
 the mock is the only party that can say what really happened on the other side of
 the wire — and a rehearsal record whose numbers do not reconcile with these is not a
-rehearsal (§25). The same six counts for every site, under a heading that names it,
-because two mocks running at once keep two ledgers. The numbers are printed when the
-process is stopped, and served as JSON at `/__mock/ledger.json` on each mock's own
-host and port.
+rehearsal (§25). The same seven counts for every site, under a heading that names
+it, because two mocks running at once keep two ledgers; the seventh is a sign-in
+link minted where an email would go, which only the mock claude.ai does. The
+numbers are printed when the process is stopped, and served as JSON at
+`/__mock/ledger.json` on each mock's own host and port.
 
 ## Reading a trace
 
@@ -265,9 +298,13 @@ The behaviours both mocks have, and worth knowing before you read the code:
 
 ### `claude-mock`
 
-- **Two-step sign-in.** A banner that hides the form until it is dismissed once,
+- **Sign-in by link.** A banner that hides the form until it is dismissed once,
   buttons for other providers and a passkey that lead nowhere, then the email step
-  and the password step.
+  — and no password step, because claude.ai has none. The address mints a link,
+  printed and listed instead of mailed; the page then shows the real site's
+  link-sent controls, the one row of the Claude map that is *observed*; the link
+  signs in the browser that asked, once, at `/magic-link`, whose own script reads
+  the token off the fragment and posts it back.
 - **The chat's own menu** carries the title and renames it.
 - **The export page** at the tool's placeholder path, with the tool's placeholder
   selectors, all of them *unknown*; the link on the mock's own address, behind no

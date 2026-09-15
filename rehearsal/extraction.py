@@ -19,14 +19,18 @@ Three things are this protocol's own:
   lists it; the runner reads it, hands it to the tool on a command line, and
   records the step with `<link>` in its place. §66 is the tool's rule and this
   is the runner's copy of it, and the last criterion greps for the token.
-- **No scripted agent is needed for the ChatGPT half.** §61's walk is the
-  tool's own; the `hermes` on the path is for the mock claude.ai's unattended
-  sign-in, which is still `24`'s.
+- **No scripted agent is needed for either half.** §61's walk is the tool's
+  own, and the mock claude.ai's sign-in is brief 07's two commands (`49`):
+  `login` in the background, the runner playing the person at the window
+  (`rehearsal.person`), the link read from the listing that stands in for the
+  inbox, `login --link` from what stands for the other terminal. The `hermes`
+  on the path is written all the same, for `setup`.
 
 Both mocks are separate processes the operator starts, as `run.py`'s is; both
 have to be fresh, since the ledger is the whole of the witness.
 """
 
+import base64
 import hashlib
 import http.cookiejar
 import json
@@ -48,6 +52,7 @@ ACCOUNT = "rehearsal"
 
 CHATGPT_PORT = 8444
 EXPORTS_JSON_PATH = "/__mock/exports.json"
+SIGN_IN_LINKS_JSON_PATH = "/__mock/sign-in-links.json"
 LINK_MARK = "<link>"
 
 SEED_CHATS = 3
@@ -118,11 +123,33 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def sign_in_claude(client: Client, email: str, password: str) -> None:
-    """Sign in to the mock claude.ai: two steps, on one host (`26`)."""
-    client.form("/login/email", email=email)
-    status, headers, _ = client.form("/login/password", password=password)
+    """Sign in to the mock claude.ai by link (`49`, brief 07 §79): the address, the link, the redeem.
+
+    The address step mints a link where an email would go; the runner reads it
+    from the listing and spends it the way the landing page's own script does —
+    the token and the address posted back, with the pending-sign-in cookie the
+    address step set in this jar. `password` is what every source's seeding
+    takes and this one ignores: claude.ai has none.
+    """
+    del password
+    status, headers, _ = client.form("/login/email", email=email)
     if status != 303 or "refused" in headers.get("location", ""):
-        raise RuntimeError("the mock claude.ai refused the seeding sign-in")
+        raise RuntimeError("the mock claude.ai refused the seeding address")
+    minted = sign_in_links(client)
+    if not minted:
+        raise RuntimeError("the mock claude.ai minted no sign-in link for the seeding")
+    token, address = minted[-1].split("#", 1)[1].split(":", 1)
+    padded = address + "=" * (-len(address) % 4)
+    email_again = base64.urlsafe_b64decode(padded).decode("utf-8")
+    status, _, body = client.form("/login/redeem", token=token, email=email_again)
+    if status != 200 or not json.loads(body).get("ok"):
+        raise RuntimeError("the mock claude.ai refused the seeding link")
+
+
+def sign_in_links(client: Client) -> list[str]:
+    """Return every sign-in link the mock claude.ai has minted, oldest first."""
+    _, _, body = client.request("GET", SIGN_IN_LINKS_JSON_PATH)
+    return [str(item["link"]) for item in json.loads(body)]
 
 
 def sign_in_chatgpt(client: Client, email: str, password: str) -> None:
@@ -156,8 +183,13 @@ class Mock:
     """Whether the mock serves its link only to the signed-in session (§63)."""
     agent_signin: bool
     """Whether the tool's unattended sign-in to this site is `24`'s agent half,
-    which needs `setup` to have made the Hermes profile first; ChatGPT's is
-    `44`'s walk and needs neither."""
+    which needs `setup` to have made the Hermes profile first. Neither site's
+    is, since `49`: ChatGPT's is `44`'s walk, and Claude has no unattended
+    sign-in at all (brief 07 §76)."""
+    link_signin: bool
+    """Whether the site signs people in by link (brief 07): `login` in the
+    background, the runner at the window, `login --link` — or `24`'s one
+    unattended `login`."""
     files_per_upload: int
     """How many gap entries one accepted file becomes in the snapshot: the
     Claude export names a file twice (`files` and `files_v2`, `30`), ChatGPT's
@@ -176,7 +208,8 @@ CLAUDE = Mock(
     command="claude-mock",
     heading="Mock claude.ai — ledger",
     session_bound=False,
-    agent_signin=True,
+    agent_signin=False,
+    link_signin=True,
     files_per_upload=2,
     sign_in=sign_in_claude,
 )
@@ -188,6 +221,7 @@ CHATGPT = Mock(
     heading="Mock chatgpt.com — ledger",
     session_bound=True,
     agent_signin=False,
+    link_signin=False,
     files_per_upload=1,
     sign_in=sign_in_chatgpt,
 )
@@ -348,7 +382,10 @@ def protocol(
     blocks: dict[str, str] = {}
     if mock.agent_signin:
         runner.run("setup", "setup")
-    runner.run("login", "login", *source)
+    if mock.link_signin:
+        running.sign_in_by_link(runner, *source)
+    else:
+        runner.run("login", "login", *source)
     blocks["ask"] = runner.run("extract (ask 1)", "extract", *source).stdout
     minted = links(settings)
     first = minted[-1] if minted else ""
@@ -461,8 +498,10 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
     stamps = [item["_stamp"] for item in found]
     tokens = [urllib.parse.urlsplit(link).path.rsplit("/", 1)[-1].removesuffix(".zip") for link in half.links]
     leaks = leaked(settings.root, tokens) + leaked(store / mock.source, tokens)
-    driving = ["login", "extract (ask 1)", "extract (ask 2)"] + (
-        ["extract --link (fetch 1)", "extract --link (fetch 2)"] if mock.session_bound else []
+    driving = (
+        (["login", "login --link"] if mock.link_signin else ["login"])
+        + ["extract (ask 1)", "extract (ask 2)"]
+        + (["extract --link (fetch 1)", "extract --link (fetch 2)"] if mock.session_bound else [])
     )
     traced = {step.name: step.traces for step in steps}
     headers = [trace_lines(settings.root, step)[0] if step.trace else {} for step in steps]
@@ -473,12 +512,22 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
         1 for step in steps for line in trace_lines(settings.root, step) if line.get("helper") == "password-step"
     )
     login = by_name.get("login")
+    spent = by_name.get("login --link")
     login_lines = trace_lines(settings.root, login) if login else []
+    # What the tool did that the mock counts as a sign-in: a password typed
+    # (ChatGPT's walk), or a link spent (Claude's two commands).
+    tool_sign_ins = (1 if spent is not None and spent.ok else 0) if mock.link_signin else password_steps
+    signed_in = bool(login and login.ok) and (not mock.link_signin or bool(spent and spent.ok))
     checks = [
         running.Criterion(
             "login signs the source account in",
-            bool(login and login.ok),
-            f"exit {login.exit_code}" if login else "not run",
+            signed_in,
+            (f"exit {login.exit_code}" if login else "not run")
+            + (
+                f", login --link exit {spent.exit_code}"
+                if spent
+                else (", login --link not run" if mock.link_signin else "")
+            ),
         ),
         running.Criterion(
             "both asks are taken and print the block", asked, f"{sum(1 for s in asks if s and s.ok)}/2 asks"
@@ -531,11 +580,26 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
             f"{[traced.get(name, 0) for name in driving]} for {len(driving)} steps",
         ),
         running.Criterion(
-            "ledger: sign-ins == the seeding's + the tool's password steps",
-            half.counted.get("sign_ins", 0) == 1 + password_steps,
-            f"{half.counted.get('sign_ins', 0)} == 1 + {password_steps}",
+            "ledger: sign-ins == the seeding's + the tool's",
+            half.counted.get("sign_ins", 0) == 1 + tool_sign_ins,
+            f"{half.counted.get('sign_ins', 0)} == 1 + {tool_sign_ins}"
+            + (" (a link spent)" if mock.link_signin else " (password steps)"),
         ),
     ]
+    if mock.link_signin:
+        saw_it = bool(login and running.LINK_SENT_LINE in login.stdout)
+        checks += [
+            running.Criterion(
+                "login saw the link sent and said so",
+                saw_it,
+                "the line is in its stdout" if saw_it else "the line is not in its stdout",
+            ),
+            running.Criterion(
+                "ledger: sign-in links minted == the seeding's + the tool's",
+                half.counted.get("links_minted", 0) == 2,
+                f"{half.counted.get('links_minted', 0)} == 1 + 1",
+            ),
+        ]
     if mock.session_bound:
         crossed = any(line.get("host") == mock.hosts[1] for line in login_lines)
         certified = sorted({str(line.get("host")) for line in login_lines if line.get("what") == "certificate"})
@@ -654,7 +718,14 @@ STANDING_FINDINGS = (
     (
         "The seeding signs in to the mock through its own routes before the tool "
         "starts, and the mock counts that sign-in; the reconciliation of sign-ins "
-        "reads `1 + the tool's password steps` rather than subtracting it silently."
+        "reads `1 + the tool's` — a password typed on the mock chatgpt.com, a link "
+        "spent on the mock claude.ai — rather than subtracting it silently."
+    ),
+    (
+        "The mock claude.ai's sign-in is brief 07's two commands: `login` runs in "
+        "the background, the runner enters the address at its window as a person "
+        "would, and `login --link` spends the link the mock minted where an email "
+        "would go. Both steps leave a trace, told apart by the header's `flags`."
     ),
     (
         "A file the mock claude.ai accepted is two gaps in the snapshot, because the "
@@ -672,7 +743,7 @@ STANDING_FINDINGS = (
 
 
 def ledger_block(mock: Mock, counted: Mapping[str, int]) -> str:
-    """Return the mock's six-row block, rebuilt from its numbers under its own heading."""
+    """Return the mock's seven-row block, rebuilt from its numbers under its own heading."""
     labels = (
         ("sign_ins", "Sign-ins:"),
         ("chats_created", "Chats created:"),
@@ -680,6 +751,7 @@ def ledger_block(mock: Mock, counted: Mapping[str, int]) -> str:
         ("files_accepted", "Files accepted:"),
         ("renames", "Renames:"),
         ("exports_requested", "Exports requested:"),
+        ("links_minted", "Sign-in links minted:"),
     )
     lines = [mock.heading, ""]
     for key, label in labels:
