@@ -12,14 +12,12 @@ and reads the link from the listing that stands in for the inbox.
 Nothing here is an agent, and nothing here is the tool: it is the keyboard.
 """
 
-import json
-import ssl
 import time
 import tomllib
-import urllib.request
 from pathlib import Path
 
 from dataporter.browser.cdp import CdpClient, Page
+from rehearsal import run as running
 
 SIGN_IN_LINKS_JSON_PATH = "/__mock/sign-in-links.json"
 """The mock's listing of the links it minted, re-typed rather than imported:
@@ -130,12 +128,7 @@ def _await_link_sent(client: CdpClient, *, deadline: float, poll_s: float) -> No
 
 def newest_sign_in_link(host: str, port: int) -> str:
     """Return the newest sign-in link the mock minted: the message a person would read."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    url = f"https://{host}:{port}{SIGN_IN_LINKS_JSON_PATH}"
-    with urllib.request.urlopen(url, context=context, timeout=30) as answer:
-        listed = json.loads(answer.read().decode("utf-8"))
+    listed = running.witness_json(host, port, SIGN_IN_LINKS_JSON_PATH)
     if not listed:
         raise PersonError("the mock minted no sign-in link")
     return str(listed[-1]["link"])

@@ -44,7 +44,11 @@ Never waited out past the deadline: see `wait_for_login`.
 BLANK_URLS = frozenset({"", "about:blank", "chrome://newtab/", "about:newtab"})
 
 SIGNED_IN = "logged in"
-SIGNED_OUT = f"not logged in — run: {PROGRAM_NAME} login"
+SIGNED_OUT_LINE = "not logged in — run: {command}"
+"""The words, once. `signed_out_line` fills in whichever `login` this
+invocation means, and `SIGNED_OUT` is that for the destination."""
+
+SIGNED_OUT = SIGNED_OUT_LINE.format(command=f"{PROGRAM_NAME} login")
 """What `session status` prints and what `12` refuses to start with.
 
 Here rather than in `cli` because two commands and the import loop say it, and
@@ -444,14 +448,19 @@ LINK_TIMED_OUT = "timed out after {seconds:g}s waiting for the link to be spent 
 """Exit `3` when the second phase runs out. The first keeps `LOGIN_TIMED_OUT`."""
 
 SPENDER_GRACE_S = 3.0
-"""How long `login` keeps its window after seeing the link spent, before closing it.
+"""How long `login` keeps its window after the session comes back signed in, before closing it.
 
 The link is spent by `login --link` in another terminal (`53`), which reads the
 same window to say so. Seen and closed in the same instant, the window is gone
 before the other terminal's next look, and a command that did its job dies with
 a connection error (found by `49`'s rehearsal, one run in three). One grace of
 several of the other terminal's polls — it polls every `signin_link.LINK_POLL_S`
-— closes that window. Read at call time, so a test can shorten it."""
+— closes that window. Read at call time, so a test can shorten it.
+
+Both ways in, not only the link-sent one: a link spent between two of this
+command's own polls takes the page from the email step to signed in without
+the code field ever being seen here, and the terminal that spent it is owed
+the same grace (raised by the spec review of #58)."""
 
 UNATTENDED_REFUSED = "there is no unattended {vendor} sign-in; run: {command}"
 """Exit `2`, before any browser starts, with or without `--link` (§76): the
@@ -515,7 +524,7 @@ def signed_in_block(settings: Settings, session: "Whose | None" = None) -> str:
 
 def signed_out_line(settings: Settings) -> str:
     """Return `SIGNED_OUT` with this invocation's own remedy."""
-    return f"not logged in — run: {login_command(settings)}"
+    return SIGNED_OUT_LINE.format(command=login_command(settings))
 
 
 def observe(session: BrowserSession, hosts: Sequence[str], *, settle_s: float = SETTLE_S) -> tuple[PageState, bool]:
@@ -613,9 +622,11 @@ def _login_by_link(settings: Settings, session: Whose, *, sink: Sink, flags: Seq
                         raise AuthError(
                             detail=LINK_TIMED_OUT.format(seconds=timeout_s, command=login_command(settings))
                         )
-                    # The other terminal is reading this window too: give it the
-                    # sight of the signed-in page before the window goes.
-                    time.sleep(SPENDER_GRACE_S)
+                # Whichever way the session came back signed in — through the
+                # link-sent page, or straight from the email step because the
+                # link was spent between two polls — the other terminal is
+                # reading this window too, and is owed the sight of it.
+                time.sleep(SPENDER_GRACE_S)
             sink.block(signed_in_block(settings, session))
             traced.exit_code = ExitCode.OK
     finally:

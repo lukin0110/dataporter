@@ -38,9 +38,12 @@ that, and the tool waits, says what it sees, and closes the window it opened.
     `await_signin` again on a fresh `login_s` with `link_sent_ends=False` — signed in → the
     second block, or `LINK_TIMED_OUT` with the invocation's own `login` command, exit `3`;
     the first phase's timeout is `LOGIN_TIMED_OUT` unchanged.
-  - Chrome is closed on every path, as `07` closes it — after `SPENDER_GRACE_S` (3 s) when
-    the link was spent, so that the terminal that spent it sees the signed-in page before
-    the window goes (`53`'s design notes have the race `49` found).
+  - Chrome is closed on every path, as `07` closes it — after `SPENDER_GRACE_S` (3 s)
+    whenever the session came back signed in during the command, whether through the
+    link-sent page or straight from the email step, because a link spent between two polls
+    never shows the code field here and the terminal that spent it is owed the same sight
+    (`53`'s design notes have the race `49` found; the second way in was raised by the
+    spec review of #58).
 - **`session.observe` and `await_signin`.** `wait_for_login`'s loop with one difference: it
   never creates a tab. `observe` attaches to the first tab on the site's hosts, waits for
   the document, probes, and reads the code field only when the probe's kind is `LOGIN`; a

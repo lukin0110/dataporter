@@ -59,11 +59,18 @@ WINDOW_CLOSED = (
     "the sign-in window closed before the link's outcome was seen; the session may well be signed in — "
     "check with: {command}"
 )
-"""Exit `6`: the browser this command adopted stopped answering after the link
-was navigated to. `login` owns that window and closes it once it sees the
-session signed in, `SPENDER_GRACE_S` late so that this command sees it first;
-a window that still went early — a slow machine, a closed laptop — leaves the
-outcome to `session status`, which is named rather than guessed at."""
+"""Exit `1`, and a note rather than an error: the browser this command adopted
+stopped answering after the link was navigated to.
+
+Nothing failed *in* here — the link was spent, and the account may or may not
+have taken it — so this is `ask`'s shape for a page that would not say
+(`extract`, `31`): say what happened and leave no claim either way. Not exit
+`6`, which means the environment is not ready and names `doctor`; the remedy
+here is to look, and `session status` is how.
+
+`login` owns that window and closes it once it sees the session signed in,
+`SPENDER_GRACE_S` late so that this command sees it first; a window that still
+went early — a slow machine, a closed laptop — lands here."""
 
 CODE_PROMPT = (
     "the link led to a code prompt — the pending sign-in is not in this profile; sign in again with: {command}"
@@ -103,15 +110,15 @@ def spend(settings: Settings, link: str, *, sink: Sink = DISCARD, flags: Sequenc
             settings, command="login", flags=flags, site=browser_session.site_of(settings), browser=browser
         ) as traced:
             if not browser_session.signed_in(browser, session.url, hosts=session.hosts):
-                _drive(settings, browser, link, hosts=session.hosts)
+                was = _drive(settings, browser, link, hosts=session.hosts)
                 try:
-                    arrival = _await(browser, hosts=session.hosts, timeout_s=settings.timeouts.signin_s)
-                except BrowserError as exc:
-                    if running is not None and not browser.client.responding():
-                        raise BrowserError(
-                            detail=WINDOW_CLOSED.format(command=browser_session.status_command(settings))
-                        ) from exc
-                    raise
+                    arrival = _await(browser, hosts=session.hosts, timeout_s=settings.timeouts.signin_s, was=was)
+                except BrowserError:
+                    if running is None or browser.client.responding():
+                        raise
+                    sink.note(WINDOW_CLOSED.format(command=browser_session.status_command(settings)))
+                    traced.exit_code = ExitCode.FAILED
+                    return LoginOutcome(exit_code=ExitCode.FAILED)
                 command = browser_session.login_command(settings)
                 if arrival is Arrival.LINK_SENT:
                     raise AuthError(detail=CODE_PROMPT.format(command=command))
@@ -128,8 +135,11 @@ def spend(settings: Settings, link: str, *, sink: Sink = DISCARD, flags: Sequenc
     return LoginOutcome()
 
 
-def _drive(settings: Settings, browser: BrowserSession, link: str, *, hosts: Sequence[str]) -> None:
+def _drive(settings: Settings, browser: BrowserSession, link: str, *, hosts: Sequence[str]) -> str:
     """Point the tab the person used at the link, and record the move without the link.
+
+    Returns the URL that tab was on before the navigation, which is what `_await`
+    compares against to know the link has landed somewhere.
 
     The first tab on the site, as the fetch downloads in it (`45`): the one
     the person entered their address in, whose pending sign-in the link
@@ -139,6 +149,7 @@ def _drive(settings: Settings, browser: BrowserSession, link: str, *, hosts: Seq
     tabs = browser_session.tabs_on(browser.client, hosts)
     if not tabs:
         raise BrowserError(detail=f"no tab on {hosts[0]} to spend the link in")
+    was = tabs[0].url
     started = time.monotonic()
     ts = tracing.timestamp()
     page = browser.client.attach(tabs[0].id)
@@ -150,6 +161,7 @@ def _drive(settings: Settings, browser: BrowserSession, link: str, *, hosts: Seq
     finally:
         page.close()
         _record(settings, link, ts=ts, ok=ok, elapsed_ms=round((time.monotonic() - started) * 1000))
+    return was
 
 
 def _navigate(page: Page, link: str) -> None:
@@ -174,7 +186,7 @@ def _record(settings: Settings, link: str, *, ts: str, ok: bool, elapsed_ms: int
         current.move(LINK_ACTION, ok=ok, elapsed_ms=elapsed_ms, conversation_id=None, result=result, ts=ts)
 
 
-def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float) -> Arrival:
+def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float, was: str = "") -> Arrival:
     """Wait for the link to sign the session in, or for the page to say it did not.
 
     `session.await_signin`'s loop with the code field meaning the opposite of
@@ -184,8 +196,15 @@ def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float) -
     showing, when the link was navigated to, and `Page.navigate` returns before
     the old document is gone — so the first looks may still be answered by it
     (raised by Copilot in review on #58). The code field is the answer only
-    once the tab has been seen somewhere else first: off `/login`, off the
-    site, or mid-navigation with nothing to read.
+    once the tab has been seen somewhere else first: at a URL that is not the
+    one it was navigated away from (`was`), off `/login` altogether, or
+    mid-navigation with nothing to read.
+
+    The URL and not only the kind, because where a sign-in link lands is
+    unobserved (`docs/claude-ui-map.md`, `sign-in link`): a link that landed
+    somewhere under `/login` would never leave that kind, and the tab would sit
+    at a real code prompt reporting that the link was not accepted (raised by
+    the spec review of #58).
     """
     _logger.info("sign-in link spent; waiting for the session")
     deadline = time.monotonic() + timeout_s
@@ -203,9 +222,9 @@ def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float) -
         if state is not None:
             if state.logged_in:
                 return Arrival.SIGNED_IN
-            if state.kind is not PageKind.LOGIN:
+            if state.kind is not PageKind.LOGIN or state.url != was:
                 left = True
-            elif code and left:
+            if code and left:
                 return Arrival.LINK_SENT
         remaining = deadline - time.monotonic()
         if remaining <= 0:

@@ -73,6 +73,9 @@ class SignInPage:
         self.stage = stage
         self.after = dict(after or {})
         self.probes = 0
+        self.login_url = LOGIN_URL
+        """Which sign-in URL the page answers with: the link may land on one of
+        its own, which is what tells `_await` the tab has moved."""
 
     def __call__(self, call: Call) -> Any:
         expression = str(call.params.get("expression", ""))
@@ -89,7 +92,7 @@ class SignInPage:
 
     @property
     def url(self) -> str:
-        return {"done": NEW_URL, "magic": MAGIC_URL}.get(self.stage, LOGIN_URL)
+        return {"done": NEW_URL, "magic": MAGIC_URL}.get(self.stage, self.login_url)
 
 
 def make_settings(tmp_path: Path, port: int) -> Settings:
@@ -433,7 +436,11 @@ def test_a_link_that_is_not_accepted_in_time_is_refused(
 def test_a_window_that_closes_under_the_link_names_status_rather_than_guessing(
     runner: CliRunner, chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quick: None
 ) -> None:
-    """The adopted window went away after the navigation: exit `6`, and `session status` to ask."""
+    """The adopted window went away after the navigation.
+
+    Nothing failed here and the link is spent, so this is the ask's shape for a
+    page that would not say: a note, exit `1`, and no claim either way.
+    """
     adoptable(chrome, source_settings(tmp_path, chrome.port), monkeypatch)
     page_of(chrome).stage = "link_sent"
 
@@ -447,12 +454,37 @@ def test_a_window_that_closes_under_the_link_names_status_rather_than_guessing(
         cli.app, ["login", "--source", "claude", "--account", ACCOUNT, "--link", LINK], catch_exceptions=False
     )
 
-    assert result.exit_code == ExitCode.ENVIRONMENT
+    assert result.exit_code == ExitCode.FAILED
     assert result.stderr == (
-        "error: the sign-in window closed before the link's outcome was seen; the session may well be "
+        "the sign-in window closed before the link's outcome was seen; the session may well be "
         f"signed in — check with: dataporter session status --source claude --account {ACCOUNT}\n"
     )
+    assert not result.stdout
     assert navigations(chrome) == [LINK]
+
+
+def test_a_code_prompt_on_a_login_path_of_its_own_is_still_a_code_prompt(
+    runner: CliRunner, chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quick: None
+) -> None:
+    """Where a link lands is unobserved: under `/login` it never leaves that kind, so the URL decides.
+
+    Raised by the spec review of #58: a `left` set only by the page's kind
+    would sit at a real code prompt reporting that the link was not accepted.
+    """
+    adoptable(chrome, make_settings(tmp_path, chrome.port), monkeypatch)
+    page = page_of(chrome)
+    page.stage = "link_sent"
+    # The link lands on a sign-in path of its own, still showing the code field.
+    page.login_url = "https://claude.ai/login/verify"
+    spent_on_navigate(chrome, stage="link_sent")
+
+    result = runner.invoke(cli.app, ["login", "--link", LINK], catch_exceptions=False)
+
+    assert result.exit_code == ExitCode.NOT_AUTHENTICATED
+    assert result.stderr == (
+        "error: the link led to a code prompt — the pending sign-in is not in this profile; "
+        "sign in again with: dataporter login\n"
+    )
 
 
 def test_a_link_that_is_not_https_is_refused_before_any_browser(

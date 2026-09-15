@@ -89,7 +89,7 @@ the site it is pointed at and the protocol that points it.
   `tests/test_rehearsal.py` — a started step holds its place and is collected, can be
   ended by force, the attended command, two traces told apart by their headers;
   `tests/test_rehearsal_extraction.py` — the Claude half's two steps, two links and
-  thirteen criteria.
+  fourteen criteria.
 - **`mock/README.md`**: a *Sign in to the mock claude.ai* section, the export recipe
   without an unattended sign-in, the seven-row ledger, the `claude-mock` bullet.
 
@@ -169,7 +169,7 @@ the site it is pointed at and the protocol that points it.
   minting a link, the link-sent controls, one redemption and no second, a link opened
   elsewhere landing on the code page, the pending cookie's `Max-Age`, the seventh row.
 - `uv run pytest tests/test_rehearsal.py tests/test_rehearsal_extraction.py -m "slow or
-  not slow"` passes: 56 tests, among them the two-command Claude half with fourteen
+  not slow"` passes: 58 tests, among them the two-command Claude half with fourteen
   criteria and the runner's background step.
 - `POST /login/password` on a running mock claude.ai signs nobody in — signed out, it is
   the login page like every other path — and `sign_ins` stays `0`; the email step's page

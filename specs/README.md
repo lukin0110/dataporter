@@ -254,7 +254,8 @@ carries an hCaptcha attestation: it may not, and §78 is the rule that follows.
 
 ```text
 47 ─> 48 ─> 50 ─> 53 ─> 49 ─> 52
-          (50 needs 07; 51 needs 31 and sits beside them)
+      48 ─> 51
+          (50 needs 07; 51 needs 31, and is beside the chain rather than in it)
 ```
 
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
@@ -333,7 +334,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [46](impl/46-extraction-rehearsal.md) | The extraction rehearsal | §68 | Done |
 | [47](impl/47-paperwork.md) | The paperwork | §69, §70 | Done |
 | [48](impl/48-the-words.md) | The words | §72, §73, §74, §77 | Done |
-| [49](impl/49-the-mock-signs-in-by-link.md) | The mock signs in by link | §79 | In progress |
+| [49](impl/49-the-mock-signs-in-by-link.md) | The mock signs in by link | §79 | Built |
 | [50](impl/50-the-login-that-waits.md) | The link-sent state, and a login that waits | §73, §74, §75 | Built |
 | [51](impl/51-export-page-address.md) | The export page's real address | §77 | Built |
 | [52](impl/52-the-paperwork.md) | The paperwork | §75, §76, §78 | Built |
@@ -436,21 +437,29 @@ rehearsal can answer — §69's questions about the real site — waits in
 `docs/extraction-02.md` on a throwaway account, as `docs/extraction-01.md` does for
 Claude, and is what would turn `docs/chatgpt-ui-map.md`'s rows *observed*.
 
-Of the seventh brief, §73–§79 are claimed by `48`–`52`: `48` takes the words of §73 and §78
-and the decision §72 rests on, `49` the mock of §79, `50` the two commands of §73 under
-§74's discipline, `51` the address of §77, and `52` what §75, §76 and §78 leave in
+Of the seventh brief, §73–§79 are claimed by `48`–`53`: `48` takes the words of §73 and §78
+and the decision §72 rests on, `49` the mock of §79, `50` the first command of §73 — the
+window that waits — and `53` its second, the link spent in that window, both under §74's
+discipline, `51` the address of §77, and `52` what §75, §76 and §78 leave in
 `docs/LIMITATIONS.md`. §72 is that brief's goal and is claimed by all of them; §80 is its
 list of what is deliberately left and stays unclaimed until one of its items is built.
 `48` is `Done`: its documents are in, and they are a second draft.
+
+§73 itself was amended by `50`, which is the working rule below in its plainest form: the
+first command was to leave when the link was sent, and nobody had read whether the pending
+sign-in survives the window closing, so the window now stays open until the link is spent.
+The brief carries the amendment; §80 carries the observation that would settle it.
 
 The first draft described Claude as a source the tool asks directly, holding the credential
 the vendor issues, and planned eleven slices to build it. One captured request ended it:
 `send_magic_link` carries an hCaptcha attestation and needs a cleared Cloudflare cookie, so
 the tool cannot make the call at all and the sign-in stays in the browser
-([ADR 0008](../docs/adr/0008-the-sign-in-stays-in-the-browser.md)). The numbers `53`–`58`
-are unused — they were that draft's client, its guard, its planted cookie and its
-credential's lifetime, and nothing took their place when eleven slices became five. `59` is
-a tooling slice and belongs to no brief.
+([ADR 0008](../docs/adr/0008-the-sign-in-stays-in-the-browser.md)). The numbers `54`–`58`
+are unused — they were that draft's guard, its planted cookie and its credential's
+lifetime, and nothing took their place when eleven slices became six. `53` was that
+draft's client and is now `login --link`, which is the one thing the first plan and the
+second agree the tool must do: spend the link. `59` is a tooling slice and belongs to no
+brief.
 
 ## Working rules
 
