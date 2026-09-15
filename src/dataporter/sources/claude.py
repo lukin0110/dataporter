@@ -62,29 +62,35 @@ guessing. It is not qualified by `[role="dialog"]`: the settings panel is one, s
 the qualifier would hold, but a test id this specific is better read on its own.
 """
 
-REQUESTED_SELECTOR = '[data-testid="export-requested"]'
-"""What the page shows once the request has been accepted.
+REQUESTED_SELECTOR = '[data-cds="Toast"] [role="dialog"] h2'
+REQUESTED_TEXT = "Export started"
+"""What the page shows once the request has been accepted (*observed 2026-09-15*).
 
-Read as an element that is there, never as the sentence it holds: the ask obeys
-`probe`'s rule that nothing off the page crosses the wire, and "the request was
-accepted" is a fact about the page rather than a message from it.
+A toast, bottom right: a `[data-cds="Toast"]` container holding one
+`[role="dialog"]` per notification, and in it an `h2` carrying the words. No test
+id anywhere in it, and the heading's `id` is React's (`_r_6k_`), regenerated on
+every render.
 
-Still a placeholder, and deliberately one that matches nothing on the real site.
-`31` paired the test id with `[role="status"]` as a fallback, and on 2026-09-14 a
-real run showed what that costs: claude.ai carries several `[role="status"]` live
-regions — screen-reader announcers, the toast region, a composer hint — and
-`sr-only` clips them rather than hiding them, so they pass the visibility filter.
-The catch-all matched one before anything had been asked for. The run pressed the
-`Export data` row, never reached the `Export` button on the second screen, and
-reported the export as requested; `ask.json` recorded an ask the vendor never
-received, and the person waited for an email nobody had asked it to send.
+So this is the one signal read by its words as well as its shape, and the reason
+is the failure the shape alone caused. The container is the site's notification
+furniture: *every* toast claude.ai raises matches it — a copy confirmation, an
+error, a rename. `31` paired the old test id with `[role="status"]` as a
+fallback, and on 2026-09-14 that generosity matched a live region before anything
+had been asked for: the run pressed the `Export data` row, never reached the
+`Export` button on the second screen, and still wrote an `ask.json` for a request
+the vendor never received. A selector that is too generous does not fail loudly —
+it fabricates. Matching any toast would be the same mistake with better markup.
 
-A selector that is too generous does not fail loudly — it fabricates. So the
-fallback is gone and what is left cannot match until somebody observes the real
-signal: an ask now presses both buttons and then waits out `timeouts.ask_s`
-before reporting that it could not confirm. That is the wrong answer in the safe
-direction — the export is requested and the run says it is not — and it is the
-last thing between this source and a working `extract`.
+The words never cross the wire. `export_page_js` compares them inside the page
+and returns a boolean, which is `probe`'s rule kept exactly: what the tool learns
+is *that* the export was accepted, not the sentence saying so.
+
+What this costs is English and this wording. A claude.ai in another language, or
+one that reworded the toast, matches nothing — and then the ask presses both
+buttons, waits out `timeouts.ask_s` and reports that it could not confirm. That
+is the wrong answer in the safe direction, which is the direction this selector
+is tuned in: an ask that under-claims wastes a minute, and an ask that
+over-claims sends a person to wait for an email nobody asked for.
 """
 
 EMAILED = "Claude will email a download link to the account's address."
@@ -153,6 +159,7 @@ CLAUDE = Source(
         "EXPORT_BUTTON_SELECTOR": EXPORT_BUTTON_SELECTOR,
         "CONFIRM_BUTTON_SELECTOR": CONFIRM_BUTTON_SELECTOR,
         "REQUESTED_SELECTOR": REQUESTED_SELECTOR,
+        "REQUESTED_TEXT": REQUESTED_TEXT,
     },
     fetch_needs_session=FETCH_NEEDS_SESSION,
     link_serves_manifest=True,

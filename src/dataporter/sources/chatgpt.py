@@ -30,7 +30,12 @@ CONFIRM_BUTTON_SELECTOR = '[role="dialog"] button#confirm-export'
 """**Confirm export**, in the dialog the button opens (`export confirmation`)."""
 
 REQUESTED_SELECTOR = '[role="status"]#export-requested'
-"""The status the page shows once the ask has been counted (`export requested`)."""
+"""The status the page shows once the ask has been counted (`export requested`).
+
+An id of its own, so the shape is the whole signal and `REQUESTED_TEXT` is empty:
+unlike Claude's toast, nothing else on the page wears this, and there are no
+words to check. Empty rather than absent because `export_page_js` reads the const
+either way."""
 
 LOGIN_BUTTON_SELECTOR = 'button[data-testid="login-button"]'
 """**Log in** on the landing page (`signed out`, reported)."""
@@ -76,6 +81,7 @@ CHATGPT = Source(
         "EXPORT_BUTTON_SELECTOR": EXPORT_BUTTON_SELECTOR,
         "CONFIRM_BUTTON_SELECTOR": CONFIRM_BUTTON_SELECTOR,
         "REQUESTED_SELECTOR": REQUESTED_SELECTOR,
+        "REQUESTED_TEXT": "",
         "LOGIN_BUTTON_SELECTOR": LOGIN_BUTTON_SELECTOR,
         "CONTINUE_SELECTOR": CONTINUE_SELECTOR,
     },

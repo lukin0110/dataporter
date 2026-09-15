@@ -1223,11 +1223,16 @@ def test_live_the_export_page_walks_its_three_stages(
 ) -> None:
     """`31`'s two expressions against a real Chrome and a real document.
 
-    Not evidence about claude.ai — every row of the UI map this fixture is built
-    from is still `*unknown*` — but evidence about us: that `EXPORT_PAGE_JS`
+    Not evidence about claude.ai — but evidence about us: that `EXPORT_PAGE_JS`
     tells the three stages apart, that `click_js` clicks the first *visible*
     match rather than the first match, and that a confirmation dialog is only
     confirmable while it is open.
+
+    `dialog` is true from the first look, because a toast *is* a `[role="dialog"]`
+    and the fixture carries one before anything is asked for, as the site does.
+    That is the whole point of the decoy: `requested` stays false in front of a
+    visible toast of exactly the accepted signal's shape, so the words and not the
+    furniture are what the ask reads (`REQUESTED_SELECTOR`).
     """
     session, server = live
     visit(session, server.url(fake_pages.EXPORT_PANEL_PATH))
@@ -1235,7 +1240,8 @@ def test_live_the_export_page_walks_its_three_stages(
     page = session.client.attach(tab.id)
     try:
         before = export_page.ExportPageView.read(page)
-        assert (before.button, before.dialog, before.requested) == (True, False, False)
+        assert (before.button, before.requested) == (True, False)
+        assert before.dialog, "the decoy toast is a role=dialog, and the site's toasts are too"
 
         assert page.evaluate(export_page.click_js(export_page.EXPORT_BUTTON_SELECTOR))
         opened = export_page.ExportPageView.read(page)
@@ -1245,7 +1251,10 @@ def test_live_the_export_page_walks_its_three_stages(
 
         assert page.evaluate(export_page.click_js(export_page.CONFIRM_BUTTON_SELECTOR))
         after = export_page.ExportPageView.read(page)
-        assert (after.requested, after.dialog) == (True, False)
+        # The confirmation dialog is gone; the toast that replaced it is a
+        # `[role="dialog"]` of its own, which is why `dialog` does not fall back
+        # to false and why `requested` is what the ask actually waits on.
+        assert after.requested
     finally:
         page.close()
 
