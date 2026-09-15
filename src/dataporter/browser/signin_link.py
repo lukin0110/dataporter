@@ -15,10 +15,14 @@ second path works exactly when the pending sign-in survived Chrome closing,
 which nobody has observed; the two refusals below say what happened either
 way.
 
-Headed, always. The vendor's bot management refuses a headless Chrome
-(`docs/LIMITATIONS.md`, *observed 2026-09-15*), and `login` refuses the
-unattended mode before this is reached, so the only way to a window here is
-the one every `login` takes.
+Headed unless an operator has said otherwise, and nothing here forces it. The
+mode cannot take the window away — `login` refuses `--non-interactive` for a
+source that signs in by link before this is reached — so what is left is
+`browser.headless`, which is the operator's own setting and stays theirs (`61`).
+Against claude.ai a headless window meets the vendor's bot management and the
+sign-in fails there rather than here (`docs/LIMITATIONS.md`, *observed
+2026-09-15*); against a mock, which proves nothing to anybody, it is how brief
+07 is rehearsed without an account.
 """
 
 import time
