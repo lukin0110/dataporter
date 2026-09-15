@@ -535,11 +535,27 @@ job is to explain that."""
 
 
 @app.command()
-def login(ctx: typer.Context, account: AccountOption = None, source: Source = None) -> None:
-    """Open Claude in a dedicated browser profile and wait for sign-in."""
+def login(
+    ctx: typer.Context,
+    account: AccountOption = None,
+    source: Source = None,
+    link: Annotated[
+        str | None,
+        typer.Option(
+            "--link",
+            metavar="URL",
+            # A value and not a file, as `extract --link` takes one: the link is
+            # what the vendor emailed and what a person pastes, and it is
+            # refused, spent once and never written down (§74).
+            help="The sign-in link the vendor emailed. Spend it in the account's own profile.",
+        ),
+    ] = None,
+) -> None:
+    """Open the sign-in page in a dedicated browser profile, or spend a sign-in link in it."""
     finish(
         browser_session.login(
             with_session_account(settings_of(ctx), source, account),
+            link=link,
             sink=console.Terminal(),
             flags=given_flags(ctx),
         )

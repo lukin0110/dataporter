@@ -21,8 +21,10 @@ has. Brief `03`'s four — `export page`, `export button`, `export confirmation`
 trip, with a throwaway account that has something in it:
 
 1. `dataporter login --account spike` — sign in to the throwaway source account, in the
-   window the tool opens. The profile lands in its own account home, not the
-   destination's.
+   window the tool opens: enter the address there, and when the link arrives spend it
+   from a second terminal with `dataporter login --account spike --link '<url>'` while
+   the window is still open (brief 07 §73). The profile lands in its own account home,
+   not the destination's.
 2. Find where claude.ai lets that account ask for its data, by hand, and write the path
    down. If it is not `/settings/data-privacy-controls`, correct
    `export_page.EXPORT_PAGE_PATH` — the extraction surface and the fixture page follow

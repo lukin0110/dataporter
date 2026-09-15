@@ -126,6 +126,7 @@ def test_a_run_in_the_mode_asks_nobody(world: World) -> None:
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_a_login_expiry_mid_run_is_cleared_by_the_tool(world: World) -> None:
     """`13`-shaped: the conversation is tried again, nobody was asked, and the sign-in is counted as its own thing."""
     unattended(world)
@@ -148,6 +149,7 @@ def test_a_login_expiry_mid_run_is_cleared_by_the_tool(world: World) -> None:
     assert EMAIL not in prompts[1]
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_a_sign_in_the_tool_cannot_make_pauses_the_run(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     unattended(world)
     world.answers(needs_human(), form_blocked("captcha"))
@@ -163,6 +165,7 @@ def test_a_sign_in_the_tool_cannot_make_pauses_the_run(world: World, capsys: pyt
     assert UNATTENDED_BLOCK in capsys.readouterr().out
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_resume_in_the_mode_signs_in_itself(world: World) -> None:
     """Four Hermes tasks across two processes.
 
@@ -185,6 +188,7 @@ def test_resume_in_the_mode_signs_in_itself(world: World) -> None:
     assert run.human_interventions == 1
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_a_resume_whose_sign_in_fails_again_stays_paused(world: World) -> None:
     unattended(world)
     world.answers(
@@ -204,6 +208,7 @@ def test_a_resume_whose_sign_in_fails_again_stays_paused(world: World) -> None:
     assert world.store().run().auto_signins == 0
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_a_signed_out_session_at_the_start_is_signed_in_and_counted(
     world: World,
 ) -> None:
@@ -221,6 +226,7 @@ def test_a_signed_out_session_at_the_start_is_signed_in_and_counted(
     assert world.store().run().auto_signins == 1
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_a_signed_out_session_the_tool_cannot_sign_in_is_exit_3(
     world: World,
 ) -> None:
@@ -235,7 +241,9 @@ def test_a_signed_out_session_the_tool_cannot_sign_in_is_exit_3(
     assert len(world.hermes.one_shots) == 1
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_without_credentials_the_mode_stops_before_a_browser(world: World) -> None:
+    """The door of a source whose unattended sign-in takes a credential (`24`'s agent half)."""
     unattended(world, credentials=False)
     with pytest.raises(UsageError, match="DATAPORTER_AUTH__EMAIL"):
         importing.import_command(world.settings, importing.ImportRequest(export=str(world.export)))
@@ -264,15 +272,26 @@ def test_interactively_the_mode_is_off_and_nothing_signs_in(world: World) -> Non
 # --------------------------------------------------------------------------- #
 
 
-def test_login_without_credentials_is_exit_2(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_login_in_the_mode_is_refused_before_a_browser_starts(
+    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Brief 07 §76: there is no unattended Claude sign-in, credentials or not.
+
+    The destination is a Claude account (§75), and Claude's sign-in is a link
+    behind an attestation — so the mode is refused with the command a person
+    runs instead, and no browser is launched to find that out.
+    """
     cli_env(world, monkeypatch)
-    unattended_env(monkeypatch, credentials=False)
-    result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
-    assert result.exit_code == ExitCode.USAGE
-    assert result.stderr == f"error: {signin.MISSING_CREDENTIALS}\n"
-    assert world.launches == []
+    for credentials in (False, True):
+        unattended_env(monkeypatch, credentials=credentials)
+        result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
+        assert result.exit_code == ExitCode.USAGE
+        assert result.stderr == "error: there is no unattended Claude sign-in; run: dataporter login\n"
+        assert world.launches == []
+        assert world.hermes.one_shots == []
 
 
+@pytest.mark.usefixtures("agent_signin")
 @pytest.mark.parametrize("command", ["verify", "followup", "resume"])
 def test_every_command_that_signs_in_refuses_the_mode_without_credentials(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch, command: str
@@ -285,64 +304,29 @@ def test_every_command_that_signs_in_refuses_the_mode_without_credentials(
     assert world.launches == []
 
 
-def test_login_in_the_mode_signs_in_and_closes_the_browser(
-    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    cli_env(world, monkeypatch)
-    unattended_env(monkeypatch)
-    form = LoginForm()
-    world.browser.pages["page-1"] = form
-    world.answers(form_ready("email"))
-
-    result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
-
-    assert result.exit_code == ExitCode.OK
-    assert result.stdout == (f"Logged in. Session stored in {world.settings.browser_profile_dir}/.\n")
-    assert form.stage == "done"
-    assert SECRET not in result.output
-
-
-def test_login_in_the_mode_that_stops_is_exit_3(
-    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    cli_env(world, monkeypatch)
-    unattended_env(monkeypatch)
-    world.browser.pages["page-1"] = LoginForm()
-    world.answers(form_blocked("captcha"))
-
-    result = runner.invoke(cli.app, ["login"], catch_exceptions=False)
-
-    assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stderr == ("error: automatic sign-in stopped: CAPTCHA — run: dataporter login\n")
-
-
 def test_the_flag_and_the_variable_are_the_same_switch(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """`--non-interactive` on the command line is `DATAPORTER_NON_INTERACTIVE=1`: the same refusal, word for word."""
     cli_env(world, monkeypatch)
     secret = tmp_path / "secret.txt"
     secret.write_text(f"{SECRET}\n", encoding="utf-8")
-    form = LoginForm()
-    world.browser.pages["page-1"] = form
-    world.answers(form_ready("email"))
 
-    result = runner.invoke(
+    by_flag = runner.invoke(
         cli.app,
-        [
-            "--non-interactive",
-            "--email",
-            EMAIL,
-            "--password-file",
-            str(secret),
-            "login",
-        ],
+        ["--non-interactive", "--email", EMAIL, "--password-file", str(secret), "login"],
         catch_exceptions=False,
     )
+    unattended_env(monkeypatch)
+    by_variable = runner.invoke(cli.app, ["login"], catch_exceptions=False)
 
-    assert result.exit_code == ExitCode.OK
-    assert form.typed == {"email": EMAIL, "password": SECRET}
+    assert (by_flag.exit_code, by_flag.stderr) == (by_variable.exit_code, by_variable.stderr)
+    assert by_flag.exit_code == ExitCode.USAGE
+    assert SECRET not in by_flag.output
+    assert world.launches == []
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_import_in_the_mode_prints_the_unattended_block_and_exits_5(
     world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -363,6 +347,7 @@ def test_import_in_the_mode_prints_the_unattended_block_and_exits_5(
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.usefixtures("agent_signin")
 def test_the_secret_is_in_no_file_the_run_leaves_behind(world: World, capsys: pytest.CaptureFixture[str]) -> None:
     """After a run that signed in twice.
 
@@ -397,3 +382,64 @@ def test_the_secret_is_in_no_file_the_run_leaves_behind(world: World, capsys: py
     # The one place it went: the form, through `Input.insertText`, twice.
     assert form.typed == {"email": EMAIL, "password": SECRET}
     assert not any(SECRET in item for item in form.expressions)
+
+
+# --------------------------------------------------------------------------- #
+# `52`: a source with no unattended sign-in
+# --------------------------------------------------------------------------- #
+
+
+def test_the_mode_needs_no_credentials_for_a_claude_run(world: World) -> None:
+    """Brief 07 §76: a credential is never a key to a Claude account, so none is asked for."""
+    unattended(world, credentials=False)
+
+    summary = world.run(limit=1)
+
+    assert summary.exit_code is ExitCode.OK
+    assert world.entry(FIRST).status is Status.COMPLETED
+    assert world.store().run().auto_signins == 0
+    assert len(world.hermes.one_shots) == 1
+
+
+def test_a_signed_out_claude_session_at_the_start_names_login(world: World) -> None:
+    """Exit `3` with the remedy a person runs, and no Hermes task on the way."""
+    unattended(world)
+    world.browser.pages["page-1"] = LoginForm()
+
+    with pytest.raises(AuthError) as raised:
+        world.run(limit=1)
+
+    assert raised.value.detail == "not logged in — run: dataporter login"
+    assert world.hermes.one_shots == []
+
+
+def test_a_login_expiry_mid_run_on_a_claude_account_pauses_for_a_person(
+    world: World, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """§12's pause, because the machine cannot clear what only a person can (`52`)."""
+    unattended(world)
+    world.answers(needs_human())
+
+    summary = world.run(limit=1)
+
+    assert summary.exit_code is ExitCode.PAUSED
+    run = world.store().run()
+    assert run.paused is not None
+    assert run.paused.reason == "auth_required"
+    assert run.auto_signins == 0
+    assert run.human_interventions == 1
+    assert len(world.hermes.one_shots) == 1
+    assert UNATTENDED_BLOCK in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ["verify", "followup", "resume"])
+def test_the_doors_ask_no_credentials_of_a_claude_run(
+    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    cli_env(world, monkeypatch)
+    unattended_env(monkeypatch, credentials=False)
+
+    result = runner.invoke(cli.app, [command], catch_exceptions=False)
+
+    assert signin.MISSING_CREDENTIALS not in result.stderr
+    assert result.exit_code != ExitCode.USAGE

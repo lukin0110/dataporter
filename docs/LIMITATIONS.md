@@ -232,12 +232,50 @@ the three are here because `21`'s sign-off quotes this file and not that one.
 
 ## Unattended runs (`24`)
 
-- **Password sign-in only.** An unattended run signs in with an email address and a
-  password. An account whose sign-in is an emailed code, a passkey, Google or Apple, or
-  which meets a CAPTCHA or a security challenge, cannot be signed in without a person: the
-  run records an `auth_required` pause and exits `5` (or `3` before anything started), and
-  `login` by hand is the remedy. Nothing in the tool reads a mailbox or solves a challenge,
-  and nothing will. *by construction*
+- **No unattended Claude sign-in.** Claude signs in with an emailed link behind an
+  attestation (brief 07, [ADR 0008](adr/0008-the-sign-in-stays-in-the-browser.md)), and
+  neither half of that is a thing the tool does: nothing here reads a mailbox or solves a
+  challenge, and nothing will. `login --non-interactive` — with or without `--link` — is
+  exit `2` and names the command a person runs; a run that finds its Claude session expired
+  is exit `3` (or a pause and exit `5` mid-run) and names `login`. The destination is a
+  Claude account, so this is the destination's rule too (§75). *by construction*
+- **The ChatGPT walk is password sign-in only.** ChatGPT's unattended sign-in types an
+  email address and a password (`44`). An account whose sign-in is an emailed code, a
+  passkey, Google or Apple, or which meets a CAPTCHA or a security challenge, cannot be
+  signed in without a person: exit `3` with the `login` instruction. *by construction*
+
+## The sign-in by link (`50`, `53`)
+
+What §73's two commands do not promise.
+
+- **Whether a pending sign-in survives the window closing is unknown.** `login` keeps its
+  window open until the link is spent so as not to depend on it. `login --link` with no
+  window open launches the profile and tries; that works only if the cookie the pending
+  sign-in lives in outlived Chrome, which nobody has read off the page. When it did not,
+  the tab lands back on the code prompt and the tool says so: `the link led to a code
+  prompt — the pending sign-in is not in this profile`. *unknown*
+- **What the link shows when opened elsewhere has not been seen.** The page's own words
+  say a link opened where the pending sign-in is not shows a *code* rather than signing in
+  (`docs/claude-ui-map.md`, `link opened elsewhere`); what that page looks like, and
+  whether the tab comes back to `/login`, is unobserved. So the code-prompt refusal fires
+  on the one shape the tool knows, and everything else — expired, already spent, a page
+  nobody has described — is `the link was not accepted` after `timeouts.signin_s`. The
+  code itself is a door the tool does not have yet (§80). *unknown*
+- **Two terminals, one browser.** `login --link` adopts whatever browser is on the
+  profile's port and navigates its first tab on the site. That is `login`'s window by
+  design; a `login --link` run while an `extract` is mid-ask in the same profile navigates
+  the ask's tab away, because a marker cannot say which command launched Chrome. One
+  browser at a time is the rule (`31`), and this is one more reason for it. *by
+  construction*
+- **The sign-in link's host is not pinned**, as the export link's is not: `https` is the
+  whole check, and a link that signs in somebody else's account signs this profile in as
+  them. The label is the operator's word. *by construction*
+- **`login --link` needs a display.** The vendor's bot management refuses a headless Chrome
+  (below, *The ask*), so the link is always spent headed; a window opens and closes, or
+  `login`'s own window is used. *observed on 2026-09-15*
+- **A link that hops through another host** — a mail provider's click tracking — takes the
+  tab off claude.ai for a moment. `login`'s wait never opens a tab, so that moment costs a
+  poll and nothing else; whether real sign-in links do hop is unknown. *unknown*
 
 ## The store (`30`)
 
@@ -285,11 +323,11 @@ page, which nobody has watched yet: `docs/extraction-01.md` is where they stop b
   other. Close it and run the command again; sessions are sequential by design, not by
   accident.
   *by construction*
-- **An unattended ask on a signed-out profile needs Hermes.** Signing in without a person
-  is `24`'s agent half, so a cron job whose source session has expired exits `3` and asks
-  for `login` — the right failure, but a silent one until somebody reads the log. A
-  signed-in profile needs no model at all, which is the case the backup is built for.
-  *by construction*
+- **An unattended ask on a signed-out Claude profile stops.** There is no unattended Claude
+  sign-in (above), so a cron job whose source session has expired exits `3` and names
+  `login` with the account's flags — the right failure, but a silent one until somebody
+  reads the log. A signed-in profile needs no model at all, which is the case the backup is
+  built for. *by construction*
 - **The ask cannot run headless against claude.ai.** Measured 2026-09-15 on a signed-in
   profile, Chrome 152: `--headless=new` is served a Cloudflare interstitial at the export
   page — `challenges.cloudflare.com`, a `ray-id` footer, forty-seven nodes — which never

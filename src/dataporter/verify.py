@@ -566,7 +566,7 @@ def verify_all(
     reads it.
     """
     if settings.non_interactive:
-        signin.require_credentials(settings)
+        signin.gate(settings)
     log.enable_run_log(settings.workspace)
     store = state.StateStore(settings.workspace)
     # Read before anything is printed, like `status`: a workspace written by a

@@ -24,6 +24,14 @@ if TYPE_CHECKING:
 
 HOST = "claude.ai"
 
+SIGN_IN_LINK_PATH = "magic-link"
+"""Where a sign-in link lands on claude.ai (*observed 2026-09-15*, from the
+page's own script): `/magic-link#<token>:<address>`, the token in the
+fragment, which the page reads and posts itself and which `46`'s guard never
+records. A door in the sign-in's wall (`53`), so that the probe may look at
+where the link lands; the navigation to it is `Page.navigate`'s and passes
+through no wall, as the fetch's does (`45`)."""
+
 EXPORT_PAGE_PATH = "/new#settings/data-privacy-controls"
 """Where claude.ai lets a user ask for their data (*observed 2026-09-14*).
 
@@ -152,7 +160,7 @@ CLAUDE = Source(
     host=HOST,
     auth_hosts=(),
     login_url=f"https://{HOST}/new",
-    sign_in_paths=("login(/.*)?",),
+    sign_in_paths=("login(/.*)?", f"{SIGN_IN_LINK_PATH}(/.*)?"),
     app_paths=("new", "chat/[0-9a-f-]{36}"),
     export_page_path=EXPORT_PAGE_PATH,
     selectors={
@@ -164,12 +172,14 @@ CLAUDE = Source(
     fetch_needs_session=FETCH_NEEDS_SESSION,
     link_serves_manifest=True,
     signed_out_at_root=False,
-    unattended_signin="agent",
+    unattended_signin="none",
     ask_lines=(EMAILED, WHEN_IT_ARRIVES),
     counts_line=COUNTS,
     login_prompt=LOGIN_PROMPT,
     recognise=looks_like,
     read=read,
+    sign_in_by_link=True,
 )
-"""Claude, as brief `03` built it: one host, an emailed link the tool fetches
-without a browser, and `24`'s agent for the unattended sign-in."""
+"""Claude, as brief `03` built it and brief `07` corrected it: one host, an
+export served to the session, and a sign-in by an emailed link that no
+credential can make (§72, `50`)."""

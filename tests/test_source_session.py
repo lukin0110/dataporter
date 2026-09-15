@@ -104,9 +104,27 @@ def test_login_with_an_account_never_touches_the_destination_profile(
     result = runner.invoke(cli.app, ["login", "--account", ACCOUNT], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.OK
-    assert result.stdout == (f"Logged in. Session stored in {source.browser_profile_dir}/.\n")
+    assert result.stdout == (f"Signed in to Claude — {ACCOUNT}\nSession stored in {source.browser_profile_dir}/.\n")
     assert source.browser_profile_dir.exists()
     assert not destination.browser_profile_dir.exists()
+
+
+def test_a_signed_out_source_account_names_its_own_login(
+    runner: CliRunner,
+    chrome: FakeChrome,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`52`: the remedy carries the flags, or it signs in the wrong profile."""
+    account_env(chrome, tmp_path, monkeypatch)
+    source = source_settings(tmp_path, chrome.port)
+    adopt_for(source, chrome)
+    chrome.targets[0].evaluate = page_state(url="https://claude.ai/login", composer_present=False)
+
+    result = runner.invoke(cli.app, ["session", "status", "--account", ACCOUNT], catch_exceptions=False)
+
+    assert result.exit_code == ExitCode.NOT_AUTHENTICATED
+    assert result.stdout == f"not logged in — run: dataporter login --source claude --account {ACCOUNT}\n"
 
 
 def test_a_source_profile_writes_no_gitignore_into_a_workspace(

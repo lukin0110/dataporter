@@ -20,8 +20,10 @@ dataporter login --source claude --account work            # opens the sign-in p
 dataporter login --source claude --account work --link <url>
 ```
 
-The second step works *because* the first used the same profile: the half-finished sign-in
-is already in that cookie jar, and navigating to the link completes it where it started.
+The second step works *because* the first used the same profile: the pending sign-in is in
+the window the first command still holds open — it waits until the link is spent (§73) —
+or, once that window has closed, in the profile's cookie jar, where whether it survives
+Chrome closing is unobserved. Navigating to the link completes it where it started.
 Brief `06` §63 stands unamended for Claude as for ChatGPT — the session's cookie never
 leaves the browser, and the tool never learns what it is.
 

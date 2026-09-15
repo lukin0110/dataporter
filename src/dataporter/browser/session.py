@@ -11,18 +11,20 @@ import shutil
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING
 
-from dataporter import PROGRAM_NAME, log
+from dataporter import PROGRAM_NAME, log, sources
 from dataporter.browser import launcher
 from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.launcher import BrowserSession, PortInUseError
-from dataporter.browser.probe import CLAUDE_HOST, MIGRATION_SITE, NEW_CHAT_URL, PageState, probe
+from dataporter.browser.probe import CLAUDE_HOST, MIGRATION_SITE, NEW_CHAT_URL, PageKind, PageState, probe
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
-from dataporter.errors import AuthError, BrowserError
+from dataporter.errors import AuthError, BrowserError, UsageError
 from dataporter.exit_codes import ExitCode
+from dataporter.sources.claude import CLAUDE
 from dataporter.state import StateError
 
 if TYPE_CHECKING:
@@ -47,7 +49,9 @@ SIGNED_OUT = f"not logged in — run: {PROGRAM_NAME} login"
 
 Here rather than in `cli` because two commands and the import loop say it, and
 an instruction an operator is given in two slightly different spellings is two
-instructions as far as they can tell."""
+instructions as far as they can tell. For a source account the remedy carries
+the account's flags (`52`): `signed_out_line` is what every caller prints, and
+this constant is its destination form."""
 
 
 CLAUDE_HOSTS: tuple[str, ...] = (CLAUDE_HOST,)
@@ -301,11 +305,18 @@ def site_of(settings: Settings) -> "Site":
 
 @dataclass(frozen=True)
 class Whose:
-    """Whose session a command means: where to open, what to say, which hosts."""
+    """Whose session a command means: where to open, what to say, which hosts.
+
+    `vendor` and `by_link` are the source's (`50`): what the sign-in blocks
+    call the site, and whether its sign-in is a link a person hands over
+    rather than a form a person fills in.
+    """
 
     url: str
     prompt: str
     hosts: tuple[str, ...]
+    vendor: str = CLAUDE.display_name
+    by_link: bool = CLAUDE.sign_in_by_link
 
 
 def whose(settings: Settings) -> Whose:
@@ -313,18 +324,33 @@ def whose(settings: Settings) -> Whose:
 
     Without an account every value is what `07` wrote — `/new`, the prompt and
     claude.ai — so a destination command's every byte is what it was; with one,
-    the source says where its sign-in is and what it is called.
+    the source says where its sign-in is and what it is called. The destination
+    is a Claude account (§75), so it signs in the way Claude does.
     """
     if settings.account is None:
         return Whose(url=NEW_CHAT_URL, prompt=LOGIN_PROMPT, hosts=CLAUDE_HOSTS)
-    from dataporter import sources  # ruff: ignore[import-outside-top-level] - see `site_of`
-
     source = sources.of(settings)
-    return Whose(url=source.login_url, prompt=source.login_prompt, hosts=source.hosts)
+    return Whose(
+        url=source.login_url,
+        prompt=source.login_prompt,
+        hosts=source.hosts,
+        vendor=source.display_name,
+        by_link=source.sign_in_by_link,
+    )
 
 
-def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) -> LoginOutcome:
-    """Open Claude in the dedicated browser profile and wait for sign-in (§8).
+def login(
+    settings: Settings, *, link: str | None = None, sink: Sink = DISCARD, flags: Sequence[str] = ()
+) -> LoginOutcome:
+    """Sign the session in: `07`'s window, or brief 07's two commands (§73).
+
+    A source that signs in with a form gets what `07` wrote: a window, the
+    prompt, and a wait for the signed-in probe. A source that signs in by link
+    — Claude, and the destination is a Claude account — gets `50`'s wait, which
+    ends when the link has been spent in the window, and `53`'s `--link`, which
+    spends it. Neither has an unattended half: the vendor put an attestation in
+    front of the sign-in (§78), so the mode is refused before any browser
+    starts, with the command a person would run instead.
 
     The prompt is a line on the sink rather than a log record: it is an
     instruction to the person at the keyboard, and it is the only thing this
@@ -334,13 +360,23 @@ def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()
     """
     from dataporter import signin  # ruff: ignore[import-outside-top-level] - signin imports login_form, which imports helpers, which imports this module
 
+    session = whose(settings)
+    if session.by_link:
+        if settings.non_interactive:
+            raise UsageError(UNATTENDED_REFUSED.format(vendor=session.vendor, command=login_command(settings)))
+        if link is not None:
+            from dataporter.browser import signin_link  # ruff: ignore[import-outside-top-level] - it imports this module
+
+            return signin_link.spend(settings, link, sink=sink, flags=flags)
+        return _login_by_link(settings, session, sink=sink, flags=flags)
+    if link is not None:
+        raise UsageError(NO_LINK_SIGN_IN.format(vendor=session.vendor, command=login_command(settings)))
     if settings.non_interactive:
         signin.require_credentials(settings)
     # `settings.logs_dir`, which is the workspace for the destination and the
     # account home for `31`'s source: a command about one account writes its
     # records beside that account's other operational files.
     log.enable_run_log(settings.logs_dir)
-    session = whose(settings)
     # Through the module, not a bound name: the test suite substitutes
     # `launcher.launch` to hand a command a fake Chrome.
     browser = launcher.launch(settings, session.url)
@@ -370,6 +406,223 @@ def login(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()
     return LoginOutcome()
 
 
+# --------------------------------------------------------------------------- #
+# The sign-in by link (`50`, brief 07 §73)
+# --------------------------------------------------------------------------- #
+
+SIGN_IN_BLOCK = """\
+{heading}
+
+A window is open at {vendor}'s sign-in page. Enter the account's address
+there, and clear anything {vendor} asks of you.
+
+{vendor} will email a sign-in link. The link signs in once and expires, and
+it must be spent here rather than opened. When it arrives:
+
+  {command} --link <url>
+"""
+"""§73's first block, golden. The heading is `{vendor} sign-in`, with
+` — <label>` when the session is a source account's; the command is this
+invocation's own, so a person copies rather than reconstructs it."""
+
+SIGNED_IN_BLOCK = """\
+{heading}
+Session stored in {profile}/.
+"""
+"""§73's second block, golden: `Signed in to {vendor}`, the label as above, and
+where the profile is — the one thing the tool holds afterwards (§74)."""
+
+LINK_SENT_LINE = (
+    "The link is on its way. This window stays open for {minutes:g} minutes; spend the link before it closes."
+)
+"""Printed once the page shows the link has been sent (`link sent` in the UI
+map), and the clock restarts: the mailbox's delay begins here, not when the
+window opened, so a person who spent nine minutes on a challenge is not left
+sixty seconds for their email."""
+
+LINK_TIMED_OUT = "timed out after {seconds:g}s waiting for the link to be spent — run: {command}"
+"""Exit `3` when the second phase runs out. The first keeps `LOGIN_TIMED_OUT`."""
+
+SPENDER_GRACE_S = 3.0
+"""How long `login` keeps its window after seeing the link spent, before closing it.
+
+The link is spent by `login --link` in another terminal (`53`), which reads the
+same window to say so. Seen and closed in the same instant, the window is gone
+before the other terminal's next look, and a command that did its job dies with
+a connection error (found by `49`'s rehearsal, one run in three). One grace of
+several of the other terminal's polls — it polls every `signin_link.LINK_POLL_S`
+— closes that window. Read at call time, so a test can shorten it."""
+
+UNATTENDED_REFUSED = "there is no unattended {vendor} sign-in; run: {command}"
+"""Exit `2`, before any browser starts, with or without `--link` (§76): the
+mode means "no person", and a sign-in behind an attestation is a person's step
+whichever half of it is being asked for."""
+
+NO_LINK_SIGN_IN = "{vendor} does not sign in with a link; run: {command}"
+"""Exit `2`: `--link` on a source whose sign-in is a form. A flag that was
+silently dropped would leave a person believing the link was spent."""
+
+
+class Arrival(Enum):
+    """How a wait for the sign-in ended."""
+
+    SIGNED_IN = "signed_in"
+    LINK_SENT = "link_sent"
+    TIMED_OUT = "timed_out"
+
+
+def login_command(settings: Settings) -> str:
+    """Return this invocation's `login`, as a person would type it.
+
+    With the account's flags when there is an account: a remedy that omits
+    `--source` and `--account` is a command that signs in the wrong profile.
+    """
+    return _command(settings, "login")
+
+
+def status_command(settings: Settings) -> str:
+    """Return this invocation's `session status`, with the account's flags as above."""
+    return _command(settings, "session status")
+
+
+def _command(settings: Settings, command: str) -> str:
+    if settings.account is None:
+        return f"{PROGRAM_NAME} {command}"
+    return f"{PROGRAM_NAME} {command} --source {settings.source} --account {settings.account}"
+
+
+def _heading(prefix: str, settings: Settings) -> str:
+    return prefix if settings.account is None else f"{prefix} — {settings.account}"
+
+
+def sign_in_block(settings: Settings, session: "Whose | None" = None) -> str:
+    """Return §73's first block for this invocation."""
+    session = whose(settings) if session is None else session
+    return SIGN_IN_BLOCK.format(
+        heading=_heading(f"{session.vendor} sign-in", settings),
+        vendor=session.vendor,
+        command=login_command(settings),
+    )
+
+
+def signed_in_block(settings: Settings, session: "Whose | None" = None) -> str:
+    """Return §73's second block for this invocation."""
+    session = whose(settings) if session is None else session
+    return SIGNED_IN_BLOCK.format(
+        heading=_heading(f"Signed in to {session.vendor}", settings), profile=settings.browser_profile_dir
+    )
+
+
+def signed_out_line(settings: Settings) -> str:
+    """Return `SIGNED_OUT` with this invocation's own remedy."""
+    return f"not logged in — run: {login_command(settings)}"
+
+
+def observe(session: BrowserSession, hosts: Sequence[str], *, settle_s: float = SETTLE_S) -> tuple[PageState, bool]:
+    """Probe the site's tab without opening one: the state, and whether the code field is showing.
+
+    `current_state` opens a tab when there is none, which is right for a
+    command that has just launched a browser and wrong for a wait during which
+    another command may be navigating the same tab (`53`): a link that hops
+    through another host takes the tab off the site for a moment, and a wait
+    that opened a second tab there would leave the person two windows. A
+    browser with no tab on the site is `BrowserError`, which every wait treats
+    as "not yet".
+
+    The code field is read only on a sign-in page: a match anywhere else would
+    not be `link sent`, whatever it was.
+    """
+    from dataporter.browser import login_form  # ruff: ignore[import-outside-top-level] - it imports helpers, which imports this module
+
+    tabs = tabs_on(session.client, hosts)
+    if not tabs:
+        raise BrowserError(detail="no tab on the site yet")
+    page = session.client.attach(tabs[0].id)
+    try:
+        settled(page, timeout_s=settle_s)
+        state = probe(page, tab_count=len(tabs))
+        code = state.kind is PageKind.LOGIN and login_form.fields_of(page).code
+    finally:
+        page.close()
+    return state, code
+
+
+def await_signin(
+    session: BrowserSession,
+    *,
+    timeout_s: float,
+    hosts: Sequence[str],
+    poll_s: float = LOGIN_POLL_S,
+    link_sent_ends: bool = True,
+) -> Arrival:
+    """Poll until the session is signed in, the link has been sent, or the time is up.
+
+    `wait_for_login`'s loop with `observe` in place of `current_state`, and one
+    more way out: with `link_sent_ends`, the first sight of the code field is
+    `LINK_SENT`, which is where `login` prints its line and restarts the clock.
+    Without it — the second phase — the code field is what the page keeps
+    showing until the link is spent, and only signed in ends the wait early.
+    """
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            state, code = observe(session, hosts, settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())))
+        except BrowserError:
+            if not session.client.responding():
+                raise
+            state, code = None, False
+        if state is not None and state.logged_in:
+            return Arrival.SIGNED_IN
+        if code and link_sent_ends:
+            return Arrival.LINK_SENT
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return Arrival.TIMED_OUT
+        time.sleep(min(poll_s, remaining))
+
+
+def _login_by_link(settings: Settings, session: Whose, *, sink: Sink, flags: Sequence[str]) -> LoginOutcome:
+    """§73's first command: the window, the block, the wait that ends signed in.
+
+    Two phases on the same number, `timeouts.login_s`: one for the address and
+    whatever the vendor asks of the person, restarted when the page says the
+    link is on its way, and one for the link to arrive and be spent — by
+    `login --link` in another terminal, adopting this window (`53`). The window
+    is this command's to close, and it closes it on every path.
+    """
+    log.enable_run_log(settings.logs_dir)
+    browser = launcher.launch(settings, session.url)
+    try:
+        with watching.watched(
+            settings, command="login", flags=flags, site=site_of(settings), browser=browser
+        ) as traced:
+            timeout_s = settings.timeouts.login_s
+            if not signed_in(browser, session.url, hosts=session.hosts):
+                sink.block(sign_in_block(settings, session))
+                # `poll_s` read at call time, so a test can shorten the module's cadence.
+                arrival = await_signin(browser, timeout_s=timeout_s, hosts=session.hosts, poll_s=LOGIN_POLL_S)
+                if arrival is Arrival.TIMED_OUT:
+                    raise AuthError(detail=LOGIN_TIMED_OUT.format(seconds=timeout_s))
+                if arrival is Arrival.LINK_SENT:
+                    _logger.info("sign-in link sent")
+                    sink.line(LINK_SENT_LINE.format(minutes=timeout_s / 60))
+                    arrival = await_signin(
+                        browser, timeout_s=timeout_s, hosts=session.hosts, poll_s=LOGIN_POLL_S, link_sent_ends=False
+                    )
+                    if arrival is Arrival.TIMED_OUT:
+                        raise AuthError(
+                            detail=LINK_TIMED_OUT.format(seconds=timeout_s, command=login_command(settings))
+                        )
+                    # The other terminal is reading this window too: give it the
+                    # sight of the signed-in page before the window goes.
+                    time.sleep(SPENDER_GRACE_S)
+            sink.block(signed_in_block(settings, session))
+            traced.exit_code = ExitCode.OK
+    finally:
+        browser.close()
+    return LoginOutcome()
+
+
 def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
     """Report whether the destination account is signed in.
 
@@ -388,7 +641,7 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
     if running is None and not settings.browser_profile_dir.exists():
         # No profile and no browser: there is nothing that could be signed in,
         # and starting Chrome to be told so would cost ten seconds and a window.
-        sink.line(SIGNED_OUT)
+        sink.line(signed_out_line(settings))
         return StatusOutcome(signed_in=False, exit_code=ExitCode.NOT_AUTHENTICATED)
 
     session = whose(settings)
@@ -400,7 +653,7 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
         # one that was already running belongs to whoever started it.
         if running is None:
             browser.close()
-    sink.line(SIGNED_IN if answer else SIGNED_OUT)
+    sink.line(SIGNED_IN if answer else signed_out_line(settings))
     return StatusOutcome(
         signed_in=answer,
         exit_code=ExitCode.OK if answer else ExitCode.NOT_AUTHENTICATED,

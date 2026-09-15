@@ -50,18 +50,19 @@ MISSING_CREDENTIALS = (
 """Exit `2`, before any browser starts: a run that would stop at the first
 sign-in form is a run that should not have started.
 
-`extract` is the exception (`61`). Its session is the source account's own
-Chrome profile, so a profile a person signed in to needs no credential at all,
-and demanding one at the door would refuse every unattended Claude backup —
-Claude's sign-in cannot be automated, so a credential there is a toll and never
-a key (brief 07). It asks where a sign-in is actually attempted, through
-`ensure_signed_in`, and the refusal is this one, unchanged."""
+Only for a source whose unattended sign-in takes a credential (`52`). Claude's
+takes none — its sign-in is a link behind an attestation, brief 07 §76 — so
+`gate` asks nothing of a Claude command, and a signed-out Claude session is
+`SIGNED_OUT`, exit `3`, where the sign-in would have been attempted. `extract`
+asks there for every source (`61`): its session is the source account's own
+Chrome profile, and a profile a person signed in to needs no credential at all."""
 
 NEEDS_PERSON = "automatic sign-in stopped: {reason} — run: {program} login"
 """Exit `3`, when the sign-in could not be completed and nothing had begun.
 The reason is one of `intervention.REASON_PHRASES`, or `hermes failed`."""
 
 HERMES_FAILED = "hermes failed"
+NO_SIGN_IN = "no unattended sign-in"
 
 RUN_ID = "signin-{attempt}"
 
@@ -133,6 +134,33 @@ def require_credentials(settings: Settings) -> Credentials:
     return found
 
 
+def mode_of(settings: Settings) -> str:
+    """Return how this invocation's source signs in unattended: `agent`, `walk` or `none`.
+
+    The destination names no account and is a Claude account (§75), so it
+    signs in the way Claude does.
+    """
+    return sources.of(settings).unattended_signin
+
+
+def can_sign_in(settings: Settings) -> bool:
+    """Whether the tool has any unattended sign-in for this invocation's source."""
+    return mode_of(settings) != "none"
+
+
+def gate(settings: Settings) -> Credentials | None:
+    """Return the credentials an unattended command's door asks for, where a sign-in could use them.
+
+    `import`, `resume`, `verify` and `followup` ask here before a browser or a
+    workspace is touched, as `24` decided; for a source with no unattended
+    sign-in there is nothing to ask for, and the door is open. A signed-out
+    session is then `ensure_signed_in`'s to refuse, with `login` as the remedy.
+    """
+    if not can_sign_in(settings):
+        return None
+    return require_credentials(settings)
+
+
 @dataclass(frozen=True)
 class SignInOutcome:
     """Signed in, or the reason a person is needed, in §12's words."""
@@ -186,10 +214,14 @@ class SignIn:
         chatgpt.com's documented sign-in. The second half, and the proof, are
         the same for both.
         """
+        if not can_sign_in(self.settings):
+            # `52`: nothing to perform. A caller that asks anyway gets the answer
+            # a person would have had to give, in §12's words.
+            return SignInOutcome(signed_in=False, reason=_phrase(intervening.AUTH_REQUIRED), detail=NO_SIGN_IN)
         credentials = require_credentials(self.settings)
         self.attempts += 1
-        source = sources.of(self.settings) if self.settings.account is not None else None
-        if source is not None and source.unattended_signin == "walk":
+        source = sources.of(self.settings)
+        if source.unattended_signin == "walk":
             result = chatgpt_login.walk(self.settings, session, source, credentials)
         else:
             try:
@@ -269,8 +301,10 @@ def ensure_signed_in(
     """
     if _signed_in(settings, session):
         return False
-    if not settings.non_interactive:
-        raise AuthError(detail=browser_session.SIGNED_OUT)
+    if not settings.non_interactive or not can_sign_in(settings):
+        # Interactively, `12`'s rule; unattended on a source with no sign-in of
+        # its own (`52`), the same rule, because the remedy is the same person.
+        raise AuthError(detail=browser_session.signed_out_line(settings))
     outcome = (signer if signer is not None else SignIn(settings)).perform(session)
     if not outcome.signed_in:
         raise AuthError(detail=needs_person(outcome))

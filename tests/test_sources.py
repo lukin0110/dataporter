@@ -92,6 +92,7 @@ def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
         "REQUESTED_TEXT": "Export started",
         "EMAIL_SELECTOR": 'input[type="email"], input[autocomplete="username"]',
         "PASSWORD_SELECTOR": 'input[type="password"], input[autocomplete="current-password"]',
+        "CODE_SELECTOR": 'input[data-testid="code"], input[autocomplete="one-time-code"]',
     }
     assert list(export_page.EXTRACTION_SITE.selectors.items()) == list(expected.items())
     assert export_page.EXTRACTION_SITE.source == "claude"
@@ -101,13 +102,16 @@ def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
 
 def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     """Two regular expressions, byte for byte, because a wall is easier to trust when it is one line long."""
-    assert (
-        export_page.EXTRACTION_SURFACE.allowed.pattern
-        == r"^https://claude\.ai/(login(/.*)?|new(\?[^#]*)?\#settings/data\-privacy\-controls(/.*)?)(\?.*)?$"
+    assert export_page.EXTRACTION_SURFACE.allowed.pattern == (
+        r"^https://claude\.ai/(login(/.*)?|magic-link(/.*)?"
+        r"|new(\?[^#]*)?\#settings/data\-privacy\-controls(/.*)?)(\?.*)?$"
     )
-    assert (
-        login_form.LOGIN_SURFACE.allowed.pattern == r"^https://claude\.ai/(login(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
+    assert login_form.LOGIN_SURFACE.allowed.pattern == (
+        r"^https://claude\.ai/(login(/.*)?|magic-link(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
     )
+    # Where a sign-in link lands (`53`): a door in both walls, and nothing under `/new` with it.
+    assert login_form.LOGIN_SURFACE.permits("https://claude.ai/magic-link")
+    assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/magic-link")
     # The export page is a fragment of the app (§77), and the wall stays as
     # narrow as it was: the address is admitted, the app page under it is not.
     assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/data-privacy-controls")
@@ -138,11 +142,17 @@ def test_a_source_is_the_same_object_wherever_it_is_asked_for() -> None:
 def test_whose_session_a_command_means(tmp_path: Path) -> None:
     settings = Settings(workspace=tmp_path)
     assert browser_session.whose(settings) == browser_session.Whose(
-        url=browser_session.NEW_CHAT_URL, prompt=browser_session.LOGIN_PROMPT, hosts=("claude.ai",)
+        url=browser_session.NEW_CHAT_URL,
+        prompt=browser_session.LOGIN_PROMPT,
+        hosts=("claude.ai",),
+        vendor="Claude",
+        by_link=True,
     )
     assert browser_session.whose(with_session_account(settings, "claude", "old")) == browser_session.Whose(
-        url=CLAUDE.login_url, prompt=CLAUDE.login_prompt, hosts=CLAUDE.hosts
+        url=CLAUDE.login_url, prompt=CLAUDE.login_prompt, hosts=CLAUDE.hosts, vendor="Claude", by_link=True
     )
+    # The destination is a Claude account (§75): it signs in the way Claude does.
+    assert browser_session.whose(settings).by_link is CLAUDE.sign_in_by_link
 
 
 # --------------------------------------------------------------------------- #

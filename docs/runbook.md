@@ -88,35 +88,36 @@ own terms.
 ## Running unattended
 
 ```sh
+dataporter login                              # once, by hand: the window, the address, the link
+dataporter login --link 'https://…'           # from a second terminal, while that window is open
 export DATAPORTER_NON_INTERACTIVE=1
-export DATAPORTER_AUTH__EMAIL=you@example.com
-export DATAPORTER_AUTH__PASSWORD=…                               # or: --password-file <path>
-dataporter login                              # once; signs in, closes Chrome
-dataporter import <export> --all --limit 50   # the session loop, as above
+dataporter import <export> --all --limit 50   # the session loop, as above, while the session lasts
 ```
 
 `--non-interactive` (`24`) is the mode for a cron job, a CI step or a machine with no
-display: Chrome runs headless, a signed-out session is signed in from the credentials
-rather than handed to you, and nothing ever waits for Enter. The sign-in is in two halves
-— Hermes brings the page to the form, and the tool types into it from its own process —
-so the password is never in the agent's environment, prompt or transcript, and never in a
-workspace file or a log. `config.toml` may not carry the mode or the credentials; the
-environment and the two flags are the only channels, and `--password-file` reads the
-first line of a file rather than taking a value that `ps` would show.
+display: Chrome runs headless and nothing ever waits for Enter. It does not sign a Claude
+account in, and cannot: Claude's sign-in is an emailed link behind an attestation (brief 07
+§76, ADR 0008), so `login` in this mode is refused before a browser starts, and a run that
+finds its session expired stops and names `login` — by hand, headed, the two commands
+above. The credentials `DATAPORTER_AUTH__EMAIL` and `DATAPORTER_AUTH__PASSWORD` (or
+`--password-file <path>`) belong to the ChatGPT source alone, whose unattended extraction
+walks its sign-in itself when the session has expired; `config.toml` may not carry the
+mode or the credentials, and `--password-file` reads the first line of a file rather than
+taking a value that `ps` would show.
 
 The exit codes in this mode:
 
-- `2` — no credentials, refused before a browser starts.
-- `3` — signed out at the start and the sign-in could not be completed (an emailed code,
-  a CAPTCHA, a challenge, or Hermes failing). Nothing was migrated. Run `login` by hand.
-- `5` — a login expiry mid-run that the sign-in could not clear, or any other ask only a
-  person can answer. The pause is in `run.json`; clear it, then
-  `dataporter resume` — with the same variables set, `resume` tries the sign-in
-  itself before it looks at the page.
+- `2` — `login` itself: there is no unattended Claude sign-in. For a ChatGPT extraction,
+  no credentials, refused before a browser starts.
+- `3` — signed out at the start. Nothing was migrated. Run `login` by hand — the two
+  commands above — and start again. (ChatGPT: its walk could not be completed — an emailed
+  code, a CAPTCHA, a challenge.)
+- `5` — a login expiry mid-run, or any other ask only a person can answer. The pause is in
+  `run.json`; sign in by hand, clear whatever else it names, then `dataporter resume`.
 
-The report gains one line, `Automatic sign-ins:`, when there were any. They are not human
-interventions and are not counted as such: §19's number is conversations migrated without
-a person, and the tool signing in is not a person.
+The report's `Automatic sign-ins:` line counts a ChatGPT walk; a Claude run never has one.
+They are not human interventions and are not counted as such: §19's number is
+conversations migrated without a person, and the tool signing in is not a person.
 
 ## Retrying failures
 

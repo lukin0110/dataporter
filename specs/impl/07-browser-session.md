@@ -4,7 +4,11 @@
 **Implements:** [Brief](../01-initial-brief.md) §8
 **Depends on:** [01](01-foundation.md)
 **Enables:** [08](08-browser-helpers.md), [10](10-attach-spike.md)
-**Status:** Built
+**Status:** Built. *Amended by brief 07: for a Claude account — the destination included —
+`login` is [`50`](50-the-login-that-waits.md)'s window that waits until
+[`53`](53-login-link.md)'s `login --link` has spent the emailed link in it, and prints §73's
+blocks in place of `Logged in. Session stored in …`. The wait, the probe, the profile and
+`session status`/`logout` are still this slice's; ChatGPT's `login` keeps every byte.*
 
 ## Goal
 

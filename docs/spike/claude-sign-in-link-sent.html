@@ -1,0 +1,65 @@
+<!--
+  claude.ai, /login, after the address was submitted and the sign-in link sent.
+  Captured 2026-09-15 from a throwaway account, in a browser whose locale was
+  Spanish (es-419) — which is the point of keeping it: nothing the tool reads off
+  this page is a word.
+
+  Redacted by hand to the elements the tool's rows stand on (`docs/claude-ui-map.md`,
+  `link sent`, `sign-in link`, `link opened elsewhere`). Every attribute *name* is
+  the page's own; the address is replaced by <address>; the two inline scripts are
+  cut to the lines that name the sign-in link's path, its handoff and the cookie
+  the pending sign-in lives in. Cookie values, tokens, ids that React regenerates
+  and everything below the form are gone. Nothing here is of the account.
+-->
+<html lang="es-419" data-theme="claude" data-mode="dark" data-density="comfortable">
+<head data-ion-ip-country="BE" data-ion-clean-url-hop="" data-ion-served-at="">
+<title>Sign in - Claude</title>
+<script nonce="">
+  /* the clean-URL hop: the link's fragment is moved out of the address bar before the app runs */
+  … if(document.head.hasAttribute("data-ion-clean-url-hop")){ let t=location.pathname; …
+      let a=location.hash.slice(1), e="/magic-link"===t?"__ml_handoff":"/appeal-status"===t?"__as_handoff":null;
+      if(null!==e&&""!==a){ sessionStorage.setItem(e,JSON.stringify({hash:a,at:Date.now()})); …
+        window.__ml_hop_pending=!0; let t=location.origin+location.pathname+location.search;
+        history.replaceState(null,"",t), location.replace(t) } } …
+</script>
+<script nonce="">
+  /* the pending sign-in: the hash is `<token>:<base64 address>`, and the page compares the
+     address in it with the cookie the address step set, when the served head says one is pending */
+  … "/magic-link"===r&&function(){ … if(!document.head.hasAttribute("data-ion-pending-login"))return!1;
+      let[o,i]=function(){ let e=location.hash.slice(1); if(""!==e)return e;
+        try{ let e=sessionStorage.getItem("__ml_handoff"); … if(… Date.now()-t.at<=6e5)return t.hash }catch{} return "" }().split(":");
+      if(!o||!i)return!1;
+      let c=function(e){ … atob(e.replace(/-/g,"+").replace(/_/g,"/")) … }(i),
+          u=function(){ for(let e of document.cookie.split(";")){ … "__Host-claude-ai-pending-login-email"!==t.slice(0,r) … }(); … }() …
+</script>
+</head>
+<body class="bg-surface-1 text-primary font-sans min-h-screen">
+<div aria-hidden="true" data-client-attestation="hcaptcha-invisible" data-client-attestation-channel="default" style="position: absolute; width: 0px; height: 0px; overflow: hidden;">
+  <iframe aria-hidden="true" data-hcaptcha-widget-id="" data-hcaptcha-response="" src="https://newassets.hcaptcha.com/captcha/v1/…/static/hcaptcha.html#frame=checkbox-invisible" style="display: none;"></iframe>
+  <textarea id="h-captcha-response-…" name="h-captcha-response" style="display: none;"></textarea>
+</div>
+<div aria-hidden="true" data-client-attestation="hcaptcha-invisible" data-client-attestation-channel="send_magic_link" style="position: absolute; width: 0px; height: 0px; overflow: hidden;">
+  <iframe aria-hidden="true" data-hcaptcha-widget-id="" data-hcaptcha-response="" src="https://newassets.hcaptcha.com/captcha/v1/…/static/hcaptcha.html#frame=checkbox-invisible" style="display: none;"></iframe>
+  <textarea id="h-captcha-response-…" name="h-captcha-response" style="display: none;"></textarea>
+</div>
+<main>
+  <form class="flex flex-col gap-4 sm:min-w-[20rem]" action="">
+    <div class="text-secondary text-center">
+      <p>Para continuar, haga clic en el enlace enviado a</p>
+      <p class="truncate text-primary font-medium">&lt;address&gt;</p>
+    </div>
+    <div class="text-secondary text-sm text-center">
+      <p>¿No ve el correo en su bandeja de entrada? <button type="button" class="underline">Intente enviarlo nuevamente</button>.</p>
+      <p>¿Correo incorrecto? <button type="button" class="underline">Cambiar dirección de correo</button></p>
+    </div>
+    <p class="text-secondary mt-4 text-sm text-center">Si el enlace muestra un código de verificación en lugar de iniciar tu sesión, ingrésalo aquí.</p>
+    <div>
+      <input data-cds="TextInput" data-size="lg" data-testid="code" aria-label="Código de verificación" placeholder="Ingrese el código de verificación" inputmode="numeric" autocomplete="one-time-code" data-1p-ignore="true" class="cds-input cds-reset … text-center text-[16px]" id="code" type="text" value="">
+    </div>
+    <button type="submit" data-cds="Button" data-size="lg" class="cds-reset …" data-testid="continue">
+      <span class="inline-flex min-w-0 items-center gap-1 ">Verificar dirección de correo electrónico</span>
+    </button>
+  </form>
+</main>
+</body>
+</html>

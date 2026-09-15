@@ -271,3 +271,24 @@ def two_part_seed(export_dir: Path, attachments_dir: Path) -> seeding.Seed:
     )
     assert outcome.seed is not None
     return outcome.seed
+
+
+@pytest.fixture
+def agent_signin() -> Iterator[None]:
+    """Switch Claude's unattended sign-in to `24`'s agent half, for the tests that cover it.
+
+    No source uses that half since `52` (brief 07 §76: Claude has none, ChatGPT walks),
+    and it stays in the tree for a source that could. A test of the half needs a
+    source that reaches it, and Claude is the one whose pages the fakes model — so
+    the object is flipped for the test and restored after. `Source` is frozen and
+    compared by identity, which is why this goes through `object.__setattr__` and
+    why nothing cached elsewhere needs clearing.
+    """
+    from dataporter.sources.claude import CLAUDE  # ruff: ignore[import-outside-top-level] - the fixture's own concern
+
+    before = CLAUDE.unattended_signin
+    object.__setattr__(CLAUDE, "unattended_signin", "agent")  # ruff: ignore[unnecessary-dunder-call] - the dataclass is frozen
+    try:
+        yield
+    finally:
+        object.__setattr__(CLAUDE, "unattended_signin", before)  # ruff: ignore[unnecessary-dunder-call] - as above

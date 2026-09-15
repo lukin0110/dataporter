@@ -100,8 +100,11 @@ class Source:
     """Whether a signed-out request lands on the site's root without a composer,
     rather than on a sign-in path — what `export_page.signed_out` reads."""
 
-    unattended_signin: Literal["agent", "walk"]
-    """How `--non-interactive` reaches the form: `24`'s agent, or `44`'s walk."""
+    unattended_signin: Literal["agent", "walk", "none"]
+    """How `--non-interactive` reaches the form: `24`'s agent, `44`'s walk, or
+    not at all (`52`, brief 07 §76) — a source whose sign-in is a person's step
+    stops an unattended run with `login` as the remedy, and asks for no
+    credential at any door, because none could be a key."""
 
     ask_lines: tuple[str, ...]
     """The vendor's own sentences in the ask block, between `Export requested …`
@@ -118,6 +121,15 @@ class Source:
 
     read: Callable[["ExportView"], Reading]
     """Parse the archive and say what it holds, or raise `ExportError`."""
+
+    sign_in_by_link: bool = False
+    """Whether the vendor signs an account in with an emailed link (brief 07).
+
+    A source that does has no password step and no unattended sign-in: `login`
+    opens the window, waits for the link to be sent, and keeps the window until
+    `login --link` has spent it (§73). A source that does not keeps `07`'s
+    sign-in — a window, a person, a signed-in probe — unchanged.
+    """
 
     link_serves_manifest: bool = False
     """Whether the emailed link serves an index of the real files, not the archive.

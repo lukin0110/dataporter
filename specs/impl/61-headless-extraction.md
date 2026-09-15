@@ -49,7 +49,9 @@ this slice is that rule: **extract no longer requires credentials to open a brow
 - **A better refusal for a signed-out Claude profile.** `MISSING_CREDENTIALS` advises
   setting credentials that, for Claude, cannot sign in at all (brief 07) — the useful
   remedy is `dataporter login`. Worth its own slice; changing the text here would have
-  meant changing it for ChatGPT too, where the advice is correct.
+  meant changing it for ChatGPT too, where the advice is correct. *Done in `52`: Claude's
+  unattended sign-in is `none`, and the refusal is `not logged in — run: dataporter login
+  --source claude --account <label>`, exit `3`.*
 - **The other commands.** `login`, `verify`, `followup` and `resume` keep the up-front
   gate, and `tests/test_unattended.py` still pins it.
 
