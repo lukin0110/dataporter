@@ -202,6 +202,7 @@ class _Wait:
     before: frozenset[Path] = frozenset()
     settled_path: Path | None = None
     settled_size: int = -1
+    writing_bytes: int = -1
 
     def touch(self) -> None:
         """Push the idle deadline out: the download said something."""
@@ -260,17 +261,19 @@ class _Wait:
         created before it is written; a `.crdownload` means the write is still
         going, which is progress and not silence, so the idle budget is pushed out.
 
-        Only a `.crdownload` this navigation brought counts as that progress. One
-        left behind by an interrupted run is still sitting in the staging dir —
-        nothing sweeps it — and treating it as a write in flight would push the
-        deadline out on every poll, so the fetch could reach neither the page nor
-        the stall and would hang for good. (Raised by Copilot in review on #53.)
+        Only a `.crdownload` this navigation brought counts as that progress, and
+        only while it is growing. One left behind by an interrupted run is still
+        sitting in the staging dir — nothing sweeps it — and one that stopped
+        halfway is not progress either; pushing the deadline out for the mere
+        presence of either would mean the fetch could reach neither the page nor
+        the stall, and hung for good. (Both raised by Copilot in review on #53.)
         """
         entries = self._entries()
         if entries is None:
             return None
-        if any(item.name.endswith(CRDOWNLOAD) and item not in self.before for item in entries):
-            self.touch()
+        in_flight = [item for item in entries if item.name.endswith(CRDOWNLOAD) and item not in self.before]
+        if in_flight:
+            self._still_writing(in_flight)
             self.settled_path = None
             return None
         # Never a `.crdownload` itself: a write still in flight is not the
@@ -287,6 +290,24 @@ class _Wait:
         self.settled_path, self.settled_size = newest, size
         self.touch()
         return None
+
+    def _still_writing(self, in_flight: "Sequence[Path]") -> None:
+        """Push the idle deadline out only when the write has actually moved.
+
+        A `.crdownload` that exists is not progress; a `.crdownload` that grew is.
+        Touching for its presence alone would extend the budget on every poll, so
+        a download that stopped halfway — the file made, nothing more written to
+        it, and no event either — would never reach `STALLED` and the fetch would
+        hang for good. That is the failure this whole check exists to end, and it
+        would have been reintroduced by the fix for it.
+
+        The first sighting counts, whatever its size: a download beginning is the
+        clearest progress there is. (Raised by Copilot in review on #53.)
+        """
+        total = sum(size for _, size, _ in _measured(in_flight))
+        if total != self.writing_bytes:
+            self.writing_bytes = total
+            self.touch()
 
     def _entries(self) -> list[Path] | None:
         """Return what the staging dir holds, or `None` when it could not be read."""
