@@ -44,8 +44,9 @@ that, and the tool waits, says what it sees, and closes the window it opened.
     never shows the code field here and the terminal that spent it is owed the same sight
     (`53`'s design notes have the race `49` found; the second way in was raised by the
     spec review of #58).
-- **`session.observe` and `await_signin`.** `wait_for_login`'s loop with one difference: it
-  never creates a tab. `observe` attaches to the first tab on the site's hosts, waits for
+- **`session.observe`, `polling` and `await_signin`.** `wait_for_login`'s loop with one
+  difference: it never creates a tab. The loop itself is `polling`, a generator over the
+  budget shared with `53`'s wait; `await_signin` is the decision `50` makes on it. `observe` attaches to the first tab on the site's hosts, waits for
   the document, probes, and reads the code field only when the probe's kind is `LOGIN`; a
   browser with no tab on the site is "not yet", as a failed probe is. `poll_s` is read at
   call time from `LOGIN_POLL_S`, so a test can shorten the cadence.
