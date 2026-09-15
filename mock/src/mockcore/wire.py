@@ -58,6 +58,17 @@ SESSION_MAX_AGE_S = 7 * 24 * 60 * 60
 closed and started again: a cookie with no lifetime is discarded when Chrome
 exits, and every later command would sign in again."""
 
+LOGIN_MAX_AGE_S = 60 * 60
+"""How long a half-finished sign-in lasts (`49`). The mock claude.ai's pending
+sign-in has to outlive the window it began in — the tool's `login --link` may
+open the profile again after that window closed (brief 07 §73) — and whether
+the real site's does is unobserved; the mock says an hour and says so here."""
+
+SIGN_IN_LINKS_PATH = "/__mock/sign-in-links"
+SIGN_IN_LINKS_JSON_PATH = "/__mock/sign-in-links.json"
+"""Where a site that signs people in by link lists the links it minted (`49`),
+beside the exports: the listing that stands in for the inbox."""
+
 MAX_BODY_BYTES = 32 * 1024 * 1024
 """A seed is tens of kilobytes and a rehearsal attachment is smaller still. A
 cap because a mock reads whatever `Content-Length` promises into memory."""
@@ -79,13 +90,17 @@ class SignedOutError(Exception):
 # -- responses ---------------------------------------------------------------- #
 
 
+LIFETIMES = {SESSION_COOKIE: SESSION_MAX_AGE_S, LOGIN_COOKIE: LOGIN_MAX_AGE_S}
+"""The two cookies that outlive the browser; every other one is the tab's."""
+
+
 def set_cookie(response: Response, name: str, value: str) -> None:
-    """Set a cookie for the whole site. Only the session has a lifetime."""
+    """Set a cookie for the whole site. The session and the pending sign-in have a lifetime."""
     response.set_cookie(
         name,
         value,
         path="/",
-        max_age=SESSION_MAX_AGE_S if name == SESSION_COOKIE else None,
+        max_age=LIFETIMES.get(name),
     )
 
 

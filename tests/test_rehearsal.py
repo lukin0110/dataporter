@@ -664,6 +664,104 @@ def test_keep_files_the_step_s_trace_under_traces_named_for_the_step(tmp_path: P
     assert (tmp_path / "protocol" / "01-login.out").exists()
 
 
+LINK_HEADER = HEADER.replace('"flags":[]', '"flags":["--link"]')
+
+
+def test_two_steps_that_share_a_moment_are_told_apart_by_their_headers(tmp_path: Path) -> None:
+    """`49`: `login` and `login --link` write into one `logs/`; each keeps the trace whose flags are its own."""
+    runner = runner_for(tmp_path)
+    leave_trace(runner.settings, "trace-20260913T100000Z.jsonl", [HEADER, END])
+    leave_trace(runner.settings, "trace-20260913T100001Z.jsonl", [LINK_HEADER, END])
+    spent = running.Outcome(name="login --link", argv=("login",), exit_code=0, seconds=1.0, flags=("--link",))
+    waited = running.Outcome(name="login", argv=("login",), exit_code=0, seconds=1.0, flags=())
+
+    runner.keep(spent)
+    runner.keep(waited)
+
+    assert (spent.trace, spent.traces) == (Path("traces/01-login---link.jsonl"), 1)
+    assert (waited.trace, waited.traces) == (Path("traces/02-login.jsonl"), 1)
+    assert running.header_flags(tmp_path / "traces" / "01-login---link.jsonl") == ["--link"]
+    assert running.header_flags(tmp_path / "nowhere.jsonl") is None
+
+
+def test_a_source_account_s_two_steps_are_told_apart_whatever_the_order_of_their_flags(tmp_path: Path) -> None:
+    """The tool lists a header's flags as its command declares them: `--account` before `--source`."""
+    runner = runner_for(tmp_path)
+    leave_trace(
+        runner.settings, "trace-1.jsonl", [HEADER.replace('"flags":[]', '"flags":["--account","--source"]'), END]
+    )
+    leave_trace(
+        runner.settings,
+        "trace-2.jsonl",
+        [HEADER.replace('"flags":[]', '"flags":["--account","--source","--link"]'), END],
+    )
+    spent = running.Outcome(
+        name="login --link", argv=("login",), exit_code=0, seconds=1.0, flags=("--source", "--account", "--link")
+    )
+    waited = running.Outcome(name="login", argv=("login",), exit_code=0, seconds=1.0, flags=("--source", "--account"))
+    runner.keep(spent)
+    runner.keep(waited)
+    assert (spent.traces, waited.traces) == (1, 1)
+    assert running.header_flags(tmp_path / "traces" / "01-login---link.jsonl") == ["--account", "--source", "--link"]
+
+
+def test_a_started_step_holds_its_place_and_is_collected_by_join(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`49`: a step started in the background is recorded where it began, with what it printed."""
+    runner = runner_for(tmp_path)
+    monkeypatch.setattr(
+        running.Runner,
+        "command",
+        lambda self, *arguments, attended=False: [sys.executable, "-c", "import sys; print('waited'); sys.exit(3)"],
+    )
+    started = runner.start("login", "login", own_trace=True)
+    assert [step.name for step in runner.steps] == ["login"]
+    later = runner.run("login --link", "login", "--link", "x", own_trace=True)
+    outcome = runner.join(started)
+
+    assert [step.name for step in runner.steps] == ["login", "login --link"]
+    assert (outcome.exit_code, outcome.stdout, outcome.note) == (3, "waited\n", "")
+    assert later.exit_code == 3
+    assert (tmp_path / "protocol" / "02-login.out").read_text(encoding="utf-8") == "waited\n"
+
+
+def test_a_started_step_can_be_ended_by_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = runner_for(tmp_path)
+    monkeypatch.setattr(
+        running.Runner,
+        "command",
+        lambda self, *arguments, attended=False: [sys.executable, "-c", "import time; time.sleep(60)"],
+    )
+    started = runner.start("login", "login")
+    outcome = runner.join(started, note="the runner could not play the person", kill=True)
+    assert outcome.exit_code != 0
+    assert outcome.note == "the runner could not play the person"
+
+
+def test_a_step_s_expected_flags_are_the_long_options_of_its_command_line() -> None:
+    """What the tool records as a header's `flags`: the root's and the command's, values left out."""
+    runner = running.Runner(settings=running.Settings(root=Path("/r"), mode="non-interactive"), env={})
+    assert running.expected_flags(runner.command("login", "--source", "claude", "--account", "a", attended=True)) == (
+        "--workspace",
+        "--source",
+        "--account",
+    )
+    assert running.expected_flags(runner.command("login", "--link", "https://x", attended=True)) == (
+        "--workspace",
+        "--link",
+    )
+    assert running.expected_flags(runner.command("extract")) == ("--workspace", "--non-interactive")
+
+
+def test_the_command_leaves_the_mode_off_for_an_attended_step() -> None:
+    """Brief 07 §76: a Claude sign-in has no unattended half, so `login` runs as a person runs it."""
+    runner = running.Runner(settings=running.Settings(root=Path("/r"), mode="non-interactive"), env={})
+    assert "--non-interactive" in runner.command("login")
+    assert "--non-interactive" not in runner.command("login", attended=True)
+    assert runner.command("login", "--link", "x", attended=True)[-3:] == ["login", "--link", "x"]
+
+
 def test_a_step_that_drove_no_tab_leaves_no_trace(tmp_path: Path) -> None:
     runner = runner_for(tmp_path)
     outcome = ok("import --dry-run")

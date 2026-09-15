@@ -80,6 +80,13 @@ def test_a_ledger_nobody_is_serving_is_an_error(
     assert "claude-mock:" in capsys.readouterr().err
 
 
+def test_sign_in_links_is_this_sites_own_command(capsys: pytest.CaptureFixture[str]) -> None:
+    """`49`: the fifth command, and the path it reads."""
+    assert cli.parser().parse_args(["sign-in-links"]).command == "sign-in-links"
+    assert cli.sign_in_links(host="127.0.0.1", port=1) == 1
+    assert capsys.readouterr().err.startswith("claude-mock: https://127.0.0.1:1/__mock/sign-in-links:")
+
+
 def test_exports_prints_the_links_a_running_mock_handed_out(
     site: Site, material: certificate.Material, capsys: pytest.CaptureFixture[str]
 ) -> None:

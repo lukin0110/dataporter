@@ -29,7 +29,10 @@ LEDGER = {
     "files_accepted": 1,
     "renames": 0,
     "exports_requested": 2,
+    "links_minted": 0,
 }
+CLAUDE_LEDGER = {**LEDGER, "links_minted": 2}
+"""The mock claude.ai signs in by link (`49`): one link for the seeding, one for the tool."""
 
 HEADER = {
     "trace": 1,
@@ -95,6 +98,7 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
     heading = f"{mock.display_name} extraction — rehearsal\n\n"
     names = [
         "login",
+        *(["login --link"] if mock.link_signin else []),
         "extract (ask 1)",
         "extract --link (fetch 1)",
         "extract (ask 2)",
@@ -103,20 +107,35 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
         "session logout",
         "snapshots",
     ]
-    driving = {"login", "extract (ask 1)", "extract (ask 2)"} | (
-        {"extract --link (fetch 1)", "extract --link (fetch 2)"} if mock.session_bound else set()
+    driving = (
+        {"login", "extract (ask 1)", "extract (ask 2)"}
+        | ({"extract --link (fetch 1)", "extract --link (fetch 2)"} if mock.session_bound else set())
+        | ({"login --link"} if mock.link_signin else set())
     )
     steps: list[running.Outcome] = []
     traces = settings.root / "traces"
     traces.mkdir(parents=True, exist_ok=True)
     for position, name in enumerate(names, 1):
         stdout = heading if name.startswith("extract") else ""
+        if name == "login" and mock.link_signin:
+            stdout = f"Claude sign-in — rehearsal\n…\n{running.LINK_SENT_LINE} …\nSigned in to Claude — rehearsal\n"
         if name == "snapshots":
             stdout = f"{mock.source}/rehearsal   2026-09-14T10-00-01Z   3 conversations   1 gap\n{mock.source}/rehearsal   2026-09-14T10-00-02Z   3 conversations   1 gap\n"
         outcome = running.Outcome(name=name, argv=(name,), exit_code=0, seconds=1.0, stdout=stdout)
         if name in driving:
-            lines = [json.dumps({**HEADER, "command": name.split()[0], "source": mock.source, "host": mock.hosts[0]})]
-            if name == "login":
+            flags = ["--link"] if name.endswith("--link") or "--link" in name else []
+            lines = [
+                json.dumps({
+                    **HEADER,
+                    "command": name.split()[0],
+                    "flags": flags,
+                    "source": mock.source,
+                    "host": mock.hosts[0],
+                })
+            ]
+            if name == "login --link":
+                lines.append(line(kind="move", helper="sign-in-link", ok=True))
+            if name == "login" and not mock.link_signin:
                 lines += [
                     line(kind="observation", what="navigation", host=mock.hosts[-1], path="/log-in", query=[]),
                     line(kind="observation", what="certificate", host=mock.hosts[0], issuer="x", subject="x"),
@@ -137,7 +156,7 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
         extra_args=("--host-resolver-rules=MAP x 127.0.0.1:1",),
         seeded={"chats": 3, "files": 1},
         links=changes.get("links", list(LINKS)),
-        counted=changes.get("counted", dict(LEDGER)),
+        counted=changes.get("counted", dict(CLAUDE_LEDGER if mock.link_signin else LEDGER)),
         first_digest=changes.get("first_digest", extraction.digest_of(store_root / mock.source / extraction.ACCOUNT)),
         blocks={"ask": heading + "Export requested …", "fetch 1": heading + "Downloaded 0.0 MB.", "fetch 2": heading},
     )
@@ -179,7 +198,7 @@ def test_traces_are_gathered_from_the_account_home_too(tmp_path: Path) -> None:
     assert outcome.traces == 1
 
 
-def test_the_ledger_block_has_six_rows_under_the_site_s_heading() -> None:
+def test_the_ledger_block_has_seven_rows_under_the_site_s_heading() -> None:
     assert extraction.ledger_block(extraction.CHATGPT, LEDGER) == (
         "Mock chatgpt.com — ledger\n"
         "\n"
@@ -188,8 +207,10 @@ def test_the_ledger_block_has_six_rows_under_the_site_s_heading() -> None:
         "Messages received:             3\n"
         "Files accepted:                1\n"
         "Renames:                       0\n"
-        "Exports requested:             2"
+        "Exports requested:             2\n"
+        "Sign-in links minted:          0"
     )
+    assert extraction.ledger_block(extraction.CLAUDE, CLAUDE_LEDGER).endswith("Sign-in links minted:          2")
 
 
 # --------------------------------------------------------------------------- #
@@ -208,9 +229,31 @@ def test_the_claude_half_counts_each_file_twice_and_needs_no_crossing(tmp_path: 
     half = half_for(tmp_path, extraction.CLAUDE)
     checks = extraction.criteria(half, store=tmp_path / "store")
     assert [item.name for item in checks if not item.passed] == []
-    assert len(checks) == 12
+    assert len(checks) == 14
     gap = next(item for item in checks if item.name.startswith("ledger: the gap"))
     assert gap.detail == "gaps [2, 2] == 1 × 2, files carried [None, None]"
+
+
+def test_the_claude_half_signs_in_with_two_commands_and_two_links(tmp_path: Path) -> None:
+    """`49`: `login` and `login --link` both count, both leave a trace, and the mock minted two links."""
+    half = half_for(tmp_path, extraction.CLAUDE)
+    by_name = {item.name: item for item in extraction.criteria(half, store=tmp_path / "store")}
+    assert by_name["login signs the source account in"].detail == "exit 0, login --link exit 0"
+    assert by_name["ledger: sign-ins == the seeding's + the tool's"].detail == "2 == 1 + 1 (a link spent)"
+    assert by_name["ledger: sign-in links minted == the seeding's + the tool's"].passed
+    assert by_name["one trace per step that drove a tab, each naming the source"].detail == "[1, 1, 1, 1] for 4 steps"
+
+    assert by_name["login saw the link sent and said so"].passed
+
+    without = half_for(tmp_path / "b", extraction.CLAUDE)
+    without.runner.steps = [step for step in without.runner.steps if step.name != "login --link"]
+    for step in without.runner.steps:
+        if step.name == "login":
+            step.stdout = "Claude sign-in — rehearsal\n"
+    names = {item.name for item in extraction.criteria(without, store=tmp_path / "b" / "store") if not item.passed}
+    assert "login signs the source account in" in names
+    assert "ledger: sign-ins == the seeding's + the tool's" in names
+    assert "login saw the link sent and said so" in names
 
 
 def test_a_first_snapshot_the_second_fetch_changed_fails(tmp_path: Path) -> None:
@@ -233,7 +276,7 @@ def test_a_ledger_that_does_not_reconcile_fails(tmp_path: Path) -> None:
     checks = extraction.criteria(half, store=tmp_path / "store")
     assert sorted(item.name for item in checks if not item.passed) == [
         "ledger: conversations == chats created",
-        "ledger: sign-ins == the seeding's + the tool's password steps",
+        "ledger: sign-ins == the seeding's + the tool's",
     ]
 
 

@@ -65,6 +65,22 @@ def test_announce_prints_the_link_note(capsys: pytest.CaptureFixture[str]) -> No
     assert capsys.readouterr().out == cli.link_note("https://chatgpt.com/__mock/exports/abc.zip")
 
 
+def test_the_sign_in_link_note_is_the_golden_string(capsys: pytest.CaptureFixture[str]) -> None:
+    """`49`: the same shape as an export's, for the same reader, where an email would arrive."""
+    assert cli.sign_in_link_note("https://claude.ai/magic-link#abc:ZQ") == (
+        "Sign-in requested — the link, instead of an email:\n\n  https://claude.ai/magic-link#abc:ZQ\n\n"
+    )
+    cli.announce_sign_in("https://claude.ai/magic-link#abc:ZQ")
+    assert capsys.readouterr().out == cli.sign_in_link_note("https://claude.ai/magic-link#abc:ZQ")
+
+
+def test_a_site_may_add_listing_commands_beside_exports() -> None:
+    parser = cli.parser(CLAUDE, description=None, email="e", password="p", listings=(("sign-in-links", "help"),))
+    listed = parser.parse_args(["sign-in-links", "--port", "9"])
+    assert (listed.command, listed.host, listed.port) == ("sign-in-links", "127.0.0.1", 9)
+    assert parser.parse_args(["sign-in-links"]).port == 8443
+
+
 @pytest.mark.parametrize(
     ("delay", "steps", "reason"),
     [

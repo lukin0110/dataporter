@@ -19,9 +19,10 @@ Two consequences worth stating, because they are what the citation is *for*:
   nothing more: the mock reads a trace the way a person does and imports
   nothing from the tool that wrote it.
 
-Where a row is `*unknown*` — which today is all of them — the mock takes the
-simplest behaviour the tool's code already accepts, and `WHAT_THE_MOCK_DOES`
-below says what that was.
+Where a row is `*unknown*` — which today is all but one of them — the mock
+takes the simplest behaviour the tool's code already accepts, and
+`WHAT_THE_MOCK_DOES` below says what that was. The `link sent` row is the one
+observed, and the mock's page is its controls re-typed.
 """
 
 from collections.abc import Mapping
@@ -30,6 +31,12 @@ ROWS: Mapping[str, str] = {
     # page → the rows it is built out of
     "login": "signed out",
     "sign-in form": "sign-in form",
+    # the sign-in by link (`49`), out of brief 07's rows
+    "link requested": "link requested",
+    "link sent": "link sent",
+    "sign-in link": "sign-in link",
+    "signed in by the link": "signed in by the link",
+    "link opened elsewhere": "link opened elsewhere",
     "new chat": "new chat",
     "conversation": "conversation",
     "composer": "composer present",
@@ -66,8 +73,39 @@ WHAT_THE_MOCK_DOES: Mapping[str, str] = {
     ),
     "sign-in form": (
         "a banner that hides the form until it is dismissed once, provider and "
-        "passkey buttons that lead nowhere, then the email step and the password "
-        "step, each an <input> the map names and each submitted by Enter"
+        "passkey buttons that lead nowhere, then the email step alone — an "
+        'input[type="email"] submitted by Enter; there is no password step, '
+        "because claude.ai has none (brief 07 §72)"
+    ),
+    "link requested": (
+        "the address step's POST mints a sign-in link instead of mailing one, "
+        "counted as `links_minted`, printed where an email would arrive and "
+        "listed at /__mock/sign-in-links; the real request carries an "
+        "attestation the mock does not imitate (§79)"
+    ),
+    "link sent": (
+        "after the address, /login shows the controls the real page showed on "
+        '2026-09-15: input[data-testid="code"][autocomplete="one-time-code"]'
+        '[inputmode="numeric"], a submit button[data-testid="continue"], and two '
+        'type="button" controls that resend the link and change the address'
+    ),
+    "sign-in link": (
+        "https://claude.ai/magic-link#<token>:<base64url address>, the real "
+        "shape: the token in the fragment, which /magic-link's own script reads, "
+        "clears from the address bar and posts to /login/redeem with the "
+        "browser's pending-sign-in cookie"
+    ),
+    "signed in by the link": (
+        "a link redeemed in the browser that gave the address, once, mints the "
+        "session and sends the browser to /new — the tool's probe then reads a "
+        "composer; a second redemption is refused"
+    ),
+    "link opened elsewhere": (
+        "a link opened without its pending sign-in — another browser, a wrong "
+        "address, one already spent — sends the browser to /login showing the "
+        "code field, which is the one shape the tool recognises; what the real "
+        "page shows is unknown, and no code is minted because the code door is "
+        "deferred (§80)"
     ),
     "new chat": "/new: an empty composer, a disabled Send, a hidden file input",
     "conversation": ("/chat/<uuid>: the whole transcript, server-rendered, so a reload shows every turn"),

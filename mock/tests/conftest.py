@@ -63,7 +63,7 @@ class Client:
             request.add_header("Cookie", self._cookie_header())
         handlers: list[urllib.request.BaseHandler] = [urllib.request.HTTPSHandler(context=self.context)]
         if not follow:
-            handlers.append(_NoRedirect())
+            handlers.append(NoRedirect())
         opener = urllib.request.build_opener(*handlers)
         try:
             with opener.open(request, timeout=10) as answer:
@@ -111,7 +111,7 @@ class Client:
             self.cookies[name.strip()] = value.strip()
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
+class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args: Any, **kwargs: Any) -> None:
         return None
 
@@ -131,7 +131,7 @@ def site() -> ClaudeSite:
     # Fast on purpose: the delay is what a rehearsal configures down, and a test
     # that waited a second per reply would be a test nobody runs.
     # And a fixed wall clock, so an archive's timestamps are the same on every run.
-    return ClaudeSite(email=EMAIL, password=PASSWORD, reply_delay_s=0.05, reply_steps=2, wall=lambda: WALL)
+    return ClaudeSite(email=EMAIL, reply_delay_s=0.05, reply_steps=2, wall=lambda: WALL)
 
 
 @pytest.fixture
