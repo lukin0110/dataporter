@@ -26,8 +26,12 @@ the export link is: checked, navigated to once, redacted in the trace, kept nowh
 - **Whose window.** `launcher.adopt` first: `login` (`50`) holds its window open on this
   profile's port, and the marker proves it is ours. Adopted, the browser is never closed
   here (`status`'s rule). No browser on the port: `launcher.launch` the profile, spend the
-  link, close it (Q28-A). Headed either way: the mode was refused by `50` before this is
-  reached, so `Settings.headless` is `browser.headless` or `False`.
+  link, close it (Q28-A). Headed unless the operator said otherwise: the mode was refused
+  by `50` before this is reached, so `Settings.headless` is `browser.headless` or `False`,
+  and that setting stays the operator's as `61` left it. Nothing here forces a window —
+  forcing one would refuse the rehearsal, which drives the mock with none, and would be
+  the tool overruling a setting to prevent a failure that belongs to the vendor (raised by
+  Copilot in review on #58).
 - **The drive.** A signed-in profile prints the block and spends nothing. Otherwise the
   first tab on the site's hosts — the tab the person entered their address in (Q26) — is
   pointed at the link with `Page.navigate` sent directly, as `45`'s fetch does, so that no

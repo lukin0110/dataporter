@@ -277,9 +277,13 @@ What §73's two commands do not promise.
 - **The sign-in link's host is not pinned**, as the export link's is not: `https` is the
   whole check, and a link that signs in somebody else's account signs this profile in as
   them. The label is the operator's word. *by construction*
-- **`login --link` needs a display.** The vendor's bot management refuses a headless Chrome
-  (below, *The ask*), so the link is always spent headed; a window opens and closes, or
-  `login`'s own window is used. *observed on 2026-09-15*
+- **Signing in to claude.ai needs a display, and nothing in the tool enforces it.** The
+  vendor's bot management refuses a headless Chrome (below, *The ask*), so a sign-in
+  without a window fails at the vendor rather than here. `--non-interactive` cannot take
+  the window away — `login` refuses the mode outright — but `browser.headless = true` is
+  the operator's own setting and is obeyed, as everywhere else (`61`): it is what drives a
+  mock with no display, and against the real site it is a way to watch the bot check
+  rather than a way to sign in. *observed on 2026-09-15*
 - **A link that hops through another host** — a mail provider's click tracking — takes the
   tab off claude.ai for a moment. `login`'s wait never opens a tab, so that moment costs a
   poll and nothing else; whether real sign-in links do hop is unknown. *unknown*
