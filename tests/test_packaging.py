@@ -52,7 +52,7 @@ DIST_INFO = f"dataporter-{__version__}.dist-info"
 PACKAGE_ROOT = "dataporter/"
 
 REQUIREMENTS = (
-    "orval>=0.0.12",
+    "orval>=0.0.13",
     "pydantic>=2",
     "pydantic-settings>=2",
     "tenacity>=9",

@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+from orval import fence
+
 from dataporter.export.model import (
     Attachment,
     ChatMessage,
@@ -219,8 +221,8 @@ def _render_artifact(block: ToolUseBlock) -> tuple[str, bool]:
     title = _as_text(block.input.get("title")) or "(untitled)"
     language = _as_text(block.input.get("language"))
     content = _as_text(block.input.get("content"))
-    fence = _fence_for(content)
-    rendered = f"[Artifact: {title}]\n{fence}{language}\n{content}\n{fence}"
+    marker = fence(content)
+    rendered = f"[Artifact: {title}]\n{marker}{language}\n{content}\n{marker}"
     return rendered, bool(content.strip())
 
 
@@ -244,20 +246,6 @@ def _render_attachment(attachment: AttachmentRender) -> tuple[str, bool]:
 def _as_text(value: object) -> str:
     """Return an artifact input field, whatever the export put there."""
     return value if isinstance(value, str) else ""
-
-
-def _fence_for(content: str) -> str:
-    """Return a fence long enough that the artifact cannot close it early.
-
-    An artifact whose own text contains ``` would otherwise terminate the block
-    and spill the rest into the transcript as prose.
-    """
-    longest = 0
-    run = 0
-    for character in content:
-        run = run + 1 if character == "`" else 0
-        longest = max(longest, run)
-    return "`" * max(3, longest + 1)
 
 
 # --------------------------------------------------------------------------- #

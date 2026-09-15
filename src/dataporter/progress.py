@@ -40,6 +40,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import IO, Protocol
 
+from orval import squish
+
 from dataporter import summary
 from dataporter.errors import Category
 from dataporter.state import ErrorRecord, Status
@@ -175,7 +177,7 @@ def detail_of(error: ErrorRecord | None) -> str:
     """
     if error is None:
         return ""
-    condensed = " ".join(error.detail.split())
+    condensed = squish(error.detail)
     if not condensed:
         return str(error.category)
     if len(condensed) > DETAIL_MAX:

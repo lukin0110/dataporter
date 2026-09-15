@@ -35,6 +35,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from orval import squish
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import state, summary
@@ -174,7 +175,7 @@ class FailureRecord(ReportModel):
         """
         if self.category is None:
             return NONE_RECORDED
-        detail = " ".join(self.detail.split())
+        detail = squish(self.detail)
         return f"{self.category}: {detail}" if detail else str(self.category)
 
 

@@ -43,7 +43,7 @@ from types import MappingProxyType
 from typing import Any, Literal, Self
 from urllib.parse import urlparse
 
-from orval import deep_get
+from orval import deep_get, squish
 from pydantic import BaseModel, ConfigDict
 
 from dataporter import log
@@ -311,7 +311,7 @@ def normalise_title(value: str) -> str:
     half of it is `_TITLE_OBJECT`, three lines up: whatever changes here changes
     there.
     """
-    return " ".join(value.split())
+    return squish(value)
 
 
 # --------------------------------------------------------------------------- #

@@ -47,6 +47,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from orval import to_utc
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dataporter import __version__, log, sources
@@ -139,11 +140,12 @@ def stamp_of(instant: datetime) -> str:
 
     The moment the export was asked for, because that is the moment the account
     was as the archive describes it. A naive value is read as UTC rather than as
-    the machine's local time, for the reason `export.model._utc` gives.
+    the machine's local time, for the reason `export.model._utc` gives — the
+    same reason this reads `instant` through `orval.to_utc` rather than the
+    `tzinfo is None` check this used to do, which missed a `tzinfo` present but
+    reporting no UTC offset and sent it to `astimezone` as system-local time.
     """
-    if instant.tzinfo is None:
-        instant = instant.replace(tzinfo=UTC)
-    return instant.astimezone(UTC).strftime(STAMP_FORMAT)
+    return to_utc(instant).strftime(STAMP_FORMAT)
 
 
 def parse_stamp(stamp: str) -> datetime | None:
