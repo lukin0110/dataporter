@@ -23,14 +23,15 @@ is the record, and filing is a separate decision.
 **The fourth pass bumps to 0.0.13**, which ships three of this file's own
 candidates — `unique` (C5), `fence` (C7) and `has_control` (C8) — plus `squish`,
 `truncate_bytes`, `to_tz`, and a `hashify` that hashes `bytes` directly instead
-of pickling them. Six call sites move to library code this pass: one each for
-`unique`, `fence` and the fixed `hashify`, three for `squish`. One more,
-`store.stamp_of`, turns out to be a *third* hand-rolled naive-to-UTC
-normaliser carrying the same latent hole `export.model._utc` and
-`state._to_utc` already closed — found by re-reading every `astimezone` in the
-tree while checking `to_tz`'s candidacy, not by anything 0.0.13 changed. `unique`
-also settles a question the third pass left open: run against `plan._distinct`,
-it reproduces the dedup exactly, and is rejected anyway — see B.
+of pickling them. Eight call sites move to library code this pass: one each
+for `unique`, `fence`, `has_control` and the fixed `hashify`, three for
+`squish`, and one more, `store.stamp_of`, that turns out to be a *third*
+hand-rolled naive-to-UTC normaliser carrying the same latent hole
+`export.model._utc` and `state._to_utc` already closed — found by re-reading
+every `astimezone` in the tree while checking `to_tz`'s candidacy, not by
+anything 0.0.13 changed. `unique` also settles a question the third pass left
+open: run against `plan._distinct`, it reproduces the dedup exactly, and is
+rejected anyway — see B.
 
 ## A. Adopted
 
