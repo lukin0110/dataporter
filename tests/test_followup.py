@@ -14,6 +14,7 @@ proved, and the replies land" is checked rather than assumed.
 """
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from typer.testing import CliRunner
 
 from dataporter import cli, state
 from dataporter import followup as following
+from dataporter import log as logging_mod
 from dataporter.config import Settings
 from dataporter.errors import HermesError
 from dataporter.exit_codes import ExitCode
@@ -519,6 +521,22 @@ def test_neither_the_terminal_nor_the_log_carries_a_reply(
         assert phrase not in written
 
 
+def _trace_of(command: str, workspace: Path, *, among: int) -> list[dict[str, object]]:
+    """Return the trace `command` wrote, found by its header rather than its name.
+
+    A stamp is to the second, so two commands in one second write
+    `trace-<stamp>.jsonl` and `trace-<stamp>-2.jsonl` — and `-` sorts before `.`,
+    which puts the *later* file first. Picking a trace by position therefore reads
+    the wrong one exactly when the machine is fast, which is what CI is.
+    """
+    traces = sorted((workspace / "logs").glob("trace-*.jsonl"))
+    assert len(traces) == among, traces
+    lines = {path: [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] for path in traces}
+    wrote = [written for written in lines.values() if written[0]["command"] == command]
+    assert len(wrote) == 1, [written[0]["command"] for written in lines.values()]
+    return wrote[0]
+
+
 def test_followup_leaves_a_trace_of_its_own(world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
     """`33`: the probe drives a tab, so it leaves a trace beside the migration's."""
     cli_env(world, monkeypatch)
@@ -528,10 +546,34 @@ def test_followup_leaves_a_trace_of_its_own(world: World, runner: CliRunner, mon
     outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
 
     assert outcome.exit_code == ExitCode.OK
-    traces = sorted((world.settings.workspace / "logs").glob("trace-*.jsonl"))
-    assert len(traces) == 2
-    written = [json.loads(line) for line in traces[-1].read_text(encoding="utf-8").splitlines()]
+    written = _trace_of("followup", world.settings.workspace, among=2)
     assert written[0]["command"] == "followup"
     assert written[0]["flags"] == []
     assert written[-1]["what"] == "end"
     assert written[-1]["exit"] == 0
+
+
+def test_a_followup_in_the_same_second_as_the_import_is_still_its_own_trace(
+    world: World, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two commands inside one second, which is what a fast runner does.
+
+    A stamp is to the second, so the later trace is `trace-<stamp>-2.jsonl` and
+    the earlier one `trace-<stamp>.jsonl`. `-` sorts before `.`, so by name the
+    later file comes *first* — and reading "the last trace" then read the
+    import's. The header is what says whose a trace is, so that is what this
+    reads. (CI on `main`, 2026-09-14: `assert 'import' == 'followup'`.)
+    """
+    cli_env(world, monkeypatch)
+    world.answers(MIGRATED, answer())
+    monkeypatch.setattr(logging_mod, "utcnow", lambda: datetime(2026, 9, 14, 19, 7, 28, tzinfo=UTC))
+    runner.invoke(cli.app, ["import", str(world.export), "--limit", "1"], catch_exceptions=False)
+
+    outcome = runner.invoke(cli.app, ["followup"], catch_exceptions=False)
+
+    assert outcome.exit_code == ExitCode.OK
+    logs = world.settings.workspace / "logs"
+    names = sorted(path.name for path in logs.glob("trace-*.jsonl"))
+    assert len(names) == 2, names
+    assert names[0].endswith("-2.jsonl"), "the collision suffix sorts first, which is the whole hazard"
+    assert _trace_of("followup", world.settings.workspace, among=2)[0]["command"] == "followup"
