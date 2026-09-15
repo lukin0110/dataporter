@@ -272,6 +272,11 @@ def request_export(
     The whole of what this tool does inside a source account (§36). Everything
     before it — the browser, the sign-in — is `extract.ask`'s, and everything
     after it is a record in the account home.
+
+    One budget, `timeouts.ask_s`, for both halves: finding the control and
+    seeing the answer. An ask that spends thirty seconds waiting for a panel to
+    render has thirty left to be confirmed in, because it is one ask and a slow
+    page is slow in whichever half.
     """
     surface = sites.extraction_surface(source)
     deadline = time.monotonic() + settings.timeouts.ask_s
@@ -281,7 +286,7 @@ def request_export(
         raise BrowserError(detail=str(tab.error))
 
     with helpers.driving(session.client, tab, surface) as page:
-        view = ExportPageView.read(page, source)
+        view = _await_button(page, source, deadline=deadline, poll_s=poll_s)
         if view.dialogs:
             return _stopped(JS_DIALOG)
         if not view.button:
@@ -311,6 +316,36 @@ def request_export(
             if time.monotonic() >= deadline:
                 return _stopped(NOT_REQUESTED, pressed_at, clicks)
             time.sleep(poll_s)
+
+
+def _await_button(page: Page, source: "Source", *, deadline: float, poll_s: float) -> ExportPageView:
+    """Return the page once the export control is on it, or as it was at the deadline.
+
+    The navigation is not the arrival. `_bring_to_export_page` waits for the
+    *URL* — the tab's `location.href` and then the target list — and claude.ai
+    serves its export panel from a React app at a fragment of `/new` (§77), so
+    the address is right long before anything is rendered at it. The only other
+    wait behind this point is `session.settled`, which is
+    `document.readyState === 'complete'`: true for an SPA that has painted
+    nothing at all.
+
+    So the ask used to read the DOM once, the instant the document was
+    complete, and call a panel that had not rendered yet a panel that is not
+    there. Headed it usually won that race and headless it lost it, which is how
+    a real run came back `export button not found` on a page that had the button
+    a second later (`62`).
+
+    A JavaScript dialog still returns at once rather than being waited out: §36
+    never answers one, and a dialog is an answer about the page, not a page that
+    has not finished. `_wait_until` cannot serve here — it raises `BrowserError`
+    on the deadline, and a control that never appeared is an `AskResult` an
+    operator reads, not a browser fault.
+    """
+    while True:
+        view = ExportPageView.read(page, source)
+        if view.dialogs or view.button or time.monotonic() >= deadline:
+            return view
+        time.sleep(poll_s)
 
 
 def _stopped(reason: str, pressed_at: datetime | None = None, clicks: list[str] | None = None) -> AskResult:

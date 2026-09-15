@@ -122,13 +122,19 @@ and the ask stays open so the person can try again.
 ```text
 Claude extraction — old-personal
 
-Downloaded 41.3 MB.
+Downloaded 41.3 MB in 1m 6s.
 Conversations: 127     Projects: 4     Memories: 1
 Gaps: 38 files the export does not carry
 
 Snapshot: ~/.dataporter/store/claude/old-personal/2026-09-12T20-51-07Z
 
 ```
+
+*Amended by [`60`](impl/60-download-progress.md). The line read `Downloaded 41.3 MB.`; it
+now says how long the fetch took, in whole seconds from the command's start to this block.
+And the block is no longer the fetch's first word: one line precedes it for each file as
+it lands — `downloaded  light_metadata-000.zip  716.0 B` — which is progress, and which
+`--quiet` suppresses as it suppresses the import's.*
 
 An archive the person already has — asked for by hand, or downloaded before the tool
 existed — is filed the same way, with no ask behind it:

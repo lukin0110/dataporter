@@ -31,8 +31,10 @@ leaves the browser. The link is in no line the fetch leaves.
   `DownloadStopped(reason, status)` for each, which `extract` turns into a line. The file
   is `<into>/<guid>`: nothing the vendor named ever reaches a path.
 - **The fetch** (`extract.fetch`, gaining `flags`): after the scheme check, a source
-  whose `fetch_needs_session` is set requires credentials unattended, as the ask does;
-  then `_download_through_session`: `launcher.launch` on the source's root, `watched`
+  whose `fetch_needs_session` is set ~~requires credentials unattended, as the ask
+  does~~ — *amended by [`61`](61-headless-extraction.md): the credential is asked for at
+  the sign-in, and the link is safe because of the order, not the check* — then
+  `_download_through_session`: `launcher.launch` on the source's root, `watched`
   with the extraction site, `_sign_in_to_source` probing the root (a new `url` keyword;
   the fetch has no business on the export page), and under `trace.redacting()` the
   download. What follows — `is_zipfile`, `_read`, `_filing`, `Store.file_archive`, the
@@ -45,7 +47,8 @@ leaves the browser. The link is in no line the fetch leaves.
   - too large: `30`'s line; stalled: `the download stalled for 120s; try again`;
     cancelled: `the browser cancelled the download; try again`.
   All exit `2`, nothing filed, the ask kept. The block, golden, is `43`'s with
-  `Downloaded 0.0 MB.` in place of `Filed …`.
+  `Downloaded 0.0 MB in 1m 6s.` in place of `Filed …`, and `60`'s
+  `downloaded  export.zip  …` line before it.
 - **The trace** (`trace.py`): `redacting()`, a context manager over a process-wide event
   — the watch writes from a thread of its own — and `is_redacting()`. While set,
   `url_fields` answers `{"host", "path": "<link>", "query": []}`, so every navigation,
@@ -63,7 +66,8 @@ leaves the browser. The link is in no line the fetch leaves.
   `Browser.setDownloadBehavior` said; a signed-in tab downloads and the archive is filed
   with the golden block, the ask dropped, the temp directory empty,
   `Browser.setDownloadBehavior` before `Page.navigate`, nothing typed; unattended and
-  signed out the walk runs first; no credentials is exit `2` before any browser; refused,
+  signed out the walk runs first; no credentials is exit `2` with the link never
+  navigated to (`61`); refused,
   a page, over the cap (and `Browser.cancelDownload` sent), stalled — each its line,
   nothing filed, the ask kept; the link and its path in no line — stdout, stderr, the run
   log, the trace, `actions.jsonl` — with the navigation and the move carrying the marker,

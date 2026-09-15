@@ -22,6 +22,7 @@ from threading import Thread
 from typing import Any
 
 import pytest
+from orval import pretty_bytes
 from pydantic import SecretStr
 
 from dataporter import extract, log, store
@@ -135,16 +136,18 @@ def test_a_signed_in_tab_downloads_the_link_and_the_archive_is_filed(
 ) -> None:
     extract.write_ask(settings, datetime(2026, 9, 30, 18, 12, 44, tzinfo=UTC))
     sink = Collected()
-    outcome = extract.fetch(settings, LINK, sink=sink)
+    outcome = extract.fetch(settings, LINK, sink=sink, clock=iter((0.0, 66.0)).__next__)
 
     assert outcome.exit_code == ExitCode.OK
     assert outcome.snapshot is not None
     assert outcome.path is not None
     assert launches == [ROOT]
+    # `export.zip` and not what the vendor suggested, which is never kept (§66).
     assert sink.stdout == (
+        f"downloaded  export.zip  {pretty_bytes(chatgpt_zip.stat().st_size, 'ds', precision=1)}\n"
         f"ChatGPT extraction — {ACCOUNT}\n"
         "\n"
-        "Downloaded 0.0 MB.\n"
+        "Downloaded 0.0 MB in 1m 6s.\n"
         "Conversations: 3     Files: 2\n"
         "Gaps: 2 files the export does not carry\n"
         "\n"
@@ -173,12 +176,22 @@ def test_unattended_and_signed_out_the_fetch_walks_in_first(
     assert site.links == [LINK]
 
 
-def test_unattended_without_credentials_is_refused_before_any_browser(
-    chrome: FakeChrome, tmp_path: Path, launches: list[str]
+def test_unattended_without_credentials_is_refused_without_spending_the_link(
+    site: FakeChatgptPages, chrome: FakeChrome, tmp_path: Path, launches: list[str]
 ) -> None:
+    """`61`: the refusal moved from the door to the sign-in, and the link is still unspent.
+
+    That order is what the old up-front check was protecting: the browser opens on the
+    source's root, the probe finds it signed out there, and the link is never navigated
+    to — so a single-use link survives a run that stopped at a sign-in form.
+    """
+    site.go(Step.LANDING)
+
     with pytest.raises(UsageError, match="DATAPORTER_AUTH__EMAIL"):
         extract.fetch(make_settings(chrome, tmp_path, credentials=False), LINK, sink=Collected())
-    assert launches == []
+
+    assert launches == [ROOT]
+    assert site.links == []
 
 
 # --------------------------------------------------------------------------- #

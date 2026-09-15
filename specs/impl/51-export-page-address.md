@@ -104,3 +104,9 @@ rather than a button, so the Export button is the panel's first.
   and then waits out `timeouts.ask_s` before reporting that it did not. The export
   is requested; the run says otherwise. `52` is what closes that, and until it does
   this is the one thing to warn an operator about.
+- **The address was right and the panel still was not there.** This slice fixed where the
+  ask looks; it did not ask *when*. The selector is read once, and on a real account the
+  panel renders about 2.9 s after the navigation while the read happens at about 1.4 s —
+  so a correct selector reported `export button not found`, and every ask that worked won
+  a race. Fixed by [`62`](62-waiting-for-the-export-panel.md), which also recorded what a
+  headless run gets instead: Cloudflare's interstitial, and never the panel at all.

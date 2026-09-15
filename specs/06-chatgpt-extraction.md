@@ -135,7 +135,7 @@ credential §32 says a snapshot must never contain and §35 says the tool never 
 ```text
 ChatGPT extraction — work
 
-Downloaded 12.4 MB.
+Downloaded 12.4 MB in 1m 6s.
 Conversations: 88     Files: 12
 Gaps: 3 files the export does not carry
 
@@ -143,11 +143,25 @@ Snapshot: ~/.dataporter/store/chatgpt/work/2026-09-30T18-12-44Z
 
 ```
 
+*Amended by [`60`](impl/60-download-progress.md). The line read `Downloaded 12.4 MB.`; it
+now says how long the fetch took, from the command's start to this block. One line precedes
+the block as the archive lands — `downloaded  export.zip  12.4 MB` — under the name it is
+filed as, since what the vendor suggested is never kept (§66); `--quiet` suppresses it.*
+
 A link that is refused, that leads to a page instead of an archive — which is what a
 signed-out download looks like — or that stalls, is refused with the reason and the ask
-stays open, as §31 says. Unattended, the credentials are required before the browser
-starts, as the ask requires them (`31`): a fetch that would stop at a sign-in form after
-following the link has spent a link that may be single-use.
+stays open, as §31 says. Unattended, the credentials are required at the sign-in, and the
+link is not followed until the session is good: a fetch that stops at a sign-in form has
+not spent a link that may be single-use.
+
+*Amended by [`61`](impl/61-headless-extraction.md). The sentence read "Unattended, the
+credentials are required before the browser starts, as the ask requires them (`31`): a
+fetch that would stop at a sign-in form after following the link has spent a link that
+may be single-use." The promise is the same and it is the **order** that keeps it — the
+browser opens on the source's root, the probe and any sign-in happen there, and the link
+is navigated to only afterwards. Requiring the credential at the door refused every
+unattended backup of a signed-in profile, which for Claude is the only kind there can be
+(brief 07).*
 
 ## 64. The archive, counts and gaps
 

@@ -70,7 +70,10 @@ model. The fetch that follows is `30`'s.
   1. `ask.json` exists → `StoreError` `an ask is already open for claude/<label>, made
      <asked_at>; fetch it with --link, or drop it with --abandon`, exit `2`, before any
      browser starts.
-  2. Non-interactive → `signin.require_credentials(settings)` first, as `login` does.
+  2. ~~Non-interactive → `signin.require_credentials(settings)` first, as `login` does.~~
+     *Amended by [`61`](61-headless-extraction.md): credentials are asked for where a
+     sign-in is attempted (step 4), never at the door. The ask runs on the account's own
+     Chrome profile, and a profile a person signed in to needs no credential at all.*
   3. `launcher.launch(settings, EXPORT_PAGE_URL)`; `browser.close()` in a `finally`.
   4. Signed out: interactively, `LOGIN_PROMPT` and `wait_for_login` against the export
      page for `timeouts.login_s`; unattended, `signin.ensure_signed_in`, which is `24`'s
@@ -132,7 +135,8 @@ model. The fetch that follows is `30`'s.
     `test_browser_session.py` does) — the happy path writes `ask.json` and prints the
     block byte for byte, and the fake recorded exactly two clicks and no
     `Input.insertText`; an open ask is refused before launch; unattended with no
-    credentials exits `2` with `MISSING_CREDENTIALS`; the JavaScript dialog exits
+    credentials asks on a signed-in profile and exits `2` with `MISSING_CREDENTIALS`
+    on a signed-out one (`61`); the JavaScript dialog exits
     `1` and writes no `ask.json`; no button exits `1`; `requested` never arriving exits
     `1`. Every branch is covered by the fake, so the coverage gate never rests on a
     browser.
@@ -175,10 +179,12 @@ model. The fetch that follows is `30`'s.
   would make one function mean two things on two pages.
 - **Exit `2` for missing credentials, not `3`.** The acceptance criteria first said `3`;
   every other command in the tool answers a missing credential with `signin.
-  require_credentials` — a `UsageError`, exit `2`, before any browser — and this spec's
-  own step 2 says "as `login` does". One of the two had to give, and a second spelling of
-  the same refusal would have been the worse answer. Exit `3` stays what it has always
-  been here: a session that could not be signed in.
+  require_credentials` — a `UsageError`, exit `2` — and this spec's own step 2 said "as
+  `login` does". One of the two had to give, and a second spelling of the same refusal
+  would have been the worse answer. Exit `3` stays what it has always been here: a
+  session that could not be signed in. *The "before any browser" half of that sentence
+  was amended by [`61`](61-headless-extraction.md); the exit code and the wording are
+  unchanged, and only the moment moved.*
 - **`--source` on the session commands.** Brief §35 left it out; a label that means one
   account on Claude and another on ChatGPT is a trap, and the sign-in page is the
   source's.
@@ -202,10 +208,11 @@ model. The fetch that follows is `30`'s.
   recorded exactly two clicks and no `Input.insertText`.
 - The same command again exits `2` with the open-ask line and starts no browser;
   `--abandon` then a new ask exits `0`.
-- `DATAPORTER_NON_INTERACTIVE=1` with no credentials exits `2` with `MISSING_CREDENTIALS`
-  and starts no browser (amended from `3`; see the design note); with credentials on a
-  signed-in profile it exits `0` and no sign-in was attempted, and on a signed-out one
-  `signin.ensure_signed_in` is what runs.
+- `DATAPORTER_NON_INTERACTIVE=1` with no credentials asks on a signed-in profile and
+  exits `0` (`61`), and on a signed-out one exits `2` with `MISSING_CREDENTIALS` (amended
+  from `3`; see the design note); with credentials on a signed-in profile it exits `0`
+  and no sign-in was attempted, and on a signed-out one `signin.ensure_signed_in` is
+  what runs.
 - `driving` under `EXTRACTION_SURFACE` refuses `https://claude.ai/new` and
   `/chat/<uuid>` with `outside_migration_surface`; under `MIGRATION_SURFACE` it refuses
   the export page.

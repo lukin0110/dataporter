@@ -283,21 +283,40 @@ def test_a_sign_in_nobody_completes_is_exit_3_and_no_record(
     assert page.clicks == []
 
 
-def test_the_mode_without_credentials_starts_no_browser(
+def test_the_mode_without_credentials_asks_on_a_signed_in_profile(
     settings: Settings, page: FakeExportPage, launches: list[str]
 ) -> None:
-    """`login`'s rule, and `login`'s reason.
+    """`61`: the session is the profile's, so a signed-in one needs no credential.
 
-    A run that would stop at the first sign-in form is a run that should not have opened
-    a window.
+    This is the whole of an unattended Claude backup. Claude's sign-in cannot be
+    automated (brief 07), so a credential demanded at the door is a toll that refuses
+    every headless run and opens nothing.
     """
+    unattended = settings.model_copy(update={"non_interactive": True})
+
+    outcome = extract.ask(unattended)
+
+    assert outcome.exit_code == ExitCode.OK
+    assert launches == [export_page.EXPORT_PAGE_URL]
+    assert extract.read_ask(unattended) is not None
+
+
+def test_the_mode_without_credentials_is_refused_once_a_sign_in_is_needed(
+    settings: Settings, page: FakeExportPage, launches: list[str], chrome: FakeChrome
+) -> None:
+    """Signed out, the same refusal as ever — `login`'s rule, at the moment it applies.
+
+    Later than it used to be: the browser has opened and closed by the time this is
+    known, because "is this profile signed in" is a question only a browser answers.
+    """
+    visit(chrome, page, SIGNED_OUT_URL)
     unattended = settings.model_copy(update={"non_interactive": True})
 
     with pytest.raises(UsageError) as raised:
         extract.ask(unattended)
 
     assert str(raised.value) == signin.MISSING_CREDENTIALS
-    assert launches == []
+    assert launches == [export_page.EXPORT_PAGE_URL]
 
 
 def test_the_mode_on_a_signed_in_profile_attempts_no_sign_in(
@@ -353,7 +372,9 @@ def test_no_export_button_is_exit_1_and_no_record(
     """`31`'s first risk.
 
     Every row of this page is a guess until somebody looks, and the honest answer to a
-    page we do not recognise is to say so.
+    page we do not recognise is to say so. Since `62` the line says how long it waited
+    and names the sign-in, because a signed-out claude.ai that does not redirect ends
+    up here too.
     """
     page.button = False
     sink = Collected()
@@ -361,9 +382,52 @@ def test_no_export_button_is_exit_1_and_no_record(
     outcome = extract.ask(settings, sink=sink)
 
     assert outcome.exit_code == ExitCode.FAILED
-    assert sink.stderr == (f"export button not found on {export_page.EXPORT_PAGE_PATH}\n")
+    assert sink.stderr == (
+        f"the export panel did not appear on {export_page.EXPORT_PAGE_PATH} within 0.3s; "
+        f"if the session has expired, sign in with: dataporter login --source claude "
+        f"--account {ACCOUNT}\n"
+    )
     assert not sink.stdout
     assert extract.read_ask(settings) is None
+
+
+def test_the_same_page_headless_names_the_bot_check(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """Measured on claude.ai, 2026-09-15: headless is served a Cloudflare interstitial.
+
+    So the half of the line that guesses is the half the run can be true about — headless
+    never reaches the vendor's page at all, and advising a sign-in there sends an operator
+    after the wrong thing.
+    """
+    page.button = False
+    unattended = settings.model_copy(update={"non_interactive": True})
+    sink = Collected()
+
+    extract.ask(unattended, sink=sink)
+
+    assert sink.stderr == (
+        f"the export panel did not appear on {export_page.EXPORT_PAGE_PATH} within 0.3s; "
+        f"headless Chrome is served a bot check on this page — try without --non-interactive\n"
+    )
+
+
+def test_a_panel_that_renders_late_is_waited_for(settings: Settings, page: FakeExportPage, launches: list[str]) -> None:
+    """`62`: the address is right long before the app has painted anything.
+
+    What a real headless run met on claude.ai — `readyState` complete, the React app
+    still empty — and what the ask used to call a missing button, because it read the
+    DOM once. The control appears on the third look and the ask presses it.
+    """
+    page.button_after_view = 2
+    waiting = settings.model_copy(update={"timeouts": settings.timeouts.model_copy(update={"ask_s": 5.0})})
+    sink = Collected()
+
+    outcome = extract.ask(waiting, sink=sink)
+
+    assert outcome.exit_code == ExitCode.OK
+    assert page.clicks == [export_page.EXPORT_BUTTON_SELECTOR, export_page.CONFIRM_BUTTON_SELECTOR]
+    assert extract.read_ask(waiting) is not None
 
 
 def test_a_javascript_dialog_stops_the_ask_and_is_never_answered(
@@ -537,7 +601,7 @@ def test_a_failed_ask_exits_1_through_the_cli(
     result = runner.invoke(cli.app, ["extract", "--account", ACCOUNT], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.FAILED
-    assert result.stderr.startswith("export button not found on ")
+    assert result.stderr.startswith("the export panel did not appear on ")
 
 
 # --------------------------------------------------------------------------- #

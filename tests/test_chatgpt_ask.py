@@ -241,13 +241,18 @@ def test_interactively_the_ask_waits_for_the_person(
     assert site.clicks == [EXPORT_BUTTON, CONFIRM_BUTTON]
 
 
-def test_unattended_without_credentials_is_refused_before_any_browser(
+def test_unattended_without_credentials_is_refused_at_the_sign_in(
     chrome: FakeChrome, tmp_path: Path, launches: list[str]
 ) -> None:
+    """`61`: signed out, the refusal is the same one, reached through the probe.
+
+    The site starts signed out, so the sign-in is really attempted and
+    `require_credentials` answers from inside it.
+    """
     settings = make_settings(chrome, tmp_path, credentials=False)
     with pytest.raises(UsageError, match="DATAPORTER_AUTH__EMAIL"):
         extract.ask(settings, sink=Collected())
-    assert launches == []
+    assert launches == [EXPORT_URL]
 
 
 def test_a_page_that_never_says_requested_exits_1_and_writes_nothing(

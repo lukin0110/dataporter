@@ -695,12 +695,14 @@ def extract(
     store: StoreDir = None,
 ) -> None:
     """Ask a source for an account's export, then file what comes back."""
+    context = app_context(ctx)
     finish(
         extracting.extract_command(
-            with_account(with_store_dir(settings_of(ctx), store), source, account),
+            with_account(with_store_dir(context.settings, store), source, account),
             extracting.ExtractRequest(link=link, from_path=from_path, abandon=abandon),
             sink=console.Terminal(),
             flags=given_flags(ctx),
+            quiet=context.quiet,
         )
     )
 

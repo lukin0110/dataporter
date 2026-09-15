@@ -27,6 +27,7 @@ from types import MappingProxyType
 from typing import Any
 
 import pytest
+from orval import pretty_bytes
 from typer.testing import CliRunner
 
 from dataporter import cli, extract, log, sources, store
@@ -150,21 +151,38 @@ def test_a_body_is_filed_as_a_snapshot(settings: Settings, export_zip: Path) -> 
 
 
 def test_the_block_is_the_brief_block(settings: Settings, export_zip: Path) -> None:
+    """§31's block, and `60`'s line before it: the archive as it lands, under the store's name.
+
+    The clock is injected, as the opener is, so the block's bytes can be pinned:
+    66.4 seconds is `1m 6s`, whole seconds and nothing finer.
+    """
     sink = Collected()
-    outcome = extract.fetch(settings, LINK, open_url=opener(export_zip.read_bytes()), sink=sink)
+    outcome = extract.fetch(
+        settings, LINK, open_url=opener(export_zip.read_bytes()), sink=sink, clock=iter((0.0, 66.4)).__next__
+    )
     assert outcome.snapshot is not None
     size = f"{export_zip.stat().st_size / 1_000_000:.1f}"
 
     assert sink.stdout == (
+        f"downloaded  export.zip  {pretty_bytes(export_zip.stat().st_size, 'ds', precision=1)}\n"
         "Claude extraction — old-personal\n"
         "\n"
-        f"Downloaded {size} MB.\n"
+        f"Downloaded {size} MB in 1m 6s.\n"
         "Filed without an ask on record.\n"
         "Conversations: 6     Projects: 0     Memories: 1\n"
         "Gaps: 3 files the export does not carry\n"
         "\n"
         f"Snapshot: {outcome.path}\n"
     )
+
+
+def test_quiet_drops_the_lines_and_keeps_the_block(settings: Settings, export_zip: Path) -> None:
+    """`-q` is for progress (`18`): the `downloaded` line goes, the block stays (`60`)."""
+    sink = Collected()
+    extract.fetch(settings, LINK, open_url=opener(export_zip.read_bytes()), sink=sink, quiet=True)
+
+    assert sink.stdout.startswith("Claude extraction — old-personal\n")
+    assert "downloaded" not in sink.stdout
 
 
 def test_an_open_ask_sets_the_stamp_and_is_gone_afterwards(settings: Settings, export_zip: Path) -> None:
@@ -820,7 +838,15 @@ def test_a_manifest_fetch_names_the_archive_and_every_part(
     monkeypatch.setattr(sources, "REGISTRY", MappingProxyType({**sources.REGISTRY, CLAUDE.name: CLAUDE}))
 
     def fake(
-        settings: Settings, source: object, link: str, into: Path, *, sink: object, flags: object, collected: list[Path]
+        settings: Settings,
+        source: object,
+        link: str,
+        into: Path,
+        *,
+        sink: object,
+        flags: object,
+        collected: list[Path],
+        quiet: bool,
     ) -> tuple[Path, list[Path]]:
         manifest = into / extract.MANIFEST_FILENAME
         manifest.write_text(json.dumps(MANIFEST))
@@ -879,6 +905,26 @@ def test_a_download_names_where_it_landed_as_it_lands(
     ]
 
 
+def test_each_download_is_a_line_as_it_lands(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One line on stdout per file, the moment it lands: the index, then each part (`60`).
+
+    Named as the vendor named them, in `pretty_bytes`'s unit: a 21-byte part
+    reads `21.0 B` here and `0.0 MB` in the block, whose unit is the brief's.
+    """
+    _index(tmp_path, monkeypatch, MANIFEST)
+    sink = Collected()
+
+    extract.index_and_files(settings, None, CLAUDE, LINK, tmp_path, collected=[], sink=sink)
+
+    assert sink.stdout == (
+        "downloaded  manifest.json  245.0 B\n"
+        "downloaded  light_metadata-000.zip  21.0 B\n"
+        "downloaded  conversations-000.zip  21.0 B\n"
+    )
+
+
 def test_a_body_names_where_it_landed(settings: Settings, export_zip: Path) -> None:
     """A source that serves one archive names its temp file too."""
     log.configure_logging()
@@ -890,19 +936,23 @@ def test_a_body_names_where_it_landed(settings: Settings, export_zip: Path) -> N
     assert extract.TMP_DIRNAME in downloaded[0]
 
 
-def test_a_vendor_name_cannot_forge_a_line_of_verbose_output(settings: Settings, tmp_path: Path) -> None:
-    """The last component of a staging path is the vendor's, so it is bounded.
+def test_a_vendor_name_cannot_forge_a_line_of_output(settings: Settings, tmp_path: Path) -> None:
+    """The last component of a staging path is the vendor's, so it is bounded — twice.
 
     `HumanFormatter` prints an extra as it is given, so a manifest naming a file
-    with a newline in it could otherwise add a line to what an operator reads.
-    (Raised by Copilot in review on #53.)
+    with a newline in it could otherwise add a line to what an operator reads
+    under `-v`; and `60`'s stdout line prints the same name, so it is bounded
+    there as well. (Raised by Copilot in review on #53.)
     """
     log.configure_logging()
     log.enable_run_log(settings.logs_dir)
+    forged = tmp_path / "conversations\n19:39:41 info    all is well.zip"
+    sink = Collected()
 
-    extract._log_downloaded(tmp_path / "conversations\n19:39:41 info    all is well.zip")
+    extract._landed(forged, name=forged.name, size=21, sink=sink, quiet=False)
 
     written = _events(settings, "downloaded")
     assert len(written) == 1
     assert "\n" not in written[0]
     assert str(tmp_path) in written[0], "the directory is ours and stays whole"
+    assert sink.stdout == "downloaded  conversations?19:39:41 info    all is well.zip  21.0 B\n"

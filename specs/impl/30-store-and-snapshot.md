@@ -115,7 +115,7 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
   ```text
   Claude extraction — old-personal
 
-  Downloaded 41.3 MB.
+  Downloaded 41.3 MB in 1m 6s.
   Conversations: 127     Projects: 4     Memories: 1
   Gaps: 38 files the export does not carry
 
@@ -123,7 +123,9 @@ vendor's button — is `31`; here `extract` with no mode flag reports itself unb
 
   ```
 
-  `Downloaded` is base-10 megabytes to one decimal; the `Gaps:` line is omitted at zero;
+  `Downloaded` is base-10 megabytes to one decimal, then how long the fetch took in whole
+  seconds (`60`, which amended §31 and puts a `downloaded  <name>  <size>` line before the
+  block for each file as it lands); the `Gaps:` line is omitted at zero;
   `Filed without an ask on record.` follows `Downloaded` when there was no ask; `--from`
   prints `Filed <name>.` in place of `Downloaded …`. The path is printed as configured,
   `~` unexpanded when the default was used. Constants live beside the function that

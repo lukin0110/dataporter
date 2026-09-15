@@ -332,6 +332,9 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [51](impl/51-export-page-address.md) | The export page's real address | §77 | Built |
 | 52 | The paperwork | §75, §76, §78 | Not started |
 | [59](impl/59-hermes-configuration.md) | Asking Hermes for its configuration | — tooling | Built |
+| [60](impl/60-download-progress.md) | Download progress | §31 (amended), §63 (amended) | Built |
+| [61](impl/61-headless-extraction.md) | Headless extraction | §31, §63 (amended) | Built |
+| [62](impl/62-waiting-for-the-export-panel.md) | Waiting for the export panel | §31, §77 | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
