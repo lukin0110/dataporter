@@ -207,26 +207,16 @@ def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float, w
     the spec review of #58).
     """
     _logger.info("sign-in link spent; waiting for the session")
-    deadline = time.monotonic() + timeout_s
     left = False
-    while True:
-        try:
-            state, code = browser_session.observe(
-                browser, hosts, settle_s=max(0.0, min(browser_session.SETTLE_S, deadline - time.monotonic()))
-            )
-        except BrowserError:
-            if not browser.client.responding():
-                raise
+    for state, code in browser_session.polling(browser, hosts, timeout_s=timeout_s, poll_s=LINK_POLL_S):
+        if state is None:
             # Mid-navigation, or on another host: the old document is going or gone.
-            state, code, left = None, False, True
-        if state is not None:
-            if state.logged_in:
-                return Arrival.SIGNED_IN
-            if state.kind is not PageKind.LOGIN or state.url != was:
-                left = True
-            if code and left:
-                return Arrival.LINK_SENT
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return Arrival.TIMED_OUT
-        time.sleep(min(LINK_POLL_S, remaining))
+            left = True
+            continue
+        if state.logged_in:
+            return Arrival.SIGNED_IN
+        if state.kind is not PageKind.LOGIN or state.url != was:
+            left = True
+        if code and left:
+            return Arrival.LINK_SENT
+    return Arrival.TIMED_OUT

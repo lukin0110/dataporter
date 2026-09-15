@@ -97,6 +97,13 @@ the export link is: checked, navigated to once, redacted in the trace, kept nowh
   shape for a page that would not confirm (`31`): the link is spent, the account may or
   may not have taken it, so the note says what happened, `session status` is named, and
   no record claims either way.
+- **One loop, two decisions.** `_await` and `50`'s `await_signin` wait on the same tab for
+  opposite reasons — one for the link to be sent, the other for it to have been spent — and
+  what they share is the budget, the poll and the patience rather than the decision. That
+  much is `session.polling`, a generator yielding what each look saw; each wait reads the
+  pair and says when it has seen enough, and running out of budget is falling off the end.
+  Raised as duplicated code by the standards review of #58, which it was: the two loops had
+  the same skeleton copied either side of a different middle.
 - **The trace carries the host (§66).** As the fetch's move does: enough to say where the
   link went, nothing of the link. The header records `--link` as a flag name only (`33`).
 - **Two readers of one window, and who blinks first.** `49`'s rehearsal found the race in

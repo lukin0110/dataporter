@@ -133,11 +133,11 @@ The state a session is in between the address being given and the sign-in link b
 spent: the vendor has been told who is signing in, and the link is on its way.
 _Avoid_: half-finished sign-in, login in progress
 
-**Code**:
+**Sign-in code**:
 The digits the vendor shows when a sign-in link is opened where the pending sign-in is
 not, and which finish that sign-in when typed where it is. The second way to spend a
 sign-in link.
-_Avoid_: OTP, verification code, one-time code
+_Avoid_: code on its own, OTP, verification code, one-time code
 
 **Snapshot**:
 The data of one account, from one source, as it stood at one moment, in the vendor's own

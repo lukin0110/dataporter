@@ -9,7 +9,7 @@ calls, and the CLI adds nothing but the flag parsing and the exit.
 
 import shutil
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -556,6 +556,37 @@ def observe(session: BrowserSession, hosts: Sequence[str], *, settle_s: float = 
     return state, code
 
 
+def polling(
+    session: BrowserSession, hosts: Sequence[str], *, timeout_s: float, poll_s: float
+) -> Iterator[tuple[PageState | None, bool]]:
+    """Yield what the site's tab shows, every `poll_s`, until `timeout_s` runs out.
+
+    `observe`'s pair, or `(None, False)` for a look the browser could not
+    answer — mid-navigation, or no tab on the site yet, both of which are "not
+    yet" to everybody waiting. The one thing nobody can wait out is a browser
+    that has stopped answering at all, and that still raises.
+
+    The loop, once: two commands wait on this tab for opposite reasons (`50`
+    for the link to be sent, `53` for it to have been spent), and what they
+    share is the budget, the poll and the patience, not the decision. Each
+    reads the pair and says when it has seen enough; running out is falling off
+    the end.
+    """
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            seen = observe(session, hosts, settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())))
+        except BrowserError:
+            if not session.client.responding():
+                raise
+            seen = (None, False)
+        yield seen
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(poll_s, remaining))
+
+
 def await_signin(
     session: BrowserSession,
     *,
@@ -566,28 +597,18 @@ def await_signin(
 ) -> Arrival:
     """Poll until the session is signed in, the link has been sent, or the time is up.
 
-    `wait_for_login`'s loop with `observe` in place of `current_state`, and one
+    `wait_for_login`'s wait with `observe` in place of `current_state`, and one
     more way out: with `link_sent_ends`, the first sight of the code field is
     `LINK_SENT`, which is where `login` prints its line and restarts the clock.
     Without it — the second phase — the code field is what the page keeps
     showing until the link is spent, and only signed in ends the wait early.
     """
-    deadline = time.monotonic() + timeout_s
-    while True:
-        try:
-            state, code = observe(session, hosts, settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())))
-        except BrowserError:
-            if not session.client.responding():
-                raise
-            state, code = None, False
+    for state, code in polling(session, hosts, timeout_s=timeout_s, poll_s=poll_s):
         if state is not None and state.logged_in:
             return Arrival.SIGNED_IN
         if code and link_sent_ends:
             return Arrival.LINK_SENT
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return Arrival.TIMED_OUT
-        time.sleep(min(poll_s, remaining))
+    return Arrival.TIMED_OUT
 
 
 def _login_by_link(settings: Settings, session: Whose, *, sink: Sink, flags: Sequence[str]) -> LoginOutcome:
