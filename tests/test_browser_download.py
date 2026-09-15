@@ -101,6 +101,29 @@ def test_a_download_still_being_written_is_not_finished(tmp_path: Path) -> None:
     assert wait.landed() is None
 
 
+def test_a_crdownload_that_stopped_growing_stops_buying_time(tmp_path: Path) -> None:
+    """A write in flight earns the idle budget; a write that stalled does not.
+
+    Chrome makes the file and then stops, and no progress event arrives either —
+    the very failure this check exists to catch. Touching the deadline for the
+    file's mere presence would extend it on every poll and hang the fetch for
+    good. (Raised by Copilot in review on #53.)
+    """
+    wait = _wait(tmp_path)
+    partial = tmp_path / "a-guid.crdownload"
+    partial.write_bytes(b"half")
+
+    assert wait.landed() is None, "the download beginning is progress"
+    wait.deadline = 0.0
+
+    assert wait.landed() is None
+    assert wait.deadline == 0.0, "a .crdownload that has not moved must not push the deadline out"
+
+    partial.write_bytes(b"half and then some more")
+    assert wait.landed() is None
+    assert wait.deadline > 0.0, "a .crdownload that grew is progress again"
+
+
 def test_a_file_that_was_already_there_is_not_the_download(tmp_path: Path) -> None:
     """The manifest and the parts filed before it stay in the staging dir."""
     already = tmp_path / "manifest.json"
