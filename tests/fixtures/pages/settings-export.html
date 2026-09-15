@@ -92,13 +92,28 @@
     <button type="button" data-cds="Button" data-testid="export-confirm-button">Export</button>
   </div>
 
-  <div role="status" data-testid="export-requested" hidden>
-    Your export was requested. Check your email.
+  <!-- The accepted signal, as claude.ai raises it (*observed 2026-09-15*): a
+       toast with no test id in it, one `[role="dialog"]` per notification and
+       the words in an `h2`. The decoy above it is the point of the fixture —
+       it is a toast of exactly the same shape saying something else, so a
+       selector that matched the furniture rather than the words would read
+       "requested" on a page where nothing has been asked for, which is the
+       failure of 2026-09-14 in new markup. -->
+  <div data-cds="Toast" class="fixed">
+    <div role="status" class="sr-only" aria-hidden="true"></div>
+    <div role="region" aria-live="polite" aria-label="Notifications">
+      <div data-type="neutral" role="dialog" aria-modal="false" id="decoy-toast">
+        <div><h2 data-type="neutral" class="font-medium">Link copied</h2></div>
+      </div>
+      <div data-type="neutral" role="dialog" aria-modal="false" id="export-started" hidden>
+        <div><h2 data-type="neutral" class="font-medium">Export started</h2></div>
+      </div>
+    </div>
   </div>
 </main>
 <script>
-  const dialog = document.querySelector('[role="dialog"]');
-  const requested = document.querySelector('[data-testid="export-requested"]');
+  const dialog = document.querySelector('[role="dialog"][aria-label="Export data"]');
+  const requested = document.getElementById('export-started');
   const panel = document.querySelector('[data-perf-screen="data-privacy-controls"]');
 
   for (const button of panel.querySelectorAll('[data-settings-row] button[data-cds="Button"]')) {

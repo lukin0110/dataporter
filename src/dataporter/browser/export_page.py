@@ -63,6 +63,7 @@ EXPORT_PAGE_URL = sites.export_page_url(CLAUDE)
 EXPORT_BUTTON_SELECTOR = CLAUDE.selectors["EXPORT_BUTTON_SELECTOR"]
 CONFIRM_BUTTON_SELECTOR = CLAUDE.selectors["CONFIRM_BUTTON_SELECTOR"]
 REQUESTED_SELECTOR = CLAUDE.selectors["REQUESTED_SELECTOR"]
+REQUESTED_TEXT = CLAUDE.selectors["REQUESTED_TEXT"]
 EXTRACTION_SITE = sites.extraction_site(CLAUDE)
 EXTRACTION_SURFACE = sites.extraction_surface(CLAUDE)
 NOT_THE_EXPORT_PAGE = sites.not_the_export_page(CLAUDE)
@@ -91,16 +92,31 @@ def export_page_js(source: "Source") -> str:
     questions would be describing four moments of a page that is changing under
     it, and "the dialog is open" and "its confirm button is there" have to be
     true together for the second click to be the click this thinks it is.
+
+    Three of the four are shape alone, and so is the fourth wherever a source's
+    accepted signal wears something of its own — ChatGPT's has an id, and its
+    `REQUESTED_TEXT` is empty. Claude's does not: it is a toast with no test id in
+    it, and every toast the site raises shares that markup, so there the words are
+    checked too. See `REQUESTED_SELECTOR`, where the cost of a selector generous
+    enough to match any toast is written down.
+
+    `says` compares inside the page and returns a boolean, so the sentence stays
+    where it was and only the fact crosses the wire, which is `probe`'s rule
+    unchanged.
     """
     return expression(
         source,
         EXPORT_PAGE_TAG,
         "  const shown = (selector) => all(selector).filter(visible).length > 0;\n"
+        "  const says = (selector, words) =>\n"
+        "    all(selector).filter(visible).some((el) => ((el.textContent || '') + '').trim() === words);\n"
         "  return {\n"
         "    button: shown(EXPORT_BUTTON_SELECTOR),\n"
         "    dialog: all('[role=\"dialog\"]').filter(visible).length > 0,\n"
         "    confirm: shown(CONFIRM_BUTTON_SELECTOR),\n"
-        "    requested: shown(REQUESTED_SELECTOR),\n"
+        "    requested: REQUESTED_TEXT\n"
+        "      ? says(REQUESTED_SELECTOR, REQUESTED_TEXT)\n"
+        "      : shown(REQUESTED_SELECTOR),\n"
         "  };",
     )
 
