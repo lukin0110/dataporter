@@ -267,6 +267,13 @@ What §73's two commands do not promise.
   the ask's tab away, because a marker cannot say which command launched Chrome. One
   browser at a time is the rule (`31`), and this is one more reason for it. *by
   construction*
+- **`login --link` may not be able to tell you the outcome.** It reads the window `login`
+  holds to see whether the link worked, and that window is `login`'s to close. `login`
+  waits three seconds after the session comes back signed in so that the other terminal
+  sees it first, but a machine slow enough — or a person closing the window — leaves
+  `login --link` with a browser that has stopped answering after a link it has already
+  spent. It says so and names `session status`, exit `1`, rather than claiming either
+  way. *by construction*
 - **The sign-in link's host is not pinned**, as the export link's is not: `https` is the
   whole check, and a link that signs in somebody else's account signs this profile in as
   them. The label is the operator's word. *by construction*

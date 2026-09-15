@@ -255,12 +255,7 @@ def seed(mock: Mock, settings: running.Settings) -> dict[str, int]:
 
 def links(settings: running.Settings) -> list[str]:
     """Return every link the mock has minted, oldest first: the listing that stands in for the inbox."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    url = f"https://{settings.host}:{settings.port}{EXPORTS_JSON_PATH}"
-    with urllib.request.urlopen(url, context=context, timeout=30) as answer:
-        loaded = json.loads(answer.read().decode("utf-8"))
+    loaded = running.witness_json(settings.host, settings.port, EXPORTS_JSON_PATH)
     return [str(item["link"]) for item in loaded]
 
 

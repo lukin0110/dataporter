@@ -86,9 +86,17 @@ the export link is: checked, navigated to once, redacted in the trace, kept nowh
   and a wait that took the code field as its answer at once would refuse a link about to
   work (raised by Copilot in review on #58). `_await` therefore has its own loop rather
   than `session.await_signin`'s: the code field is `CODE_PROMPT` only once the tab has
-  been seen somewhere else first — off `/login`, off the site, or mid-navigation with
-  nothing to read. Signed in ends it at any time; nothing else inside `signin_s` is
-  `NOT_ACCEPTED`.
+  been seen somewhere else first — at a URL that is not the one the link was navigated
+  away from, off `/login` altogether, or mid-navigation with nothing to read. Signed in
+  ends it at any time; nothing else inside `signin_s` is `NOT_ACCEPTED`. The URL and not
+  only the page's kind, because where a link lands is unobserved: one that landed under
+  `/login` would never leave that kind, and the tab would sit at a real code prompt
+  reporting that the link was not accepted (raised by the spec review of #58).
+- **A window that closes under the wait is exit `1`, not `6`.** Exit `6` means the
+  environment is not ready and names `doctor`; nothing here is unready. This is `ask`'s
+  shape for a page that would not confirm (`31`): the link is spent, the account may or
+  may not have taken it, so the note says what happened, `session status` is named, and
+  no record claims either way.
 - **The trace carries the host (§66).** As the fetch's move does: enough to say where the
   link went, nothing of the link. The header records `--link` as a flag name only (`33`).
 - **Two readers of one window, and who blinks first.** `49`'s rehearsal found the race in
@@ -118,8 +126,11 @@ the export link is: checked, navigated to once, redacted in the trace, kept nowh
   `test_a_link_that_is_not_https_is_refused_before_any_browser`).
 - No window open: the profile is launched without `--headless=new`, the link spent, the
   browser closed (`test_with_no_window_open_the_link_launches_the_profile_and_closes_it`).
-- The adopted window closing after the navigation is `WINDOW_CLOSED`, exit `6`, naming
-  `session status` (`test_a_window_that_closes_under_the_link_names_status_rather_than_guessing`).
+- The adopted window closing after the navigation is `WINDOW_CLOSED` on stderr, exit `1`,
+  naming `session status`, with nothing on stdout
+  (`test_a_window_that_closes_under_the_link_names_status_rather_than_guessing`).
+- A code prompt on a sign-in path of the link's own is still `CODE_PROMPT`
+  (`test_a_code_prompt_on_a_login_path_of_its_own_is_still_a_code_prompt`).
 - Live against the mock claude.ai (`49`, Chrome 152, headless): a link minted by the mock,
   spent while `login` holds its window, ends both commands with the second block. *run on
   2026-09-15, three times; the third found the race above, fixed since.*

@@ -70,6 +70,8 @@ STEP_TIMEOUT_S = 1_800.0
 
 DRILL_TIMEOUT_S = 300.0
 DRILL_POLL_S = 0.5
+"""The interruption drill: how long to wait for the run to be mid-conversation
+before killing it, and how often to look."""
 
 LINK_SENT_GRACE_S = 3.0
 """How long the runner, playing the person, leaves the link-sent page showing
@@ -79,8 +81,6 @@ two seconds), so that `login` sees the link sent and prints its line."""
 LINK_SENT_LINE = "The link is on its way."
 """The start of the line `login` prints on seeing the link sent (brief 07 §73),
 which the extraction criteria look for in the step's stdout."""
-"""The interruption drill: how long to wait for the run to be mid-conversation
-before killing it, and how often to look."""
 
 
 # --------------------------------------------------------------------------- #
@@ -116,14 +116,26 @@ def _public_key_der(certificate_der: bytes) -> bytes:
     )
 
 
-def ledger(host: str, port: int) -> dict[str, int]:
-    """Return the mock's count, now."""
+def witness_json(host: str, port: int, path: str) -> Any:
+    """Return what one of the mock's witness routes answers with (`38`).
+
+    The mock serves its own certificate, which nothing here has a reason to
+    trust — the rehearsal knows the address because it started the process —
+    so the verification is off, once, here. Three callers read a witness
+    route: this module's ledger, the extraction's listing of export links, and
+    the person's listing of sign-in links.
+    """
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
-    url = f"https://{host}:{port}{LEDGER_PATH}"
+    url = f"https://{host}:{port}{path}"
     with urllib.request.urlopen(url, context=context, timeout=30) as answer:
-        loaded = json.loads(answer.read().decode("utf-8"))
+        return json.loads(answer.read().decode("utf-8"))
+
+
+def ledger(host: str, port: int) -> dict[str, int]:
+    """Return the mock's count, now."""
+    loaded = witness_json(host, port, LEDGER_PATH)
     return {str(key): int(value) for key, value in loaded.items()}
 
 
