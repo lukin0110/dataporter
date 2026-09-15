@@ -80,6 +80,15 @@ the export link is: checked, navigated to once, redacted in the trace, kept nowh
   again from the start; not accepted means the link itself is the problem. The words are
   fixed even though the second covers several causes, because the tool cannot tell them
   apart and a message that guessed would be worse than one that says what it saw.
+- **Back at the code prompt, not still on it.** The tab was on the link-sent page, code
+  field showing, when the link was navigated to, and `Page.navigate` returns before the
+  old document is gone — so the first looks after it can still be answered by that page,
+  and a wait that took the code field as its answer at once would refuse a link about to
+  work (raised by Copilot in review on #58). `_await` therefore has its own loop rather
+  than `session.await_signin`'s: the code field is `CODE_PROMPT` only once the tab has
+  been seen somewhere else first — off `/login`, off the site, or mid-navigation with
+  nothing to read. Signed in ends it at any time; nothing else inside `signin_s` is
+  `NOT_ACCEPTED`.
 - **The trace carries the host (§66).** As the fetch's move does: enough to say where the
   link went, nothing of the link. The header records `--link` as a flag name only (`33`).
 - **Two readers of one window, and who blinks first.** `49`'s rehearsal found the race in
@@ -100,8 +109,10 @@ the export link is: checked, navigated to once, redacted in the trace, kept nowh
 - The trace has one move, `sign-in-link`, with `{"host": "claude.ai", "path": "<link>",
   "query": []}`, and the token appears nowhere under `logs/`
   (`test_the_trace_carries_the_link_s_host_and_never_the_link`).
-- The tab back at the code field is `CODE_PROMPT`, exit `3`; nothing inside `signin_s` is
-  `NOT_ACCEPTED`, exit `3`; `http://` is exit `2` before any browser
+- The tab back at the code field — after being seen on the link's page — is `CODE_PROMPT`,
+  exit `3`; the old document still answering with the code field right after the
+  navigation is not (`test_the_old_document_answering_after_the_navigation_is_not_a_code_prompt`);
+  nothing inside `signin_s` is `NOT_ACCEPTED`, exit `3`; `http://` is exit `2` before any browser
   (`test_a_link_that_lands_back_on_the_code_prompt_is_refused`,
   `test_a_link_that_is_not_accepted_in_time_is_refused`,
   `test_a_link_that_is_not_https_is_refused_before_any_browser`).

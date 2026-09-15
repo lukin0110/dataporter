@@ -26,13 +26,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from dataporter import PROGRAM_NAME, log
+from dataporter import log
 from dataporter import trace as tracing
 from dataporter.browser import helpers, launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient, Page
 from dataporter.browser.launcher import BrowserSession
+from dataporter.browser.probe import PageKind
 from dataporter.browser.session import Arrival, LoginOutcome
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
@@ -41,8 +42,6 @@ from dataporter.exit_codes import ExitCode
 from dataporter.links import LINK_NOT_HTTPS, is_https
 
 _logger = log.get_logger(__name__)
-
-__all__ = ["PROGRAM_NAME"]
 
 LINK_ACTION = "sign-in-link"
 """The move's name in `actions.jsonl` and the trace: the navigation to the
@@ -178,9 +177,37 @@ def _record(settings: Settings, link: str, *, ts: str, ok: bool, elapsed_ms: int
 def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float) -> Arrival:
     """Wait for the link to sign the session in, or for the page to say it did not.
 
-    `session.await_signin` with the code field meaning the opposite of what it
-    means to `login`: there it is the link on its way, here it is the tab back
-    at the sign-in page because the link found no pending sign-in to finish.
+    `session.await_signin`'s loop with the code field meaning the opposite of
+    what it means to `login`: there it is the link on its way, here it is the
+    tab *back* at the sign-in page because the link found no pending sign-in to
+    finish. Back, and not still: the tab was on that very page, code field
+    showing, when the link was navigated to, and `Page.navigate` returns before
+    the old document is gone — so the first looks may still be answered by it
+    (raised by Copilot in review on #58). The code field is the answer only
+    once the tab has been seen somewhere else first: off `/login`, off the
+    site, or mid-navigation with nothing to read.
     """
     _logger.info("sign-in link spent; waiting for the session")
-    return browser_session.await_signin(browser, timeout_s=timeout_s, hosts=hosts, poll_s=LINK_POLL_S)
+    deadline = time.monotonic() + timeout_s
+    left = False
+    while True:
+        try:
+            state, code = browser_session.observe(
+                browser, hosts, settle_s=max(0.0, min(browser_session.SETTLE_S, deadline - time.monotonic()))
+            )
+        except BrowserError:
+            if not browser.client.responding():
+                raise
+            # Mid-navigation, or on another host: the old document is going or gone.
+            state, code, left = None, False, True
+        if state is not None:
+            if state.logged_in:
+                return Arrival.SIGNED_IN
+            if state.kind is not PageKind.LOGIN:
+                left = True
+            elif code and left:
+                return Arrival.LINK_SENT
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return Arrival.TIMED_OUT
+        time.sleep(min(LINK_POLL_S, remaining))

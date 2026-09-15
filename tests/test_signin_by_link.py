@@ -28,6 +28,7 @@ pytestmark = pytest.mark.slow
 
 LOGIN_URL = "https://claude.ai/login"
 NEW_URL = "https://claude.ai/new"
+MAGIC_URL = "https://claude.ai/magic-link"
 LINK = "https://claude.ai/magic-link#0123456789abcdef:ZW1haWw"
 TOKEN = "0123456789abcdef"
 ACCOUNT = "old-personal"
@@ -63,7 +64,8 @@ class SignInPage:
     """A claude.ai tab through the sign-in, answering what the tool asks of it.
 
     `stage` is `email` (the address not yet given), `link_sent` (the code field
-    showing), or `done` (signed in on `/new`). `after` moves the stage on after
+    showing), `magic` (the link's own page, being redeemed: no fields, no
+    composer), or `done` (signed in on `/new`). `after` moves the stage on after
     that many probes, which is how a test stands where a person would.
     """
 
@@ -75,7 +77,7 @@ class SignInPage:
     def __call__(self, call: Call) -> Any:
         expression = str(call.params.get("expression", ""))
         if expression.startswith(SETTLE_EXPRESSION):
-            return NEW_URL if self.stage == "done" else LOGIN_URL
+            return self.url
         if login_form.LOGIN_FIELDS_TAG in expression:
             return {"email": self.stage == "email", "password": False, "code": self.stage == "link_sent"}
         self.probes += 1
@@ -83,7 +85,11 @@ class SignInPage:
             self.stage = self.after[self.probes]
         if self.stage == "done":
             return page_state()
-        return page_state(url=LOGIN_URL, composer_present=False)
+        return page_state(url=self.url, composer_present=False)
+
+    @property
+    def url(self) -> str:
+        return {"done": NEW_URL, "magic": MAGIC_URL}.get(self.stage, LOGIN_URL)
 
 
 def make_settings(tmp_path: Path, port: int) -> Settings:
@@ -361,12 +367,39 @@ def test_the_trace_carries_the_link_s_host_and_never_the_link(
     assert [action["helper"] for action in actions] == [signin_link.LINK_ACTION]
 
 
+def test_the_old_document_answering_after_the_navigation_is_not_a_code_prompt(
+    runner: CliRunner, chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quick: None
+) -> None:
+    """`Page.navigate` returns before the old `/login` is gone; its code field is not the answer.
+
+    Raised by Copilot in review on #58: the tab was on the link-sent page when
+    the link was navigated to, so the first looks after it can still see that
+    page — and a refusal there would refuse a link about to work.
+    """
+    settings = adoptable(chrome, make_settings(tmp_path, chrome.port), monkeypatch)
+    page_of(chrome).stage = "link_sent"
+    # Two looks answered by the old document, then the link lands and signs in.
+    page_of(chrome).after = {4: "done"}
+
+    result = runner.invoke(cli.app, ["login", "--link", LINK], catch_exceptions=False)
+
+    assert result.exit_code == ExitCode.OK
+    assert result.stdout == f"Signed in to Claude\nSession stored in {settings.browser_profile_dir}/.\n"
+    assert navigations(chrome) == [LINK]
+
+
 def test_a_link_that_lands_back_on_the_code_prompt_is_refused(
     runner: CliRunner, chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quick: None
 ) -> None:
-    """The pending sign-in is not in this profile: the vendor showed a code to a window nobody has."""
+    """The pending sign-in is not in this profile: the vendor showed a code to a window nobody has.
+
+    Back at the sign-in page, and not still on it: the tab was seen on the
+    link's own page first.
+    """
     adoptable(chrome, source_settings(tmp_path, chrome.port), monkeypatch)
     page_of(chrome).stage = "link_sent"
+    spent_on_navigate(chrome, stage="magic")
+    page_of(chrome).after = {3: "link_sent"}
 
     result = runner.invoke(
         cli.app, ["login", "--source", "claude", "--account", ACCOUNT, "--link", LINK], catch_exceptions=False
@@ -386,7 +419,8 @@ def test_a_link_that_is_not_accepted_in_time_is_refused(
     adoptable(chrome, make_settings(tmp_path, chrome.port), monkeypatch)
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__SIGNIN_S", "0.05")
     page_of(chrome).stage = "link_sent"
-    spent_on_navigate(chrome, stage="email")
+    # The link's page, and nothing after it: neither signed in nor back at the code field.
+    spent_on_navigate(chrome, stage="magic")
 
     result = runner.invoke(cli.app, ["login", "--link", LINK], catch_exceptions=False)
 
