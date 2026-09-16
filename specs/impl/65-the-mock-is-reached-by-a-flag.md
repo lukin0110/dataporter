@@ -9,6 +9,7 @@ rule and `46`'s environment. Supersedes [ADR 0001](../../docs/adr/0001-no-door-i
 with [ADR 0010](../../docs/adr/0010-the-mock-is-reached-by-a-flag.md).
 **Depends on:** [26](26-mock-claude.md), [38](38-mock-core.md), [42](42-source-seam.md),
 [64](64-the-mock-catches-up.md)
+**Enables:** a rehearsal that runs headless in CI, and a mock reached without a certificate
 **Status:** Built
 
 ## Goal

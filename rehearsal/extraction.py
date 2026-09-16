@@ -747,10 +747,11 @@ STANDING_FINDINGS = (
     ),
     (
         "Both mocks' links are fetched through the source session's own browser, "
-        "which trusts the mock's key from the two Chrome arguments and nothing else. "
-        "The mock claude.ai's link is an index naming a zip per category, and each of "
-        "those may be taken once — so a fetch that is retried against the same link "
-        "fails here exactly as it does on the real site."
+        "pointed at the mock by `--mock` and by nothing else: the mocks serve plain "
+        "HTTP on loopback and there is no certificate anywhere (`65`). The mock "
+        "claude.ai's link is an index naming a zip per category, and each of those "
+        "may be taken once — so a fetch that is retried against the same link fails "
+        "here exactly as it does on the real site."
     ),
 )
 

@@ -84,4 +84,4 @@ def test_rows_prints_every_citation(capsys: pytest.CaptureFixture[str]) -> None:
     assert "rename affordance" in printed
     assert "sign-in form" in printed
     assert "export requested" in printed
-    assert "involuntary logout" in printed
+    assert "involuntary sign-out" in printed
