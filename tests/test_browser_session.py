@@ -2,6 +2,7 @@
 
 import ast
 import json
+import shutil
 import sys
 import time
 from collections.abc import Iterator
@@ -17,8 +18,17 @@ from dataporter.browser import export_page, launcher, probe
 from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
 from dataporter.browser.probe import NEW_CHAT_URL
-from dataporter.config import BrowserSettings, Settings, TimeoutSettings, with_session_account
-from dataporter.errors import BrowserError
+from dataporter.config import (
+    ASK_FILENAME,
+    TMP_DIRNAME,
+    AccountsSettings,
+    BrowserSettings,
+    Settings,
+    TimeoutSettings,
+    with_account,
+    with_session_account,
+)
+from dataporter.errors import BrowserError, UsageError
 from dataporter.exit_codes import ExitCode
 from dataporter.state import StateError
 from fake_chrome import Call, FakeChrome, FakeTarget, entered, free_port, page_state
@@ -271,19 +281,90 @@ def test_signed_in_is_one_probe(chrome: FakeChrome, tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_remove_profile_deletes_the_directory(tmp_path: Path) -> None:
-    settings = make_settings(tmp_path, free_port())
+def furnished(settings: Settings) -> dict[str, Path]:
+    """Build an account home holding all four things, as the commands that write them do."""
+    home = settings.account_home
+    assert home is not None
     profile = launcher.ensure_profile(settings)
     (profile / "Cookies").write_text("a session", encoding="utf-8")
-    assert browser_session.remove_profile(settings)
-    assert not profile.exists()
-    # Local only: the workspace, and the `.gitignore` beside it, stay.
-    assert (settings.workspace / ".gitignore").exists()
+    ask = home / ASK_FILENAME
+    ask.write_text('{"asked_at": "2026-09-16T00:00:00+00:00"}\n', encoding="utf-8")
+    staged = home / TMP_DIRNAME / "conversations.zip"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_text("an export nobody filed", encoding="utf-8")
+    kept = home / log.LOGS_DIRNAME / "run-earlier.jsonl"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text('{"event": "an earlier run"}\n', encoding="utf-8")
+    return {"profile": profile, "ask": ask, "staged": staged, "kept": kept}
 
 
-def test_remove_profile_on_a_workspace_with_none(tmp_path: Path) -> None:
-    settings = make_settings(tmp_path, free_port())
-    assert not browser_session.remove_profile(settings)
+def test_logout_removes_everything_but_the_logs(tmp_path: Path) -> None:
+    """§83: the session, the open ask and what a fetch staged. Not `logs/`."""
+    settings = account_settings(tmp_path, free_port())
+    home = settings.account_home
+    assert home is not None
+    there = furnished(settings)
+
+    assert browser_session.discard_session(settings, home)
+
+    assert not there["profile"].exists()
+    assert not there["ask"].exists()
+    assert not there["staged"].parent.exists()
+    assert there["kept"].read_text(encoding="utf-8") == '{"event": "an earlier run"}\n'
+
+
+def test_logout_removes_what_is_there_and_not_what_is_not(tmp_path: Path) -> None:
+    """Each of the three missing on its own is still a sign-out, not a refusal."""
+    for leave_out in ("profile", "ask", "staged"):
+        settings = account_settings(tmp_path / leave_out, free_port())
+        home = settings.account_home
+        assert home is not None
+        there = furnished(settings)
+        gone = there[leave_out]
+        if gone.is_dir():
+            shutil.rmtree(gone)
+        elif leave_out == "staged":
+            shutil.rmtree(gone.parent)
+        else:
+            gone.unlink()
+
+        assert browser_session.discard_session(settings, home), leave_out
+        assert not there["profile"].exists()
+        assert not there["ask"].exists()
+        assert there["kept"].exists()
+
+
+def test_logout_with_nothing_to_remove(tmp_path: Path) -> None:
+    settings = account_settings(tmp_path, free_port())
+    home = settings.account_home
+    assert home is not None
+    assert not browser_session.discard_session(settings, home)
+
+
+def test_the_library_refuses_a_logout_with_no_account(tmp_path: Path) -> None:
+    """`23` makes the library a surface of its own, so it has its own door (§86)."""
+    with pytest.raises(UsageError, match="logout names a source account"):
+        browser_session.logout(make_settings(tmp_path, free_port()))
+
+
+def test_an_account_home_holds_exactly_what_sign_out_knows_about(tmp_path: Path) -> None:
+    """The claim §82's second line makes about the whole directory.
+
+    Sign-out names the three it removes rather than sweeping (ADR 0009), so a fourth
+    thing written into an account home would be left behind silently. This is what
+    turns that red instead.
+    """
+    settings = account_settings(tmp_path, free_port())
+    home = settings.account_home
+    assert home is not None
+    furnished(settings)
+
+    assert {child.name for child in home.iterdir()} == {
+        "browser-profile",
+        ASK_FILENAME,
+        TMP_DIRNAME,
+        log.LOGS_DIRNAME,
+    }
 
 
 def test_a_profile_that_cannot_be_deleted_is_reported_not_crashed(
@@ -294,48 +375,99 @@ def test_a_profile_that_cannot_be_deleted_is_reported_not_crashed(
     An escaping `OSError` would reach the operator as `internal error` and exit `70`,
     which is where a bug in us belongs, not a locked directory.
     """
-    settings = make_settings(tmp_path, free_port())
-    profile = launcher.ensure_profile(settings)
+    settings = account_settings(tmp_path, free_port())
+    home = settings.account_home
+    assert home is not None
+    there = furnished(settings)
 
     def refuse(path: object, *args: object, **kwargs: object) -> None:
         raise PermissionError(13, "Permission denied")
 
     monkeypatch.setattr(browser_session.shutil, "rmtree", refuse)
     with pytest.raises(StateError, match=r"cannot remove .*: Permission denied"):
-        browser_session.remove_profile(settings)
-    assert profile.exists()
+        browser_session.discard_session(settings, home)
+    assert there["profile"].exists()
 
 
-def test_session_logout_reports_a_locked_profile_as_exit_2(
+def test_logout_reports_a_locked_profile_as_exit_2(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    settings = make_settings(tmp_path, free_port())
-    launcher.ensure_profile(settings)
+    settings = account_settings(tmp_path, free_port())
+    furnished(settings)
 
     def refuse(path: object, *args: object, **kwargs: object) -> None:
         raise PermissionError(13, "Permission denied")
 
     monkeypatch.setattr(browser_session.shutil, "rmtree", refuse)
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
-    result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
+    result = runner.invoke(cli.app, ["logout", "--account", ACCOUNT], catch_exceptions=False)
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr.startswith("error: cannot remove ")
     assert "Permission denied" in result.stderr
     assert "Traceback" not in result.output
 
 
-def test_remove_profile_refuses_while_a_browser_is_running(tmp_path: Path) -> None:
-    """Deleting the directory under a live Chrome leaves half a profile.
+def test_logout_closes_the_window_it_owns(runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """§85: the marker names the browser on the port, so it is ours to close.
 
-    The browser would still be holding the session in memory.
+    Silently: `login` and `session status` close theirs without a word, and a sign-out
+    prints one block whatever it had to do first.
     """
     with FakeChrome() as chrome:
-        settings = make_settings(tmp_path, chrome.port)
-        profile = launcher.ensure_profile(settings)
-        with pytest.raises(launcher.PortInUseError, match="still running"):
-            browser_session.remove_profile(settings)
-        assert profile.exists()
+        settings = adoptable_account(chrome, tmp_path, monkeypatch)
+        furnished(settings)
+
+        result = runner.invoke(cli.app, ["logout", "--account", ACCOUNT], catch_exceptions=False)
+
+        assert result.exit_code == ExitCode.OK
+        assert chrome.closed
+        assert result.stdout == (
+            f"Signed out of Claude — {ACCOUNT}\nRemoved {settings.account_home}/, except its logs.\n"
+        )
+        assert not settings.browser_profile_dir.exists()
+
+
+def test_logout_refuses_a_browser_it_cannot_claim_and_removes_nothing(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Chrome does not say which profile it holds, so a guess deletes the wrong thing."""
+    with FakeChrome() as chrome:
+        settings = adoptable_account(chrome, tmp_path, monkeypatch)
+        there = furnished(settings)
+        launcher.marker_path(settings.browser_profile_dir).unlink()
+
+        result = runner.invoke(cli.app, ["logout", "--account", ACCOUNT], catch_exceptions=False)
+
+        assert result.exit_code == ExitCode.USAGE
+        assert result.stderr == f"error: port {chrome.port} is used by another browser\n"
+        assert there["profile"].exists()
+        assert there["ask"].exists()
+        assert there["staged"].exists()
+
+
+def test_logout_refuses_a_browser_that_would_not_close(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Closing is an ask, not a guarantee.
+
+    `close` on an adopted browser waits, warns and returns rather than signalling, so a
+    Chrome that ignored it would otherwise have its profile deleted underneath it.
+    """
+    with FakeChrome() as chrome:
+        settings = adoptable_account(chrome, tmp_path, monkeypatch)
+        there = furnished(settings)
+        monkeypatch.setattr(launcher.BrowserSession, "close", lambda self, **kwargs: None)
+
+        result = runner.invoke(cli.app, ["logout", "--account", ACCOUNT], catch_exceptions=False)
+
+        assert result.exit_code == ExitCode.USAGE
+        assert result.stderr == (
+            f"error: a browser is still running on port {chrome.port} — "
+            f"close it, then run: dataporter logout --source claude --account {ACCOUNT}\n"
+        )
+        assert there["profile"].exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -357,6 +489,34 @@ def adoptable(chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         launcher.ProfileMarker(port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"),
     )
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(chrome.port))
+    monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
+    return settings
+
+
+ACCOUNT = "work"
+
+
+def account_settings(tmp_path: Path, port: int) -> Settings:
+    """Return the settings a `--account` invocation resolves to (`31`)."""
+    base = make_settings(tmp_path, port).model_copy(update={"accounts": AccountsSettings(dir=tmp_path / "accounts")})
+    return with_account(base, "claude", ACCOUNT)
+
+
+def adoptable_account(chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
+    """`adoptable`, one directory down: the account home's profile carries the marker.
+
+    `session status` and `logout` both name an account since §86, so their command tests
+    live here rather than on the workspace `login` still defaults to.
+    """
+    settings = account_settings(tmp_path, chrome.port)
+    profile = launcher.ensure_profile(settings)
+    launcher.write_marker(
+        profile,
+        launcher.ProfileMarker(port=chrome.port, browser_id=chrome.browser_id, pid=1, started="now"),
+    )
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(chrome.port))
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
     return settings
@@ -416,16 +576,17 @@ def test_login_without_a_browser_is_exit_6(runner: CliRunner, workspace: Path, m
 
 
 def test_session_status_without_a_profile_starts_nothing(
-    runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    runner: CliRunner, workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def never(*args: object, **kwargs: object) -> None:
         raise AssertionError("no browser should be started")
 
     monkeypatch.setattr(launcher, "launch", never)
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(free_port()))
-    result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
+    result = runner.invoke(cli.app, ["session", "status", "--account", ACCOUNT], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stdout == "not logged in — run: dataporter login\n"
+    assert result.stdout == f"not logged in — run: dataporter login --source claude --account {ACCOUNT}\n"
 
 
 def test_session_status_reports_a_signed_in_session(
@@ -434,8 +595,8 @@ def test_session_status_reports_a_signed_in_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    adoptable(chrome, tmp_path, monkeypatch)
-    result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
+    adoptable_account(chrome, tmp_path, monkeypatch)
+    result = runner.invoke(cli.app, ["session", "status", "--account", ACCOUNT], catch_exceptions=False)
     assert result.exit_code == ExitCode.OK
     assert result.stdout == "logged in\n"
     # A browser this command did not start is a browser it does not close.
@@ -449,10 +610,10 @@ def test_session_status_reports_a_signed_out_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     chrome.targets[0].evaluate = LOGGED_OUT
-    adoptable(chrome, tmp_path, monkeypatch)
-    result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
+    adoptable_account(chrome, tmp_path, monkeypatch)
+    result = runner.invoke(cli.app, ["session", "status", "--account", ACCOUNT], catch_exceptions=False)
     assert result.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert result.stdout == "not logged in — run: dataporter login\n"
+    assert result.stdout == f"not logged in — run: dataporter login --source claude --account {ACCOUNT}\n"
 
 
 def test_a_foreign_browser_on_the_port_is_exit_2(
@@ -462,33 +623,56 @@ def test_a_foreign_browser_on_the_port_is_exit_2(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Somebody else's Chrome. Exit `2`, not `6`: nothing is missing."""
-    adoptable(chrome, tmp_path, monkeypatch)
-    launcher.marker_path(make_settings(tmp_path, chrome.port).browser_profile_dir).unlink()
-    result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
+    settings = adoptable_account(chrome, tmp_path, monkeypatch)
+    launcher.marker_path(settings.browser_profile_dir).unlink()
+    result = runner.invoke(cli.app, ["session", "status", "--account", ACCOUNT], catch_exceptions=False)
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr == (f"error: port {chrome.port} is used by another browser\n")
 
 
-def test_session_logout_removes_the_profile(runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = make_settings(tmp_path, free_port())
-    launcher.ensure_profile(settings)
-    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
-    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
-    result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
-    assert result.exit_code == ExitCode.OK
-    assert result.stdout == f"Removed {settings.browser_profile_dir}/.\n"
-    assert not settings.browser_profile_dir.exists()
-
-
-def test_session_logout_with_nothing_to_remove(
+def test_logout_prints_the_block_and_keeps_the_log_it_wrote(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    settings = make_settings(tmp_path, free_port())
+    """§82's first block, and the one thing still in the directory it emptied."""
+    settings = account_settings(tmp_path, free_port())
+    furnished(settings)
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
-    result = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
+
+    result = runner.invoke(cli.app, ["-v", "logout", "--account", ACCOUNT], catch_exceptions=False)
+
     assert result.exit_code == ExitCode.OK
-    assert result.stdout == (f"Nothing to remove: {settings.browser_profile_dir}/ does not exist.\n")
+    assert result.stdout == (f"Signed out of Claude — {ACCOUNT}\nRemoved {settings.account_home}/, except its logs.\n")
+    assert not settings.browser_profile_dir.exists()
+    home = settings.account_home
+    assert home is not None
+    logs = home / log.LOGS_DIRNAME
+    # The earlier run's log survived, and this sign-out left one of its own beside it:
+    # `logs/` is what an account home keeps, including the record of it being emptied.
+    assert (logs / "run-earlier.jsonl").exists()
+    assert [path for path in logs.iterdir() if path.name != "run-earlier.jsonl"]
+
+
+def test_logout_with_nothing_to_remove_is_not_an_error(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§82: sign-out states an end, and this one already held.
+
+    Which is also the mistyped label: nothing registers one, so there is no such thing
+    as an account that does not exist.
+    """
+    settings = account_settings(tmp_path, free_port())
+    monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
+    monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
+
+    result = runner.invoke(cli.app, ["logout", "--account", ACCOUNT], catch_exceptions=False)
+    typo = runner.invoke(cli.app, ["logout", "--account", "wrok"], catch_exceptions=False)
+
+    assert result.exit_code == ExitCode.OK
+    assert result.stdout == f"Nothing to remove: {settings.account_home}/ has no session.\n"
+    assert typo.exit_code == ExitCode.OK
 
 
 def test_session_status_starts_and_stops_a_browser_of_its_own(
@@ -498,7 +682,7 @@ def test_session_status_starts_and_stops_a_browser_of_its_own(
 
     `status` launches one to ask, and puts it away again.
     """
-    settings = make_settings(tmp_path, free_port())
+    settings = account_settings(tmp_path, free_port())
     launcher.ensure_profile(settings)
     started: list[FakeChrome] = []
 
@@ -515,11 +699,12 @@ def test_session_status_starts_and_stops_a_browser_of_its_own(
 
     monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
     monkeypatch.setenv("DATAPORTER_BROWSER__EXECUTABLE", sys.executable)
     monkeypatch.setenv("DATAPORTER_TIMEOUTS__CDP_CALL_S", "2")
     try:
-        result = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
+        result = runner.invoke(cli.app, ["session", "status", "--account", ACCOUNT], catch_exceptions=False)
         assert result.exit_code == ExitCode.OK
         assert result.stdout == "logged in\n"
         assert started[0].closed

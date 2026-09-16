@@ -9,6 +9,7 @@
 [`53`](53-login-link.md)'s `login --link` has spent the emailed link in it, and prints §73's
 blocks in place of `Logged in. Session stored in …`. The wait, the probe, the profile and
 `session status`/`logout` are still this slice's; ChatGPT's `login` keeps every byte.*
+*Amended by brief 08 (`63`): `session logout` is gone and `logout` ([`63`](63-everything-but-the-logs.md)) replaces it, emptying a source account's home rather than deleting a profile; both it and `session status` require `--account`, so neither has the destination form described below.*
 
 ## Goal
 
@@ -84,7 +85,9 @@ stores a password.
   `not logged in — run: dataporter login` (exit `3`).
 - `dataporter session logout`: deletes `<workspace>/browser-profile/` after
   confirming Chrome is not running on the port; a browser still on it is exit `2` and the
-  profile is left alone. Local only; nothing is sent to claude.ai.
+  profile is left alone. Local only; nothing is sent to claude.ai. *Replaced by `63`'s
+  `logout`, which names an account, empties its home and closes a window it can prove is
+  its own.*
 - `browser-profile/` is created `0700`; the workspace gets a `.gitignore` containing
   `browser-profile/`, `hermes/`, `seeds/`, `logs/`, merged into whatever is already there
   rather than overwriting it.

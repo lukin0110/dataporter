@@ -2,7 +2,7 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58, [`06`](06-chatgpt-extraction.md) §59–§71, [`07`](07-claude-sign-in.md) §72–§80 | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58, [`06`](06-chatgpt-extraction.md) §59–§71, [`07`](07-claude-sign-in.md) §72–§80, [`08`](08-signing-out.md) §81–§87 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
@@ -11,15 +11,16 @@ Two kinds of document live here, and they are not interchangeable.
 | **Lifecycle** | Stable — changes only when intent changes | Living — updated as reality lands; `Built` when its tests pass, `Done` when its live criteria are met |
 | **Numbering** | Section numbers are permanent identifiers, cited as §N, continuing across briefs | Slice numbers, cited as `NN` |
 | **Written by** | The person who wants the thing | The person building it |
-| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative; brief `07`'s sign-in blocks and its link-sent line (§73) are golden | Normative |
+| **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative; brief `07`'s sign-in blocks and its link-sent line (§73) are golden, and so are brief `08`'s sign-out blocks (§82) | Normative |
 
-There are seven briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
+There are eight briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
 [`02-claude-mock.md`](02-claude-mock.md) (§20–§28),
 [`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40),
 [`04-trace.md`](04-trace.md) (§41–§51),
 [`05-chatgpt-mock.md`](05-chatgpt-mock.md) (§52–§58),
 [`06-chatgpt-extraction.md`](06-chatgpt-extraction.md) (§59–§71) and
-[`07-claude-sign-in.md`](07-claude-sign-in.md) (§72–§80). Section numbers
+[`07-claude-sign-in.md`](07-claude-sign-in.md) (§72–§80) and
+[`08-signing-out.md`](08-signing-out.md) (§81–§87). Section numbers
 continue across them,
 so `§N` names one section anywhere in the repository (a working rule, below). The words
 the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
@@ -149,6 +150,10 @@ M12 — Claude sign-in by link (brief 07, §72–§80) — claude.ai has no pass
   51  The export page's real address: a fragment, and not the path `31` guessed
   52  The paperwork: the limitations rewritten, Claude marked as signing in no other way
   53  `login --link`: §73's second command, the link spent in the window `login` is holding
+
+M13 — Signing out (brief 08, §81–§87) — outside the gates: it touches no account and
+      drives nothing, and what it removes is on this machine only
+  63  Everything but the logs: `logout` replaces `session logout` and clears the account home
 ```
 
 ## Dependencies
@@ -258,6 +263,17 @@ carries an hCaptcha attestation: it may not, and §78 is the rule that follows.
           (50 needs 07; 51 needs 31, and is beside the chain rather than in it)
 ```
 
+M13 is one slice, and it is downstream of everything that put something in an account home:
+`07` built the profile it deletes, `31` the ask, `45` the staging directory a fetch leaves
+behind. It depends on none of them to be built — the paths are `config`'s — but it cannot be
+read without them, because the sentence it implements is a claim about what those three
+slices wrote.
+
+```text
+07, 31, 45 ─> 63
+          (63 amends §74 and brief 02 §23; it is the first slice of brief 08)
+```
+
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
 own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
 straight to `14`. Both need `12` and nothing else, and both were built against it
@@ -343,6 +359,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [60](impl/60-download-progress.md) | Download progress | §31 (amended), §63 (amended) | Built |
 | [61](impl/61-headless-extraction.md) | Headless extraction | §31, §63 (amended) | Built |
 | [62](impl/62-waiting-for-the-export-panel.md) | Waiting for the export panel | §31, §77 | Built |
+| [63](impl/63-everything-but-the-logs.md) | Everything but the logs | §81–§86, §74 (amended), §35 (amended), §23 (amended) | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -482,8 +499,8 @@ brief.
 - **Section numbers continue across briefs.** `01` ends at §19 and `02` starts at §20, so
   `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
   `03` starts at §29 where `02` ends, `04` at §41 where `03` ends, `05` at §52 where
-  `04` ends, `06` at §59 where `05` ends, `07` at §72 where `06` ends, and an eighth starts
-  at §81. Cite `§N`, never
+  `04` ends, `06` at §59 where `05` ends, `07` at §72 where `06` ends, `08` at §81 where
+  `07` ends, and a ninth starts at §88. Cite `§N`, never
   `02§N`.
 
 ## Shared decisions

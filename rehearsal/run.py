@@ -700,7 +700,9 @@ def protocol(runner: Runner, export: Path) -> dict[str, Any]:
     # the migration sent.
     runner.run("followup", "followup")
     runner.run("status", "status")
-    runner.run("session status", "session", "status")
+    # No `session status` and no sign-out: both name a source account since brief 08
+    # §86, and this protocol's session is the destination's. Its profile goes with the
+    # workspace, which is this rehearsal's root.
     return {"report_block": report.stdout, "ledger": counted}
 
 
@@ -1243,11 +1245,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     before = load(settings.workspace / "state.json")
 
     answers = protocol(runner, prepared["export"])
-    # Before `session logout`, which is the last step of §23's list: the safety
-    # audit reads the browser profile's own History database, and `logout`
-    # deletes the profile. Recorded as a finding rather than reordered silently.
     signs = instruments(runner, prepared["export"])
-    runner.run("session logout", "session", "logout")
     killed = interrupted_conversations(before, settings.workspace / "state.json")
     checks = criteria(
         settings,
@@ -1310,11 +1308,6 @@ STANDING_FINDINGS = (
         "the agent for the URL of the other tab, and a signed-out tab has redirected "
         "to `/login`. True of claude.ai too, so it is recorded rather than worked "
         "around; `doctor` is run again after `login`, where it passes."
-    ),
-    (
-        "The sign-off instruments are run before `session logout` rather than after "
-        "it, as §23's order has them: the safety audit reads the browser profile's "
-        "own History database, and `logout` deletes the profile."
     ),
     (
         "`sign_off.py gate` and `sign_off.py safety` both exit 1, and neither is a "

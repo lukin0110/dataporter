@@ -287,7 +287,7 @@ def _typer(**kwargs: Any) -> typer.Typer:
 
 
 app = _typer(cls=_RootGroup, help="Migrate a Claude export into another Claude account.")
-session_app = _typer(help="Inspect or end a browser session.")
+session_app = _typer(help="Inspect a source account's browser session.")
 browser_app = _typer(help="Deterministic browser primitives Hermes calls.")
 
 app.add_typer(session_app, name="session")
@@ -510,11 +510,12 @@ StoreDir = Annotated[
         help="Where snapshots are kept. Defaults to ~/.dataporter/store.",
     ),
 ]
-"""`30`'s three, and `31`'s fourth. `--account` is required on `extract`: a
-snapshot is addressed by source, account and stamp, and the tool does not guess
-whose account it is looking at. On the three session commands it is optional and
-its absence is the destination (§35), which is what those commands have always
-meant."""
+"""`30`'s three, and `31`'s fourth. `--account` is required wherever the command
+acts on one account's own things — `extract`, `session status` and `logout` — because
+a snapshot and an account home are both addressed by source and account, and the tool
+does not guess whose account it is looking at. §35 had the session commands meaning
+the destination when the option was absent; brief 08 §86 ends that, and `login` is the
+one command left where its absence still means the destination."""
 
 AttachmentsDir = Annotated[
     Path | None,
@@ -558,6 +559,17 @@ def login(
             link=link,
             sink=console.Terminal(),
             flags=given_flags(ctx),
+        )
+    )
+
+
+@app.command()
+def logout(ctx: typer.Context, account: Account, source: Source = None) -> None:
+    """Sign out of a source account: remove its session, its open ask and its staged downloads."""
+    finish(
+        browser_session.logout(
+            with_account(settings_of(ctx), source, account),
+            sink=console.Terminal(),
         )
     )
 
@@ -792,22 +804,11 @@ def doctor(ctx: typer.Context) -> None:
 
 
 @session_app.command("status")
-def session_status(ctx: typer.Context, account: AccountOption = None, source: Source = None) -> None:
-    """Report whether an account is signed in. Without --account, the destination."""
+def session_status(ctx: typer.Context, account: Account, source: Source = None) -> None:
+    """Report whether a source account is signed in."""
     finish(
         browser_session.status(
-            with_session_account(settings_of(ctx), source, account),
-            sink=console.Terminal(),
-        )
-    )
-
-
-@session_app.command("logout")
-def session_logout(ctx: typer.Context, account: AccountOption = None, source: Source = None) -> None:
-    """Clear a browser profile. Without --account, the destination's."""
-    finish(
-        browser_session.logout(
-            with_session_account(settings_of(ctx), source, account),
+            with_account(settings_of(ctx), source, account),
             sink=console.Terminal(),
         )
     )

@@ -44,7 +44,7 @@ quota or risk a challenge last.
 | 6 | Q4, Q5 | the hand-driven conversation below | `docs/claude-ui-map.md` |
 | 7 | Q7 | rename that conversation, reload, look | `docs/claude-ui-map.md` |
 | 8 | Q9 | read the run's `--usage-file`; `hermes sessions export` | `docs/hermes-attach.md` |
-| 9 | Q10 | `session logout`, then `login` again on a fresh profile | `docs/claude-ui-map.md` |
+| 9 | Q10 | `logout`, then `login` again on a fresh profile | `docs/claude-ui-map.md` |
 | 10 | Q6 | provoke what can be provoked. **The rate limit last.** | `docs/claude-ui-map.md` |
 
 Everything §15 turns out not to be settable through the UI goes to

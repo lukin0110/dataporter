@@ -4,7 +4,7 @@
 other protocol the same runner can drive: an extraction, by the shipped tool,
 against each site's mock — `login`, an ask, the link read from the mock's
 listing where the inbox would be, the fetch, a second ask and a second fetch,
-`snapshots`, `session status`, `session logout` — and the reconciliation of
+`snapshots`, `session status`, `logout` — and the reconciliation of
 what the tool filed with what the mock counted.
 
 Three things are this protocol's own:
@@ -396,7 +396,7 @@ def protocol(
     ).stdout
     counted = running.ledger(settings.host, settings.port)
     runner.run("session status", "session", "status", *source)
-    runner.run("session logout", "session", "logout", *source)
+    runner.run("logout", "logout", *source)
     return Half(
         mock=mock,
         settings=settings,
@@ -627,7 +627,7 @@ a mock can answer them.
 An extraction rehearsal is §68's protocol run by the shipped tool against each
 site's mock: the account seeded through the mock's own routes, then `login`, an
 ask, the link read from the listing that stands in for the inbox, the fetch, a
-second ask and a second fetch, `snapshots`, `session status`, `session logout`.
+second ask and a second fetch, `snapshots`, `session status`, `logout`.
 It is **not evidence about either site**: every `*unknown*` and `*reported*` row
 of [`claude-ui-map.md`](claude-ui-map.md) and
 [`chatgpt-ui-map.md`](chatgpt-ui-map.md) is what it was after it (§56). The

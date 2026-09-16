@@ -116,9 +116,10 @@ the export link is: checked, navigated to once, redacted in the trace, kept nowh
   connection error after doing its job. So this command polls every `LINK_POLL_S` (0.5 s)
   after the navigation, `login` keeps its window `session.SPENDER_GRACE_S` (3 s) after it
   sees the link spent, and a window that still goes early is named rather than guessed at:
-  `WINDOW_CLOSED`, exit `6`, pointing at `session status` with the account's flags. The
-  session may well be signed in at that point; this command does not say so without having
-  seen it.
+  `WINDOW_CLOSED`, exit `6`, pointing at `session status` with the account's flags — or
+  at `login`, for the destination, which has no `session status` to be sent to since brief
+  08 §86. The session may well be signed in at that point; this command does not say so
+  without having seen it.
 
 ## Acceptance criteria
 

@@ -1,10 +1,10 @@
 """A second signed-in session, kept apart from the destination's (`31`, §35).
 
-`login`, `session status` and `session logout` are `07`'s three commands, and
-this slice adds one thing to each: a label. What the tests below are really
-about is that the label changes exactly one thing — where the browser profile is
-— and that its *absence* changes nothing at all, which is the promise §35 makes
-to every command the first brief describes.
+`login`, `session status` and `logout` are `07`'s three commands, and this slice
+adds one thing to each: a label. What the tests below are really about is that the
+label changes exactly one thing — where the browser profile is. Its *absence* used to
+change nothing at all (§35); brief 08 §86 ends that for two of the three, and `login`
+is the one left where absence still means the destination.
 
 The last two are the other half of §36: the source session never imports, and
 nothing on the migration surface can reach the export page. Both are read off
@@ -141,7 +141,7 @@ def test_a_source_profile_writes_no_gitignore_into_a_workspace(
     assert (source.browser_profile_dir).exists()
 
 
-def test_session_status_and_logout_act_on_the_account(
+def test_session_status_and_sign_out_act_on_the_account(
     runner: CliRunner,
     chrome: FakeChrome,
     tmp_path: Path,
@@ -160,38 +160,42 @@ def test_session_status_and_logout_act_on_the_account(
     assert status.stdout == "logged in\n"
 
     chrome.stop_http()
-    logout = runner.invoke(cli.app, ["session", "logout", "--account", ACCOUNT], catch_exceptions=False)
+    logout = runner.invoke(cli.app, ["logout", "--account", ACCOUNT], catch_exceptions=False)
     assert logout.exit_code == ExitCode.OK
-    assert logout.stdout == f"Removed {source.browser_profile_dir}/.\n"
+    assert logout.stdout == (f"Signed out of Claude — {ACCOUNT}\nRemoved {source.account_home}/, except its logs.\n")
     assert not source.browser_profile_dir.exists()
 
 
-def test_a_label_is_the_only_difference_in_what_is_printed(
-    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("command", [["session", "status"], ["logout"]])
+def test_the_session_commands_name_an_account(
+    runner: CliRunner, command: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """§35: without `--account` these commands mean the destination.
+    """§86 ends §35's "absent means the destination" for both of them.
 
-    Their output is byte-identical to what `07` printed.
+    The refusal is click's own and arrives before anything is resolved, which is why
+    neither needs a message of its own.
     """
     settings = make_settings(tmp_path, free_port())
     monkeypatch.setenv("DATAPORTER_WORKSPACE", str(settings.workspace))
     monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(settings.browser.cdp_port))
 
-    status = runner.invoke(cli.app, ["session", "status"], catch_exceptions=False)
-    logout = runner.invoke(cli.app, ["session", "logout"], catch_exceptions=False)
+    result = runner.invoke(cli.app, command, catch_exceptions=False)
 
-    assert status.exit_code == ExitCode.NOT_AUTHENTICATED
-    assert status.stdout == "not logged in — run: dataporter login\n"
-    assert logout.stdout == (f"Nothing to remove: {settings.browser_profile_dir}/ does not exist.\n")
+    assert result.exit_code == ExitCode.USAGE
+    assert "Missing option '--account'" in result.stderr
 
 
 def test_a_source_without_a_label_is_refused(
     runner: CliRunner, workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A flag accepted and quietly dropped is what `12` ruled out for `--pilot`."""
+    """A flag accepted and quietly dropped is what `12` ruled out for `--pilot`.
+
+    `login` is the one command still able to reach this: the other two require a label
+    of their own (§86), so click refuses them first.
+    """
     monkeypatch.setenv("DATAPORTER_BROWSER__CDP_PORT", str(free_port()))
-    result = runner.invoke(cli.app, ["session", "status", "--source", "claude"], catch_exceptions=False)
+    result = runner.invoke(cli.app, ["login", "--source", "claude"], catch_exceptions=False)
 
     assert result.exit_code == ExitCode.USAGE
     assert result.stderr == ("error: --source names the vendor of an account; give --account LABEL\n")
@@ -237,7 +241,7 @@ def test_the_run_log_of_a_source_command_is_in_the_account_home(
 
     result = runner.invoke(
         cli.app,
-        ["-v", "session", "logout", "--account", ACCOUNT],
+        ["-v", "logout", "--account", ACCOUNT],
         catch_exceptions=False,
     )
 
@@ -262,8 +266,10 @@ class FakeChromeless:
 # --------------------------------------------------------------------------- #
 
 TAKES_AN_ACCOUNT = "with_session_account"
-"""The one call that points a command at a source account. `with_account` is the
-other, and `extract` is the only command that may make it."""
+"""The call that points a command at a source account it may or may not have been
+given. `with_account` is the other, and since §86 it is the one three commands make:
+`extract`, `session status` and `logout` all require a label. `login` is the only
+caller of this one left."""
 
 
 def command_body(name: str) -> ast.FunctionDef:
@@ -304,7 +310,7 @@ def test_the_session_commands_are_the_only_ones_that_take_an_account() -> None:
         and node.func.id in {TAKES_AN_ACCOUNT, "with_account"}
     }
 
-    assert takes == {"login", "session_status", "session_logout", "extract"}
+    assert takes == {"login", "session_status", "logout", "extract"}
 
 
 def test_neither_surface_admits_the_other_s_pages() -> None:

@@ -48,7 +48,7 @@ changed by a byte.
   | --- | --- | --- |
   | `login` | `browser.session.login(settings, *, sink)` | `LoginOutcome` — raises `AuthError` on a timed-out wait |
   | `session status` | `browser.session.status(settings, *, sink)` | `StatusOutcome(signed_in, exit_code)` — a line and a code, never an `error:` |
-  | `session logout` | `browser.session.logout(settings, *, sink)` | `LogoutOutcome(removed)` |
+  | `logout` | `browser.session.logout(settings, *, sink)` | `LogoutOutcome(removed)` — `UsageError` with no account (`63`) |
   | `import` | `importer.import_command(settings, ImportRequest, *, quiet, sink)` | `ImportOutcome(exit_code, summary, plan, choices)` — the run, the dry run and the pilot |
   | `resume` | `importer.resume_command(settings, *, quiet, sink)` | `ImportOutcome` |
   | `inspect` | `selection.inspect_export(settings, export, *, attachments_dir, json_output, sink)` | `InspectOutcome(plan)` |
@@ -120,7 +120,7 @@ changed by a byte.
 - `tests/test_cli.py::test_the_cli_opens_no_workspace_and_no_browser_itself`: `cli.py`
   imports none of `state`, `launcher`, `probe`, `summary`, `load_export`.
 - `tests/test_operations.py`: `inspect`, `import --dry-run`, `import --dry-run --pilot`,
-  `seeds`, `status`, `report`, `session logout`, `resume` and a real run each produce, through
+  `seeds`, `status`, `report`, `logout`, `resume` and a real run each produce, through
   `console.Collected`, the bytes and the code the CLI produces with the same settings.
 - `tests/test_log.py::test_a_second_run_log_replaces_the_first`.
 - `make check-all` passes with the coverage gate unchanged.

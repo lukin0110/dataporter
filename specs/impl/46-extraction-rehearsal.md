@@ -24,7 +24,7 @@ the mock claude.ai is the first `30` and `31` have had.
   followed, three chats, one upload on the last), then `login --source X --account
   rehearsal`, `extract` (ask 1), the newest link read from `/__mock/exports.json`,
   `extract --link` (fetch 1), the first snapshot's archive and manifest hashed, ask 2,
-  fetch 2, the ledger read, `session status`, `session logout`; then, once both halves
+  fetch 2, the ledger read, `session status`, `logout`; then, once both halves
   have filed, `snapshots` for each, so the listing shows both rows. One `Settings`, one
   workspace and one accounts directory per mock under `<root>/<source>/`; one store
   under `<root>/store/`. `config.toml` carries `[browser]`, `[hermes] home`,

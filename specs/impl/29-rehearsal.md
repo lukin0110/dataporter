@@ -41,7 +41,7 @@ mock (ADR [0001](../../docs/adr/0001-no-door-in-the-wall.md)).
   `setup`, `doctor`, `login`, `doctor` again, `import --dry-run`,
   `import --pilot` and `report`, `import --all` interrupted by one `SIGKILL`
   mid-conversation, `import --all` again, `verify`, `report`, `followup`,
-  `status`, `session status`, `session logout`, then the sign-off instruments
+  `status`, then the sign-off instruments
   (`gate`, `drill`, `safety`). `judge` is not part of it: it needs a model.
 - **The drill kills on the mock's evidence**: the run is killed the moment the
   *ledger* shows a message received, which is a conversation in flight said by

@@ -300,10 +300,17 @@ def test_status_of_an_empty_workspace_is_the_same_through_the_library(runner: Cl
         assert dict(outcome.migration.items()) == {}
 
 
-def test_logout_with_no_profile_is_the_same_through_the_library(runner: CliRunner, workspace: Path) -> None:
+def test_logout_with_nothing_to_remove_is_the_same_through_the_library(
+    runner: CliRunner,
+    workspace: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
+    settings = with_account(load_settings(), "claude", "a")
     sink = console.Collected()
-    outcome = browser_session.logout(load_settings(), sink=sink)
-    code, out, _ = invoke(runner, "session", "logout")
+    outcome = browser_session.logout(settings, sink=sink)
+    code, out, _ = invoke(runner, "logout", "--account", "a")
 
     assert (outcome.exit_code, sink.stdout) == (code, out)
     assert not outcome.removed
@@ -322,11 +329,16 @@ def test_logout_of_a_source_account_is_the_same_through_the_library(
     """
     monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
     settings = with_account(load_settings(), "claude", "a")
+    home = settings.account_home
+    assert home is not None
+    (home / "browser-profile").mkdir(parents=True)
     sink = console.Collected()
     outcome = browser_session.logout(settings, sink=sink)
-    code, out, _ = invoke(runner, "session", "logout", "--account", "a")
+    (home / "browser-profile").mkdir(parents=True)
+    code, out, _ = invoke(runner, "logout", "--account", "a")
 
     assert (outcome.exit_code, sink.stdout) == (code, out)
+    assert outcome.removed
     assert str(settings.accounts_dir) in out
 
 

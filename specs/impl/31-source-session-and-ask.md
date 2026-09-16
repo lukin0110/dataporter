@@ -19,6 +19,8 @@ model. The fetch that follows is `30`'s.
 
 - **An account on the session commands** (`cli.py`, `browser/session.py`): `login`,
   `session status` and `session logout` gain `--source SRC` (default `claude`) and
+  <!-- Amended by brief 08 (`63`): `session logout` is now `logout`, and both it and
+  `session status` require `--account`; only `login` still takes an optional one. -->
   `--account LABEL`, applied through `config.with_session_account`, which is
   `with_account` plus the two rules a command with an *optional* label needs: no label is
   the destination, and `--source` without one is refused rather than ignored
@@ -107,7 +109,7 @@ model. The fetch that follows is `30`'s.
 - **Safety** (§36): the source session never imports — no migration command calls
   `with_account` or `with_session_account`, and a test proves it from `cli.py`'s AST,
   both ways round: none of `import`, `resume`, `verify` or `followup` makes either call,
-  and the set of commands that do is exactly `login`, `session status`, `session logout`
+  and the set of commands that do is exactly `login`, `session status`, `logout`
   and `extract`;
   the ask navigates inside `EXTRACTION_SURFACE` only, guarded before attach and on the
   live URL as `driving` guards; the only synthesized inputs are the two clicks, and
@@ -128,9 +130,9 @@ model. The fetch that follows is `30`'s.
     JavaScript dialog; a variant with no button.
   - `tests/test_source_session.py` (`slow`) — `login --account a` creates
     `<accounts>/claude/a/browser-profile/` and never touches `<workspace>/browser-profile/`;
-    `session status --account a` and `session logout --account a` act on it; without an
-    account every session command's output is byte-identical to today; a destination
-    Chrome on the port makes `login --account a` exit `2`.
+    `session status --account a` and `logout --account a` act on it; a label is the only
+    difference in what is printed; a destination Chrome on the port makes `login --account a`
+    exit `2`.
   - `tests/test_ask.py` (`slow`, the fake Chrome substituted for `launcher.launch` as
     `test_browser_session.py` does) — the happy path writes `ask.json` and prints the
     block byte for byte, and the fake recorded exactly two clicks and no
