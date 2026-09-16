@@ -32,7 +32,7 @@ from typing import Any
 
 from dataporter import links, log
 from dataporter import trace as tracing
-from dataporter.browser import helpers, launcher
+from dataporter.browser import download, helpers, launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient, Page
@@ -152,7 +152,7 @@ def _drive(settings: Settings, browser: BrowserSession, link: str, *, origins: S
     """
     tabs = browser_session.tabs_on(browser.client, origins)
     if not tabs:
-        raise BrowserError(detail=f"no tab on {origins[0]} to spend the link in")
+        raise BrowserError(detail=f"no tab on {download.authority_of(origins[0])} to spend the link in")
     was = tabs[0].url
     started = time.monotonic()
     ts = tracing.timestamp()
