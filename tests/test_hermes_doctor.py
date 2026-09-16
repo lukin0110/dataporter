@@ -384,6 +384,42 @@ def test_a_failed_run_that_printed_a_page_is_reported_by_path(
     assert "secret-looking content" not in detail
     assert "not really" not in detail
     assert str(settings.hermes_dir) in detail
+    # It does not claim the run never happened: `failed` does not say how far it
+    # got. Copilot's finding on #62.
+    assert "ran no task" not in detail
+
+
+def test_an_overloaded_provider_is_named_and_not_blamed_on_the_profile(
+    tmp_path: Path,
+    fake: FakeHermes,
+    chrome: FakeChrome,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second spelling, and the reason the split exists.
+
+    A real `529` reached an operator as "hermes ran no task" because the pattern
+    only knew the bare `HTTP 404: …` form — Hermes prefixes this one with its own
+    retry count. Both halves are asserted here: that the line is quoted at all,
+    and that it does not end by sending anyone to read a correct config file.
+    """
+    settings = make_settings(tmp_path, fake, chrome)
+    profiling.run_setup(settings)
+    fake.write(
+        version="hermes 1.0.0",
+        config_extra={"model.default": MODEL},
+        answer="API call failed after 3 retries: HTTP 529: Overloaded",
+        exit=0,
+        usage={"api_calls": 1, "completed": False, "failed": True},
+    )
+    adopt_instead(monkeypatch, chrome)
+    results = run_checks(settings)
+    assert labels(results)[-1] == hermes_doctor.HERMES_ATTACHES
+    detail = results[-1].detail
+    assert "HTTP 529" in detail
+    assert "Overloaded" in detail
+    assert "did not answer with the nonce" not in detail
+    # `5xx` is the provider being busy; the profile is not what to go and read.
+    assert "config" not in detail
 
 
 def test_a_run_that_succeeds_is_not_read_as_failed(

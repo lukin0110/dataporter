@@ -29,7 +29,7 @@ failure.
 No check prints anything Hermes said, with one exception measured into the rule
 rather than carved out of it. Its stdout is a workspace file that may contain
 page snapshots, so what reaches the terminal is a fixed phrase and a path — but
-a stdout that is *entirely* one `HTTP 404: …` line is a run that never reached a
+a stdout that is *entirely* one HTTP status line is a run that never reached a
 page, and `runner.api_error` will quote that much. Measured on 2026-09-16: a
 profile naming a model its endpoint does not serve failed here as "hermes did
 not answer with the nonce", which is accurate about the nonce and silent about
@@ -426,13 +426,18 @@ def _ask(settings: Settings, prompt: str, *, run_id: str, label: str) -> "_Answe
     binary that would not start. A non-zero exit is Hermes saying so itself.
 
     The third is the one that has to be looked for: Hermes reaching the provider,
-    being told the model does not exist, and *exiting zero* with the API error
-    where the answer belongs. Nothing above catches that, so it used to arrive at
-    the nonce comparison and come out as "hermes did not answer with the nonce" —
-    true, and a description of the symptom that names neither the model nor the
-    endpoint. `failed` in the usage file is Hermes's own verdict on the run and is
-    what this believes; `api_error` only decides how much of the reason fits on
-    the line.
+    getting an error back, and *exiting zero* with it where the answer belongs.
+    Nothing above catches that, so it used to arrive at the nonce comparison and
+    come out as "hermes did not answer with the nonce" — true, and a description
+    of the symptom that names neither the model nor the endpoint. `failed` in the
+    usage file is Hermes's own verdict on the run and is what this believes;
+    `api_error` only decides how much of the reason fits on the line.
+
+    That reason then splits, because the next step differs: a `5xx` is the
+    provider being busy and wants nothing but another run, while a `4xx` is the
+    profile naming something the endpoint does not serve and wants the two keys
+    that say so. Sending the first operator to `config show` would be sending
+    them to read a file that is already correct.
     """
     runner = HermesRunner(settings)
     try:
@@ -447,14 +452,21 @@ def _ask(settings: Settings, prompt: str, *, run_id: str, label: str) -> "_Answe
         )
     if raw.usage.failed:
         reason = api_error(raw.stdout)
+        if reason is None:
+            # Hermes ran, exited zero, and its own usage file calls the run a
+            # failure — so say that and nothing more. An earlier draft guessed
+            # "hermes ran no task" here, which claims more than the flag knows:
+            # `failed` does not say how far the run got, and it can be set after
+            # a transcript has been written. Copilot's finding on #62.
+            return Check(label, ok=False, detail=f"hermes reported the run failed; stdout: {raw.stdout_path}")
+        if reason.upstream:
+            return Check(label, ok=False, detail=f"{reason.line} — the provider, not the profile; run `doctor` again")
         return Check(
             label,
             ok=False,
             detail=(
-                f"hermes reached no model: {reason}; check the model and provider in "
+                f"{reason.line}; check the model and provider in "
                 f"{quoted([str(runner.cli.path), *runner.cli.profile_flags(), 'config', 'show'])}"
-                if reason
-                else f"hermes ran no task; stdout: {raw.stdout_path}"
             ),
         )
     return _Answer(stdout=raw.stdout, stdout_path=raw.stdout_path)

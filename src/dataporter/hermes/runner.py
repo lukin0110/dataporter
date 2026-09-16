@@ -206,21 +206,54 @@ def last_result_object(text: str) -> dict[str, Any] | None:
     return candidates[-1] if candidates else None
 
 
-API_ERROR = re.compile(r"\A\s*(HTTP \d{3}: [^\n]{1,200})\s*\Z")
-"""A whole stdout that is nothing but one `HTTP 404: …` line.
+API_ERROR = re.compile(r"\A\s*([^\n]{0,120}HTTP (\d{3}): [^\n]{1,200})\s*\Z")
+"""A whole stdout that is one line reporting an HTTP status, and nothing else.
 
-Anchored at both ends, and that is the point rather than an accident of writing
-the pattern. `doctor`'s standing rule is that nothing Hermes said reaches the
-terminal, because a transcript carries page snapshots; a stdout that is *only*
-an HTTP status line is a run that never got as far as a page, so quoting it
-leaks nothing. Observed against Hermes Agent v0.21.2 on 2026-09-16.
+Hermes has two spellings, and the first version of this pattern only knew the
+first, which is how a `529` reached an operator as "hermes ran no task":
+
+    HTTP 404: The model 'us.anthropic.claude-sonnet-5' does not exist
+    API call failed after 3 retries: HTTP 529: Overloaded
+
+So the status may carry a prefix, but the *line* is still the whole of stdout.
+That is the part doing the safety work rather than an accident of writing the
+pattern: `doctor`'s standing rule is that nothing Hermes said reaches the
+terminal, because a transcript carries page snapshots, and `[^\n]` throughout
+means a stdout with a second line never matches however it begins. A run that
+printed one status line is a run that never got as far as a page.
+
+Both shapes observed against Hermes Agent v0.21.2 on 2026-09-16.
 """
 
 
-def api_error(stdout: str) -> str | None:
+SERVER_ERROR = 500
+"""Where `4xx` stops and `5xx` starts: whose fault the status is."""
+
+
+@dataclass(frozen=True)
+class ApiError:
+    """The line Hermes printed instead of an answer, and what it blames."""
+
+    line: str
+    status: int
+
+    @property
+    def upstream(self) -> bool:
+        """`5xx`: the provider is the problem, so retrying is the response.
+
+        Worth the distinction because the advice differs. A `404` means the
+        profile names a model the endpoint does not serve and no amount of
+        retrying will change it; a `529` means it named the right one and the
+        provider was busy, and sending that operator to `hermes config show`
+        would be sending them to read a file that is already correct.
+        """
+        return self.status >= SERVER_ERROR
+
+
+def api_error(stdout: str) -> ApiError | None:
     """Return the API error Hermes printed instead of an answer, or `None`."""
     found = API_ERROR.match(stdout)
-    return found.group(1) if found else None
+    return ApiError(line=found.group(1), status=int(found.group(2))) if found else None
 
 
 # --------------------------------------------------------------------------- #
