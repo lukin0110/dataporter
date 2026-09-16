@@ -31,6 +31,22 @@ cd "$root" || {
   exit 0
 }
 
+# Drop a wiring stamp that still names `claude`, before anything can act on it.
+#
+# Graft's wiring refresh (`dist/upkeep.js:240`) rewrites every file it owns whenever that stamp
+# disagrees with the running binary, and it takes the hosts to rewrite from the stamp UNION
+# what it finds on disk. The shims are renamed so the disk half finds nothing (see the header
+# in `repo-graft-hooks.cjs`), but a stamp written before the rename still says `claude` and
+# would resurrect the rewrite at the next version bump — recreating graft's own file names
+# beside ours, with both sets of hooks firing. The stamp is git-ignored derived state whose
+# only reader is that refresh, so deleting it costs nothing.
+#
+# Belt and braces, not a guarantee: MCP boot runs the same refresh at session start and the
+# order between it and this hook is not ours to set. `tests/test_graft_wiring.py` is what makes
+# a loss loud rather than silent.
+stamp=graft/.cache/wiring-stamp.json
+[ -f "$stamp" ] && grep -q '"claude"' "$stamp" && rm -f "$stamp"
+
 # INDEX.md and not the directory: graft's hooks create `graft/.cache/` on their own,
 # so the directory exists long before a graph does.
 [ -f graft/INDEX.md ] && exit 0

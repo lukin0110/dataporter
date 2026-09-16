@@ -1,12 +1,33 @@
 #!/usr/bin/env node
+// Graft's Claude Code hooks shim — renamed out of graft's way on purpose.
+//
+// The name is the off switch. `reconcileWiring` (graft's `dist/upkeep.js:240`) rewrites every
+// file graft believes it owns — both shims, `.claude/settings.json`, `.claude/skills/graft/`
+// and `.mcp.json` — whenever the stamp under the git-ignored `graft/.cache/` disagrees with
+// the running binary, which is every upgrade and every fresh clone. It is called from graft's
+// own session-start hook and from MCP boot, so it runs at the start of every session; nobody
+// has to run `graft init` for the rewrite to happen, and none of the reverts here involved it.
+// `wiredHostIds` (`dist/upkeep.js:211`) decides this repo is Claude-wired by testing one exact
+// path — `.claude/helpers/graft-hooks.cjs` — and `claude` is not in graft's host registry, so
+// nothing else can vote it back in. Under this name the refresh finds no hosts and returns
+// before writing a byte. docs/graft.md carries the whole story.
+//
+// `graft-hooks.cjs` survives as a *substring* of the filename, and that is load-bearing in the
+// other direction: `hookTimeoutIn` (`dist/claude/hooks.js:95`) finds the budget this hook is
+// running under by matching the command string in settings.json against it, and the comment
+// there explains that guessing the timeout high gets the whole hook SIGKILLed.
+//
+// Below this header is graft 0.18.0's generated shim, unmodified but for `BAKED`. Ours now:
+// a newer graft will not refresh it, so port improvements deliberately (docs/graft.md).
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { execFileSync } = require('child_process');
 const dir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-// Blanked deliberately: `graft init` bakes in the absolute path of the npx cache it
-// ran from, which exists only on the machine that ran it. Resolution below finds a
-// project-local, node-local or globally installed @nanonets/graft on any machine.
+// Blanked deliberately: the wiring pass bakes in the absolute path of whichever install
+// it ran from — an npx cache, or one Node version's global lib — and that path exists on
+// exactly one machine. Resolution below finds a project-local, node-local or globally
+// installed @nanonets/graft anywhere, so a baked path only ever misses for everybody else.
 const BAKED = "";
 
 // The dist/claude dir of @nanonets/graft resolved from a base whose node_modules is searched.
