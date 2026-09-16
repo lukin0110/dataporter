@@ -26,8 +26,14 @@ requires a new record in `<workspace>/logs/actions.jsonl`, which is written by o
 own helper and not by the agent; an answer with the nonce in it and no record is a
 failure.
 
-No check prints anything Hermes said. Its stdout is a workspace file that may
-contain page snapshots; what reaches the terminal is a fixed phrase and a path.
+No check prints anything Hermes said, with one exception measured into the rule
+rather than carved out of it. Its stdout is a workspace file that may contain
+page snapshots, so what reaches the terminal is a fixed phrase and a path — but
+a stdout that is *entirely* one `HTTP 404: …` line is a run that never reached a
+page, and `runner.api_error` will quote that much. Measured on 2026-09-16: a
+profile naming a model its endpoint does not serve failed here as "hermes did
+not answer with the nonce", which is accurate about the nonce and silent about
+the 404 that caused it, and the path in the message was the only way to find out.
 """
 
 import json
@@ -53,7 +59,7 @@ from dataporter.hermes import profile as profiling
 from dataporter.hermes import skill as skilling
 from dataporter.hermes import version as versioning
 from dataporter.hermes.client import HermesCli, home_relative, mismatches, quoted
-from dataporter.hermes.runner import HermesRunner
+from dataporter.hermes.runner import HermesRunner, api_error
 
 _logger = log.get_logger(__name__)
 
@@ -413,7 +419,21 @@ class _Answer:
 
 
 def _ask(settings: Settings, prompt: str, *, run_id: str, label: str) -> "_Answer | Check":
-    """Run a `doctor` task, or the `Check` that says why it could not be run."""
+    """Run a `doctor` task, or the `Check` that says why it could not be run.
+
+    Three ways to not get an answer, and they are distinguished because they send
+    an operator to three different places. `HermesError` is ours — a timeout, or a
+    binary that would not start. A non-zero exit is Hermes saying so itself.
+
+    The third is the one that has to be looked for: Hermes reaching the provider,
+    being told the model does not exist, and *exiting zero* with the API error
+    where the answer belongs. Nothing above catches that, so it used to arrive at
+    the nonce comparison and come out as "hermes did not answer with the nonce" —
+    true, and a description of the symptom that names neither the model nor the
+    endpoint. `failed` in the usage file is Hermes's own verdict on the run and is
+    what this believes; `api_error` only decides how much of the reason fits on
+    the line.
+    """
     runner = HermesRunner(settings)
     try:
         raw = runner.run_raw(prompt, run_id=run_id, timeout_s=settings.timeouts.hermes_check_s)
@@ -424,6 +444,18 @@ def _ask(settings: Settings, prompt: str, *, run_id: str, label: str) -> "_Answe
             label,
             ok=False,
             detail=f"hermes exited {raw.returncode}; stderr: {raw.stderr_path}",
+        )
+    if raw.usage.failed:
+        reason = api_error(raw.stdout)
+        return Check(
+            label,
+            ok=False,
+            detail=(
+                f"hermes reached no model: {reason}; check the model and provider in "
+                f"{quoted([str(runner.cli.path), *runner.cli.profile_flags(), 'config', 'show'])}"
+                if reason
+                else f"hermes ran no task; stdout: {raw.stdout_path}"
+            ),
         )
     return _Answer(stdout=raw.stdout, stdout_path=raw.stdout_path)
 
