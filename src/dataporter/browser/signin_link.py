@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from dataporter import log
+from dataporter import links, log
 from dataporter import trace as tracing
 from dataporter.browser import helpers, launcher
 from dataporter.browser import session as browser_session
@@ -43,7 +43,6 @@ from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import AuthError, BrowserError, UsageError
 from dataporter.exit_codes import ExitCode
-from dataporter.links import LINK_NOT_HTTPS, is_https
 
 _logger = log.get_logger(__name__)
 
@@ -99,8 +98,9 @@ def spend(settings: Settings, link: str, *, sink: Sink = DISCARD, flags: Sequenc
     already signed in prints the block and spends nothing: the link stays
     whatever it was, and a person who ran this twice has lost nothing.
     """
-    if not is_https(link):
-        raise UsageError(LINK_NOT_HTTPS)
+    origins = browser_session.whose(settings).origins
+    if not links.is_followable(link, origins):
+        raise UsageError(links.not_followable(origins))
     log.enable_run_log(settings.logs_dir)
     session = browser_session.whose(settings)
     client = CdpClient(port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s)
@@ -113,10 +113,10 @@ def spend(settings: Settings, link: str, *, sink: Sink = DISCARD, flags: Sequenc
         with watching.watched(
             settings, command="login", flags=flags, site=browser_session.site_of(settings), browser=browser
         ) as traced:
-            if not browser_session.signed_in(browser, session.url, hosts=session.hosts):
-                was = _drive(settings, browser, link, hosts=session.hosts)
+            if not browser_session.signed_in(browser, session.url, origins=session.origins):
+                was = _drive(settings, browser, link, origins=session.origins)
                 try:
-                    arrival = _await(browser, hosts=session.hosts, timeout_s=settings.timeouts.signin_s, was=was)
+                    arrival = _await(browser, origins=session.origins, timeout_s=settings.timeouts.signin_s, was=was)
                 except BrowserError:
                     if running is None or browser.client.responding():
                         raise
@@ -139,7 +139,7 @@ def spend(settings: Settings, link: str, *, sink: Sink = DISCARD, flags: Sequenc
     return LoginOutcome()
 
 
-def _drive(settings: Settings, browser: BrowserSession, link: str, *, hosts: Sequence[str]) -> str:
+def _drive(settings: Settings, browser: BrowserSession, link: str, *, origins: Sequence[str]) -> str:
     """Point the tab the person used at the link, and record the move without the link.
 
     Returns the URL that tab was on before the navigation, which is what `_await`
@@ -150,9 +150,9 @@ def _drive(settings: Settings, browser: BrowserSession, link: str, *, hosts: Seq
     completes. Never a new tab, which would leave the person two windows and
     `login`'s wait a tab it did not open.
     """
-    tabs = browser_session.tabs_on(browser.client, hosts)
+    tabs = browser_session.tabs_on(browser.client, origins)
     if not tabs:
-        raise BrowserError(detail=f"no tab on {hosts[0]} to spend the link in")
+        raise BrowserError(detail=f"no tab on {origins[0]} to spend the link in")
     was = tabs[0].url
     started = time.monotonic()
     ts = tracing.timestamp()
@@ -190,7 +190,7 @@ def _record(settings: Settings, link: str, *, ts: str, ok: bool, elapsed_ms: int
         current.move(LINK_ACTION, ok=ok, elapsed_ms=elapsed_ms, conversation_id=None, result=result, ts=ts)
 
 
-def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float, was: str = "") -> Arrival:
+def _await(browser: BrowserSession, *, origins: Sequence[str], timeout_s: float, was: str = "") -> Arrival:
     """Wait for the link to sign the session in, or for the page to say it did not.
 
     `session.await_signin`'s loop with the code field meaning the opposite of
@@ -212,7 +212,7 @@ def _await(browser: BrowserSession, *, hosts: Sequence[str], timeout_s: float, w
     """
     _logger.info("sign-in link spent; waiting for the session")
     left = False
-    for state, code in browser_session.polling(browser, hosts, timeout_s=timeout_s, poll_s=LINK_POLL_S):
+    for state, code in browser_session.polling(browser, origins, timeout_s=timeout_s, poll_s=LINK_POLL_S):
         if state is None:
             # Mid-navigation, or on another host: the old document is going or gone.
             left = True

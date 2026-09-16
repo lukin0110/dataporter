@@ -1006,7 +1006,7 @@ class Importer:
                 self.settings,
                 command=self.command,
                 flags=self.flags,
-                site=probe.MIGRATION_SITE,
+                site=browser_session.site_of(self.settings),
                 client=self._session().client,
                 export_fingerprint=self.export_fingerprint,
             )
@@ -1014,7 +1014,7 @@ class Importer:
         # `watch_lost`, and the new certificate and navigation are the restart.
         if self.watch is not None:
             self.watch.stop()
-        self.watch = watching.Watch.start(self.trace, self._session().client, probe.MIGRATION_SITE)
+        self.watch = watching.Watch.start(self.trace, self._session().client, browser_session.site_of(self.settings))
         self._require_signed_in()
         # Blank and duplicate new-chat tabs only, never a conversation (`08`).
         # Hermes picks its tab by looking, and one candidate is what makes that
@@ -1022,7 +1022,9 @@ class Importer:
         browser_helpers.close_extra_tabs(self._session().client, self.settings)
 
     def _launch(self) -> None:
-        self.session = launcher.launch(self.settings, probe.NEW_CHAT_URL)
+        self.session = launcher.launch(
+            self.settings, probe.new_chat_url(browser_session.destination_origin(self.settings))
+        )
 
     def _require_signed_in(self) -> None:
         """Signed in, or exit `3`.
@@ -1070,7 +1072,8 @@ class Importer:
         )
 
     def _signed_in(self) -> bool:
-        return browser_session.signed_in(self._session())
+        session = browser_session.whose(self.settings)
+        return browser_session.signed_in(self._session(), session.url, origins=session.origins)
 
     def _session(self) -> launcher.BrowserSession:
         session = self.session
@@ -1556,6 +1559,9 @@ class Importer:
             # `none` in the prompt, no rename step at all — when the source had
             # no title or `fidelity.rename_title` is off.
             title=verifying.intended_title(self.settings, before.title),
+            # `65`: the helper prefix the agent runs carries the flag this run
+            # was given, so its subprocesses drive the same site this one does.
+            mock=self.settings.mock,
         )
         run_id = run_id_for(seed.short_id, before.attempts + 1)
         try:
@@ -1676,6 +1682,11 @@ class Importer:
             conversation_id=conversation_id,
             parts=len(seed.chunks),
             title=verifying.intended_title(self.settings, before.title),
+            # Where this run's chats are (`65`). Without it the expectation names
+            # the real site while the `Verifier`'s wall is the mock's, and every
+            # verification is refused as a safety error — which is a retry, not a
+            # failure, so a run spends its whole backoff budget saying nothing.
+            origin=probe.destination_origin(self.settings),
         )
         return verifying.Verifier(self.settings, self._session().client).verify(expected)
 
@@ -1835,7 +1846,9 @@ class Importer:
         limit that is still in force.
         """
         try:
-            return probe.rate_limited(browser_session.current_state(self._session())) is False
+            session = browser_session.whose(self.settings)
+            state = browser_session.current_state(self._session(), session.url, origins=session.origins)
+            return probe.rate_limited(state) is False
         except BrowserError:
             # `_ensure_browser` is what deals with a browser that has gone; this
             # is only deciding whether to stop waiting early.

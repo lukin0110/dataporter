@@ -61,7 +61,7 @@ def test_an_archive_is_recognised_by_its_member_names() -> None:
 
 def test_the_host_and_the_export_page_are_spelled_once() -> None:
     assert probe.CLAUDE_HOST == CLAUDE.host == "claude.ai"
-    assert CLAUDE.login_url == browser_session.NEW_CHAT_URL
+    assert CLAUDE.login_url == probe.NEW_CHAT_URL
     assert export_page.EXPORT_PAGE_PATH == CLAUDE.export_page_path == "/new#settings/data-privacy-controls"
     assert export_page.EXPORT_PAGE_URL == "https://claude.ai/new#settings/data-privacy-controls"
     assert sites.not_the_export_page(CLAUDE) == export_page.NOT_THE_EXPORT_PAGE
@@ -142,14 +142,14 @@ def test_a_source_is_the_same_object_wherever_it_is_asked_for() -> None:
 def test_whose_session_a_command_means(tmp_path: Path) -> None:
     settings = Settings(workspace=tmp_path)
     assert browser_session.whose(settings) == browser_session.Whose(
-        url=browser_session.NEW_CHAT_URL,
+        url=probe.NEW_CHAT_URL,
         prompt=browser_session.LOGIN_PROMPT,
-        hosts=("claude.ai",),
+        origins=("https://claude.ai",),
         vendor="Claude",
         by_link=True,
     )
     assert browser_session.whose(with_session_account(settings, "claude", "old")) == browser_session.Whose(
-        url=CLAUDE.login_url, prompt=CLAUDE.login_prompt, hosts=CLAUDE.hosts, vendor="Claude", by_link=True
+        url=CLAUDE.login_url, prompt=CLAUDE.login_prompt, origins=CLAUDE.origins, vendor="Claude", by_link=True
     )
     # The destination is a Claude account (§75): it signs in the way Claude does.
     assert browser_session.whose(settings).by_link is CLAUDE.sign_in_by_link
@@ -163,8 +163,9 @@ def test_whose_session_a_command_means(tmp_path: Path) -> None:
 def test_a_one_host_site_is_written_as_it_was() -> None:
     assert Site("x", "a.example", {}).hosts == ("a.example",)
     assert Site("x", "a.example", {}, hosts=("a.example", "b.example")).hosts == ("a.example", "b.example")
-    surface = helpers.Surface(host="a.example", allowed=re.compile(r".*"))
+    surface = helpers.Surface(origin="https://a.example", allowed=re.compile(r".*"))
     assert surface.hosts == ("a.example",)
+    assert surface.origins == ("https://a.example",)
 
 
 def test_a_wall_admits_every_auth_host_whole() -> None:
@@ -172,9 +173,9 @@ def test_a_wall_admits_every_auth_host_whole() -> None:
     source = sources.Source(
         name="x",
         display_name="X",
-        host="x.example",
-        auth_hosts=("auth.x.example",),
-        login_url="https://x.example/",
+        origin="https://x.example",
+        auth_origins=("https://auth.x.example",),
+        login_path="/",
         sign_in_paths=("", "auth/callback"),
         app_paths=(),
         export_page_path="/settings/data",
@@ -191,6 +192,9 @@ def test_a_wall_admits_every_auth_host_whole() -> None:
     assert sites.extraction_pattern(source).pattern == (
         r"^https://x\.example/(|auth/callback|settings/data)(\?.*)?$|^https://auth\.x\.example/.*$"
     )
+    assert source.host == "x.example"
+    assert source.auth_hosts == ("auth.x.example",)
+    assert source.login_url == "https://x.example/"
     wall = sites.extraction_surface(source)
     assert wall.hosts == ("x.example", "auth.x.example")
     assert wall.permits("https://x.example/")
@@ -204,7 +208,9 @@ def test_a_wall_admits_every_auth_host_whole() -> None:
 
 @pytest.mark.slow
 def test_a_tab_on_any_of_the_surface_s_hosts_is_found() -> None:
-    surface = helpers.Surface(host="a.example", allowed=re.compile(r".*"), hosts=("a.example", "b.example"))
+    surface = helpers.Surface(
+        origin="https://a.example", allowed=re.compile(r".*"), origins=("https://a.example", "https://b.example")
+    )
     with FakeChrome(
         targets=[
             FakeTarget(id="page-1", url="https://c.example/"),

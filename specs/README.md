@@ -154,6 +154,12 @@ M12 — Claude sign-in by link (brief 07, §72–§80) — claude.ai has no pass
 M13 — Signing out (brief 08, §81–§87) — outside the gates: it touches no account and
       drives nothing, and what it removes is on this machine only
   63  Everything but the logs: `logout` replaces `session logout` and clears the account home
+
+M14 — The mock catches up (brief 03 §40, brief 04 §49) — outside the gates: it is the
+      mock's side of six corrections the tool already took, and no account is touched
+  64  The mock catches up with the account: the panel at its real address, the link as an
+      index and its single-use parts, a session that can lapse, and the first traces cited
+  65  `--mock`: one flag, one origin, no certificate — and ADR 0001 superseded
 ```
 
 ## Dependencies
@@ -274,6 +280,22 @@ slices wrote.
           (63 amends §74 and brief 02 §23; it is the first slice of brief 08)
 ```
 
+M14 is one slice and it is all catching-up: every line of it is the mock's side of a
+correction `src/` already took from a real run, and the one thing that is not — a session
+that lapses mid-run — is brief 02 §21's own list of what the mock cannot do, claimed.
+`37` built the place a real trace is committed and left the first trace out of scope; `64`
+is the slice that brings two.
+
+```text
+32, 37, 49, 51, 52 ─> 64 ─> 65
+          (64 amends brief 02 §21 and `32`'s export page;
+           65 amends §22 and §23, and supersedes ADR 0001 with ADR 0010)
+```
+
+`65` is the one slice here that changes the *tool*: `64` was the mock catching up with six
+corrections the tool already had, and `65` is the tool learning a flag so that catching up
+costs an address instead of a certificate.
+
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
 own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
 straight to `14`. Both need `12` and nothing else, and both were built against it
@@ -360,6 +382,8 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [61](impl/61-headless-extraction.md) | Headless extraction | §31, §63 (amended) | Built |
 | [62](impl/62-waiting-for-the-export-panel.md) | Waiting for the export panel | §31, §77 | Built |
 | [63](impl/63-everything-but-the-logs.md) | Everything but the logs | §81–§86, §74 (amended), §35 (amended), §23 (amended) | Built |
+| [64](impl/64-the-mock-catches-up.md) | The mock catches up with the account | §40, §49, §21 (amended) | Built |
+| [65](impl/65-the-mock-is-reached-by-a-flag.md) | `--mock`: the tool talks to a local origin | §21 (amended), §22 (amended), §40 | Built |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real

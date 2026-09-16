@@ -50,7 +50,7 @@ from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient
-from dataporter.browser.probe import MIGRATION_SITE, NEW_CHAT_URL
+from dataporter.browser.probe import new_chat_url
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import BrowserError, HermesError
@@ -270,12 +270,14 @@ def checks(settings: Settings, flags: Sequence[str] = ()) -> Generator[Check, No
 
     started = time.monotonic()
     try:
-        browser = launcher.launch(settings, NEW_CHAT_URL)
+        browser = launcher.launch(settings, new_chat_url(browser_session.destination_origin(settings)))
     except BrowserError as exc:
         yield Check(CHROME_LAUNCH, ok=False, detail=exc.detail or type(exc).__name__)
         return
     try:
-        with watching.watched(settings, command="doctor", flags=flags, site=MIGRATION_SITE, browser=browser) as traced:
+        with watching.watched(
+            settings, command="doctor", flags=flags, site=browser_session.site_of(settings), browser=browser
+        ) as traced:
             yield Check(
                 CHROME_LAUNCH,
                 ok=True,
@@ -298,7 +300,7 @@ def checks(settings: Settings, flags: Sequence[str] = ()) -> Generator[Check, No
             yield helper
             if not helper.ok:
                 return
-            session = _session_check(browser)
+            session = _session_check(settings, browser)
             traced.exit_code = ExitCode.OK if session.ok else ExitCode.ENVIRONMENT
             yield session
     finally:
@@ -346,7 +348,7 @@ def _hermes_reaches_chrome(settings: Settings, client: CdpClient) -> Check:
                 ok=False,
                 detail=f"hermes did not answer with the nonce; stdout: {answered.stdout_path}",
             )
-        if NEW_CHAT_URL not in answered.stdout:
+        if new_chat_url(browser_session.destination_origin(settings)) not in answered.stdout:
             # The nonce came back but the other tab did not: Hermes answered
             # without ever listing the targets on our debug port, which is what
             # attaching to a browser of its own looks like. `10` owns the ladder.
@@ -401,9 +403,17 @@ def _hermes_runs_helper(settings: Settings) -> Check:
     return Check(HERMES_HELPER, ok=True, detail="browser probe via terminal tool")
 
 
-def _session_check(browser: launcher.BrowserSession) -> Check:
+def _session_check(settings: Settings, browser: launcher.BrowserSession) -> Check:
+    """Whether the destination's session is signed in, *where this run drives*.
+
+    The origin is passed rather than defaulted (`65`). It used to read
+    `signed_in`'s module defaults, which name the real site — so under `--mock`
+    `doctor` reported "not logged in" about an account it had just signed into,
+    having asked claude.ai instead of the mock.
+    """
+    session = browser_session.whose(settings)
     try:
-        if browser_session.signed_in(browser):
+        if browser_session.signed_in(browser, session.url, origins=session.origins):
             return Check(SESSION, ok=True, detail="logged in")
     except BrowserError as exc:
         return Check(SESSION, ok=False, detail=exc.detail or type(exc).__name__)

@@ -40,8 +40,8 @@ import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Literal, Self
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Any, Literal, Self
+from urllib.parse import urlparse, urlsplit
 
 from orval import deep_get, squish
 from pydantic import BaseModel, ConfigDict
@@ -51,12 +51,41 @@ from dataporter.browser.cdp import Page
 from dataporter.browser.site import Site
 from dataporter.sources import claude as claude_source
 
+if TYPE_CHECKING:
+    from dataporter.config import Settings
+
 _logger = log.get_logger(__name__)
+
+CLAUDE_ORIGIN = claude_source.ORIGIN
+"""Where the destination account is. `--mock` replaces it for one invocation
+(`65`); `session.site_of` and `session.whose` are the two places that do."""
 
 CLAUDE_HOST = claude_source.HOST
 """Spelled once, in the source (`42`): the destination is a Claude account
 too, and a host spelled twice is a host that drifts."""
-NEW_CHAT_URL = f"https://{CLAUDE_HOST}/new"
+
+
+def destination_origin(settings: "Settings") -> str:
+    """Return where the destination account is for this invocation (`65`).
+
+    The real site, or the mock claude.ai under `--mock`. The destination is not a
+    source — there is one importer and it is Claude's (ADR 0005) — so this reads
+    the flag rather than a registry, and it is the **one place** the destination
+    half learns that a mock exists. Everything else takes what it returns, so a
+    command that forgot to ask is a command still pointed at the real site, which
+    is the failure this function's singularity is meant to make findable.
+    """
+    return claude_source.MOCK_ORIGIN if settings.mock else CLAUDE_ORIGIN
+
+
+def new_chat_url(origin: str = CLAUDE_ORIGIN) -> str:
+    """Where a new chat is, on `origin`."""
+    return f"{origin}/new"
+
+
+NEW_CHAT_URL = new_chat_url()
+"""The real site's, which is every default argument's value. A command that may
+be pointed elsewhere takes its URL from `session.whose` instead (`65`)."""
 
 _CHAT_PATH = re.compile(
     r"^/chat/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/?$",
@@ -107,7 +136,13 @@ each expression, so the Python constant above is the only spelling of each."""
 SELECTORS: Mapping[str, str] = MappingProxyType(dict(_SELECTORS))
 """The same table, by name, for `33`'s site: what a sketch counts on a page."""
 
-MIGRATION_SITE = Site("claude", CLAUDE_HOST, SELECTORS)
+
+def migration_site(origin: str = CLAUDE_ORIGIN) -> Site:
+    """Return the destination as a trace describes it: its host, and what a sketch counts."""
+    return Site("claude", urlsplit(origin).hostname or "", SELECTORS)
+
+
+MIGRATION_SITE = migration_site()
 """claude.ai as a trace describes it (brief `04` §50): the destination of every
 migration, and the one site this module knows."""
 

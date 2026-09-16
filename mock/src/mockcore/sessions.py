@@ -37,6 +37,18 @@ class Sessions:
         with self._lock:
             self._tokens.discard(token or "")
 
+    def close_all(self) -> int:
+        """Forget every session and say how many there were.
+
+        What a sign-in lapsing looks like from the site's side: the browser still
+        holds its cookie, and the token in it now names nothing. Asked for through
+        the witness (`wire.EXPIRE_PATH`), never by anything the tool drives.
+        """
+        with self._lock:
+            count = len(self._tokens)
+            self._tokens.clear()
+            return count
+
 
 class Pending:
     """The half-finished sign-ins a server is holding: a token each, and the address behind it."""

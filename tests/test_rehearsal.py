@@ -425,14 +425,21 @@ def test_the_ledger_block_is_26s_block(tmp_path: Path) -> None:
     )
 
 
-def test_the_two_arguments_the_mock_printed_are_the_whole_of_the_way_in() -> None:
+def test_nothing_about_the_mock_is_in_chromes_arguments_any_more() -> None:
+    """`65`: the way in is `--mock`, so Chrome's arguments are the machine's alone.
+
+    They used to open with the mock's own two — a resolver rule and an SPKI pin —
+    because the tool had no setting that could name a mock (ADR 0001). What is
+    left is what a headless, sandbox-less or proxied machine needs for any
+    browser at all.
+    """
     settings = running.Settings(root=Path("/w"), mode="non-interactive")
-    arguments = running.chrome_args(settings, "PIN=")
-    assert arguments[0] == "--host-resolver-rules=MAP claude.ai 127.0.0.1:8443"
-    assert arguments[1] == "--ignore-certificate-errors-spki-list=PIN="
-    # Never the blanket one: a rehearsal browser that trusted every certificate
-    # would be a much larger thing to switch off.
-    assert "--ignore-certificate-errors" not in arguments
+    arguments = running.chrome_args(settings)
+    for gone in ("--host-resolver-rules", "--ignore-certificate-errors", "spki"):
+        assert not any(gone in item for item in arguments), arguments
+    assert not hasattr(running, "spki_pin")
+    headless = running.chrome_args(running.Settings(root=Path("/w"), mode="non-interactive", headless=True))
+    assert "--no-sandbox" in headless
 
 
 def test_the_config_names_a_browser_only_when_one_was_named(tmp_path: Path) -> None:
@@ -442,17 +449,18 @@ def test_the_config_names_a_browser_only_when_one_was_named(tmp_path: Path) -> N
     review on #36.)
     """
     settings = running.Settings(root=tmp_path, mode="non-interactive", cdp_port=9333)
-    without = running.config_text(settings, pin="PIN=", attachments=tmp_path / "a")
+    without = running.config_text(settings, attachments=tmp_path / "a")
     assert "executable" not in without
     assert "cdp_port = 9333" in without
     named = running.Settings(root=tmp_path, mode="non-interactive", chrome="/opt/chromium", cdp_port=9333)
-    with_chrome = running.config_text(named, pin="PIN=", attachments=tmp_path / "a")
+    with_chrome = running.config_text(named, attachments=tmp_path / "a")
     assert 'executable = "/opt/chromium"' in with_chrome
-    # Either way, the two lines the mock printed are there and no blanket trust is.
+    # Either way, nothing about the mock is in the file: `--mock` is on the
+    # command line and a file is not one of its doors (`65`, ADR 0010).
     for text in (without, with_chrome):
-        assert "--host-resolver-rules=MAP claude.ai 127.0.0.1:8443" in text
-        assert "--ignore-certificate-errors-spki-list=PIN=" in text
-        assert '--ignore-certificate-errors"' not in text
+        settings_lines = [line for line in text.splitlines() if not line.startswith("#")]
+        assert not [line for line in settings_lines if "host-resolver-rules" in line or "certificate" in line]
+        assert not [line for line in settings_lines if "mock" in line]
 
 
 @pytest.mark.slow
@@ -512,7 +520,7 @@ def test_the_record_carries_a_mark_on_every_number(tmp_path: Path) -> None:
             "chrome": "Chromium 141",
             "mock": "0.1.0",
         },
-        extra_args=running.chrome_args(settings, "PIN="),
+        extra_args=running.chrome_args(settings),
     )
     rows = [line for line in text.splitlines() if line.startswith("| every")]
     assert rows
@@ -743,15 +751,17 @@ def test_a_step_s_expected_flags_are_the_long_options_of_its_command_line() -> N
     """What the tool records as a header's `flags`: the root's and the command's, values left out."""
     runner = running.Runner(settings=running.Settings(root=Path("/r"), mode="non-interactive"), env={})
     assert running.expected_flags(runner.command("login", "--source", "claude", "--account", "a", attended=True)) == (
+        "--mock",
         "--workspace",
         "--source",
         "--account",
     )
     assert running.expected_flags(runner.command("login", "--link", "https://x", attended=True)) == (
+        "--mock",
         "--workspace",
         "--link",
     )
-    assert running.expected_flags(runner.command("extract")) == ("--workspace", "--non-interactive")
+    assert running.expected_flags(runner.command("extract")) == ("--mock", "--workspace", "--non-interactive")
 
 
 def test_the_command_leaves_the_mode_off_for_an_attended_step() -> None:

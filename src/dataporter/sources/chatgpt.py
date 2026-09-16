@@ -14,9 +14,22 @@ from dataporter.sources.base import Reading, Source
 if TYPE_CHECKING:
     from dataporter.export.source import ExportView
 
+ORIGIN = "https://chatgpt.com"
+AUTH_ORIGIN = "https://auth.openai.com"
+"""Signing in passes through the second origin (help article 7426629, §61)."""
+
 HOST = "chatgpt.com"
-AUTH_HOST = "auth.openai.com"
-"""Signing in passes through the second host (help article 7426629, §61)."""
+"""Kept as a name because the docstrings and the UI map spell it, and because
+`Source.host` derives the same string from `ORIGIN`."""
+
+MOCK_ORIGIN = "http://127.0.0.1:8444"
+MOCK_AUTH_ORIGIN = "http://127.0.0.1:8445"
+"""Where `--mock` points instead (`65`): two ports, because the sign-in really
+does cross to a second origin and a mock that collapsed them would leave the
+wall's auth branch — and the crossing the rehearsal reconciles — untested.
+
+Two ports rather than two names because there is no certificate to cover two
+SANs any more, which is what made a second host awkward before."""
 
 EXPORT_PAGE_PATH = "/settings/data-controls"
 """Where chatgpt.com lets a user ask for their data. The mock's path; the
@@ -71,9 +84,9 @@ def read(view: "ExportView") -> Reading:
 CHATGPT = Source(
     name="chatgpt",
     display_name="ChatGPT",
-    host=HOST,
-    auth_hosts=(AUTH_HOST,),
-    login_url=f"https://{HOST}/",
+    origin=ORIGIN,
+    auth_origins=(AUTH_ORIGIN,),
+    login_path="/",
     sign_in_paths=("", "auth/login", "auth/callback"),
     app_paths=(),
     export_page_path=EXPORT_PAGE_PATH,

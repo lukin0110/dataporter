@@ -3,42 +3,36 @@
 import json
 
 import pytest
-from chatgptmock import cli, server
+from chatgptmock import AUTH_ORIGIN, AUTH_PORT, DEFAULT_PORT, SITE_ORIGIN, cli, server
 from chatgptmock.site import Site
-from mockcore import certificate
+from mockcore import wire
 from test_chatgpt_server import sign_in
 
 from conftest import Client
 
 
-def test_the_reachability_block_names_both_hosts_in_one_rule(chatgpt_material: certificate.Material) -> None:
-    """`39`'s golden string.
+def test_the_reachability_block_names_the_address_and_the_flag() -> None:
+    """`39`'s golden string, as `65` leaves it.
 
-    §54 says the lines send both host names to the mock and trust its key and no
-    other; the shape is `26`'s, and there is no tail — the tool cannot fetch this
-    site's archive, so there is nothing to tell it.
+    §54 said the lines send both host names to the mock and trust its key. There
+    is no rule and no key now: the mock is two plain-HTTP sockets and the tool is
+    told by `--mock` (ADR 0010). Only the site's is printed — the second stands in
+    for the auth host, and a sign-in reaches it by a redirect and nothing else.
     """
-    block = cli.reachability(host="127.0.0.1", port=8444, material=chatgpt_material)
-    assert block == (
-        "Mock chatgpt.com listening on https://127.0.0.1:8444\n"
+    assert cli.reachability(host="127.0.0.1", port=8444) == (
+        "Mock chatgpt.com listening on http://127.0.0.1:8444\n"
         "\n"
-        "Add to <workspace>/config.toml before running the tool:\n"
-        "\n"
-        "[browser]\n"
-        "extra_args = [\n"
-        '  "--host-resolver-rules=MAP chatgpt.com 127.0.0.1:8444, MAP auth.openai.com 127.0.0.1:8444",\n'
-        f'  "--ignore-certificate-errors-spki-list={chatgpt_material.spki_sha256}",\n'
-        "]\n"
+        "Run the tool with --mock to reach it: dataporter --mock login --account <label>\n"
         "\n"
     )
-    assert "SSL_CERT_FILE" not in block
 
 
-def test_the_proxy_note_names_both_hosts_and_no_fetch() -> None:
-    note = cli.proxy_note(["https_proxy"])
-    assert "which would resolve chatgpt.com and auth.openai.com itself." in note
-    assert '"--no-proxy-server",' in note
-    assert "no_proxy" not in note
+def test_the_two_origins_are_two_ports() -> None:
+    """The second socket is what the resolver rule's second name used to be."""
+    assert AUTH_PORT == DEFAULT_PORT + 1
+    assert SITE_ORIGIN == "http://127.0.0.1:8444"
+    assert AUTH_ORIGIN == "http://127.0.0.1:8445"
+    assert SITE_ORIGIN != AUTH_ORIGIN
 
 
 @pytest.mark.parametrize(
@@ -67,18 +61,17 @@ def test_the_defaults_are_the_sites(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_exports_prints_the_links_a_running_mock_handed_out(
-    chatgpt_site: Site, chatgpt_material: certificate.Material, capsys: pytest.CaptureFixture[str]
+    chatgpt_site: Site, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """`chatgpt-mock exports` says to another terminal what `serve` printed in its own."""
-    started = server.serve(chatgpt_site, port=0, material=chatgpt_material)
+    started = server.serve(chatgpt_site, port=0)
     port = started.port
     try:
         first = chatgpt_site.request_export()
         second = chatgpt_site.request_export()
         assert cli.main(["exports", "--port", str(port)]) == 0
         assert capsys.readouterr().out == (
-            f"https://chatgpt.com/__mock/exports/{first.token}.zip\n"
-            f"https://chatgpt.com/__mock/exports/{second.token}.zip\n"
+            f"{SITE_ORIGIN}/__mock/exports/{first.token}.zip\n{SITE_ORIGIN}/__mock/exports/{second.token}.zip\n"
         )
         assert cli.main(["ledger", "--port", str(port)]) == 0
         assert capsys.readouterr().out.startswith("Mock chatgpt.com — ledger\n\nSign-ins:                      0\n")
@@ -86,11 +79,11 @@ def test_exports_prints_the_links_a_running_mock_handed_out(
         started.close()
 
 
-def test_a_link_is_announced_as_it_is_minted(chatgpt_site: Site, chatgpt_material: certificate.Material) -> None:
+def test_a_link_is_announced_as_it_is_minted(chatgpt_site: Site) -> None:
     announced: list[str] = []
-    started = server.serve(chatgpt_site, port=0, material=chatgpt_material, announce=announced.append)
+    started = server.serve(chatgpt_site, port=0, announce=announced.append)
     try:
-        client = Client(f"https://127.0.0.1:{started.port}")
+        client = Client(wire.origin_of("127.0.0.1", started.port))
         sign_in(client)
         _, body, _ = client.post_json("/api/exports", {})
     finally:

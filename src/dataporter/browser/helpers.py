@@ -77,7 +77,19 @@ CHIP_POLL_S = 0.5
 # The wall
 # --------------------------------------------------------------------------- #
 
-MIGRATION_SURFACE = re.compile(r"^https://claude\.ai/(new|chat/[0-9a-f-]{36})(\?.*)?$")
+
+def migration_wall(origin: str = probing.CLAUDE_ORIGIN) -> re.Pattern[str]:
+    """§17's wall, on `origin`: a new chat and a conversation, and nothing else.
+
+    A function of the origin since `65`, so that the two modes are **disjoint**: a
+    wall built on `https://claude.ai` admits no localhost and one built on
+    `http://127.0.0.1:8443` admits no claude.ai. A run given the wrong one stops
+    here with the URL in hand rather than driving the wrong site quietly.
+    """
+    return re.compile(rf"^{re.escape(origin)}/(new|chat/[0-9a-f-]{{36}})(\?.*)?$")
+
+
+MIGRATION_SURFACE = migration_wall()
 """The only URLs a helper will act on (§17).
 
 Deliberately coarser than `probe.conversation_id_of`, which parses the uuid
@@ -89,34 +101,71 @@ one line long. `/settings`, `/admin`, `/billing`, `/organizations` and
 
 @dataclass(frozen=True)
 class Surface:
-    """A host and the URLs on it a helper may touch.
+    """An origin and the URLs on it a helper may touch.
 
-    A parameter rather than a setting, and never read from config or the
-    environment: `CLAUDE` is what every command passes and the only thing an
-    operator can run. The test suite is the one caller that substitutes another,
-    to point the same helpers at a fixture server on `127.0.0.1` — so the wall
-    has no door that ships.
+    A parameter rather than a setting: `CLAUDE` is what a destination command
+    passes, and `--mock` reaches it through `session.site_of` rather than by
+    being read here. Until `65` this said "never read from config or the
+    environment… so the wall has no door that ships"; ADR 0010 is where that
+    sentence was given up, and the compensation is that the two walls are
+    **disjoint** — neither admits the other's origin — so a run pointed the wrong
+    way stops rather than drifts.
+
+    The test suite substitutes its own, to point the same helpers at a fixture
+    server on `127.0.0.1`.
     """
 
-    host: str
+    origin: str
     allowed: re.Pattern[str]
     site: Site | None = None
     """What a sketch of a page on this surface counts (`34`): the site's
     selectors, by name. `None` — the test suite's fixture surfaces — sketches
     with no selector table."""
-    hosts: tuple[str, ...] = ()
-    """The hosts a tab may be on and still be this surface's (`42`): `host`,
-    and the hosts a sign-in passes through beside it. Empty means `host` alone."""
+    origins: tuple[str, ...] = ()
+    """The origins a tab may be on and still be this surface's (`42`): `origin`,
+    and the origins a sign-in passes through beside it. Empty means `origin`
+    alone."""
 
     def __post_init__(self) -> None:
-        if not self.hosts:
-            object.__setattr__(self, "hosts", (self.host,))
+        if not self.origins:
+            object.__setattr__(self, "origins", (self.origin,))
+
+    @property
+    def host(self) -> str:
+        """The bare host of `origin`, for the lines an operator reads."""
+        return urlsplit(self.origin).hostname or ""
+
+    @property
+    def hosts(self) -> tuple[str, ...]:
+        return tuple(urlsplit(origin).hostname or "" for origin in self.origins)
 
     def permits(self, url: str) -> bool:
         return self.allowed.match(url) is not None
 
 
-CLAUDE = Surface(host=probing.CLAUDE_HOST, allowed=MIGRATION_SURFACE, site=probing.MIGRATION_SITE)
+CLAUDE = Surface(origin=probing.CLAUDE_ORIGIN, allowed=MIGRATION_SURFACE, site=probing.MIGRATION_SITE)
+
+
+def for_settings(settings: "Settings") -> Surface:
+    """Return the destination wall this invocation drives (`65`).
+
+    What every helper that takes `Settings` defaults to, so that the `browser`
+    subcommands an agent runs are pointed wherever the run is without each of
+    them having to remember. A helper whose surface came from a module constant
+    instead would keep driving the real claude.ai inside a `--mock` run, and
+    nothing would say so — the one failure in this change that is silent.
+    """
+    return destination(probing.destination_origin(settings))
+
+
+def destination(origin: str = probing.CLAUDE_ORIGIN) -> Surface:
+    """Return the destination's wall on `origin`: `CLAUDE` itself for the real site."""
+    return (
+        CLAUDE
+        if origin == probing.CLAUDE_ORIGIN
+        else Surface(origin=origin, allowed=migration_wall(origin), site=probing.migration_site(origin))
+    )
+
 
 _SKETCHED: ContextVar[tuple[str | None, str | None]] = ContextVar("sketched", default=(None, None))
 """The sketches `driving` took before and after its body, by hash, for the
@@ -449,8 +498,8 @@ class PasteMethod(StrEnum):
 
 
 def surface_tabs(client: CdpClient, surface: Surface = CLAUDE) -> list[Target]:
-    """Every page target on one of the surface's hosts, in the browser's own order."""
-    return [item for item in client.pages() if item.host in surface.hosts]
+    """Every page target on one of the surface's origins, in the browser's own order."""
+    return [item for item in client.pages() if item.origin in surface.origins]
 
 
 def chosen_tab(client: CdpClient, *, target_id: str | None = None, surface: Surface = CLAUDE) -> Target | Failure:
@@ -529,7 +578,7 @@ def probe_page(
     expect: Sequence[str] = (),
     messages: bool = False,
     expect_title: str | None = None,
-    surface: Surface = CLAUDE,
+    surface: Surface | None = None,
 ) -> Outcome:
     """`browser probe`: the page state, and what the last message says.
 
@@ -538,6 +587,7 @@ def probe_page(
     `--expect-title` is the only question that may be asked about the title, for
     the reason `--expect` is the only question that may be asked about a message.
     """
+    surface = surface if surface is not None else for_settings(settings)
     tab = chosen_tab(client, target_id=target, surface=surface)
     if isinstance(tab, Failure):
         return Outcome(tab)
@@ -569,7 +619,7 @@ def paste_seed(  # ruff: ignore[too-many-return-statements] - one return per way
     method: PasteMethod = PasteMethod.INSERT_TEXT,
     append: bool = False,
     target: str | None = None,
-    surface: Surface = CLAUDE,
+    surface: Surface | None = None,
 ) -> Outcome:
     """`browser paste`: a seed into the composer, byte for byte, verified."""
     started = time.monotonic()
@@ -577,6 +627,7 @@ def paste_seed(  # ruff: ignore[too-many-return-statements] - one return per way
     if isinstance(text, Failure):
         return Outcome(text, usage=True)
 
+    surface = surface if surface is not None else for_settings(settings)
     tab = chosen_tab(client, target_id=target, surface=surface)
     if isinstance(tab, Failure):
         return Outcome(tab)
@@ -647,7 +698,7 @@ def attach_file(
     *,
     file: Path,
     target: str | None = None,
-    surface: Surface = CLAUDE,
+    surface: Surface | None = None,
     poll_s: float | None = None,
 ) -> Outcome:
     """`browser attach`: a file into the upload input, confirmed by its chip."""
@@ -663,6 +714,7 @@ def attach_file(
     name = path.name
     size = path.stat().st_size
 
+    surface = surface if surface is not None else for_settings(settings)
     tab = chosen_tab(client, target_id=target, surface=surface)
     if isinstance(tab, Failure):
         return Outcome(tab)
@@ -699,7 +751,7 @@ def attached_files(
     *,
     files: Sequence[Path],
     target: str | None = None,
-    surface: Surface = CLAUDE,
+    surface: Surface | None = None,
 ) -> Outcome:
     """`browser attachments`: every one of these files has a chip, or which does not.
 
@@ -721,6 +773,7 @@ def attached_files(
         # attachments would ask, and refusing it would make the skill branch.
         return Outcome(ChipsResult(file_names=(), count=0))
 
+    surface = surface if surface is not None else for_settings(settings)
     tab = chosen_tab(client, target_id=target, surface=surface)
     if isinstance(tab, Failure):
         return Outcome(tab)
@@ -753,7 +806,7 @@ def await_response(
     timeout: float | None = None,
     expect: Sequence[str] = (),
     target: str | None = None,
-    surface: Surface = CLAUDE,
+    surface: Surface | None = None,
     poll_s: float | None = None,
 ) -> Outcome:
     """`browser await-response`: wait until Claude has finished answering.
@@ -768,6 +821,7 @@ def await_response(
     interval = RESPONSE_POLL_S if poll_s is None else poll_s
     started = time.monotonic()
 
+    surface = surface if surface is not None else for_settings(settings)
     tab = chosen_tab(client, target_id=target, surface=surface)
     if isinstance(tab, Failure):
         return Outcome(tab)
@@ -814,7 +868,7 @@ def await_response(
             time.sleep(interval)
 
 
-def close_extra_tabs(client: CdpClient, settings: Settings, *, surface: Surface = CLAUDE) -> Outcome:
+def close_extra_tabs(client: CdpClient, settings: Settings, *, surface: Surface | None = None) -> Outcome:
     """`browser close-extra-tabs`: tidy up, and never close a conversation.
 
     The only tabs this closes are blank ones and the second and later new-chat
@@ -822,6 +876,7 @@ def close_extra_tabs(client: CdpClient, settings: Settings, *, surface: Surface 
     state it exists to clear up is the one that makes choosing a target
     ambiguous. A `/chat/<uuid>` tab is never a candidate, whatever else is open.
     """
+    surface = surface if surface is not None else for_settings(settings)
     closed = 0
     kept_new_chat = False
     for target in client.pages():
@@ -829,7 +884,7 @@ def close_extra_tabs(client: CdpClient, settings: Settings, *, surface: Surface 
             client.close_target(target.id)
             closed += 1
             continue
-        if target.host != surface.host:
+        if target.origin != surface.origin:
             continue
         if probing.kind_of(target.url) is not probing.PageKind.NEW_CHAT:
             continue

@@ -1,8 +1,9 @@
 """The rehearsal: the full run's protocol, run against the mock.
 
-Nothing in here ships. The tool under rehearsal is byte-identical to the tool
-that will meet claude.ai and has no setting that names the mock (§22, ADR 0001),
-so this package holds only the three things a rehearsal needs *beside* it:
+Nothing in here ships. The tool under rehearsal is the tool that will meet
+claude.ai with exactly one value changed — the origin, by `--mock`, and a test
+says so (§22 as `65` amends it, ADR 0010) — so this package holds only the three
+things a rehearsal needs *beside* it:
 
 - `export.py` — the synthetic export a rehearsal migrates (§24);
 - `agent.py` — the scripted agent's hands: the moves the skill leaves to an

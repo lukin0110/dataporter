@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from dataporter import PROGRAM_NAME, log, sources
 from dataporter import intervention as intervening
-from dataporter.browser import chatgpt_login, login_form
+from dataporter.browser import chatgpt_login, login_form, sites
 from dataporter.browser import session as browser_session
 from dataporter.browser.launcher import BrowserSession
 from dataporter.config import Credentials, Settings
@@ -115,12 +115,12 @@ and `failed` carries `error` saying what stopped it, in your own words.
 """
 
 
-def prompt(*, workspace: Path) -> str:
+def prompt(*, workspace: Path, url: str = login_form.LOGIN_URL, mock: bool = False) -> str:
     """Return the sign-in task. Names a URL and the helper prefix; carries no credential."""
     return "\n".join([
         HEAD,
-        f"login url: {login_form.LOGIN_URL}",
-        f"helper: {prompting.helper_command(workspace)}",
+        f"login url: {url}",
+        f"helper: {prompting.helper_command(workspace, mock=mock)}",
         "",
         TAIL,
     ])
@@ -237,7 +237,11 @@ class SignIn:
                 )
                 return SignInOutcome(signed_in=False, reason=_phrase(reason), detail=form.error)
             result = login_form.fill_and_submit(
-                session, credentials, timeout_s=self.settings.timeouts.signin_s, settings=self.settings
+                session,
+                credentials,
+                timeout_s=self.settings.timeouts.signin_s,
+                surface=sites.login_surface(sources.of(self.settings)),
+                settings=self.settings,
             )
         signed_in = result.signed_in and _signed_in(self.settings, session)
         _logger.info(
@@ -261,7 +265,11 @@ class SignIn:
     def _form(self) -> FormResult:
         """Return the agent's half: the subprocess, and the object it printed last."""
         raw = self.runner.run_raw(
-            prompt(workspace=self.settings.workspace),
+            prompt(
+                workspace=self.settings.workspace,
+                url=login_form.login_url(sources.of(self.settings).origin),
+                mock=self.settings.mock,
+            ),
             run_id=RUN_ID.format(attempt=self.attempts),
             timeout_s=self.settings.timeouts.hermes_check_s,
         )
@@ -282,7 +290,7 @@ def needs_person(outcome: SignInOutcome) -> str:
 def _signed_in(settings: Settings, session: BrowserSession) -> bool:
     """Probe whichever site this invocation signs in to (`42`)."""
     whose = browser_session.whose(settings)
-    return browser_session.signed_in(session, whose.url, hosts=whose.hosts)
+    return browser_session.signed_in(session, whose.url, origins=whose.origins)
 
 
 def ensure_signed_in(

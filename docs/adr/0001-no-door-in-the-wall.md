@@ -1,5 +1,9 @@
 # No door in the wall
 
+**Superseded by [0010](0010-the-mock-is-reached-by-a-flag.md).** The tool has a flag that
+names a mock, and the mock serves plain HTTP on loopback. What replaces this
+document’s guarantee, and what was given up for it, are 0010’s.
+
 The helpers refuse every URL that is not `https://claude.ai/new` or
 `https://claude.ai/chat/<id>`, and only the test suite substitutes that surface, in
 process. The mock (brief `02`, §21) has to be reached at that host. We decided that the

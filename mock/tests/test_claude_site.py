@@ -5,7 +5,7 @@ tested in `test_core_reply.py`; what is here is what a chat on this site is.
 """
 
 import pytest
-from claudemock import IDENTITY
+from claudemock import IDENTITY, ORIGIN
 from claudemock.site import Site
 from mockcore.ledger import Ledger
 from mockcore.reply import CANNED
@@ -101,7 +101,7 @@ def test_the_link_is_the_real_shape_and_lands_on_the_site(site: Site) -> None:
     """`sign-in link`: on claude.ai, at /magic-link, the token and the base64url address in the fragment."""
     link = site.request_sign_in("rehearsal@example.invalid", pending="browser-1")
     assert link is not None
-    assert site.link_of(link) == f"https://claude.ai/magic-link#{link.token}:cmVoZWFyc2FsQGV4YW1wbGUuaW52YWxpZA"
+    assert site.link_of(link) == f"{ORIGIN}/magic-link#{link.token}:cmVoZWFyc2FsQGV4YW1wbGUuaW52YWxpZA"
     assert len(link.token) == 32
     assert "=" not in link.fragment
 

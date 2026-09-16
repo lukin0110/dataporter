@@ -15,9 +15,7 @@ names a mock, so the only way in is configuration an operator may already write
 """
 
 import argparse
-import os
 import signal
-import ssl
 import sys
 import time
 import urllib.request
@@ -25,24 +23,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import FrameType
 
-from mockcore import Identity, __version__
+from mockcore import Identity, __version__, wire
 from mockcore.reply import DEFAULT_REPLY_DELAY_S, DEFAULT_REPLY_STEPS
 from mockcore.wire import EXPORTS_PATH, LEDGER_PATH, MockServer
 
 DEFAULT_HOST = "127.0.0.1"
-
-PROXY_ENV = ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY")
-"""Chrome reads these on Linux, and a proxy resolves the host name itself — so
-`--host-resolver-rules` never fires and the mock looks unreachable. Not part of
-the block, because it is a fact about the machine rather than about the mock."""
-
-PROXY_NOTE = """\
-This machine has a proxy in its environment ({names}), which Chrome reads and
-which would resolve {hosts} itself. Add to the same list:
-
-  "--no-proxy-server",
-
-"""
 
 LINK_NOTE = """\
 Export requested — the link, instead of an email:
@@ -65,55 +50,23 @@ Sign-in requested — the link, instead of an email:
 reads it where an inbox would be. `<program> sign-in-links` lists them."""
 
 
-def resolver_rule(identity: Identity, *, host: str, port: int) -> str:
-    """Return the one `--host-resolver-rules` value that sends every host to the mock.
-
-    Chrome keeps one value per argument, so a mock with two names prints one
-    rule with two maps in it, comma-separated — and two mocks at once are merged
-    into one the same way (§54, *Two mocks at once*; the README says how).
-    """
-    return ", ".join(f"MAP {name} {host}:{port}" for name in identity.hosts)
-
-
-def reachability(
-    identity: Identity,
-    *,
-    host: str,
-    port: int,
-    flag: str,
-    tail: Sequence[str] = (),
-) -> str:
+def reachability(identity: Identity, *, host: str, port: int) -> str:
     """Return the reachability block, byte for byte, ending in a blank line.
 
-    `26`'s golden string, kept byte for byte for the mock claude.ai and pinned
-    by its tests; `38` made the site's name and its hosts the identity's, and the
-    lines after the Chrome table the site's (`tail`: the mock claude.ai's
-    `SSL_CERT_FILE` line for the tool's fetch; nothing for a site whose archive
-    the tool cannot fetch).
+    Two lines now. `26`'s block was a `config.toml` table an operator pasted — a
+    resolver rule mapping the site's names to the mock, and an SPKI pin telling
+    Chrome to trust its key — because the tool had no setting that could name a
+    mock (ADR 0001) and had to be steered from outside. `--mock` is that setting
+    (ADR 0010), so there is nothing to paste: the address, and the flag that
+    reaches it.
     """
     return "\n".join([
-        f"{identity.title} listening on https://{host}:{port}",
+        f"{identity.title} listening on {wire.origin_of(host, port)}",
         "",
-        "Add to <workspace>/config.toml before running the tool:",
+        "Run the tool with --mock to reach it: dataporter --mock login --account <label>",
         "",
-        "[browser]",
-        "extra_args = [",
-        f'  "--host-resolver-rules={resolver_rule(identity, host=host, port=port)}",',
-        f'  "{flag}",',
-        "]",
-        "",
-        *tail,
         "",
     ])
-
-
-def proxy_note(identity: Identity, names: Sequence[str]) -> str:
-    return PROXY_NOTE.format(names=", ".join(names), hosts=identity.spelled_hosts)
-
-
-def proxies() -> list[str]:
-    """Return the proxy variables this machine's environment names, in `PROXY_ENV`'s order."""
-    return [name for name in PROXY_ENV if os.environ.get(name)]
 
 
 def link_note(link: str) -> str:
@@ -250,12 +203,9 @@ def exports(identity: Identity, *, host: str, port: int) -> int:
 
 def fetch_text(identity: Identity, *, host: str, port: int, path: str) -> int:
     """Print what a running mock serves at `path`, verifying nothing: it is ours."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    url = f"https://{host}:{port}{path}"
+    url = f"{wire.origin_of(host, port)}{path}"
     try:
-        with urllib.request.urlopen(url, context=context, timeout=10) as answer:
+        with urllib.request.urlopen(url, timeout=10) as answer:
             print(answer.read().decode("utf-8"), end="")
     except OSError as failure:
         print(f"{identity.program}: {url}: {failure}", file=sys.stderr)

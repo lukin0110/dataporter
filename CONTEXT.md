@@ -190,11 +190,18 @@ _Avoid_: tool, primitive, command
 The helper that reports a page's state without its content.
 _Avoid_: snapshot, inspect
 
+**Origin**:
+Scheme, host and port together — `https://claude.ai`, `http://127.0.0.1:8443`. Where a
+site *is*, and the one thing `--mock` changes. Distinct from a **host**, which is the bare
+name and carries no port: a tab is matched by one and a wall is built from the other.
+_Avoid_: base URL, endpoint, address, target
+
 **Surface**:
-The set of URLs a helper will drive. The migration surface is a new chat and a
-conversation on claude.ai; the login surface adds the sign-in page, for the sign-in alone;
-the extraction surface is a source site's sign-in page — on every host the sign-in passes
-through — and the page where its export is asked for, for the ask alone.
+The set of URLs a helper will drive, on an origin. The migration surface is a new chat and
+a conversation on the destination's; the login surface adds the sign-in page, for the
+sign-in alone; the extraction surface is a source site's sign-in page — on every origin
+the sign-in passes through — and the page where its export is asked for, for the ask
+alone. Two surfaces on different origins are disjoint: neither admits the other's URLs.
 _Avoid_: allowlist, whitelist, scope
 
 **Scripted agent**:
@@ -251,7 +258,8 @@ _Avoid_: fake site, simulator, emulator, stub server, the Claude mock, the ChatG
 **Rehearsal**:
 A protocol — the full run's, or an extraction's — run by the shipped tool against a site's
 mock, with the scripted agent standing where Hermes stands wherever the protocol needs
-one. No model, no account.
+one. No model, no account. The tool is the one that ships with a single value changed —
+the origin, by `--mock` — and a test says so (ADR 0010).
 _Avoid_: dry run, test run, smoke test, e2e
 
 **Rehearsal export**:

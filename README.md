@@ -157,10 +157,14 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 | `followup` / `judge` | The pilot's semantic probe, and the optional model grade for it. |
 
 Global options go before the subcommand: `--workspace PATH`, `--verbose`, `--quiet`,
-`--version`, and `24`'s `--non-interactive`, `--email EMAIL`, `--password-file PATH`.
+`--version`, `24`'s `--non-interactive`, `--email EMAIL`, `--password-file PATH`, and
+`--mock` — which points every command at a local stand-in for the site instead of the real
+one ([below](#working-with-the-mock)).
+
 Configuration is `<workspace>/config.toml`, `DATAPORTER_…` environment variables and flags, in
-that order of precedence, ending at the flags — except the mode and the credentials, which
-`config.toml` may not carry.
+that order of precedence, ending at the flags — except the mode, the credentials and
+`--mock`, which `config.toml` may not carry. `--mock` is stricter still: it is the flag or
+nothing, because the question it answers is "did I mean this run to be real".
 
 ## Backing an account up
 
@@ -235,11 +239,19 @@ profile a person signed in; a Claude session that has expired stops the run with
 and `login` as the remedy, because Claude's sign-in is a link behind an attestation and no
 credential can make it (brief 07).
 
-Both moves can be rehearsed with no account: `mock/` serves the export page and prints
-the link where the vendor would have emailed it ([`mock/README.md`](mock/README.md)).
-The same project serves a mock chatgpt.com (brief `05`), built ahead of the tool's
-ChatGPT half and driven by it since brief `06` — a sign-in on two host names, a composer that turns a long paste into an
-attachment, and a download that wants a session — so that half meets them here first.
+**Both moves work with no account at all.** `mock/` is a served stand-in for the site —
+its settings panel, its sign-in, its export link — and `--mock` is what points the tool
+there:
+
+```sh
+uv run --package mocks claude-mock serve     # in one terminal
+dataporter --mock extract --account eddie    # in another: the same command, a local site
+```
+
+It keeps what it writes in `~/.dataporter/mock/`, so nothing a mock run files can be
+mistaken for a backup of the account it names. [Working with the
+mock](#working-with-the-mock) is the whole loop; [`mock/README.md`](mock/README.md) is the
+site itself.
 
 ## Running unattended
 
@@ -370,38 +382,100 @@ request is never gated on a browser. The tests that drive a *real* one are skipp
 there is one to drive: `DATAPORTER_TEST_BROWSER=/path/to/chrome uv run pytest -m live`
 runs those eighteen against whatever Chrome or Chromium you point it at.
 
-### Rehearsing it
+### Working with the mock
 
-You do not need a Claude account to run the whole tool end to end. `mock/` is a served
-stand-in for claude.ai — its own project, no model behind it — and `rehearsal/` runs the
-full run's protocol against it with a model-free agent standing where Hermes stands:
+You do not need a Claude account to run the tool end to end. `mock/` is a served stand-in
+for claude.ai — its own project, no model behind it, stateful and reached by a real Chrome
+— and `--mock` is the whole of how the tool reaches it:
+
+```sh
+uv run --package mocks claude-mock serve
+# Mock claude.ai listening on http://127.0.0.1:8443
+```
+
+Plain HTTP on loopback. Nothing to paste into a config file, no certificate, no resolver
+rule. The flag changes **one thing** — the origin every URL is built on and every wall is
+built from — and `tests/test_mock_flag.py` asserts that field by field, which is what
+[ADR 0010](docs/adr/0010-the-mock-is-reached-by-a-flag.md) claims now that
+[ADR 0001](docs/adr/0001-no-door-in-the-wall.md) is superseded.
+
+#### One command at a time
+
+What you want while changing the tool or the mock. The mock has no inbox, so it prints
+where an email would have arrived:
+
+```sh
+dataporter --mock login --account eddie                    # 1. opens a window and waits
+#      type the address into the mock's own sign-in form
+uv run --package mocks claude-mock sign-in-links           # 2. the "email": the last link
+dataporter --mock login --account eddie --link "<link>"    # 3. spends it; step 1 returns
+dataporter --mock extract --account eddie                  # 4. the ask
+uv run --package mocks claude-mock exports                 # 5. the "email" again
+dataporter --mock extract --account eddie --link "<link>"  # 6. the fetch; files a snapshot
+dataporter --mock snapshots
+```
+
+Steps 1–3 are two commands because Claude signs in with an emailed link and nothing else
+(brief `07` §72), and the mock mimics that — a person still types the address. Steps 4–6
+are two because an export is asked for now and arrives later. **`--mock` is an address and
+never control flow**: the moment it changed what a command *does*, the thing under test
+would stop being the thing that ships.
+
+#### Why it is safe to have shipped a flag
+
+- **The walls are disjoint.** With `--mock` the tool refuses `claude.ai`; without it, it
+  refuses the mock. A forgotten flag is a `SafetyError` naming the URL, not a real run.
+- **`--mock` is the only door.** Not `DATAPORTER_MOCK`, not `config.toml`. It is visible at
+  the call site every time, which an exported variable would not be.
+- **What it writes is kept apart**, in `~/.dataporter/mock/{accounts,store}` and
+  `./migration-mock`, so a mock's invented chats never appear in `snapshots` as a backup of
+  the account they name.
+
+#### The whole protocol, in one go
+
+`rehearsal/` plays either protocol against the mocks with a model-free agent standing where
+Hermes stands. The migration (§25's pass criteria, reconciled against the mock's own count
+of what it was asked to do):
 
 ```sh
 uv run --package mocks claude-mock serve              # in one terminal
-uv run python -m rehearsal.run --root /tmp/rehearsal  # in another
+PYTHONPATH=tests uv run python -m rehearsal.run --root /tmp/rehearsal
 ```
 
-The mock prints the two Chrome arguments that point a browser at it; the tool itself has
-no setting that names it, so a rehearsal proves the code that ships or it proves nothing.
-What comes out is §25's pass criteria, reconciled against the mock's own count of what it
-was asked to do, and — with `--record docs/rehearsal-NN.md` — a record like
-[`docs/rehearsal-02.md`](docs/rehearsal-02.md). Every step that drove a tab leaves a
-trace, and the runner files them under `<root>/traces/`, named after the step: a
-rehearsal's traces are the baseline a real run's are laid beside (brief `04` §48).
-It is **not** evidence about claude.ai:
-see [`specs/02-claude-mock.md`](specs/02-claude-mock.md) §27 and
-[`mock/README.md`](mock/README.md). The mock also serves an export page and hands out a
-link instead of an email (`32`). The same project holds a mock chatgpt.com,
-`chatgpt-mock serve` on the port beside it (brief `05`), and `--protocol extraction`
-runs brief `06`'s extraction protocol against both mocks — the account seeded, `login`,
-an ask, the fetch, a second of each, `snapshots`, the ledger reconciled — leaving a
-record like [`docs/rehearsal-03.md`](docs/rehearsal-03.md):
+And brief `06`'s extraction protocol against both mocks — the account seeded, `login`, an
+ask, the fetch, a second of each, `snapshots`, the ledger reconciled:
 
 ```sh
 uv run --package mocks claude-mock serve               # in one terminal
 uv run --package mocks chatgpt-mock serve              # in another
 PYTHONPATH=tests uv run python -m rehearsal.run --protocol extraction --root /tmp/r3
 ```
+
+With `--record docs/rehearsal-NN.md` either leaves a record like
+[`docs/rehearsal-02.md`](docs/rehearsal-02.md) or
+[`docs/rehearsal-03.md`](docs/rehearsal-03.md). Every step that drove a tab leaves a trace
+under `<root>/traces/`, named after the step, and those traces say `127.0.0.1` — a
+rehearsal's trace identifies itself, so it can never be mistaken for evidence about the
+real site (brief `04` §48).
+
+`--mock --non-interactive` runs **headless**, which `--non-interactive` alone cannot
+against claude.ai: a mock has no bot check (ADR 0008). That is the combination CI would
+use.
+
+#### What it shows, and what it does not
+
+The export is the shape a real one has (`64`): a settings panel at a fragment of `/new`, an
+Export row matched by position among six buttons, a `202` and a toast, and a
+`manifest.json` naming one single-use zip per category. The mock chatgpt.com is beside it
+(brief `05`) on `8444`, with `8445` standing in for its auth origin.
+
+It is **not** evidence about claude.ai — see [`specs/02-claude-mock.md`](specs/02-claude-mock.md)
+§27 and [`mock/README.md`](mock/README.md). The panel renders instantly where a real one
+takes ~2.9 s (`62`); parts are served off the mock rather than redirected to a storage
+host; the toast is in English, so a real account served in another language matches
+nothing; and §21's remaining list — a rate limit, a modal in the way, a generation error, a
+CAPTCHA, a code prompt at sign-in — is unchanged.
+[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) carries each with its mark.
 
 [`specs/README.md`](specs/README.md) is the map: what each slice is, what is `Done`, and
 which brief section it satisfies. Start there rather than here.

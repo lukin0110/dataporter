@@ -111,9 +111,16 @@ def _block(key: str, values: Sequence[str]) -> list[str]:
     return [f"{key}:", *(_one_line(item) for item in values)]
 
 
-def helper_command(workspace: Path) -> str:
-    """Return the helper prefix, quoted, so a workspace path with a space survives."""
-    return quoted([PROGRAM_NAME, "--workspace", str(workspace), "browser"]) + f" {HELPER_SUFFIX}"
+def helper_command(workspace: Path, *, mock: bool = False) -> str:
+    """Return the helper prefix, quoted, so a workspace path with a space survives.
+
+    It carries `--mock` when the run does (`65`). The agent runs this command as a
+    subprocess, and a prefix that dropped the flag would send every helper it ran
+    at the real claude.ai while the run around it drove a mock — the one way the
+    agent's half could be pointed somewhere the tool's half is not.
+    """
+    flags = ["--workspace", str(workspace), *(["--mock"] if mock else [])]
+    return quoted([PROGRAM_NAME, *flags, "browser"]) + f" {HELPER_SUFFIX}"
 
 
 def render(
@@ -129,6 +136,7 @@ def render(
     acknowledged: int = 0,
     delay_between_parts_s: float = 0.0,
     title: str = "",
+    mock: bool = False,
 ) -> str:
     """One conversation's task prompt.
 
@@ -165,7 +173,7 @@ def render(
         f"parts already acknowledged: {acknowledged}",
         f"title: {_one_line(title) or NONE}",
         f"delay between parts: {delay_between_parts_s:g}",
-        f"helper: {helper_command(workspace)}",
+        f"helper: {helper_command(workspace, mock=mock)}",
         "",
         TAIL,
     ]
@@ -183,6 +191,7 @@ def for_seed(
     acknowledged: int = 0,
     delay_between_parts_s: float = 0.0,
     title: str = "",
+    mock: bool = False,
 ) -> str:
     """Return the prompt for a seed `04` generated and `12` has just written out.
 
@@ -204,4 +213,5 @@ def for_seed(
         acknowledged=acknowledged,
         delay_between_parts_s=delay_between_parts_s,
         title=title,
+        mock=mock,
     )

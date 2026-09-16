@@ -40,7 +40,15 @@ from dataporter.sources.claude import CLAUDE
 
 _logger = log.get_logger(__name__)
 
-LOGIN_URL = "https://claude.ai/login"
+
+def login_url(origin: str = CLAUDE.origin) -> str:
+    """Return the sign-in page, on `origin`."""
+    return f"{origin}/login"
+
+
+LOGIN_URL = login_url()
+"""The real site's, which is what the agent's sign-in prompt names when no
+source says otherwise (`65`)."""
 
 
 EMAIL_SELECTOR = 'input[type="email"], input[autocomplete="username"]'

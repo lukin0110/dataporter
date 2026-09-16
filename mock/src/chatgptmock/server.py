@@ -35,9 +35,8 @@ from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Form, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
-from mockcore import certificate, wire
+from mockcore import wire
 from mockcore.exports import Export
-from mockcore.sessions import Pending
 from mockcore.wire import (
     LOGIN_COOKIE,
     MAX_BODY_BYTES,
@@ -113,8 +112,8 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
     is minted; the CLI prints it where the vendor would have sent an email.
     """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    logins = Pending()
-    codes = Pending()
+    logins = site.pending_logins
+    codes = site.pending_codes
 
     Session = Annotated[str, Depends(wire.session_of(site.signed_in))]  # ruff: ignore[non-lowercase-variable-in-function] - it names a type
 
@@ -305,18 +304,29 @@ def serve(
     *,
     port: int,
     host: str = "127.0.0.1",
-    material: certificate.Material,
     announce: Callable[[str], None] = wire.quiet,
 ) -> MockServer:
-    """Return a started server, listening. The caller closes it.
+    """Return a started server, listening on the site's own port. The caller closes it.
 
-    The links are spelled with the site's host, not the socket's: the browser
-    reaches them through the resolver rule with its session cookie, and nothing
-    without one can fetch them from anywhere.
+    The links are spelled with `SITE_ORIGIN` rather than with the socket: the
+    browser reaches them carrying its session cookie, and nothing without one can
+    fetch them from anywhere.
     """
     return wire.serve(
         lambda _host, _port: create_app(site, announce=announce),
         port=port,
         host=host,
-        material=material,
     )
+
+
+def serve_auth(site: Site, *, port: int, host: str = "127.0.0.1") -> MockServer:
+    """Return a second started server, standing in for the auth host (`65`).
+
+    The same app on a second socket, because the two hosts used to be told apart
+    by the `Host` header the operator's resolver rule supplied and there is no
+    rule any more. The app serves every path on both, which is what it did
+    before: `/log-in` was only ever reached on the auth host and `/` only on the
+    site's, so which socket asked has never been the question — the *redirects*
+    between them are, and those are absolute (`SITE_ORIGIN`, `AUTH_ORIGIN`).
+    """
+    return wire.serve(lambda _host, _port: create_app(site), port=port, host=host)

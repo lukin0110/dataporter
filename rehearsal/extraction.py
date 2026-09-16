@@ -34,7 +34,6 @@ import base64
 import hashlib
 import http.cookiejar
 import json
-import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -49,6 +48,16 @@ from rehearsal.hermes import write_executable
 
 ACCOUNT = "rehearsal"
 """The label both source accounts get. Not the login, as brief 03 §33 says."""
+
+AUTH_PATH = "/log-in"
+"""The path only the auth origin serves, which is how a crossing is seen (`65`)."""
+
+TRACE_HOST = "127.0.0.1"
+"""What a trace header names under `--mock`: where the browser really went.
+
+Not `claude.ai` or `chatgpt.com`, which is the point — a trace of a rehearsal
+says so by its own contents, so it can never be mistaken for evidence about the
+real site or committed under `docs/spike/traces/` by accident (`65`)."""
 
 CHATGPT_PORT = 8444
 EXPORTS_JSON_PATH = "/__mock/exports.json"
@@ -70,27 +79,23 @@ class Client:
     """The mock's own HTTP routes, with a cookie jar and no redirect following.
 
     A redirect is never followed because the mock chatgpt.com's sign-in
-    redirects across host names — to `chatgpt.com`, which is not where the
-    mock listens — and what the seeding needs from a redirect is its
-    `Location` and the cookie it set, never the page it leads to.
+    redirects across origins — to its auth port, which is a second socket — and
+    what the seeding needs from a redirect is its `Location` and the cookie it
+    set, never the page it leads to.
     """
 
     def __init__(self, host: str, port: int) -> None:
-        self.base = f"https://{host}:{port}"
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
+        self.base = f"http://{host}:{port}"
         self.jar = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(
             _NoRedirect(),
-            urllib.request.HTTPSHandler(context=context),
             urllib.request.HTTPCookieProcessor(self.jar),
         )
 
     def request(
         self, method: str, path: str, *, data: bytes | None = None, headers: Mapping[str, str] | None = None
     ) -> tuple[int, Mapping[str, str], bytes]:
-        request = urllib.request.Request(  # ruff: ignore[suspicious-url-open-usage] - the mock's own https address
+        request = urllib.request.Request(  # ruff: ignore[suspicious-url-open-usage] - the mock's own loopback address
             self.base + path, data=data, method=method, headers=dict(headers or {})
         )
         try:
@@ -180,7 +185,13 @@ class Mock:
     command: str
     heading: str
     session_bound: bool
-    """Whether the mock serves its link only to the signed-in session (§63)."""
+    """Whether the mock serves its link only to the signed-in session (§63).
+
+    Both sites, since `f9e0310`: a real Claude link, minutes old, answered `403`
+    to a request without the session, so Claude's fetch opens the source session's
+    browser as ChatGPT's always did — and leaves a trace where it used to leave
+    none. Not the same question as whether the site has more than one host, which
+    is what `hosts` says."""
     agent_signin: bool
     """Whether the tool's unattended sign-in to this site is `24`'s agent half,
     which needs `setup` to have made the Hermes profile first. Neither site's
@@ -207,7 +218,7 @@ CLAUDE = Mock(
     port=running.DEFAULT_PORT,
     command="claude-mock",
     heading="Mock claude.ai — ledger",
-    session_bound=False,
+    session_bound=True,
     agent_signin=False,
     link_signin=True,
     files_per_upload=2,
@@ -264,8 +275,9 @@ def links(settings: running.Settings) -> list[str]:
 # --------------------------------------------------------------------------- #
 
 CONFIG = """\
-# Written by `rehearsal.extraction`. Every line of it is configuration an
-# operator may write: the tool has no setting that names the mock (§22).
+# Written by `rehearsal.extraction`. Every line of it is configuration an operator
+# may write, and none of it is about the mock: `--mock` points the tool there and
+# it is on the command line, not in here (`65`, ADR 0010).
 
 [browser]
 {executable}headless = {headless}
@@ -311,8 +323,7 @@ def prepare(settings: running.Settings, mock: Mock, *, store: Path) -> dict[str,
             + " — restart it, so that its ledger is the whole of this rehearsal"
         )
     settings.workspace.mkdir(parents=True, exist_ok=True)
-    pin = running.spki_pin(settings.host, settings.port)
-    arguments = running.chrome_args(settings, pin, hosts=mock.hosts)
+    arguments = running.chrome_args(settings)
     executable = f"executable = {json.dumps(settings.chrome)}\n" if settings.chrome else ""
     (settings.workspace / "config.toml").write_text(
         CONFIG.format(
@@ -327,23 +338,20 @@ def prepare(settings: running.Settings, mock: Mock, *, store: Path) -> dict[str,
         encoding="utf-8",
     )
     write_executable(settings.bin, repo=running.repo_root(), state=settings.bin / "profile.json")
-    certificate = settings.root / f"{mock.command}.pem"
-    certificate.write_text(ssl.get_server_certificate((settings.host, settings.port)), encoding="utf-8")
-    return {"pin": pin, "extra_args": arguments, "certificate": certificate}
+    return {"extra_args": arguments}
 
 
-def environment(settings: running.Settings, certificate: Path) -> dict[str, str]:
-    """`run.py`'s environment, plus what a browserless fetch of the mock's link needs.
+def environment(settings: running.Settings) -> dict[str, str]:
+    """`run.py`'s environment, and nothing either mock needs beside it.
 
-    `SSL_CERT_FILE` is the mock's own certificate, written from what it served;
-    `no_proxy` keeps a proxied machine from sending a loopback address through
-    the proxy. Neither is a secret and both are what the mock's README tells an
-    operator to set.
+    `SSL_CERT_FILE` and `no_proxy` used to be here, for a fetch that read the mock
+    claude.ai's link with Python and had to be told which certificate to trust; a
+    `.pem` was written beside the run for it. Both sources fetch through the
+    browser now and the mocks serve no TLS at all (`65`), so a rehearsal sets
+    nothing — and the flag that does point the tool at a mock is on every command
+    line rather than in anything this function could set.
     """
-    env = running.environment(settings)
-    env["SSL_CERT_FILE"] = str(certificate)
-    env["no_proxy"] = settings.host
-    return env
+    return running.environment(settings)
 
 
 # --------------------------------------------------------------------------- #
@@ -485,7 +493,11 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
     fetches = [by_name.get("extract --link (fetch 1)"), by_name.get("extract --link (fetch 2)")]
     heading = f"{mock.display_name} extraction — {ACCOUNT}"
     asked = all(step is not None and step.ok and step.stdout.startswith(heading) for step in asks)
-    fetched = all(step is not None and step.ok and step.stdout.startswith(heading) for step in fetches)
+    # The block, but not at the top: since `60` a fetch prints a `downloaded` line
+    # per file first, and then `Downloaded … in …`. `60` left this criterion
+    # unverified and it was wrong from the day it landed — the first extraction
+    # rehearsal to run afterwards is what said so.
+    fetched = all(step is not None and step.ok and heading in step.stdout.splitlines() for step in fetches)
     conversations = [int(item.get("counts", {}).get("conversations", -1)) for item in found]
     gaps = [sum(int(gap.get("count", 0)) for gap in item.get("gaps", [])) for item in found]
     files = [item.get("counts", {}).get("files") for item in found]
@@ -501,7 +513,7 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
     traced = {step.name: step.traces for step in steps}
     headers = [trace_lines(settings.root, step)[0] if step.trace else {} for step in steps]
     named = all(
-        header.get("source") == mock.source and header.get("host") == mock.hosts[0] for header in headers if header
+        header.get("source") == mock.source and header.get("host") == TRACE_HOST for header in headers if header
     )
     password_steps = sum(
         1 for step in steps for line in trace_lines(settings.root, step) if line.get("helper") == "password-step"
@@ -595,14 +607,19 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
                 f"{half.counted.get('links_minted', 0)} == 1 + 1",
             ),
         ]
-    if mock.session_bound:
-        crossed = any(line.get("host") == mock.hosts[1] for line in login_lines)
-        certified = sorted({str(line.get("host")) for line in login_lines if line.get("what") == "certificate"})
+    if len(mock.hosts) > 1:
+        # By the path and not by the host (`65`). The auth origin is a second
+        # port on loopback now, and a trace records a bare hostname — so the two
+        # origins read alike and only `/log-in`, which nothing on the site's own
+        # origin serves, says the sign-in really crossed. The companion half of
+        # this criterion — that both hosts were certified — is gone with TLS, and
+        # there is nothing left for it to be about.
+        crossed = [str(line.get("path")) for line in login_lines if str(line.get("path", "")).startswith(AUTH_PATH)]
         checks.append(
             running.Criterion(
-                "the sign-in crossed to the auth host and both hosts were certified",
-                crossed and certified == sorted(mock.hosts),
-                f"crossed: {crossed}, certified: {certified}",
+                "the sign-in crossed to the auth origin",
+                bool(crossed),
+                f"{AUTH_PATH} seen {len(crossed)}x" if crossed else f"no {AUTH_PATH} in the sign-in's trace",
             )
         )
     return checks
@@ -729,10 +746,11 @@ STANDING_FINDINGS = (
         "is the mocks' gap and not the exports'."
     ),
     (
-        "The mock claude.ai's link is fetched with the mock's certificate trusted "
-        "through `SSL_CERT_FILE`, written by the runner from the certificate the mock "
-        "served; the mock chatgpt.com's is fetched through the session, and the tool "
-        "is told to trust nothing."
+        "Both mocks' links are fetched through the source session's own browser, "
+        "which trusts the mock's key from the two Chrome arguments and nothing else. "
+        "The mock claude.ai's link is an index naming a zip per category, and each of "
+        "those may be taken once — so a fetch that is retried against the same link "
+        "fails here exactly as it does on the real site."
     ),
 )
 
@@ -861,7 +879,7 @@ def main(base: running.Settings, *, chatgpt_port: int, record: Path | None, numb
         prepared.append((mock, settings, prepare(settings, mock, store=store)))
     for mock, settings, made in prepared:
         print(f"\n  against the mock {mock.hosts[0]}")
-        env = environment(settings, made["certificate"])
+        env = environment(settings)
         half = protocol(mock, settings, store=store, extra_args=made["extra_args"], env=env)
         # `snapshots` once both halves have filed, so the listing shows both rows.
         halves.append((half, []))
@@ -884,7 +902,7 @@ def main(base: running.Settings, *, chatgpt_port: int, record: Path | None, numb
             number=number,
             date=date,
             mode=base.mode,
-            versions=versions_of(base, environment(prepared[0][1], prepared[0][2]["certificate"]), halves),
+            versions=versions_of(base, environment(prepared[0][1]), halves),
             findings=findings_of(halves),
         )
         record.parent.mkdir(parents=True, exist_ok=True)

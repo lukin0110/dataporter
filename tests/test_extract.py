@@ -708,7 +708,7 @@ def _index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, manifest: object) ->
     """
     asked: list[str] = []
 
-    def fetched(settings: Settings, browser: object, link: str, *, into: Path, hosts: object) -> object:
+    def fetched(settings: Settings, browser: object, link: str, *, into: Path, origins: object) -> object:
         asked.append(link)
         target = into / f"guid-{len(asked)}.tmp"
         target.write_bytes(json.dumps(manifest).encode() if len(asked) == 1 else b"PK\x03\x04 not really a zip")
