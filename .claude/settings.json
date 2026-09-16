@@ -46,6 +46,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/ensure-graph.sh\"",
+            "timeout": 300
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" session-start",
             "timeout": 8000
           }
