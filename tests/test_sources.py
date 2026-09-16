@@ -220,7 +220,10 @@ def test_a_tab_on_any_of_the_surface_s_hosts_is_found() -> None:
         client = CdpClient(port=chrome.port, timeout=2.0)
         assert [item.id for item in helpers.surface_tabs(client, surface)] == ["page-2"]
         assert [item.id for item in browser_session.tabs_on(client, ("https://b.example",))] == ["page-2"]
-        assert browser_session.tabs_on(client, ("a.example",)) == []
+        assert browser_session.tabs_on(client, ("https://a.example",)) == []
+        # A bare host matches nothing now, and asserting on one would pass for the
+        # wrong reason (raised by Copilot in review on #63).
+        assert browser_session.tabs_on(client, ("b.example",)) == []
 
 
 @pytest.mark.slow

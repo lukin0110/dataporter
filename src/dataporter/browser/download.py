@@ -36,6 +36,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from dataporter import log
 from dataporter import trace as tracing
@@ -66,6 +67,18 @@ CANCELLED = "cancelled"
 operator reads; a log record carries this rather than the prose."""
 
 NO_TAB = "no tab on {host} to download in"
+
+
+def authority_of(origin: str) -> str:
+    """Return the part of an origin an operator recognises: the host, and the port when there is one.
+
+    `https://claude.ai` is `claude.ai`; `http://127.0.0.1:8443` keeps its port,
+    because two mocks on loopback differ by nothing else. The messages below name
+    a host, as `export_page`'s and `watch`'s do, so what they interpolate has to
+    be a host and not a whole origin (raised by Copilot in review on #63).
+    """
+    return urlsplit(origin).netloc
+
 
 BEHAVIOUR: dict[str, Any] = {"behavior": "allowAndName", "eventsEnabled": True}
 """`allowAndName`: the browser names the file by the download's guid. A name
@@ -114,7 +127,7 @@ def fetch(
     into.mkdir(parents=True, exist_ok=True)
     tabs = browser_session.tabs_on(session.client, origins)
     if not tabs:
-        raise BrowserError(detail=NO_TAB.format(host=origins[0]))
+        raise BrowserError(detail=NO_TAB.format(host=authority_of(origins[0])))
     started = time.monotonic()
     ts = tracing.timestamp()
     with session.client.browser_connection() as browser:
