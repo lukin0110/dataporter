@@ -206,19 +206,43 @@ def last_result_object(text: str) -> dict[str, Any] | None:
     return candidates[-1] if candidates else None
 
 
+API_ERROR = re.compile(r"\A\s*(HTTP \d{3}: [^\n]{1,200})\s*\Z")
+"""A whole stdout that is nothing but one `HTTP 404: …` line.
+
+Anchored at both ends, and that is the point rather than an accident of writing
+the pattern. `doctor`'s standing rule is that nothing Hermes said reaches the
+terminal, because a transcript carries page snapshots; a stdout that is *only*
+an HTTP status line is a run that never got as far as a page, so quoting it
+leaks nothing. Observed against Hermes Agent v0.21.2 on 2026-09-16.
+"""
+
+
+def api_error(stdout: str) -> str | None:
+    """Return the API error Hermes printed instead of an answer, or `None`."""
+    found = API_ERROR.match(stdout)
+    return found.group(1) if found else None
+
+
 # --------------------------------------------------------------------------- #
 # What `--usage-file` holds
 # --------------------------------------------------------------------------- #
 
 
 class HermesUsage(BaseModel):
-    """Tokens and cost for one run, as much of it as the file happens to give.
+    """Tokens, cost and outcome for one run, as much as the file happens to give.
 
     Read opportunistically: `10` records the real shape, and until then this
     looks for the names every agent runtime uses for these three numbers at
     whatever depth they appear. An absent or unreadable file is not an error —
     `19` reports a cost of zero as "not recorded", and a migration is not worth
     failing over an accounting file.
+
+    `failed` is the exception to "opportunistic". Hermes writes `"failed": true`
+    when the run never reached the model at all — a bad model name, an endpoint
+    that does not serve it — and *still exits zero*, printing the API error where
+    an answer would have gone. Without this flag every caller has to infer that
+    from the absence of what it asked for, which is how a 404 came to be reported
+    as an agent that "did not answer with the nonce".
     """
 
     model_config = ConfigDict(frozen=True)
@@ -226,6 +250,7 @@ class HermesUsage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
+    failed: bool = False
 
     @property
     def empty(self) -> bool:
@@ -273,6 +298,12 @@ def read_usage(path: Path) -> HermesUsage:
         input_tokens=int(_find_number(payload, _INPUT_KEYS)),
         output_tokens=int(_find_number(payload, _OUTPUT_KEYS)),
         cost_usd=_find_number(payload, _COST_KEYS),
+        # Top level only, and only the literal `true`: the numbers above are
+        # searched at depth because runtimes disagree about where to put them,
+        # but a verdict found in some nested per-step record is a different
+        # claim from the run's own, and reading it as the run's would fail a
+        # check over one retried call.
+        failed=payload.get("failed") is True if isinstance(payload, Mapping) else False,
     )
 
 

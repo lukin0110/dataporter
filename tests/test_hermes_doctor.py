@@ -320,6 +320,98 @@ def test_an_answer_without_the_nonce_fails_the_attach_check(
     assert str(settings.hermes_dir) in results[-1].detail
 
 
+def test_a_model_the_endpoint_does_not_serve_is_named_as_that(
+    tmp_path: Path,
+    fake: FakeHermes,
+    chrome: FakeChrome,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failure that used to arrive as "did not answer with the nonce".
+
+    Hermes exits *zero* here. It reached the provider, was told the model does
+    not exist, and printed the 404 where the answer belongs — so nothing about
+    the exit code or the stdout-is-not-the-nonce comparison says which of the two
+    configured things is wrong. `failed` in the usage file is what does.
+    """
+    settings = make_settings(tmp_path, fake, chrome)
+    profiling.run_setup(settings)
+    fake.write(
+        version="hermes 1.0.0",
+        config_extra={"model.default": MODEL},
+        answer="HTTP 404: The model 'us.anthropic.claude-sonnet-5' does not exist",
+        exit=0,
+        usage={"api_calls": 1, "completed": False, "failed": True},
+    )
+    adopt_instead(monkeypatch, chrome)
+    results = run_checks(settings)
+    assert labels(results)[-1] == hermes_doctor.HERMES_ATTACHES
+    detail = results[-1].detail
+    assert "did not answer with the nonce" not in detail
+    assert "HTTP 404" in detail
+    assert "does not exist" in detail
+    # It says where to go next, because both halves of the answer — which model,
+    # and which endpoint was asked for it — are in the profile, not in the 404.
+    assert "config" in detail
+    assert "show" in detail
+
+
+def test_a_failed_run_that_printed_a_page_is_reported_by_path(
+    tmp_path: Path,
+    fake: FakeHermes,
+    chrome: FakeChrome,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other half of the rule: `failed`, but stdout is not one status line.
+
+    Whatever it is, it is not quoted. `api_error` is anchored at both ends so
+    that "the stdout happens to mention an HTTP code" can never become "print
+    the transcript", and this is the test that would fail if it stopped being.
+    """
+    settings = make_settings(tmp_path, fake, chrome)
+    profiling.run_setup(settings)
+    snapshot = "HTTP 404: not really\n<page>\n  secret-looking content\n</page>\n"
+    fake.write(
+        version="hermes 1.0.0",
+        config_extra={"model.default": MODEL},
+        answer=snapshot,
+        exit=0,
+        usage={"api_calls": 1, "completed": False, "failed": True},
+    )
+    adopt_instead(monkeypatch, chrome)
+    results = run_checks(settings)
+    assert labels(results)[-1] == hermes_doctor.HERMES_ATTACHES
+    detail = results[-1].detail
+    assert "secret-looking content" not in detail
+    assert "not really" not in detail
+    assert str(settings.hermes_dir) in detail
+
+
+def test_a_run_that_succeeds_is_not_read_as_failed(
+    tmp_path: Path,
+    fake: FakeHermes,
+    chrome: FakeChrome,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A usage file that reports the run fine keeps the checks passing.
+
+    Guards the direction the other two do not: `failed` is read at the top level
+    only, so a usage file with per-call detail under it cannot fail a good run.
+    """
+    settings = make_settings(tmp_path, fake, chrome)
+    profiling.run_setup(settings)
+    fake.write(
+        version="hermes 1.0.0",
+        config_extra={"model.default": MODEL},
+        answer=ANSWER,
+        append_probe=True,
+        usage={"failed": False, "completed": True, "calls": [{"failed": True}]},
+    )
+    adopt_instead(monkeypatch, chrome)
+    results = run_checks(settings)
+    assert [check.ok for check in results] == [True] * len(results)
+    assert labels(results)[-1] == hermes_doctor.SESSION
+
+
 def test_an_answer_without_our_tab_means_it_is_not_our_chrome(
     tmp_path: Path,
     fake: FakeHermes,
