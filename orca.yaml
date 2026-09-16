@@ -1,0 +1,24 @@
+# What Orca runs when it cuts a new workspace for this repo.
+#
+# Every Orca workspace is a fresh git worktree, and the two things a session needs
+# first are both git-ignored on purpose: `.venv/` and `graft/`. Both are derived
+# from the tree and regenerable, so they are rebuilt here rather than committed.
+#
+# Orca merges this file with the per-machine setup script in its own repo record.
+# With no local script set — which is this repo's case — the shared one here is the
+# one that runs.
+
+# The graph has to exist *before* the agent reads its first prompt: graft's
+# session-start hook injects the repo orientation only if `graft/INDEX.md` is
+# already there, and a first session that opens blind is exactly the problem this
+# file exists to solve. Costs a few seconds of startup; buys a session that can see.
+setupAgentStartupPolicy: wait-for-setup
+
+scripts:
+  # `make install` rather than a second copy of `uv sync --all-packages`: the
+  # Makefile stays the one definition of what installing means here. The explicit
+  # `cd` is insurance — the runner's cwd is not contractual, `ORCA_WORKTREE_PATH` is.
+  setup: |
+    cd "$ORCA_WORKTREE_PATH"
+    make install
+    .claude/helpers/ensure-graph.sh

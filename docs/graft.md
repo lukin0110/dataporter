@@ -15,7 +15,9 @@ and CI never installs it. Not having it installed costs you nothing but the grap
 | --- | --- | --- |
 | `.claude/skills/graft/SKILL.md` | yes | Tells the agent to query the graph before grepping. Owned by `graft init`. |
 | `.claude/helpers/graft-*.cjs` | yes | Shims Claude Code runs for the statusline and hooks. Both no-op silently when Graft is not installed. |
-| `.claude/settings.json` | yes | The `statusLine`, `hooks` and `permissions` blocks `graft init` merged in. |
+| `.claude/helpers/ensure-graph.sh` | yes | Builds the graph when a checkout hasn't got one. Ours, not `graft init`'s. |
+| `.claude/settings.json` | yes | The `statusLine`, `hooks` and `permissions` blocks `graft init` merged in, plus one `SessionStart` entry of our own. |
+| `orca.yaml` | yes | Orca's worktree setup hook, which builds the graph before the first agent terminal opens. |
 | `.mcp.json` | yes | Registers Graft's MCP server, exposing its six retrieval tools natively. |
 | `.ignore` | yes | Keeps `graft/` greppable by ripgrep even though it is git-ignored. |
 | `graft/` | **no** | The graph itself — a regenerable local cache, like `.venv/`. Git-ignored; build your own. |
@@ -36,6 +38,29 @@ graft ask "where are seeds chunked?" --source
 the graph against the working tree before answering, so an answer describes the code as it is
 now, uncommitted edits included. `graft build --deep` adds LLM-written summaries and needs a
 key for the provider you choose; nothing in this repo requires that pass.
+
+## A fresh checkout has no graph
+
+`graft/` is git-ignored, so a clone starts without it — and so does every Orca workspace,
+each one a new git worktree. Graft's own session-start hook does not fill that gap: it reads
+`graft/INDEX.md` to build the orientation block it injects, and with no file to read it emits
+nothing. The first session would open blind, and the first `graft_*` call would query a graph
+nobody built.
+
+`.claude/helpers/ensure-graph.sh` closes it. It builds when `graft/INDEX.md` is missing and
+returns instantly when it is there, so it is free to call on every session, and it never exits
+non-zero — a missing Graft costs you the graph, not the run. Two things call it:
+
+- **`orca.yaml`**, Orca's setup hook, run once when a workspace is created, beside
+  `make install` for the same reason: `.venv/` is git-ignored too, and a fresh worktree has
+  neither. `setupAgentStartupPolicy: wait-for-setup` makes the first agent terminal wait for
+  it, which is the whole point — the session that opens has both the graph and the
+  orientation.
+- **A `SessionStart` hook in `.claude/settings.json`**, for a checkout Orca never made. It
+  blocks the session start that builds, and only that one.
+
+Neither is Graft's own wiring, and neither is at risk from it: `graft init` and the upkeep
+pass replace only the hook entries naming `graft-hooks.cjs` and keep every other one.
 
 ## Three local edits to the generated wiring
 
