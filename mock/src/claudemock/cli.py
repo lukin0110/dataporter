@@ -12,46 +12,23 @@ start it, and `rows` prints the UI map rows the mock is built out of.
 (`38`), and ignored: claude.ai signs in with an address and a link, and so does
 this (brief 07 §72).
 
-What the printed lines must *do* is the brief's (§21): send the `claude.ai` host
-to the mock, and trust the mock's own key and never every certificate. The port,
-the mechanism and the lines themselves are `26`'s to choose: `8443`, Chrome's
-host-resolver rule, and an SPKI pin — printed by the core (`mockcore.cli`) since
-`38`, byte for byte as `26` pinned them. What is this site's alone is the tail
-of the block: the tool fetches this site's export link with Python, and the
-certificate it must trust for that is a fact about this mock.
+What the printed lines must *do* was the brief's (§21): send the `claude.ai`
+host to the mock, and trust its key. `65` answers both by not needing either —
+the mock is at `http://127.0.0.1:8443` and the tool is told so by `--mock`, so
+the block is the address and the flag (ADR 0010).
 """
 
 import argparse
 import sys
 from collections.abc import Sequence
 
-from mockcore import certificate, wire
 from mockcore import cli as core
+from mockcore import wire
 
 from claudemock import DEFAULT_PORT, IDENTITY, server, uimap
 from claudemock.site import Site
 
 DEFAULT_HOST = core.DEFAULT_HOST
-
-FETCH_PROXY_NOTE = """\
-The tool's fetch of an export link reads the same proxy. Set beside SSL_CERT_FILE:
-
-  no_proxy=127.0.0.1
-
-"""
-"""What this site adds to the core's proxy note (`32`): the tool downloads a
-link with Python, which reads the same proxy Chrome does."""
-
-HOST_NOTE = """\
-The mock is listening on {host}, and the tool cannot fetch an export link from
-there: its certificate names 127.0.0.1 alone. Chrome is unaffected — it trusts
-the key, not the name — so a migration rehearses; an extraction needs the
-default host.
-
-"""
-"""Printed when `--host` is not the loopback address. The links `serve` mints and
-`exports` lists are spelled with the address the socket really bound, and the
-tool's fetch verifies that address against the certificate (`32`)."""
 
 DEFAULT_EMAIL = "rehearsal@example.invalid"
 DEFAULT_PASSWORD = "rehearsal-not-a-real-password"
@@ -59,32 +36,15 @@ DEFAULT_PASSWORD = "rehearsal-not-a-real-password"
 name a real mailbox (§23, *What it never touches*)."""
 
 
-def reachability(*, host: str, port: int, material: certificate.Material) -> str:
+def reachability(*, host: str, port: int) -> str:
     """Return the reachability block, byte for byte, ending in a blank line.
 
-    `26`'s golden string, pinned by `mock/tests/test_claude_cli.py`. §21 constrains
-    what it does and leaves what it looks like to the slice; the shape here is the
-    brief's own illustration, kept because an operator has nothing to gain from
-    a different one. The tail is `32`'s: the fetch of an export link is Python's,
-    not Chrome's, so the two Chrome lines do not reach it.
+    Two lines since `65`: the address, and the flag that reaches it. `26`'s block
+    was a `config.toml` table an operator pasted, because the tool had no setting
+    that could name a mock (ADR 0001); `--mock` is that setting now (ADR 0010),
+    so there is nothing left to paste.
     """
-    return core.reachability(
-        IDENTITY,
-        host=host,
-        port=port,
-        flag=material.flag,
-        tail=[
-            "Set in the tool's environment before fetching an export link from it:",
-            "",
-            f"  SSL_CERT_FILE={material.cert_path}",
-            "",
-        ],
-    )
-
-
-def proxy_note(names: Sequence[str]) -> str:
-    """Return the core's note, and then what the tool's own fetch needs."""
-    return core.proxy_note(IDENTITY, names) + FETCH_PROXY_NOTE
+    return core.reachability(IDENTITY, host=host, port=port)
 
 
 LISTINGS = (("sign-in-links", "print the sign-in links a running mock has minted"),)
@@ -112,7 +72,6 @@ def serve(arguments: argparse.Namespace) -> int:
     refused = core.refused_reply(IDENTITY, arguments)
     if refused is not None:
         return refused
-    material = certificate.ensure(IDENTITY, arguments.cert_dir)
     site = Site(
         email=arguments.email,
         reply_delay_s=arguments.reply_delay_s,
@@ -122,16 +81,10 @@ def serve(arguments: argparse.Namespace) -> int:
         site,
         host=arguments.host,
         port=arguments.port,
-        material=material,
         announce=core.announce,
         announce_sign_in=core.announce_sign_in,
     )
-    print(reachability(host=arguments.host, port=running.port, material=material), end="")
-    proxies = core.proxies()
-    if proxies:
-        print(proxy_note(proxies), end="")
-    if arguments.host != DEFAULT_HOST:
-        print(HOST_NOTE.format(host=arguments.host), end="")
+    print(reachability(host=arguments.host, port=running.port), end="")
     sys.stdout.flush()
     core.wait(running)
     # The ledger on the way out, so a rehearsal that forgot to ask still has it.
@@ -140,7 +93,7 @@ def serve(arguments: argparse.Namespace) -> int:
 
 
 def ledger(*, host: str, port: int = DEFAULT_PORT) -> int:
-    """Ask a running mock for its count. Its own certificate, and no other."""
+    """Ask a running mock for its count."""
     return core.ledger(IDENTITY, host=host, port=port)
 
 

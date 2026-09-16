@@ -31,10 +31,12 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 from dataporter.browser import helpers, login_form, probe
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.hermes.runner import last_result_object
+from dataporter.sources import claude as claude_source
 
 SETTLE_S = 0.1
 """How long a wait loop sleeps between looks. A tenth of a second: these wait for
@@ -70,7 +72,11 @@ def chosen_tab(client: CdpClient) -> Target:
     pages = [item for item in client.pages() if not item.url.startswith("devtools://")]
     if not pages:
         raise AgentError("the browser has no page to drive")
-    on_claude = [item for item in pages if item.host == probe.CLAUDE_HOST]
+    # By host and not by origin on purpose: a rehearsal's Chrome has tabs on one
+    # site only, and this has to find the destination's whether the run is against
+    # the real claude.ai or the mock on loopback (`65`).
+    hosts = {probe.CLAUDE_HOST, urlsplit(claude_source.MOCK_ORIGIN).hostname or ""}
+    on_claude = [item for item in pages if item.host in hosts]
     return on_claude[0] if on_claude else pages[0]
 
 

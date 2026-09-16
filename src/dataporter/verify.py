@@ -48,6 +48,7 @@ from dataporter import log, render, signin, state
 from dataporter.browser import helpers as browser_helpers
 from dataporter.browser import launcher
 from dataporter.browser import probe as probing
+from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import Settings
@@ -131,6 +132,12 @@ class Expected:
     """The title the chat should end up with, already capped and squashed, or
     `""` when no rename was asked for."""
 
+    origin: str = probing.CLAUDE_ORIGIN
+    """Where the destination account is (`65`). Carried on the expectation rather
+    than read from a module, because `url` below is built from it and a chat's
+    address is a fact about the run that made it — a `--mock` run's chats are on
+    the mock, and saying otherwise would send `verify` to the real site."""
+
     @property
     def short_id(self) -> str:
         return render.short_id(self.conversation_uuid)
@@ -154,16 +161,16 @@ class Expected:
 
     @property
     def url(self) -> str:
-        return chat_url(self.conversation_id)
+        return chat_url(self.conversation_id, self.origin)
 
 
-def chat_url(conversation_id: str) -> str:
+def chat_url(conversation_id: str, origin: str = probing.CLAUDE_ORIGIN) -> str:
     """Where a destination chat lives.
 
     One spelling, because two places build it: this module navigates to it and `20`'s
     probe sends an agent to it.
     """
-    return f"https://{probing.CLAUDE_HOST}/chat/{conversation_id}"
+    return f"{origin}/chat/{conversation_id}"
 
 
 def capped_title(title: str, limit: int) -> str:
@@ -205,6 +212,7 @@ def expected_for(settings: Settings, uuid: str, entry: ConversationState) -> Exp
         conversation_id=conversation_id,
         parts=entry.chunks_total,
         title=intended_title(settings, entry.title),
+        origin=browser_session.destination_origin(settings),
     )
 
 
@@ -332,12 +340,12 @@ class Verifier:
         settings: Settings,
         client: CdpClient,
         *,
-        surface: browser_helpers.Surface = browser_helpers.CLAUDE,
+        surface: browser_helpers.Surface | None = None,
         poll_s: float = POLL_S,
     ) -> None:
         self.settings = settings
         self.client = client
-        self.surface = surface
+        self.surface = surface or browser_helpers.destination(browser_session.destination_origin(settings))
         self.poll_s = poll_s
 
     def verify(self, expected: Expected) -> Verification:
@@ -589,10 +597,14 @@ def verify_all(
         # thing that wrote to the account what it did. `launch` adopts the
         # browser already on the port when it is ours, so a `verify` run beside
         # a window the operator left open reuses it.
-        browser = launcher.launch(settings, probing.NEW_CHAT_URL)
+        browser = launcher.launch(settings, probing.new_chat_url(browser_session.destination_origin(settings)))
         try:
             with watching.watched(
-                settings, command="verify", flags=flags, site=probing.MIGRATION_SITE, browser=browser
+                settings,
+                command="verify",
+                flags=flags,
+                site=browser_session.site_of(settings),
+                browser=browser,
             ) as traced:
                 # Exit `3` when signed out — after `24`'s one unattended sign-in,
                 # in that mode: a signed-out session makes every chat unreadable,

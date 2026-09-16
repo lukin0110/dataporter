@@ -1,21 +1,20 @@
 """The wire every mock shares: the server on its thread, and the witness routes."""
 
 import socket
-from pathlib import Path
 
 import pytest
 from claudemock import server
 from claudemock.site import Site
-from mockcore import certificate, wire
+from mockcore import wire
 
 
-def test_a_server_that_cannot_start_releases_its_port(
-    site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A key that is not there.
+def test_a_server_that_cannot_start_releases_its_port(site: Site, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Uvicorn dies on the way up.
 
-    Uvicorn fails to start, and the socket `serve` bound before handing it over is
-    closed rather than left holding the port.
+    The socket `serve` bound before handing it over is closed rather than left
+    holding the port. A missing key used to be how this was provoked; with no TLS
+    left to fail (`65`) the failure is uvicorn's own, injected here — what is
+    under test is the cleanup, not the reason.
     """
     bound: list[socket.socket] = []
     listen = wire.listen
@@ -24,16 +23,19 @@ def test_a_server_that_cannot_start_releases_its_port(
         bound.append(listen(host, port))
         return bound[-1]
 
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise OSError("uvicorn said no")
+
     monkeypatch.setattr(wire, "listen", listen_and_remember)
-    missing = certificate.Material(cert_path=tmp_path / "cert.pem", key_path=tmp_path / "key.pem", spki_sha256="")
+    monkeypatch.setattr(wire.uvicorn.Server, "run", refuse)
     with pytest.raises(RuntimeError, match="stopped before it started") as caught:
-        server.serve(site, port=0, material=missing)
+        server.serve(site, port=0)
     assert isinstance(caught.value.__cause__, OSError)
     assert [sock.fileno() for sock in bound] == [-1]
 
 
-def test_the_server_knows_the_address_it_bound(site: Site, material: certificate.Material) -> None:
-    started = server.serve(site, port=0, material=material)
+def test_the_server_knows_the_address_it_bound(site: Site) -> None:
+    started = server.serve(site, port=0)
     try:
         assert started.host == "127.0.0.1"
         assert started.port > 0

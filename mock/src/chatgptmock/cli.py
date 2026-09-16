@@ -18,10 +18,9 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from mockcore import certificate
 from mockcore import cli as core
 
-from chatgptmock import DEFAULT_PORT, IDENTITY, server, uimap
+from chatgptmock import AUTH_PORT, DEFAULT_PORT, IDENTITY, server, uimap
 from chatgptmock.site import Site
 
 DEFAULT_HOST = core.DEFAULT_HOST
@@ -33,17 +32,15 @@ name a real mailbox (§56). The same pair as the mock claude.ai's, so that an
 operator with both mocks up has one thing to remember."""
 
 
-def reachability(*, host: str, port: int, material: certificate.Material) -> str:
+def reachability(*, host: str, port: int) -> str:
     """Return the reachability block, byte for byte, ending in a blank line.
 
-    `39`'s golden string, pinned by `mock/tests/test_chatgpt_cli.py`: the core's
-    block with both host names in one resolver rule, and no tail.
+    Two lines since `65`: the address, and the flag that reaches it. `26`'s block
+    was a `config.toml` table an operator pasted, because the tool had no setting
+    that could name a mock (ADR 0001); `--mock` is that setting now (ADR 0010),
+    so there is nothing left to paste.
     """
-    return core.reachability(IDENTITY, host=host, port=port, flag=material.flag)
-
-
-def proxy_note(names: Sequence[str]) -> str:
-    return core.proxy_note(IDENTITY, names)
+    return core.reachability(IDENTITY, host=host, port=port)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -65,7 +62,6 @@ def serve(arguments: argparse.Namespace) -> int:
     refused = core.refused_reply(IDENTITY, arguments)
     if refused is not None:
         return refused
-    material = certificate.ensure(IDENTITY, arguments.cert_dir)
     site = Site(
         email=arguments.email,
         password=arguments.password,
@@ -76,22 +72,25 @@ def serve(arguments: argparse.Namespace) -> int:
         site,
         host=arguments.host,
         port=arguments.port,
-        material=material,
         announce=core.announce,
     )
-    print(reachability(host=arguments.host, port=running.port, material=material), end="")
-    proxies = core.proxies()
-    if proxies:
-        print(proxy_note(proxies), end="")
+    # The second socket stands in for the auth host (`65`). Started after the
+    # site's, closed before it, and never the one an operator is told about: a
+    # sign-in reaches it by a redirect and nothing else.
+    auth = server.serve_auth(site, host=arguments.host, port=AUTH_PORT)
+    print(reachability(host=arguments.host, port=running.port), end="")
     sys.stdout.flush()
-    core.wait(running)
+    try:
+        core.wait(running)
+    finally:
+        auth.close()
     # The ledger on the way out, so a walk that forgot to ask still has it.
     print(site.ledger.block(), end="")
     return 0
 
 
 def ledger(*, host: str, port: int = DEFAULT_PORT) -> int:
-    """Ask a running mock for its count. Its own certificate, and no other."""
+    """Ask a running mock for its count."""
     return core.ledger(IDENTITY, host=host, port=port)
 
 

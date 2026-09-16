@@ -32,12 +32,12 @@ import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
-from mockcore.exports import Export, Exports
+from mockcore.exports import Export, Exports, Part
 from mockcore.ledger import Ledger
 from mockcore.reply import DEFAULT_REPLY_DELAY_S, DEFAULT_REPLY_STEPS, Reply, Turn, answer
 from mockcore.sessions import Pending, Sessions
 
-from claudemock import IDENTITY
+from claudemock import EXPORT_CATEGORIES, IDENTITY, ORIGIN
 
 SIGN_IN_LINK_PATH = "/magic-link"
 """Where a sign-in link lands: the real site's path, re-typed (ADR 0003). The
@@ -128,6 +128,11 @@ class Site:
         self.reply_delay_s = reply_delay_s
         self.reply_steps = reply_steps
         self.ledger = ledger if ledger is not None else Ledger(IDENTITY.heading)
+        self.origin = ORIGIN
+        """Where this process really answers, which is what its links are spelled
+        with. `ORIGIN` until `server.create_app` is told what the socket bound —
+        the default port in every ordinary run, and an ephemeral one under the
+        mock's own tests."""
         self.clock = clock
         self.wall = wall
         self.chats: dict[str, Chat] = {}
@@ -224,7 +229,7 @@ class Site:
 
     def link_of(self, link: SignInLink) -> str:
         """Return the address a person would find in the email: on the site's own host, token in the fragment."""
-        return f"https://{IDENTITY.hosts[0]}{SIGN_IN_LINK_PATH}#{link.fragment}"
+        return f"{self.origin}{SIGN_IN_LINK_PATH}#{link.fragment}"
 
     def sign_in(self) -> str:
         """Mint a session, and count the sign-in."""
@@ -288,14 +293,40 @@ class Site:
     # -- exports (`32`) ------------------------------------------------------ #
 
     def request_export(self) -> Export:
-        """Mint the link an ask gets instead of an email, and count the ask."""
-        export = self._exports.request()
+        """Mint the link an ask gets instead of an email, and count the ask.
+
+        The link is an *index*: it names one part per category, each with a
+        single-use address of its own. `archive.CATEGORIES` is what those are,
+        and the order is the manifest's.
+        """
+        export = self._exports.request(EXPORT_CATEGORIES)
         self.ledger.count("exports_requested")
         return export
 
     def fetch_export(self, token: str) -> Export | None:
-        """Return the export a token names and count the fetch; `None` for one nobody minted."""
+        """Return the export a token names and count the fetch; `None` for one nobody minted.
+
+        The index, which may be read again. The parts it names may not — that is
+        `spend_part`.
+        """
         return self._exports.fetch(token)
+
+    def spend_part(self, part_token: str) -> Part | None:
+        """Return the part a token names, once. `None` for an unknown part or a spent one.
+
+        The manifest says so in its own words: each export URL can only be used
+        once. A second fetch of the same part is `404` on a real account, and this
+        is where the mock says the same.
+        """
+        return self._exports.spend(part_token)
+
+    def expire_sessions(self) -> int:
+        """Forget every session, so the next request is one whose sign-in lapsed.
+
+        Reached only through the witness (`wire.EXPIRE_PATH`). Nothing the tool
+        drives can ask for this: an expiry is something that happens *to* a run.
+        """
+        return self.sessions.close_all()
 
     def exports(self) -> Sequence[Export]:
         """Every export asked for, in the order asked."""

@@ -213,11 +213,38 @@ What a passed rehearsal is not evidence of. The record itself
 the three are here because `21`'s sign-off quotes this file and not that one.
 
 - **A rehearsal can only find what the mock can show.** The failure states §21 lists are
-  the ones a migration is most likely to meet on the real site, and `26`–`29` serve none
+  the ones a migration is most likely to meet on the real site, and `26`–`29` served none
   of them: a rate limit, a login expiry mid-run, a modal or JavaScript dialog, a
-  generation error, a CAPTCHA, and a code prompt at sign-in. A rehearsal that passes says
-  the protocol runs end to end against a site that behaves; it says nothing about the
-  six. *by construction*
+  generation error, a CAPTCHA, and a code prompt at sign-in. `64` claims the second — a
+  session the site has forgotten answers `/logout?involuntary` and then the sign-in page,
+  the two hops a real account took on 2026-09-15 — and no protocol asks for it yet, so in
+  practice a rehearsal that passes still says only that the protocol runs end to end
+  against a site that behaves. It says nothing about the other five. *by construction*
+- **The mock answers in English, and the account was served Spanish.** Every control
+  label in `docs/spike/traces/login-2026-09-15.jsonl`'s sketches is `es-419` — the
+  composer is `Escribe tu mensaje para Claude`. One signal the tool reads by its *words*:
+  `REQUESTED_SELECTOR` is paired with `REQUESTED_TEXT`, `Export started`, because the
+  toast container is the site's notification furniture and matching its shape alone once
+  fabricated an `ask.json` for a request nobody made (`262f318`). So an account served in
+  any other language matches nothing, the ask waits out `timeouts.ask_s` and reports it
+  could not confirm — wrong in the safe direction, and invisible to a rehearsal, because
+  the mock says the English words. *unknown*
+- **A rehearsal no longer proves the shipped binary byte for byte.** Until `65` the tool
+  had no setting that could name a mock, so the code under rehearsal was the code that
+  ships and nothing it did told it the site was a stand-in (ADR 0001). `--mock` is that
+  setting. What replaces the guarantee is narrower and is a test rather than a sentence:
+  `tests/test_mock_flag.py` asserts that a mock source differs from the shipped one in its
+  origin alone, that every wall is the real wall with the origin swapped, and that the
+  settings differ only in the flag and the three paths it redirects. A field added to
+  `Source` that the mock registry *should* have changed and does not would still pass,
+  because the test asserts equality of everything else. *by construction*
+- **A real Hermes cannot be pointed at a mock at all.** `skills/claude-migrate/SKILL.md`
+  names `https://claude.ai` eight times, including the agent's own rule about where it may
+  navigate, and `65` deliberately left it untemplated: turning that rule into "wherever you
+  were told" would cost more than the capability is worth. A rehearsal's agent is the
+  scripted one (§23), which reads its origin off the helper prefix in the prompt. Brief 02
+  §28 parked a real Hermes against a mock as not-a-rehearsal; it is now impossible rather
+  than unsupported. *by construction*
 - **A rehearsal is not evidence about claude.ai.** Every `*unknown*` in
   [`claude-ui-map.md`](claude-ui-map.md) is still `*unknown*` afterwards, semantic
   fidelity is *not applicable* rather than passed, and whether a model can follow the
@@ -332,6 +359,21 @@ the rest of this file is about; both are about what a backup does *not* promise.
   A link that leads to a valid export of somebody *else's* account would be filed, under
   whatever `--account` said. The label is the operator's claim about whose account it is,
   and the tool cannot check it. *by construction*
+- **A snapshot keeps the vendor's manifest, and the manifest names the parts' URLs.**
+  A Claude snapshot holds `manifest.json` exactly as the vendor served it, and each entry
+  in it carries an `export_url` — the address that part was downloaded from. Those
+  addresses are single-use and were spent by the fetch that filed them, so what is on disk
+  is a list of dead links; the link an operator pasted is not among them, because the
+  parts hang under the account's id and not under it. It is still more of a vendor's URL
+  than §32 keeps anywhere else, and a source whose parts were *not* single-use would be
+  filing live credentials. *by construction*
+- **Every download costs about twenty seconds after the bytes have landed.** Measured
+  across every successful fetch in the account homes on 2026-09-14 and 2026-09-15: 21.1 s
+  for a 741-byte manifest and 21.1 s for a 22,913-byte archive alike, while the trace
+  shows the bytes arriving in about one second. The arithmetic points at
+  `timeouts.cdp_call_s` (20.0) being waited out on the `Page.navigate` Chrome never
+  answers once a navigation becomes a download, but nobody has confirmed it. A two-part
+  export therefore costs a minute of nothing, and a ten-part one five. *unknown*
 - **A filing costs twice the archive's bytes and two passes over them.** The fetch writes
   a temporary file, verifies it, then copies it into the stamp directory, hashing as it
   goes; both files exist at once and the bytes are read through twice. A multi-gigabyte

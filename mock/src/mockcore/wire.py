@@ -4,11 +4,13 @@ Every decision about what a site *does* is in its `site.py`, and everything
 about what it *looks* like is in its `pages.py`; its `server.py` holds its
 routes. What is here is the part of the wire that is the same for every site:
 
-- **It is HTTPS, always.** The tool refuses every URL that is not `https://` on
-  the site's host — `08`'s resolution of §17, kept by §22 — and that refusal is
-  part of what a rehearsal exercises. Serving plain HTTP would make a mock
-  reachable only by a tool that had been told to accept it, which is the door in
-  the wall ADR 0001 refuses.
+- **It is plain HTTP on loopback** since `65`. It used to be HTTPS always,
+  because the tool refused every URL that was not `https://` on the site's own
+  host and a mock had to be reachable without being told it was one — the door
+  ADR 0001 refused. ADR 0010 gives that up: the tool is told, by `--mock`, and
+  once it is there is nothing left for a certificate to do. Chrome treats
+  `http://127.0.0.1` as a trustworthy origin, so no page behaves differently for
+  the loss.
 - **The session cookie has a lifetime**, so a session survives Chrome being
   closed and started again — which is what `login` storing a session in the
   workspace profile means.
@@ -36,9 +38,18 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.responses import RedirectResponse as _RedirectResponse
 
-from mockcore import certificate
 from mockcore.exports import Export, Exports
 from mockcore.ledger import Ledger
+
+ORIGIN_SCHEME = "http"
+"""Plain, on loopback, since `65`. One place spells it, so a mock that ever
+served TLS again is one edit and not a search."""
+
+
+def origin_of(host: str, port: int) -> str:
+    """Return where a mock bound: what its links are spelled with, and what `--mock` names."""
+    return f"{ORIGIN_SCHEME}://{host}:{port}"
+
 
 SESSION_COOKIE = "mock_session"
 LOGIN_COOKIE = "mock_login"
@@ -48,10 +59,29 @@ LEDGER_JSON_PATH = "/__mock/ledger.json"
 EXPORTS_PATH = "/__mock/exports"
 EXPORTS_JSON_PATH = "/__mock/exports.json"
 ARCHIVE_PATH = EXPORTS_PATH + "/{token}.zip"
-"""Outside the surface any helper will drive, and deliberately not a path on
-any site: nothing the tool does can reach it. The archive's route is the site's
-to register at `ARCHIVE_PATH`, because whether the download wants a session is
-the site's fact and not the core's."""
+MANIFEST_PATH = EXPORTS_PATH + "/{token}"
+PART_PATH = "/__mock/export/{export_id}/download/{part_token}.zip"
+"""The three shapes a link can have, all under `/__mock/` and none of them a path
+on any site: no helper will drive one, because no surface admits it.
+
+A site serves *either* `ARCHIVE_PATH` — the link is the archive, which is the
+mock chatgpt.com — *or* `MANIFEST_PATH` and `PART_PATH`, where the link is an
+index naming a file per category and each file has a single-use address of its
+own. `PART_PATH` is shaped after the real one — `/export/<account>/download/<token>` —
+and that shape matters for more than a trace's sake: it carries **no part of the
+index's own token**. A real one does not either, and the snapshot is why. The tool
+files the vendor's manifest verbatim, so anything in a part's URL is kept on disk
+next to the archive; the part tokens there are spent by then, and the index's is
+not. A mock that hung the parts under the index's token would have put a live
+credential in every snapshot and called it fidelity.
+
+Registering them is the site's, not the core's, because whether the download
+wants a session is the site's fact — and today both sites say it does."""
+
+EXPIRE_PATH = "/__mock/expire-session"
+"""Where a run asks for its session to be thrown away, so that what the site does
+next is what it does to a person whose sign-in has lapsed. Behind no session, like
+every witness route: it is the operator speaking to the mock, not the tool."""
 
 SESSION_MAX_AGE_S = 7 * 24 * 60 * 60
 """How long a signed-in session lasts. Long enough to survive the browser being
@@ -137,14 +167,35 @@ def export_json(export: Export, link: str) -> dict[str, Any]:
         "link": link,
         "requested_at": export.requested_at,
         "fetched": export.fetched,
+        "parts": [
+            {
+                "category": part.category,
+                "part": part.part,
+                "filename": part.filename,
+                "spent": part.token in export.spent,
+            }
+            for part in export.parts
+        ],
     }
 
 
-def witness(app: FastAPI, *, ledger: Ledger, exports: Exports, link_of: Callable[[Export], str]) -> None:
-    """Register the witness routes: the ledger and the links, behind no session.
+def witness(
+    app: FastAPI,
+    *,
+    ledger: Ledger,
+    exports: Exports,
+    link_of: Callable[[Export], str],
+    expire: Callable[[], int] | None = None,
+) -> None:
+    """Register the witness routes: the ledger, the links, and the expiry.
 
     The listing of links is open because it stands in for the inbox, and the
     inbox is not the account (§54, *The export page*).
+
+    `expire` is offered only by a site that can show what a lapsed session looks
+    like. It is a witness route rather than a site one for the same reason the
+    ledger is: it is the operator reaching past the site, and nothing the tool
+    drives can reach it.
     """
 
     @app.get(LEDGER_PATH)
@@ -164,21 +215,33 @@ def witness(app: FastAPI, *, ledger: Ledger, exports: Exports, link_of: Callable
     def exports_json() -> list[dict[str, Any]]:
         return [export_json(export, link_of(export)) for export in exports.all()]
 
+    if expire is None:
+        return
+
+    @app.post(EXPIRE_PATH)
+    def expire_sessions() -> dict[str, int]:
+        """Throw every session away and say how many there were.
+
+        What the browser holds is unchanged — it still carries the cookie — so the
+        next page it asks for is a request with a token the site no longer knows,
+        which is exactly the shape of a sign-in that lapsed while a run was
+        under way.
+        """
+        return {"expired": expire()}
+
 
 # -- serving it --------------------------------------------------------------- #
 
 
 class MockServer:
-    """The HTTPS server, running on its own thread until it is closed."""
+    """The server, running on its own thread until it is closed."""
 
-    def __init__(self, app: FastAPI, sock: socket.socket, material: certificate.Material) -> None:
+    def __init__(self, app: FastAPI, sock: socket.socket) -> None:
         self.app = app
         self._socket = sock
         self._server = uvicorn.Server(
             uvicorn.Config(
                 app,
-                ssl_certfile=material.cert_path,
-                ssl_keyfile=material.key_path,
                 # Quiet: a rehearsal's terminal belongs to the tool. No access
                 # log and no logging configuration of uvicorn's own, so nothing
                 # below a warning is printed and a warning still is.
@@ -262,7 +325,6 @@ def serve(
     *,
     port: int,
     host: str = "127.0.0.1",
-    material: certificate.Material,
 ) -> MockServer:
     """Return a started server, listening. The caller closes it.
 
@@ -273,7 +335,7 @@ def serve(
     sock = listen(host, port)
     try:
         bound_host, bound_port = sock.getsockname()[:2]
-        server = MockServer(build(str(bound_host), int(bound_port)), sock, material)
+        server = MockServer(build(str(bound_host), int(bound_port)), sock)
     except BaseException:
         sock.close()
         raise

@@ -34,6 +34,7 @@ from typing import Any
 
 from orval import coalesce_lazy
 from pydantic import BaseModel, Field, SecretStr, ValidationError, field_validator
+from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -61,6 +62,20 @@ HERMES_DIRNAME = "hermes"
 DEFAULT_HERMES_HOME = Path("~/.hermes")
 DEFAULT_STORE = Path("~/.dataporter/store")
 DEFAULT_ACCOUNTS = Path("~/.dataporter/accounts")
+
+MOCK_WORKSPACE = Path("migration-mock")
+MOCK_STORE = Path("~/.dataporter/mock/store")
+MOCK_ACCOUNTS = Path("~/.dataporter/mock/accounts")
+"""Where `--mock` keeps what it makes (`65`).
+
+Apart from the real ones, under one root that says what it is, because a mock's
+chats are not the account's data: a snapshot of them filed in `~/.dataporter/store`
+would sit in `dataporter snapshots` looking exactly like a backup of the account
+it names. One directory to delete, and nothing to explain twice.
+
+These are **defaults**, not overrides. An operator — or `rehearsal/` — who sets
+`store.dir` or `accounts.dir` means it, and a flag that took the setting away
+would break every run that keeps its own root."""
 
 _config_file: ContextVar[Path | None] = ContextVar("_config_file", default=None)
 """Set by `load_settings` so the TOML source knows which file to read."""
@@ -562,6 +577,21 @@ class Settings(BaseSettings):
     `DATAPORTER_NON_INTERACTIVE=1`; never `config.toml`, for the reason `auth` is
     not."""
 
+    mock: bool = False
+    """Whether this invocation talks to a mock instead of the real site (`65`).
+
+    It changes exactly one thing — the **origin** every URL is built on and every
+    wall is built from — and, so that nothing a mock run writes can be mistaken
+    for an account's own, the *defaults* for where state is kept. Never control
+    flow: `login` still blocks for a person, because "can it ask for a login" is
+    one of the things a mock run is for.
+
+    **`--mock` and nothing else.** Not `DATAPORTER_MOCK`, not `config.toml`: the
+    whole hazard this flag carries is "did I mean this run to be real", and the
+    answer has to be visible at the call site every time rather than in a shell
+    somebody exported an hour ago. `_EnvWithoutMock` and `NOT_IN_CONFIG_FILE`
+    are what make that true rather than merely intended (ADR 0010)."""
+
     source: str = "claude"
     """Which vendor this invocation is talking to (`30`, brief `03` §34).
 
@@ -639,7 +669,17 @@ class Settings(BaseSettings):
         """
         if self.store.dir is not None:
             return Path(os.path.abspath(self.store.dir.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
-        return Path(os.path.abspath(DEFAULT_STORE.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
+        return Path(os.path.abspath(self.default_store.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
+
+    @property
+    def default_store(self) -> Path:
+        """The store an invocation gets when nothing configured one (`65`)."""
+        return MOCK_STORE if self.mock else DEFAULT_STORE
+
+    @property
+    def default_accounts(self) -> Path:
+        """The accounts directory an invocation gets when nothing configured one."""
+        return MOCK_ACCOUNTS if self.mock else DEFAULT_ACCOUNTS
 
     @property
     def store_display(self) -> str:
@@ -651,14 +691,14 @@ class Settings(BaseSettings):
         the same join the resolved path makes and not a second spelling of it.
         """
         configured = self.store.dir
-        return str(configured if configured is not None else DEFAULT_STORE)
+        return str(configured if configured is not None else self.default_store)
 
     @property
     def accounts_dir(self) -> Path:
         """Where account homes live: `accounts.dir`, else `~/.dataporter/accounts`."""
         if self.accounts.dir is not None:
             return Path(os.path.abspath(self.accounts.dir.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
-        return Path(os.path.abspath(DEFAULT_ACCOUNTS.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
+        return Path(os.path.abspath(self.default_accounts.expanduser()))  # ruff: ignore[os-path-abspath] - normalises `..` without chasing symlinks
 
     @property
     def account_home(self) -> Path | None:
@@ -768,7 +808,7 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
+        sources: list[PydanticBaseSettingsSource] = [init_settings, _EnvWithoutMock(env_settings)]
         config_file = _config_file.get()
         if config_file is not None:
             # Reads to {} when the file is absent, so no existence check here.
@@ -777,21 +817,51 @@ class Settings(BaseSettings):
         return tuple(sources)
 
 
-NOT_IN_CONFIG_FILE = ("auth", "non_interactive", "source", "account")
+NOT_IN_CONFIG_FILE = ("auth", "non_interactive", "source", "account", "mock")
 """The keys `config.toml` may not carry (`24`, `30`).
 
 A credential in a file next to the export is a credential somebody will commit,
 copy or leave behind; `non_interactive` travels with it because a file that
 switches the mode on is a file that expects the credentials to be there too.
 
-`30` adds the other two for a different reason: `source` and `account` say
+`30` adds the next two for a different reason: `source` and `account` say
 *whose* account a command is about, and a label left in a file would silently
 send the next `login` or `extract` at an account nobody named on the command
 line. Like the credentials, they are set per invocation — by `with_account`,
 from the flags — and never read out of a file.
+
+`65` adds `mock` for the sharpest version of the same reason: a file that
+switched it on would point every later run at a stand-in, and a file that
+switched it off would point a rehearsal at the real site. It is refused here and
+ignored in the environment (`_EnvWithoutMock`), so `--mock` is its only door.
 """
 
 CONFIG_FILE_REFUSED = "{keys} belong in the environment or on the command line, not in config.toml"
+
+
+class _EnvWithoutMock(PydanticBaseSettingsSource):
+    """The environment, with `DATAPORTER_MOCK` dropped rather than refused (`65`).
+
+    Dropped and not refused, unlike `config.toml`'s: a variable is ambient — it
+    may have been exported for a different program, or by a shell profile
+    somebody else wrote — so refusing would make an unrelated name break every
+    command. A file, by contrast, was written *for this tool* and saying nothing
+    about it would be the silence `_TomlWithoutSecrets` exists to avoid.
+
+    `--mock` is the flag's only door either way.
+    """
+
+    def __init__(self, source: PydanticBaseSettingsSource) -> None:
+        super().__init__(source.settings_cls)
+        self._source = source
+
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        return self._source.get_field_value(field, field_name)
+
+    def __call__(self) -> dict[str, Any]:
+        found = dict(self._source())
+        found.pop("mock", None)
+        return found
 
 
 class _TomlWithoutSecrets(TomlConfigSettingsSource):
@@ -820,8 +890,14 @@ def _workspace_from_env() -> Path | None:
     return Path(value) if value else None
 
 
-def bootstrap_workspace(workspace: Path | None = None) -> Path:
+def bootstrap_workspace(workspace: Path | None = None, *, mock: bool = False) -> Path:
     """Where to look for `config.toml`: CLI flag > environment > default.
+
+    `mock` moves the *default* only (`65`). It has to be here as well as on the
+    field, because this runs before `Settings` exists — it is what finds the file
+    `Settings` is then built from — and a `--mock` run that read
+    `./migration/config.toml` while writing to `./migration-mock/` would be
+    configured by a file it never wrote to.
 
     An `orval.coalesce_lazy` chain, which is exactly what this is. It could not
     be one until 0.0.12: `coalesce_lazy` was typed `-> T | None` even when its
@@ -829,12 +905,13 @@ def bootstrap_workspace(workspace: Path | None = None) -> Path:
     0.0.12's overloads narrow the return type for chains of up to five values.
     See `docs/orval-candidates.md` (D2).
     """
-    return coalesce_lazy(lambda: workspace, _workspace_from_env, lambda: DEFAULT_WORKSPACE)
+    default = MOCK_WORKSPACE if mock else DEFAULT_WORKSPACE
+    return coalesce_lazy(lambda: workspace, _workspace_from_env, lambda: default)
 
 
-def config_file_for(workspace: Path | None = None) -> Path:
+def config_file_for(workspace: Path | None = None, *, mock: bool = False) -> Path:
     """Return the `config.toml` path this invocation will read, if it exists."""
-    return bootstrap_workspace(workspace) / CONFIG_FILENAME
+    return bootstrap_workspace(workspace, mock=mock) / CONFIG_FILENAME
 
 
 def with_attachments_dir(settings: Settings, directory: Path | None) -> Settings:
@@ -1013,12 +1090,51 @@ def _revalidated[T: BaseModel](model: T, **changes: Any) -> T:
         raise ConfigError(f"invalid configuration: {_describe(exc)}") from exc
 
 
+def _auth_overrides(*, email: str | None, password_file: Path | None) -> dict[str, Any]:
+    """Return the `auth` table the flags set, with the half they did not from the environment.
+
+    The init source outranks the environment and would replace the whole table,
+    so a flag beside a variable is the flag winning for *its* half and the
+    environment keeping the other.
+    """
+    auth: dict[str, Any] = {}
+    if email is not None:
+        auth["email"] = email
+    if password_file is not None:
+        auth["password"] = _first_line(password_file)
+    if not auth:
+        return auth
+    for key in ("email", "password"):
+        from_env = os.environ.get(f"DATAPORTER_AUTH__{key.upper()}", "")
+        if key not in auth and from_env:
+            auth[key] = from_env
+    return auth
+
+
+def _mock_overrides(workspace: Path | None) -> dict[str, Any]:
+    """Return what `--mock` sets besides itself (`65`).
+
+    Only when typed, as `--non-interactive` is: the init source is the flag's one
+    door, and a `False` passed through would be indistinguishable from the
+    default it already has.
+
+    The workspace moves with the flag, and only its *default*: an explicit
+    `--workspace` or `DATAPORTER_WORKSPACE` still wins, as it does for every
+    other path `--mock` redirects.
+    """
+    overrides: dict[str, Any] = {"mock": True}
+    if workspace is None and _workspace_from_env() is None:
+        overrides["workspace"] = MOCK_WORKSPACE
+    return overrides
+
+
 def load_settings(
     *,
     workspace: Path | None = None,
     non_interactive: bool = False,
     email: str | None = None,
     password_file: Path | None = None,
+    mock: bool = False,
 ) -> Settings:
     """Build `Settings`, honouring the precedence ladder.
 
@@ -1037,23 +1153,14 @@ def load_settings(
     Raises `ConfigError` for anything an operator can fix by editing config or
     re-running with different arguments; the CLI turns that into exit code 2.
     """
-    config_file = config_file_for(workspace)
+    config_file = config_file_for(workspace, mock=mock)
     overrides: dict[str, Any] = {} if workspace is None else {"workspace": workspace}
     if non_interactive:
         overrides["non_interactive"] = True
-    auth: dict[str, Any] = {}
-    if email is not None:
-        auth["email"] = email
-    if password_file is not None:
-        auth["password"] = _first_line(password_file)
+    if mock:
+        overrides |= _mock_overrides(workspace)
+    auth = _auth_overrides(email=email, password_file=password_file)
     if auth:
-        # The init source outranks the environment and would replace the whole
-        # `auth` table, so the half the flags did not set is read from the
-        # environment here and carried along.
-        for key in ("email", "password"):
-            from_env = os.environ.get(f"DATAPORTER_AUTH__{key.upper()}", "")
-            if key not in auth and from_env:
-                auth[key] = from_env
         overrides["auth"] = auth
 
     token = _config_file.set(config_file)

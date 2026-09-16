@@ -8,36 +8,28 @@ from claudemock import IDENTITY as CLAUDE
 from mockcore import Identity, cli
 
 
-def test_the_resolver_rule_sends_every_host_to_the_mock() -> None:
-    """§54: one rule, both names — Chrome keeps one value per argument."""
-    assert cli.resolver_rule(CLAUDE, host="127.0.0.1", port=8443) == "MAP claude.ai 127.0.0.1:8443"
-    assert (
-        cli.resolver_rule(CHATGPT, host="127.0.0.1", port=8444)
-        == "MAP chatgpt.com 127.0.0.1:8444, MAP auth.openai.com 127.0.0.1:8444"
-    )
+def test_the_block_names_the_address_and_the_flag() -> None:
+    """Two lines since `65`: where the mock is, and how to reach it.
 
-
-def test_the_block_names_the_site_and_ends_in_a_blank_line() -> None:
-    block = cli.reachability(CHATGPT, host="127.0.0.1", port=8444, flag="--ignore-certificate-errors-spki-list=PIN")
-    assert block.startswith("Mock chatgpt.com listening on https://127.0.0.1:8444\n\n")
-    assert block.endswith("]\n\n")
-    assert "--ignore-certificate-errors=" not in block
-
-
-def test_the_proxy_note_spells_the_hosts() -> None:
-    assert cli.proxy_note(CLAUDE, ["https_proxy"]) == (
-        "This machine has a proxy in its environment (https_proxy), which Chrome reads and\n"
-        "which would resolve claude.ai itself. Add to the same list:\n"
+    The resolver rule and the pin are gone with TLS — there is no name to map and
+    no key to trust — and so is the proxy note that existed because a proxy would
+    have resolved the mapped name itself (ADR 0010).
+    """
+    block = cli.reachability(CHATGPT, host="127.0.0.1", port=8444)
+    assert block == (
+        "Mock chatgpt.com listening on http://127.0.0.1:8444\n"
         "\n"
-        '  "--no-proxy-server",\n'
+        "Run the tool with --mock to reach it: dataporter --mock login --account <label>\n"
         "\n"
     )
-    assert "which would resolve chatgpt.com and auth.openai.com itself." in cli.proxy_note(
-        CHATGPT, ["https_proxy", "HTTP_PROXY"]
+    assert cli.reachability(CLAUDE, host="127.0.0.1", port=8443).startswith(
+        "Mock claude.ai listening on http://127.0.0.1:8443"
     )
-    assert cli.proxy_note(CHATGPT, ["https_proxy", "HTTP_PROXY"]).startswith(
-        "This machine has a proxy in its environment (https_proxy, HTTP_PROXY)"
-    )
+
+
+def test_what_the_host_mapping_needed_is_gone_with_it() -> None:
+    for name in ("resolver_rule", "proxy_note", "proxies", "PROXY_ENV", "PROXY_NOTE"):
+        assert not hasattr(cli, name)
 
 
 def test_three_hosts_are_spelled_with_commas() -> None:
@@ -46,17 +38,9 @@ def test_three_hosts_are_spelled_with_commas() -> None:
     assert three.heading == "Mock x — ledger"
 
 
-def test_proxies_are_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in cli.PROXY_ENV:
-        monkeypatch.delenv(name, raising=False)
-    assert cli.proxies() == []
-    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid:3128")
-    assert cli.proxies() == ["HTTPS_PROXY"]
-
-
 def test_the_link_note_is_the_golden_string() -> None:
-    assert cli.link_note("https://127.0.0.1:8443/__mock/exports/abc.zip") == (
-        "Export requested — the link, instead of an email:\n\n  https://127.0.0.1:8443/__mock/exports/abc.zip\n\n"
+    assert cli.link_note("http://127.0.0.1:8443/__mock/exports/abc") == (
+        "Export requested — the link, instead of an email:\n\n  http://127.0.0.1:8443/__mock/exports/abc\n\n"
     )
 
 
@@ -128,9 +112,9 @@ def test_a_bare_command_is_usage_not_a_crash(capsys: pytest.CaptureFixture[str])
 
 def test_a_mock_nobody_is_serving_is_an_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.ledger(CHATGPT, host="127.0.0.1", port=1) == 1
-    assert capsys.readouterr().err.startswith("chatgpt-mock: https://127.0.0.1:1/__mock/ledger:")
+    assert capsys.readouterr().err.startswith("chatgpt-mock: http://127.0.0.1:1/__mock/ledger:")
     assert cli.exports(CHATGPT, host="127.0.0.1", port=1) == 1
-    assert capsys.readouterr().err.startswith("chatgpt-mock: https://127.0.0.1:1/__mock/exports:")
+    assert capsys.readouterr().err.startswith("chatgpt-mock: http://127.0.0.1:1/__mock/exports:")
 
 
 def test_rows_prints_the_title_and_each_citation(capsys: pytest.CaptureFixture[str]) -> None:

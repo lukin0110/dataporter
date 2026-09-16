@@ -10,14 +10,13 @@ import json
 import zipfile
 from urllib.parse import urlencode
 
+from chatgptmock import AUTH_ORIGIN as AUTH
+from chatgptmock import SITE_ORIGIN as SITE
 from chatgptmock.site import Site
 
 from conftest import EMAIL, PASSWORD, WALL, Client
 
 SEED = "Part 1 of 1\n\nReply with exactly one line:\nMIGRATION-ACK aa000001 1/1\n"
-
-AUTH = "https://auth.openai.com"
-SITE = "https://chatgpt.com"
 
 
 def sign_in(client: Client, *, email: str = EMAIL, password: str = PASSWORD) -> str:
@@ -40,7 +39,7 @@ def test_signed_out_the_root_is_the_landing_page(chatgpt_running: Client) -> Non
     status, body, _ = chatgpt_running.request("/")
     assert status == 200
     assert (
-        '<button type="button" data-testid="login-button" onclick="location.href=\'https://auth.openai.com/log-in\'">Log in</button>'
+        f'<button type="button" data-testid="login-button" onclick="location.href=\'{AUTH}/log-in\'">Log in</button>'
         in body
     )
     assert "Sign up" in body
@@ -319,7 +318,7 @@ def test_an_export_ask_is_counted_and_answers_with_a_link_on_the_site_host(
     status, body, _ = chatgpt_running.post_json("/api/exports", {})
     payload = json.loads(body)
     assert (status, payload["ok"]) == (200, True)
-    assert payload["link"].startswith("https://chatgpt.com/__mock/exports/")
+    assert payload["link"].startswith(f"{SITE}/__mock/exports/")
     assert payload["link"].endswith(".zip")
     assert chatgpt_site.counters()["exports_requested"] == 1
 
@@ -338,7 +337,7 @@ def test_the_download_wants_a_session(chatgpt_running: Client, chatgpt_site: Sit
     chatgpt_site.chat(chat_id).reply.started -= 10  # ty: ignore[possibly-unbound-attribute]
     chatgpt_running.post_json(f"/api/chats/{chat_id}/title", {"title": "Notes on pooling"})
     _, asked, _ = chatgpt_running.post_json("/api/exports", {})
-    path = json.loads(asked)["link"].removeprefix("https://chatgpt.com")
+    path = json.loads(asked)["link"].removeprefix(SITE)
 
     status, refused = chatgpt_running.get_bytes(path)
     assert status == 403

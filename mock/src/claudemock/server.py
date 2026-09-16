@@ -30,12 +30,12 @@ upload's body, which is the only thing in the mock worth awaiting.
 from collections.abc import Callable
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Annotated, Any
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
-from fastapi import Depends, FastAPI, Form, Request, Response
+from fastapi import Depends, FastAPI, Form, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
-from mockcore import certificate, wire
-from mockcore.exports import Export
+from mockcore import wire
+from mockcore.exports import Export, Part
 from mockcore.wire import (
     LOGIN_COOKIE,
     MAX_BODY_BYTES,
@@ -58,11 +58,34 @@ if TYPE_CHECKING:
 
 BANNER_COOKIE = "mock_banner"
 
-EXPORT_PAGE_PATH = "/settings/data-privacy-controls"
-"""Where the site lets a user ask for their data: the tool's own
-`export_page.EXPORT_PAGE_PATH`, re-typed because the mock imports nothing from it
-(ADR 0003). The row is `*unknown*` in the UI map; correcting it corrects both
-spellings, one line each."""
+LOGOUT_PATH = "/logout"
+INVOLUNTARY_LOGOUT = LOGOUT_PATH + "?involuntary=1&returnTo={path}"
+REAUTH_LOGIN = "/login?from=logout&reauth=1&returnTo={path}"
+"""Where a request whose sign-in has lapsed is sent, and where `/logout` sends it next.
+
+Two hops, which is what a real account does: `/new` answers with
+`/logout?involuntary&returnTo=…` and `/logout` answers with
+`/login?from&reauth&returnTo`. The tool sees a sign-in page either way; what the
+two hops give a rehearsal is the *shape* of the journey — a URL that is on the
+host and on no surface, in the middle of a run.
+
+There is no export page path here any more. `31` guessed one, `51` found it
+served nothing, and the panel is markup on `/new` behind a fragment — which no
+server is ever told (`pages.SETTINGS_HASH`)."""
+
+
+def attachment(filename: str) -> dict[str, str]:
+    """Return the header that makes a link a download rather than a page.
+
+    Without it the fetch fails, and the failure is the interesting part: Chrome
+    *renders* `application/json`, so a manifest served plain is a document that
+    loaded and went quiet — which `download.py` reads, correctly, as "the link led
+    to a page, not an archive". The real manifest arrives as a download with a
+    90-character filename, so the vendor sends this header too; the mock's own
+    spelling of the name is shorter and is not a claim about the vendor's.
+    """
+    return {"Content-Disposition": f'attachment; filename="{filename}"'}
+
 
 REFUSED = "Those details do not match an account here."
 NO_CODE = "That code was not accepted."
@@ -108,10 +131,27 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
     the same for a sign-in link (`49`).
     """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    if link_base:
+        # What the socket really bound, which only `serve` knows: every link this
+        # site mints is spelled with it, the sign-in's as well as the export's.
+        site.origin = link_base
     pending: Pending = site.pending_sign_ins
+    account_id = archive.account_uuid(site.email)
+    """The one account's id, which every export's files hang under — as a real
+    manifest's do, naming the same uuid across every export it writes."""
 
     def link_of(export: Export) -> str:
-        return link_base + wire.ARCHIVE_PATH.format(token=export.token)
+        """Where the vendor's email would point: the index, not the archive."""
+        return link_base + wire.MANIFEST_PATH.format(token=export.token)
+
+    def part_url(part: Part) -> str:
+        """Where one file of an index lives: under the account, not under the index.
+
+        The account's own id, as the real one is — a real manifest names the same
+        uuid in every export it ever writes, and a hex token per file. So nothing
+        of the link an operator pasted survives into the snapshot the tool files.
+        """
+        return link_base + wire.PART_PATH.format(export_id=account_id, part_token=part.token)
 
     def sign_in_link_json(link: SignInLink) -> dict[str, Any]:
         return {"token": link.token, "link": site.link_of(link), "minted_at": link.minted_at, "spent": link.spent}
@@ -119,25 +159,62 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
     Session = Annotated[str, Depends(wire.session_of(site.signed_in))]  # ruff: ignore[non-lowercase-variable-in-function] - it names a type
 
     @app.exception_handler(SignedOutError)
-    def signed_out(_request: Request, _failure: SignedOutError) -> Response:
-        return redirect("/login")
+    def signed_out(request: Request, _failure: SignedOutError) -> Response:
+        """Send a request with no live session where a real account sends one.
+
+        Never straight to `/login`: claude.ai answers an expired session with
+        `/logout?involuntary&returnTo=…` first, and `/logout` answers with the
+        sign-in page. A browser that never had a session and one whose session
+        lapsed take the same two hops, because the site cannot tell them apart
+        either — it has a token it does not know, or no token at all.
+        """
+        return redirect(INVOLUNTARY_LOGOUT.format(path=quote(request.url.path)))
+
+    @app.get(LOGOUT_PATH)
+    def logout_page(return_to: Annotated[str, Query(alias="returnTo")] = "/new") -> Response:
+        """Answer the second hop: the sign-in page, carrying where to come back to.
+
+        The query is the vendor's `returnTo`, aliased rather than spelled: what is
+        on the wire is claude.ai's, and what is in the code is this project's.
+        """
+        return redirect(REAUTH_LOGIN.format(path=quote(return_to)))
 
     # -- the witness ------------------------------------------------------- #
 
-    wire.witness(app, ledger=site.ledger, exports=site._exports, link_of=link_of)  # ruff: ignore[private-member-access] - the site's, handed to the core
+    wire.witness(app, ledger=site.ledger, exports=site._exports, link_of=link_of, expire=site.expire_sessions)  # ruff: ignore[private-member-access] - the site's, handed to the core
 
-    @app.get(wire.ARCHIVE_PATH)
-    def download(token: str) -> Response:
-        """Serve the archive a link names. No session: the fetch carries no cookies.
+    @app.get(wire.MANIFEST_PATH)
+    def manifest(_session: Session, token: str) -> Response:
+        """Serve the index a link names: one file per category, each at its own address.
+
+        Behind the session, because a real link is: a browserless request for one,
+        minutes old and well inside its day, answered `403`.
 
         A token nobody minted is not found, which the tool reports as
         `link refused: HTTP 404` and leaves the ask open — a dead link (§39, 5),
-        as near as a mock with no clock to expire on can come to one.
+        as near as a mock with no clock to expire on can come to one. The index
+        itself may be read again; what it names may not.
         """
-        if site.fetch_export(token) is None:
+        export = site.fetch_export(token)
+        if export is None:
             return not_found()
-        payload = archive.render(site.all_chats(), email=site.email, now=site.now())
-        return Response(payload, media_type="application/zip")
+        index = archive.manifest(export, url_of=part_url)
+        return JSONResponse(index, headers=attachment(archive.manifest_filename(export)))
+
+    @app.get(wire.PART_PATH)
+    def download_part(_session: Session, export_id: str, part_token: str) -> Response:
+        """Serve one part of an export, once.
+
+        "Each export URL can only be used once" is what the manifest says about
+        its own files, so a second fetch is `404` — the same answer as a token
+        nobody minted, because from outside they are the same thing: an address
+        that is no longer good for anything.
+        """
+        part = site.spend_part(part_token) if export_id == account_id else None
+        if part is None:
+            return not_found()
+        payload = archive.render(part.category, site.all_chats(), email=site.email, now=site.now())
+        return Response(payload, media_type="application/zip", headers=attachment(part.filename))
 
     # -- sign-in by link (`49`) --------------------------------------------- #
 
@@ -279,23 +356,28 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
         site.rename(chat, title.title)
         return JSONResponse(chat_json(chat, site.now()))
 
-    # -- the export page (`32`) --------------------------------------------- #
-
-    @app.get(EXPORT_PAGE_PATH)
-    def export_page(_session: Session) -> Response:
-        return HTMLResponse(pages.export_page())
+    # -- the settings panel (`32`, `51`) ------------------------------------ #
+    #
+    # No route: the panel is a fragment of `/new`, and a fragment never reaches a
+    # server. `pages.settings_panel` is the markup and `pages.SETTINGS_JS` opens
+    # it on the address. What is left here is the one request it makes.
 
     @app.post("/api/exports")
     def request_export(_session: Session) -> Response:
         """Take the ask: mint the link, count it, and say it where an email would go.
 
-        The page never shows the link — the tool reads a status region, not a
-        sentence — so the response carries it for whoever is reading the wire.
+        **202, not 200.** The real ask answers *accepted* — the export is made
+        later and mailed when it is ready — and answering `200` would be the mock
+        saying the work was done by the time the request returned. The page reads
+        `ok` from the body rather than the status, so the two agree.
+
+        The page never shows the link — the tool reads a toast, not a sentence —
+        so the response carries it for whoever is reading the wire.
         """
         export = site.request_export()
         link = link_of(export)
         announce(link)
-        return JSONResponse({"ok": True, "link": link})
+        return JSONResponse({"ok": True, "link": link}, status_code=HTTPStatus.ACCEPTED)
 
     @app.post("/api/uploads")
     async def upload(session: Session, request: Request) -> Response:
@@ -335,26 +417,24 @@ def serve(
     *,
     port: int,
     host: str = "127.0.0.1",
-    material: certificate.Material,
     announce: Callable[[str], None] = wire.quiet,
     announce_sign_in: Callable[[str], None] = wire.quiet,
 ) -> MockServer:
     """Return a started server, listening. The caller closes it.
 
-    The link base is spelled from the address and port the socket really got —
-    `0` asks for any port — so an export link points at this process and no
-    other. A host other than the loopback address is one the tool's fetch cannot
-    trust (the certificate names `127.0.0.1` alone), and `cli.serve` says so. A
-    sign-in link is on `claude.ai` itself, where Chrome's resolver rule sends it.
+    Both links — the sign-in's and the export's — are on the address the socket
+    really bound, which is where the browser's cookie is. The fetch goes through
+    the source session (`45`), so the link has to be on the origin holding it;
+    `port=0` in the mock's own tests is why this is asked of the socket rather
+    than assumed from `ORIGIN`.
     """
     return wire.serve(
         lambda bound_host, bound_port: create_app(
             site,
-            link_base=f"https://{bound_host}:{bound_port}",
+            link_base=wire.origin_of(bound_host, bound_port),
             announce=announce,
             announce_sign_in=announce_sign_in,
         ),
         port=port,
         host=host,
-        material=material,
     )

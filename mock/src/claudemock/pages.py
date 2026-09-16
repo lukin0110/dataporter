@@ -17,9 +17,17 @@ The script is the site's behaviour in the browser: it submits, it renders turns
 as they arrive, it uploads a file and grows a chip for it, and it renames a chat.
 Everything it does goes through the mock's own HTTP API, so the ledger counts it.
 
-`32`'s export page is the one page here with no composer. It is built out of the
-four `31` rows — a button, a confirmation, a status — spelled with the selectors
-the tool's `export_page.py` looks for, re-typed rather than imported (ADR 0003).
+`32`'s export page is not a page. claude.ai asks for an export from a **settings
+dialog over the app**, at a fragment of `/new` — so the panel is markup on the
+chat page, shown when the address carries `#settings/data-privacy-controls`, and
+the composer and the file input are behind it exactly as they are on the real
+site. `31` guessed a path of its own and `51` found it served nothing; `32`'s
+`export_page()` was built on that guess and is gone with it.
+
+The panel's selectors are the tool's, re-typed rather than imported (ADR 0003):
+`[data-perf-screen="data-privacy-controls"] [data-settings-row] button[data-cds="Button"]`
+for the row, `[data-testid="export-confirm-button"]` on the second screen, and
+`[data-cds="Toast"] [role="dialog"] h2` for the answer.
 """
 
 import html
@@ -42,12 +50,16 @@ STYLE = """\
     white-space: pre-wrap; margin: .5rem 0; }
   .attachment-chip { display: inline-block; border: 1px solid #999;
     padding: 0 .3rem; margin: .2rem; }
-  /* The export page's stages: `hidden` is how a dialog and a status region
-     wait their turn, and `.invisible` is a control the page offers but does not
-     show — both `display: none`, which is what the tool's `visible` filter
-     reads. */
+  /* The settings panel's stages: `hidden` is how the dialog and the toast wait
+     their turn, and `.invisible` is a row the panel offers but does not show —
+     both `display: none`, which is what the tool's `visible` filter reads. */
   [hidden] { display: none; }
   .invisible { display: none; }
+  [data-perf-screen] { border: 1px solid #999; padding: 1rem; margin-bottom: 1rem; }
+  [data-settings-row] { display: flex; gap: 1rem; justify-content: space-between;
+    padding: .3rem 0; }
+  [data-cds="Toast"]:empty { display: none; }
+  [data-cds="Toast"] { position: fixed; right: 1rem; bottom: 1rem; }
 """
 
 APP_JS = """\
@@ -290,27 +302,74 @@ MAGIC_LINK_JS = """\
   }
 """
 
-EXPORT_JS = """\
-  const dialog = document.querySelector('[role="dialog"]');
-  const requested = document.querySelector('[data-testid="export-requested"]');
-  for (const button of document.querySelectorAll('[data-testid="export-data"]')) {
-    button.addEventListener('click', () => { dialog.hidden = false; });
+SETTINGS_HASH = "#settings/data-privacy-controls"
+EXPORT_SCREEN_HASH = SETTINGS_HASH + "/export-data"
+"""The two addresses the panel has, and the whole reason it is not a page.
+
+The tool navigates to the first and clicks through to the second, and both the
+wall (`sites.extraction_pattern`) and `on_export_page` read the fragment as well
+as the path. A mock that showed the second screen without moving the address
+would leave the subtree branch of both of them untested."""
+
+SETTINGS_JS = """\
+  /* The settings panel (`export page`, `export button`, `export confirmation`,
+     `export requested`). Two screens at two addresses, one in the document at a
+     time: the second screen replaces the first rather than hiding it, because
+     that is what a real trace shows — a sketch taken on the second screen counts
+     one confirmation button and no export rows at all. Templates are what make
+     that true of `querySelectorAll` and not merely of what is painted. */
+  const panel = document.querySelector('[data-perf-screen="data-privacy-controls"]');
+  const toast = document.querySelector('[data-cds="Toast"]');
+  const screens = {
+    '__SETTINGS_HASH__': 'settings-root',
+    '__EXPORT_SCREEN_HASH__': 'settings-export',
+  };
+
+  function showSettings() {
+    const template = screens[location.hash];
+    panel.replaceChildren();
+    panel.hidden = !template;
+    if (!template) return;
+    panel.appendChild(document.getElementById(template).content.cloneNode(true));
+    const row = panel.querySelector('[data-settings-row] button[data-cds="Button"]:not(.invisible)');
+    if (row) row.addEventListener('click', () => { location.hash = '__EXPORT_SCREEN_HASH__'; });
+    const confirm = panel.querySelector('[data-testid="export-confirm-button"]');
+    if (confirm) confirm.addEventListener('click', askForTheExport);
   }
-  document.querySelector('[data-testid="confirm-export"]').addEventListener('click', () => {
-    /* `export requested`: the status region appears only once the mock has
-       counted the ask and minted a link, so the ledger is the witness. A
-       signed-out POST is redirected to the login page, whose body is not JSON,
-       and nothing appears. */
+
+  function askForTheExport() {
+    /* `export requested`: the toast is raised only once the mock has counted the
+       ask and minted a link, so the ledger is the witness. The ask answers 202 —
+       accepted, not done — which is what the real one answers, so `ok` is read
+       from the body rather than from the status. A signed-out POST is redirected
+       to the login page, whose body is not JSON, and nothing appears. */
     fetch('/api/exports', { method: 'POST', headers: { 'Accept': 'application/json' } })
       .then((answer) => answer.json())
-      .then((payload) => {
-        if (!payload.ok) return;
-        dialog.hidden = true;
-        requested.hidden = false;
-      })
+      .then((payload) => { if (payload.ok) raiseToast('__REQUESTED_TEXT__'); })
       .catch(() => {});
-  });
+  }
+
+  function raiseToast(words) {
+    const note = document.createElement('div');
+    note.setAttribute('role', 'dialog');
+    const heading = document.createElement('h2');
+    heading.textContent = words;
+    note.appendChild(heading);
+    toast.appendChild(note);
+  }
+
+  window.addEventListener('hashchange', showSettings);
+  showSettings();
 """
+
+REQUESTED_TEXT = "Export started"
+"""What the toast says, in English and in these words.
+
+The one signal the tool reads by its words as well as its shape, because the
+container is the site's notification furniture and every toast shares it. A mock
+that answered in any other wording — or in the Spanish a real account was served
+— would be proving that the selector which ships cannot work, which is a thing to
+write in the limitations and not a thing for the mock to do."""
 
 
 def shell(title: str, body: str, script: str = "") -> bytes:
@@ -410,39 +469,93 @@ def unsupported_page() -> bytes:
 
 
 # --------------------------------------------------------------------------- #
-# The export page (`export page`, `export button`, `export confirmation`,
-# `export requested`)
+# The settings panel (`export page`, `export button`, `export confirmation`,
+# `export period`, `export requested`)
 # --------------------------------------------------------------------------- #
 
+MANAGE_ROWS = ("Manage memories", "Manage projects", "Manage connectors", "Manage devices")
+"""The rows under Export, each offering a button that does not ask for anything.
 
-def export_page() -> bytes:
-    """Return the page where the account's data is asked for, at its first stage.
+They are why the export button is matched by *position* and not by a test id: the
+panel gives the tool nothing to tell the Export row from these, so the selector
+takes the first visible match and the mock's job is to make that claim a real
+one. Four of them here and five on the real account, because one of the six
+buttons the panel really shows is spent on the invisible row below."""
 
-    Three stages, walked by the page's own script: a button, a dialog with a
-    confirmation in it, and a status region that appears once the ask has been
-    taken. A hidden twin of the button comes first in the DOM, because a page that
-    offers one control per device width is exactly how a real one would break a
-    click helper that did not filter by visibility — and the tool's does.
+PERIODS = (("All", True), ("Last 30 days", False), ("Last 90 days", False), ("Custom", False))
+"""The second screen's `Conversations from`, with `All` the default.
 
-    No composer, no file input, no other dialog and no other status: the tool
-    reads the page as four booleans, and anything else visible here would be
-    something for one of them to be wrong about.
+The ask touches none of it and relies on that default. If claude.ai ever changed
+it, `extract` would start filing partial snapshots while reporting success — so
+the control is here to be seen in a sketch, and the mock leaves it exactly as
+unread as the tool does."""
+
+
+def _settings_row(label: str, control: str, *, invisible: bool = False) -> str:
+    attributes = ' data-settings-row class="invisible"' if invisible else " data-settings-row"
+    return f"  <div{attributes}>\n    <span>{html.escape(label)}</span>\n    {control}\n  </div>"
+
+
+def settings_root() -> str:
+    """Return the panel's first screen: six buttons, of which the Export row is the first visible.
+
+    **Six**, which is what a sketch of the real panel counts, and the tool's
+    selector matches every one of them. The first is invisible — a row the account
+    does not have — so that `click_js` pressing *the first visible match* is a
+    claim this page can falsify rather than one it happens to satisfy. `32` made
+    that point with a hidden twin of the one button; a twin would make seven, and
+    the count is the thing a sketch can be laid beside.
+
+    Above them a row holding a switch rather than a button, because that is the
+    shape the Export row's position depends on: every row above it holds one.
     """
-    body = (
-        "<main>\n"
-        "<h1>Data privacy controls</h1>\n"
-        '<button class="invisible" data-testid="export-data">Export data</button>\n'
-        '<button data-testid="export-data">Export data</button>\n'
-        '<div role="dialog" aria-label="Export data" hidden>\n'
-        "  <p>Claude will email a download link to the address on this account.</p>\n"
-        '  <button type="submit" data-testid="confirm-export">Confirm</button>\n'
-        "</div>\n"
-        '<div role="status" data-testid="export-requested" hidden>\n'
-        "  Your export was requested. Check your email.\n"
-        "</div>\n"
-        "</main>"
+    rows = [
+        _settings_row("Export data", '<button data-cds="Button">Export data</button>', invisible=True),
+        _settings_row(
+            "Help improve Claude",
+            '<button role="switch" aria-checked="false">Off</button>',
+        ),
+        _settings_row("Export data", '<button data-cds="Button">Export data</button>'),
+        *(_settings_row(label, '<button data-cds="Button">Manage</button>') for label in MANAGE_ROWS),
+    ]
+    return "\n".join(["  <h2>Privacy</h2>", *rows])
+
+
+def settings_export_screen() -> str:
+    """Return the second screen: what the export will include, the period, and the button that asks."""
+    periods = "\n".join(
+        f'    <label><input type="radio" name="period" value="{html.escape(label)}"'
+        f"{' checked' if checked else ''}> {html.escape(label)}</label>"
+        for label, checked in PERIODS
     )
-    return shell("Data privacy controls", body, EXPORT_JS)
+    return (
+        "  <h2>Export data</h2>\n"
+        "  <p>You will receive an email with a link to download your data.</p>\n"
+        '  <div role="radiogroup" aria-label="Conversations from">\n'
+        f"{periods}\n"
+        "  </div>\n"
+        '  <button type="button" data-testid="export-confirm-button">Export</button>'
+    )
+
+
+def settings_panel() -> str:
+    """Return the panel, its two screens as templates, and the toast that answers.
+
+    The panel is empty until the address says which screen to show, and a
+    `<template>`'s content is not in the document — so `querySelectorAll` counts
+    what is on screen and nothing else, which is what makes the counts here the
+    counts a sketch of the real panel took.
+    """
+    return (
+        '<div data-perf-screen="data-privacy-controls" role="dialog" aria-label="Settings" hidden></div>\n'
+        '<template id="settings-root">\n'
+        f"{settings_root()}\n"
+        "</template>\n"
+        '<template id="settings-export">\n'
+        f"{settings_export_screen()}\n"
+        "</template>\n"
+        '<div data-cds="Toast"></div>'
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -484,6 +597,11 @@ def chat_page(chat: Chat | None, turns: Sequence[Turn], *, generating: bool) -> 
     One function for both because they are one page: the only difference is
     whether there is a chat behind it yet, which is exactly what a submit
     changes without a reload.
+
+    The settings panel is on both of them, closed, because claude.ai's export is
+    a dialog over the app and not a page (§77). It opens on the address alone, so
+    a navigation to `/new#settings/data-privacy-controls` and a hash change from
+    `/new` reach it by the same door — which is the two ways the tool arrives.
     """
     control = (
         '<button id="stop" aria-label="Stop response">Stop</button>'
@@ -492,6 +610,7 @@ def chat_page(chat: Chat | None, turns: Sequence[Turn], *, generating: bool) -> 
     )
     body = "\n".join([
         _header(chat),
+        settings_panel(),
         "<main>",
         '  <div id="transcript" data-testid="conversation">',
         _turns(turns),
@@ -503,5 +622,11 @@ def chat_page(chat: Chat | None, turns: Sequence[Turn], *, generating: bool) -> 
         "</main>",
     ])
     title = chat.title if chat is not None else "New chat"
-    script = APP_JS.replace("__CHAT_ID__", json.dumps(chat.id) if chat is not None else "null")
+    script = "\n".join([
+        APP_JS.replace("__CHAT_ID__", json.dumps(chat.id) if chat is not None else "null"),
+        SETTINGS_JS
+        .replace("__SETTINGS_HASH__", SETTINGS_HASH)
+        .replace("__EXPORT_SCREEN_HASH__", EXPORT_SCREEN_HASH)
+        .replace("__REQUESTED_TEXT__", REQUESTED_TEXT),
+    ])
     return shell(title, body, script)

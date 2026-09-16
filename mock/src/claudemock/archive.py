@@ -1,9 +1,16 @@
-"""The chats, as the archive a Claude export link downloads.
+"""The chats, as the parts a Claude export link names.
 
 `32`'s other half: the export page (`pages.py`) mints a link, and this is what the
-link is fetched as — a zip holding `conversations.json` and `users.json`, rendered
-from the site's chats at the moment of the fetch. No state and no HTTP, like
-`pages.py`: `site.py` holds the chats and `server.py` serves the bytes.
+link's files are fetched as. No state and no HTTP, like `pages.py`: `site.py`
+holds the chats and `server.py` serves the bytes.
+
+**A Claude export is not one zip.** The link serves an index — a manifest — and the
+index names a zip per *category*: `light_metadata-000.zip` carries the account,
+`conversations-000.zip` carries the conversations, and only the second is the
+export an importer reads. The tool has known this since `adb0494`
+(`link_serves_manifest=True`); the mock served one zip until now, which the tool
+read as a manifest and refused. The category names, the `-000` and the split are
+the vendor's, read off a real `manifest.json` and the parts it named.
 
 The shape is the vendor's, spelled here by hand. The tool reads it with its own
 models and `rehearsal/export.py` writes the same shape for a rehearsal, and this
@@ -23,25 +30,97 @@ Three decisions, each the simplest thing the tool accepts:
   one second apart from there. Monotone within a conversation, and nothing the
   page shows has to remember when it was said.
 - **The same chats give the same bytes.** Entries carry a fixed timestamp and the
-  JSON is rendered the same way every time, so a link fetched twice — once by the
-  tool and once by hand — downloads one archive (§39, 2).
+  JSON is rendered the same way every time, so the same chats render the same part
+  however often it is asked for (§39, 2). A *part* may only be asked for once —
+  that is `mockcore.exports.Exports.spend` and not this module, which knows
+  nothing about who is allowed to read what.
 """
 
 import io
 import json
 import uuid
 import zipfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
 
+from mockcore.exports import Export, Part
 from mockcore.reply import Turn
 
+from claudemock import EXPORT_CATEGORIES
 from claudemock.site import Chat
 
 CONVERSATIONS_FILE = "conversations.json"
 USERS_FILE = "users.json"
 """The two files. `projects.json` and `memories.json` are optional to the tool and
-the mock has neither, and an empty file would claim a feature the site lacks."""
+the mock has neither, and an empty file would claim a feature the site lacks. A
+real `light_metadata` part carries a `login_history.json` beside `users.json`; the
+mock keeps no login history, and inventing one would be the same claim."""
+
+LIGHT_METADATA, CONVERSATIONS = EXPORT_CATEGORIES
+
+MEMBERS = {
+    LIGHT_METADATA: (USERS_FILE,),
+    CONVERSATIONS: (CONVERSATIONS_FILE,),
+}
+"""Which member goes in which part — the whole of the split the tool depends on.
+
+`archive_among` reads each part and keeps the one whose names its source
+recognises, and `looks_like` recognises `conversations.json`. A mock that put
+both files in both parts would make that choice meaningless, and a fetch would
+file whichever part it happened to read first."""
+
+MANIFEST_INSTRUCTIONS = "Download each file using the export_url. Note: Each export URL can only be used once."
+MANIFEST_VERSION = "1.0"
+"""The manifest's own two constants, the vendor's words and the vendor's version.
+
+The instruction line is quoted rather than paraphrased because it is the whole of
+the evidence for the single-use rule the mock now keeps: the site says it about
+its own links, in its own index, on every export."""
+
+
+def manifest_filename(export: Export) -> str:
+    """Return what the index is called when it lands.
+
+    Never kept: the tool names a download by its own guid and files the index as
+    `manifest.json` (`extract.MANIFEST_FILENAME`), so this is only ever seen in a
+    trace, as a length. The real one is 90 characters and its spelling has not
+    been read, so this is the mock's own and says so by being obviously the
+    mock's.
+    """
+    return f"claude-data-export-{export.token}.json"
+
+
+def manifest(export: Export, *, url_of: Callable[[Part], str]) -> dict[str, object]:
+    """Return the index a Claude export link serves, in the vendor's shape.
+
+    `created_at` is the moment the export was asked for, off the site's wall clock
+    and not the monotonic one replies grow on — a manifest is dated, and a date
+    counted from the process starting is not one. On a real export it lands a few
+    seconds after the ask, which is as near as a mock with nothing to compute can
+    come.
+
+    It is an ISO moment with an offset, which is how the real manifest writes it —
+    and not `TIME_FORMAT`, which is how the *export* writes one. Two spellings of a
+    moment in one export is the vendor's doing; a mock that tidied it would be
+    describing a site that does not exist.
+    """
+    return {
+        "instructions": MANIFEST_INSTRUCTIONS,
+        "created_at": datetime.fromtimestamp(export.requested_at, UTC).isoformat(),
+        "total_files": len(export.parts),
+        "data_files": [
+            {
+                "batch_index": index,
+                "export_url": url_of(part),
+                "category": part.category,
+                "part": part.part,
+                "filename": part.filename,
+            }
+            for index, part in enumerate(export.parts)
+        ],
+        "version": MANIFEST_VERSION,
+    }
+
 
 ENTRY_DATE_TIME = (1980, 1, 1, 0, 0, 0)
 """What every zip entry is stamped with — the format's own epoch, so the archive's
@@ -129,15 +208,24 @@ def users(email: str) -> list[dict[str, object]]:
     return [{"uuid": account_uuid(email), "full_name": "Rehearsal Operator", "email_address": email}]
 
 
-def render(chats: Sequence[Chat], *, email: str, now: float) -> bytes:
-    """Return the archive: a flat zip, deflated, the two files at its top level."""
+def payload_of(member: str, chats: Sequence[Chat], *, email: str, now: float) -> object:
+    """Return what one member of one part holds."""
+    if member == CONVERSATIONS_FILE:
+        return conversations(chats, email=email, now=now)
+    return users(email)
+
+
+def render(category: str, chats: Sequence[Chat], *, email: str, now: float) -> bytes:
+    """Return one part: a flat zip, deflated, its members at the top level.
+
+    A category the mock does not have is an empty zip rather than an error —
+    unreachable, because only `CATEGORIES` is ever minted, and an empty archive is
+    the answer that cannot be mistaken for another part's.
+    """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, payload in (
-            (CONVERSATIONS_FILE, conversations(chats, email=email, now=now)),
-            (USERS_FILE, users(email)),
-        ):
+        for name in MEMBERS.get(category, ()):
             entry = zipfile.ZipInfo(name, date_time=ENTRY_DATE_TIME)
             entry.compress_type = zipfile.ZIP_DEFLATED
-            archive.writestr(entry, json.dumps(payload, indent=2) + "\n")
+            archive.writestr(entry, json.dumps(payload_of(name, chats, email=email, now=now), indent=2) + "\n")
     return buffer.getvalue()

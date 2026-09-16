@@ -38,3 +38,20 @@ does, with the resolver rule the CLI prints."""
 DEFAULT_PORT = 8443
 
 IDENTITY = Identity(program=PROGRAM_NAME, site=HOST, hosts=(HOST,), port=DEFAULT_PORT)
+
+ORIGIN = f"http://127.0.0.1:{DEFAULT_PORT}"
+"""Where the mock really is, and what its links are spelled with (`65`).
+
+`HOST` above is what this site *stands in for*, which is still `claude.ai` — the
+ledger says so and the UI map is about that site. This is where it answers. The
+tool spells the same string in `sources/claude.py:MOCK_ORIGIN`, re-typed rather
+than imported, because the two projects share no code (ADR 0003)."""
+
+EXPORT_CATEGORIES = ("light_metadata", "conversations")
+"""The categories a Claude export is split into, in the order its manifest names
+them: `light_metadata` is `batch_index` 0 and `conversations` is 1.
+
+Here rather than in `archive.py` because both halves need it and neither may
+import the other — `site.py` mints one part token per category when an export is
+asked for, and `archive.py` says which file goes in which. Read off a real
+`manifest.json`, as the `-000` in a part's name was."""

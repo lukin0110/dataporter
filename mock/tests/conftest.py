@@ -2,28 +2,22 @@
 
 A site itself is tested without one — its `site.py` holds the behaviour and knows
 nothing about HTTP — so these fixtures exist for the half that is about cookies,
-status codes and redirects. One set per site, and one certificate per site,
+status codes and redirects. One set per site,
 because each mock keeps its own (§54).
 """
 
 import json
-import ssl
 import urllib.request
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.error import HTTPError
 
 import pytest
-from chatgptmock import IDENTITY as CHATGPT
 from chatgptmock import server as chatgpt_server
 from chatgptmock.site import Site as ChatGPTSite
-from claudemock import IDENTITY as CLAUDE
 from claudemock import server as claude_server
 from claudemock.site import Site as ClaudeSite
-from mockcore import certificate
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from mockcore import wire
 
 EMAIL = "rehearsal@example.invalid"
 PASSWORD = "rehearsal-not-a-real-password"
@@ -33,7 +27,7 @@ WALL = 1_757_764_800.0
 
 
 class Client:
-    """A browser's worth of behaviour: a cookie jar and a certificate it trusts.
+    """A browser's worth of behaviour: a cookie jar, and where the mock bound.
 
     `urllib`'s own redirect handling is left on for GET and turned off here for
     POST, because what a test wants to assert about a sign-in step is the
@@ -43,9 +37,6 @@ class Client:
     def __init__(self, base: str) -> None:
         self.base = base
         self.cookies: dict[str, str] = {}
-        self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        self.context.check_hostname = False
-        self.context.verify_mode = ssl.CERT_NONE
 
     def request(
         self,
@@ -61,7 +52,7 @@ class Client:
             request.add_header(name, value)
         if self.cookies:
             request.add_header("Cookie", self._cookie_header())
-        handlers: list[urllib.request.BaseHandler] = [urllib.request.HTTPSHandler(context=self.context)]
+        handlers: list[urllib.request.BaseHandler] = []
         if not follow:
             handlers.append(NoRedirect())
         opener = urllib.request.build_opener(*handlers)
@@ -87,7 +78,7 @@ class Client:
         request = urllib.request.Request(self.base + path)
         if cookies and self.cookies:
             request.add_header("Cookie", self._cookie_header())
-        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=self.context))
+        opener = urllib.request.build_opener()
         try:
             with opener.open(request, timeout=10) as answer:
                 return answer.status, answer.read()
@@ -119,13 +110,6 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 # -- the mock claude.ai ------------------------------------------------------- #
 
 
-@pytest.fixture(scope="session")
-def material(tmp_path_factory: pytest.TempPathFactory) -> certificate.Material:
-    """One key pair for the whole session: minting is the slow part."""
-    directory: Path = tmp_path_factory.mktemp("claude-cert")
-    return certificate.ensure(CLAUDE, directory)
-
-
 @pytest.fixture
 def site() -> ClaudeSite:
     # Fast on purpose: the delay is what a rehearsal configures down, and a test
@@ -135,21 +119,15 @@ def site() -> ClaudeSite:
 
 
 @pytest.fixture
-def running(site: ClaudeSite, material: certificate.Material) -> Iterator[Client]:
-    started = claude_server.serve(site, port=0, material=material)
+def running(site: ClaudeSite) -> Iterator[Client]:
+    started = claude_server.serve(site, port=0)
     try:
-        yield Client(f"https://127.0.0.1:{started.port}")
+        yield Client(wire.origin_of("127.0.0.1", started.port))
     finally:
         started.close()
 
 
 # -- the mock chatgpt.com ----------------------------------------------------- #
-
-
-@pytest.fixture(scope="session")
-def chatgpt_material(tmp_path_factory: pytest.TempPathFactory) -> certificate.Material:
-    directory: Path = tmp_path_factory.mktemp("chatgpt-cert")
-    return certificate.ensure(CHATGPT, directory)
 
 
 @pytest.fixture
@@ -158,9 +136,9 @@ def chatgpt_site() -> ChatGPTSite:
 
 
 @pytest.fixture
-def chatgpt_running(chatgpt_site: ChatGPTSite, chatgpt_material: certificate.Material) -> Iterator[Client]:
-    started = chatgpt_server.serve(chatgpt_site, port=0, material=chatgpt_material)
+def chatgpt_running(chatgpt_site: ChatGPTSite) -> Iterator[Client]:
+    started = chatgpt_server.serve(chatgpt_site, port=0)
     try:
-        yield Client(f"https://127.0.0.1:{started.port}")
+        yield Client(wire.origin_of("127.0.0.1", started.port))
     finally:
         started.close()

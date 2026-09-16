@@ -74,6 +74,18 @@ class Target:
         return urlparse(self.url).hostname or ""
 
     @property
+    def origin(self) -> str:
+        """The scheme and authority of `url`, or `""` for `about:blank` and friends.
+
+        What a tab is matched by (`65`). The host alone was enough while every
+        site had a name of its own; two mocks on loopback share one hostname and
+        differ only by port, so a match on `host` would call a tab on either of
+        them the other's.
+        """
+        parsed = urlparse(self.url)
+        return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+
+    @property
     def is_page(self) -> bool:
         return self.type == PAGE_TARGET
 

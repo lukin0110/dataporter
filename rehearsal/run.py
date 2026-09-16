@@ -23,15 +23,12 @@ process the operator starts, as Chrome is; the tool launches Chrome itself.
 """
 
 import argparse
-import base64
-import hashlib
 import json
 import os
 import re
 import shutil
 import signal
 import socket
-import ssl
 import subprocess
 import sys
 import time
@@ -42,9 +39,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
-
-from cryptography import x509
-from cryptography.hazmat.primitives import serialization
 
 from dataporter import PROGRAM_NAME
 from rehearsal import export as exporting
@@ -88,48 +82,16 @@ which the extraction criteria look for in the step's stdout."""
 # --------------------------------------------------------------------------- #
 
 
-def spki_pin(host: str, port: int) -> str:
-    """Return the mock's key, as Chrome's `--ignore-certificate-errors-spki-list` wants.
-
-    Computed from the certificate the mock is actually serving rather than read
-    out of the mock's own files, so that this stays true when the mock moves to
-    its own repository — and so that a rehearsal is pinned to the key of the
-    process it is really talking to. It is the same string the mock printed.
-    """
-    pem = ssl.get_server_certificate((host, port))
-    der = ssl.PEM_cert_to_DER_cert(pem)
-    certificate = _public_key_der(der)
-    return base64.b64encode(hashlib.sha256(certificate).digest()).decode("ascii")
-
-
-def _public_key_der(certificate_der: bytes) -> bytes:
-    """Return the SubjectPublicKeyInfo out of a DER certificate.
-
-    `cryptography` is the mock's dependency, not this package's, and it is
-    already installed in the workspace it rehearses; importing it here rather
-    than at the top keeps a rehearsal's other commands runnable without it.
-    """
-    loaded = x509.load_der_x509_certificate(certificate_der)
-    return loaded.public_key().public_bytes(
-        serialization.Encoding.DER,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
-
-
 def witness_json(host: str, port: int, path: str) -> Any:
     """Return what one of the mock's witness routes answers with (`38`).
 
-    The mock serves its own certificate, which nothing here has a reason to
-    trust — the rehearsal knows the address because it started the process —
-    so the verification is off, once, here. Three callers read a witness
-    route: this module's ledger, the extraction's listing of export links, and
-    the person's listing of sign-in links.
+    Plain HTTP on loopback since `65`, so there is no certificate to decide about:
+    the rehearsal knows the address because it started the process. Three callers
+    read a witness route: this module's ledger, the extraction's listing of export
+    links, and the person's listing of sign-in links.
     """
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    url = f"https://{host}:{port}{path}"
-    with urllib.request.urlopen(url, context=context, timeout=30) as answer:
+    url = f"http://{host}:{port}{path}"
+    with urllib.request.urlopen(url, timeout=30) as answer:
         return json.loads(answer.read().decode("utf-8"))
 
 
@@ -145,7 +107,8 @@ def ledger(host: str, port: int) -> dict[str, int]:
 
 CONFIG = """\
 # Written by `rehearsal.run`. Every line of it is configuration an operator may
-# write: the tool has no setting that names the mock (§22).
+# write, and none of it is about the mock: `--mock` points the tool there and it
+# is on the command line, not in here (`65`, ADR 0010).
 
 [browser]
 {executable}headless = {headless}
@@ -223,24 +186,19 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def chrome_args(settings: Settings, pin: str, *, hosts: Sequence[str] = ("claude.ai",)) -> list[str]:
-    """Return the `extra_args` the mock told the operator to paste, plus this machine's.
+def chrome_args(settings: Settings) -> list[str]:
+    """Return the `extra_args` this machine needs in order to run a browser at all.
 
-    The first two are the mock's own block. The rest are what a headless,
-    sandbox-less, proxied machine needs in order to run *any* browser, and are
-    the operator's business rather than the mock's — the rehearsal record names
-    them for the same reason it names the pacing. A mock that answers two host
-    names (`39`) prints one rule mapping both, comma-separated, because Chrome
-    keeps one value per argument.
+    Nothing about the mock is in here any more (`65`). It used to open with the
+    mock's own two lines — a resolver rule mapping the site's names to the mock,
+    and an SPKI pin for its key — because the tool had no setting that could name
+    a mock (ADR 0001). `--mock` is that setting now, so what is left is what a
+    headless, sandbox-less, proxied machine needs for *any* browser: the
+    operator's business rather than the mock's, and named in the record for the
+    same reason the pacing is.
     """
-    rule = ", ".join(f"MAP {host} {settings.host}:{settings.port}" for host in hosts)
-    arguments = [
-        f"--host-resolver-rules={rule}",
-        f"--ignore-certificate-errors-spki-list={pin}",
-    ]
+    arguments = []
     if settings.proxy_free:
-        # A proxy in the environment resolves the host name itself, so the
-        # resolver rule above would never fire.
         arguments.append("--no-proxy-server")
     if settings.headless:
         arguments += ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
@@ -266,15 +224,12 @@ def prepare(settings: Settings) -> dict[str, Any]:
         )
     export, attachments = exporting.build(settings.root)
     settings.workspace.mkdir(parents=True, exist_ok=True)
-    pin = spki_pin(settings.host, settings.port)
-    (settings.workspace / "config.toml").write_text(
-        config_text(settings, pin=pin, attachments=attachments), encoding="utf-8"
-    )
+    (settings.workspace / "config.toml").write_text(config_text(settings, attachments=attachments), encoding="utf-8")
     write_executable(settings.bin, repo=repo_root(), state=settings.bin / "profile.json")
-    return {"export": export, "attachments": attachments, "pin": pin}
+    return {"export": export, "attachments": attachments}
 
 
-def config_text(settings: Settings, *, pin: str, attachments: Path) -> str:
+def config_text(settings: Settings, *, attachments: Path) -> str:
     """Return the `config.toml` an operator could have written.
 
     `browser.executable` is written only when `--chrome` named one. Left out, the
@@ -285,7 +240,7 @@ def config_text(settings: Settings, *, pin: str, attachments: Path) -> str:
     Copilot in review on #36.)
     """
     executable = f"executable = {json.dumps(settings.chrome)}\n" if settings.chrome else ""
-    arguments = chrome_args(settings, pin)
+    arguments = chrome_args(settings)
     return CONFIG.format(
         executable=executable,
         headless=json.dumps(settings.headless),
@@ -434,11 +389,16 @@ class Runner:
         `login --link` run as a person runs them, in whatever mode the rest of the
         protocol is in; the rehearsal's `browser.headless` still keeps the window
         off the screen.
+
+        **`--mock` on every one of them** (`65`). It is what points the tool at the
+        mock at all, so a step that left it off would drive the real site — and it
+        is on the command line rather than in the `config.toml` this runner writes
+        because the flag has one door and a file is not it (ADR 0010).
         """
         head = shutil.which(PROGRAM, path=str(self.env.get("PATH", "")))
         base = [head] if head else [sys.executable, "-m", "dataporter"]
         mode = ["--non-interactive"] if self.settings.unattended and not attended else []
-        return [*base, "--workspace", str(self.settings.workspace), *mode, *arguments]
+        return [*base, "--mock", "--workspace", str(self.settings.workspace), *mode, *arguments]
 
     def run(
         self,
@@ -714,7 +674,10 @@ def instruments(runner: Runner, export: Path) -> dict[str, Outcome]:
     for name, arguments in (
         ("gate", ["gate", "--workspace", workspace]),
         ("drill", ["drill", "--workspace", workspace]),
-        ("safety", ["safety", "--workspace", workspace, "--export", str(export)]),
+        # `--mock`, because a rehearsal's profile has the mock's address in its
+        # history and not the site's; the audit asks the same three questions
+        # either way (`65`).
+        ("safety", ["safety", "--workspace", workspace, "--export", str(export), "--mock"]),
     ):
         started = time.monotonic()
         finished = subprocess.run(
@@ -1019,9 +982,9 @@ eight-character short id (§10).
 | Browser | headless: {headless} |
 | Chrome extra arguments | {extra_args} |
 
-The two arguments the mock printed are the whole of how the tool reaches it. The
-rest are what this machine needs to run any browser at all. The tool itself has
-no setting that names the mock (§22).
+`--mock` is the whole of how the tool reaches the mock, and it is on every command
+line below rather than in any file. Chrome's arguments are what this machine needs
+to run a browser at all; nothing in them is about the mock (ADR 0010).
 
 ## The protocol
 
@@ -1274,7 +1237,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ledger_block=ledger_block(answers["ledger"]),
             findings=findings_of(runner.steps, checks),
             versions=versions_of(settings, env),
-            extra_args=chrome_args(settings, prepared["pin"]),
+            extra_args=chrome_args(settings),
         )
         arguments.record.parent.mkdir(parents=True, exist_ok=True)
         arguments.record.write_text(text, encoding="utf-8")

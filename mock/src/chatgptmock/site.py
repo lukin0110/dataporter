@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from mockcore.exports import Export, Exports
 from mockcore.ledger import Ledger
 from mockcore.reply import DEFAULT_REPLY_DELAY_S, DEFAULT_REPLY_STEPS, Reply, answer
-from mockcore.sessions import Sessions
+from mockcore.sessions import Pending, Sessions
 
 from chatgptmock import IDENTITY
 
@@ -125,6 +125,15 @@ class Site:
         self.wall = wall
         self.chats: dict[str, Chat] = {}
         self.sessions = Sessions()
+        self.pending_logins = Pending()
+        """The half-finished sign-ins: a browser's token, and the address it gave."""
+        self.pending_codes = Pending()
+        """The one-time codes the auth origin mints and the site origin spends.
+
+        On the site rather than on the app since `65`, because there are two apps
+        now — one per socket — and a code minted by the auth origin's is redeemed
+        by the site origin's. Two stores meant every sign-in was refused at the
+        callback, with the walk having got everything right."""
         self.pending_files: dict[str, list[Upload]] = {}
         self._exports = Exports(wall=wall)
         self._lock = threading.Lock()

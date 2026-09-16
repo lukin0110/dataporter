@@ -49,15 +49,35 @@ def unpack(payload: bytes) -> dict[str, object]:
         return {name: json.loads(opened.read(name)) for name in opened.namelist()}
 
 
-def test_the_archive_is_a_flat_zip_with_conversations_and_users(site: Site) -> None:
-    payload = archive.render(site.all_chats(), email=EMAIL, now=site.now())
-    assert zipfile.is_zipfile(io.BytesIO(payload))
-    files = unpack(payload)
-    assert sorted(files) == ["conversations.json", "users.json"]
-    assert files["conversations.json"] == []
-    assert files["users.json"] == [
+def test_an_export_is_two_parts_and_only_one_of_them_is_the_export(site: Site) -> None:
+    """The split the tool's `archive_among` depends on: `conversations.json` in exactly one part."""
+    assert archive.EXPORT_CATEGORIES == ("light_metadata", "conversations")
+    conversations_part = archive.render("conversations", site.all_chats(), email=EMAIL, now=site.now())
+    light = archive.render("light_metadata", site.all_chats(), email=EMAIL, now=site.now())
+    assert zipfile.is_zipfile(io.BytesIO(conversations_part))
+    assert zipfile.is_zipfile(io.BytesIO(light))
+    assert sorted(unpack(conversations_part)) == ["conversations.json"]
+    assert sorted(unpack(light)) == ["users.json"]
+    assert unpack(conversations_part)["conversations.json"] == []
+    assert unpack(light)["users.json"] == [
         {"uuid": archive.account_uuid(EMAIL), "full_name": "Rehearsal Operator", "email_address": EMAIL}
     ]
+
+
+def test_the_manifest_names_every_part_in_the_vendors_shape(site: Site) -> None:
+    export = site.request_export()
+    index = archive.manifest(export, url_of=lambda part: f"https://claude.ai/p/{part.token}")
+    assert index["version"] == "1.0"
+    assert index["created_at"] == "2025-09-13T12:00:00+00:00"  # the wall clock, not the monotonic one
+    assert index["total_files"] == 2
+    assert "only be used once" in str(index["instructions"])
+    files = index["data_files"]
+    assert isinstance(files, list)
+    assert [(each["batch_index"], each["category"], each["part"], each["filename"]) for each in files] == [
+        (0, "light_metadata", 0, "light_metadata-000.zip"),
+        (1, "conversations", 0, "conversations-000.zip"),
+    ]
+    assert [each["export_url"] for each in files] == [f"https://claude.ai/p/{part.token}" for part in export.parts]
 
 
 def test_a_conversation_carries_the_keys_the_tool_validates(site: Site, clock: list[float]) -> None:
@@ -107,9 +127,9 @@ def test_accepted_files_are_named_on_the_first_message_and_carried_as_bytes_nowh
     site.accept_file("q3-chart.png", session="s")
     site.accept_file("notes.txt", session="s")
     chat = site.create_chat(SEED, session="s")
-    payload = archive.render(site.all_chats(), email=EMAIL, now=site.now())
+    payload = archive.render("conversations", site.all_chats(), email=EMAIL, now=site.now())
     files = unpack(payload)
-    assert sorted(files) == ["conversations.json", "users.json"]
+    assert sorted(files) == ["conversations.json"]
     (conversation,) = files["conversations.json"]  # type: ignore[misc]
     first = conversation["chat_messages"][0]
     assert [ref["file_name"] for ref in first["files"]] == ["q3-chart.png", "notes.txt"]
@@ -119,11 +139,13 @@ def test_accepted_files_are_named_on_the_first_message_and_carried_as_bytes_nowh
 
 
 def test_the_same_chats_render_the_same_bytes(site: Site, clock: list[float]) -> None:
-    """A link fetched by the tool and by hand downloads one archive (§39, 2)."""
+    """The same chats render the same part, however often it is asked for (§39, 2)."""
     site.create_chat(SEED, session="s")
     clock[0] += 2
     chats = site.all_chats()
-    assert archive.render(chats, email=EMAIL, now=site.now()) == archive.render(chats, email=EMAIL, now=site.now())
+    for category in archive.EXPORT_CATEGORIES:
+        first = archive.render(category, chats, email=EMAIL, now=site.now())
+        assert first == archive.render(category, chats, email=EMAIL, now=site.now())
 
 
 def test_ids_are_real_uuids_and_stable() -> None:

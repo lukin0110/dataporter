@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from dataporter.export.source import ExportView
@@ -62,15 +63,22 @@ class Source:
     display_name: str
     """How a block an operator reads spells the vendor: `Claude`, `ChatGPT`."""
 
-    host: str
-    """The site's own host: the trace header's, and the one every wall is built on."""
+    origin: str
+    """Where the site is: scheme, host and port together — `https://claude.ai`,
+    or `http://127.0.0.1:8443` under `--mock` (`65`).
 
-    auth_hosts: tuple[str, ...]
-    """Hosts the sign-in passes through beside the site's own, admitted whole by
+    The one stored value, because every other spelling of *where* follows from
+    it: `host` is this without the scheme or the port, `login_url` is this and a
+    path, and every wall is built on it. A mock source is this field replaced and
+    nothing else, which is the whole of what ADR 0010 claims."""
+
+    auth_origins: tuple[str, ...]
+    """Origins the sign-in passes through beside the site's own, admitted whole by
     the sign-in's wall because their real paths are unknown (§61, §65)."""
 
-    login_url: str
-    """What `login` opens and the signed-in probe asks."""
+    login_path: str
+    """What `login` opens, on `origin`: `/new` for a site that drops a signed-in
+    person into its app, `/` for one that leaves them at its root."""
 
     sign_in_paths: tuple[str, ...]
     """Regex fragments on `host` a sign-in passes through, without the leading slash."""
@@ -146,6 +154,32 @@ class Source:
         object.__setattr__(self, "selectors", MappingProxyType(dict(self.selectors)))
 
     @property
+    def host(self) -> str:
+        """The site's own host, bare: the trace header's, and what a tab is matched by.
+
+        Without the scheme and **without the port**, because `cdp.Target.host` is
+        `urlparse(url).hostname` and a port there would match no tab at all. That
+        asymmetry is the reason `origin` is the field and this is derived, rather
+        than the other way round (`65`).
+        """
+        return urlsplit(self.origin).hostname or ""
+
+    @property
+    def auth_hosts(self) -> tuple[str, ...]:
+        """The auth origins as bare hosts, for the same reason `host` is bare."""
+        return tuple(urlsplit(origin).hostname or "" for origin in self.auth_origins)
+
+    @property
     def hosts(self) -> tuple[str, ...]:
         """Every host the source session touches, the site's own first."""
         return (self.host, *self.auth_hosts)
+
+    @property
+    def origins(self) -> tuple[str, ...]:
+        """Every origin the source session touches, the site's own first."""
+        return (self.origin, *self.auth_origins)
+
+    @property
+    def login_url(self) -> str:
+        """What `login` opens and the signed-in probe asks."""
+        return f"{self.origin}{self.login_path}"

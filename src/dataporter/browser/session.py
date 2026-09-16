@@ -19,7 +19,15 @@ from dataporter.browser import launcher
 from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.launcher import BrowserSession, PortInUseError
-from dataporter.browser.probe import CLAUDE_HOST, MIGRATION_SITE, NEW_CHAT_URL, PageKind, PageState, probe
+from dataporter.browser.probe import (
+    CLAUDE_ORIGIN,
+    PageKind,
+    PageState,
+    destination_origin,
+    migration_site,
+    new_chat_url,
+    probe,
+)
 from dataporter.config import ASK_FILENAME, TMP_DIRNAME, Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import AuthError, BrowserError, UsageError
@@ -58,22 +66,32 @@ the account's flags (`52`): `signed_out_line` is what every caller prints, and
 this constant is its destination form."""
 
 
-CLAUDE_HOSTS: tuple[str, ...] = (CLAUDE_HOST,)
-"""The destination's one host. A source's are its own (`42`), and every
-function below that looks for a tab takes them."""
+CLAUDE_ORIGINS: tuple[str, ...] = (CLAUDE_ORIGIN,)
+"""The real destination's one origin. A source's are its own (`42`).
+
+**Not a default argument any more** (`65`). Every function below that looks for a
+tab takes a URL and origins outright, because a default naming the real site is
+the one way this change fails quietly: `doctor` read these defaults and asked
+claude.ai whether a `--mock` run was signed in, reporting "not logged in" about an
+account it had just signed into — and Chrome really did fetch `claude.ai/new`,
+Cloudflare challenge and all. `whose(settings)` is where callers get the pair."""
 
 
-def tabs_on(client: CdpClient, hosts: Sequence[str]) -> list[Target]:
-    """Every page target on one of `hosts`, in the browser's own order."""
-    return [target for target in client.pages() if target.host in hosts]
+def tabs_on(client: CdpClient, origins: Sequence[str]) -> list[Target]:
+    """Every page target on one of `origins`, in the browser's own order.
+
+    By origin and not by host (`65`): the scheme and the port are part of the
+    question now, because two mocks on loopback differ by nothing else.
+    """
+    return [target for target in client.pages() if target.origin in origins]
 
 
 def claude_tabs(client: CdpClient) -> list[Target]:
-    """Every page target on claude.ai, in the browser's own order."""
-    return tabs_on(client, CLAUDE_HOSTS)
+    """Every page target on the destination site, in the browser's own order."""
+    return tabs_on(client, CLAUDE_ORIGINS)
 
 
-def open_claude_tab(session: BrowserSession, url: str = NEW_CHAT_URL, *, hosts: Sequence[str] = CLAUDE_HOSTS) -> Page:
+def open_claude_tab(session: BrowserSession, url: str, *, origins: Sequence[str]) -> Page:
     """Return the tab to drive: an existing tab on the site, or one made to be it.
 
     A blank tab is reused before a new one is created, because that is what a
@@ -81,7 +99,7 @@ def open_claude_tab(session: BrowserSession, url: str = NEW_CHAT_URL, *, hosts: 
     creating a second tab there would leave the operator with two windows and
     `08` with an `ambiguous_tab`.
     """
-    tabs = tabs_on(session.client, hosts)
+    tabs = tabs_on(session.client, origins)
     if tabs:
         return session.client.attach(tabs[0].id)
 
@@ -152,10 +170,10 @@ def settled(page: Page, *, timeout_s: float = SETTLE_S) -> bool:
 
 def current_state(
     session: BrowserSession,
-    url: str = NEW_CHAT_URL,
+    url: str,
     *,
     settle_s: float = SETTLE_S,
-    hosts: Sequence[str] = CLAUDE_HOSTS,
+    origins: Sequence[str],
 ) -> PageState:
     """Probe the site's tab, opening one if there is not one yet.
 
@@ -170,10 +188,10 @@ def current_state(
     the caller learns something is wrong — and `12`, which holds one connection
     open for a whole conversation, sees the events themselves.
     """
-    page = open_claude_tab(session, url, hosts=hosts)
+    page = open_claude_tab(session, url, origins=origins)
     try:
         settled(page, timeout_s=settle_s)
-        return probe(page, tab_count=max(len(tabs_on(session.client, hosts)), 1))
+        return probe(page, tab_count=max(len(tabs_on(session.client, origins)), 1))
     finally:
         page.close()
 
@@ -183,8 +201,8 @@ def wait_for_login(
     *,
     timeout_s: float,
     poll_s: float = LOGIN_POLL_S,
-    url: str = NEW_CHAT_URL,
-    hosts: Sequence[str] = CLAUDE_HOSTS,
+    url: str,
+    origins: Sequence[str],
 ) -> PageState | None:
     """Poll until the operator has signed in, or until the timeout.
 
@@ -208,7 +226,7 @@ def wait_for_login(
                 session,
                 url,
                 settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())),
-                hosts=hosts,
+                origins=origins,
             )
         except BrowserError:
             if not session.client.responding():
@@ -227,9 +245,9 @@ def wait_for_login(
         time.sleep(min(poll_s, remaining))
 
 
-def signed_in(session: BrowserSession, url: str = NEW_CHAT_URL, *, hosts: Sequence[str] = CLAUDE_HOSTS) -> bool:
+def signed_in(session: BrowserSession, url: str, *, origins: Sequence[str]) -> bool:
     """One probe. `session status` is this plus a printed line."""
-    return current_state(session, url, hosts=hosts).logged_in
+    return current_state(session, url, origins=origins).logged_in
 
 
 def account_home_of(settings: Settings) -> "Path":
@@ -369,7 +387,7 @@ class LogoutOutcome:
 def site_of(settings: Settings) -> "Site":
     """Which site a `login` is to: the destination's, or a source's (`31`, `42`)."""
     if settings.account is None:
-        return MIGRATION_SITE
+        return migration_site(destination_origin(settings))
     # Local: `sites` imports `helpers`, which imports this module.
     from dataporter import sources  # ruff: ignore[import-outside-top-level] - see above
     from dataporter.browser import sites  # ruff: ignore[import-outside-top-level] - see above
@@ -379,7 +397,7 @@ def site_of(settings: Settings) -> "Site":
 
 @dataclass(frozen=True)
 class Whose:
-    """Whose session a command means: where to open, what to say, which hosts.
+    """Whose session a command means: where to open, what to say, which origins.
 
     `vendor` and `by_link` are the source's (`50`): what the sign-in blocks
     call the site, and whether its sign-in is a link a person hands over
@@ -388,7 +406,7 @@ class Whose:
 
     url: str
     prompt: str
-    hosts: tuple[str, ...]
+    origins: tuple[str, ...]
     vendor: str = CLAUDE.display_name
     by_link: bool = CLAUDE.sign_in_by_link
 
@@ -402,12 +420,13 @@ def whose(settings: Settings) -> Whose:
     is a Claude account (§75), so it signs in the way Claude does.
     """
     if settings.account is None:
-        return Whose(url=NEW_CHAT_URL, prompt=LOGIN_PROMPT, hosts=CLAUDE_HOSTS)
+        origin = destination_origin(settings)
+        return Whose(url=new_chat_url(origin), prompt=LOGIN_PROMPT, origins=(origin,))
     source = sources.of(settings)
     return Whose(
         url=source.login_url,
         prompt=source.login_prompt,
-        hosts=source.hosts,
+        origins=source.origins,
         vendor=source.display_name,
         by_link=source.sign_in_by_link,
     )
@@ -463,10 +482,10 @@ def login(
                 # No prompt, because nobody is reading one; the same last line,
                 # because a CI log is read the way a terminal is.
                 signin.ensure_signed_in(settings, browser)
-            elif not signed_in(browser, session.url, hosts=session.hosts):
+            elif not signed_in(browser, session.url, origins=session.origins):
                 sink.line(session.prompt)
                 arrived = wait_for_login(
-                    browser, timeout_s=settings.timeouts.login_s, url=session.url, hosts=session.hosts
+                    browser, timeout_s=settings.timeouts.login_s, url=session.url, origins=session.origins
                 )
                 if arrived is None:
                     raise AuthError(detail=LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
@@ -577,9 +596,17 @@ def logout_command(settings: Settings) -> str:
 
 
 def _command(settings: Settings, command: str) -> str:
+    """Return a remedy as this invocation would have to type it.
+
+    `--mock` first, because it is a global and because a remedy that dropped it
+    would send a person from a mock run at the real site (`65`) — the one
+    direction this flag must never be lost in. The account's flags follow, for the
+    reason they always have: a remedy that omits them signs in the wrong profile.
+    """
+    flags = " --mock" if settings.mock else ""
     if settings.account is None:
-        return f"{PROGRAM_NAME} {command}"
-    return f"{PROGRAM_NAME} {command} --source {settings.source} --account {settings.account}"
+        return f"{PROGRAM_NAME}{flags} {command}"
+    return f"{PROGRAM_NAME}{flags} {command} --source {settings.source} --account {settings.account}"
 
 
 def _heading(prefix: str, settings: Settings) -> str:
@@ -617,7 +644,7 @@ def signed_out_line(settings: Settings) -> str:
     return SIGNED_OUT_LINE.format(command=login_command(settings))
 
 
-def observe(session: BrowserSession, hosts: Sequence[str], *, settle_s: float = SETTLE_S) -> tuple[PageState, bool]:
+def observe(session: BrowserSession, origins: Sequence[str], *, settle_s: float = SETTLE_S) -> tuple[PageState, bool]:
     """Probe the site's tab without opening one: the state, and whether the code field is showing.
 
     `current_state` opens a tab when there is none, which is right for a
@@ -633,7 +660,7 @@ def observe(session: BrowserSession, hosts: Sequence[str], *, settle_s: float = 
     """
     from dataporter.browser import login_form  # ruff: ignore[import-outside-top-level] - it imports helpers, which imports this module
 
-    tabs = tabs_on(session.client, hosts)
+    tabs = tabs_on(session.client, origins)
     if not tabs:
         raise BrowserError(detail="no tab on the site yet")
     page = session.client.attach(tabs[0].id)
@@ -647,7 +674,7 @@ def observe(session: BrowserSession, hosts: Sequence[str], *, settle_s: float = 
 
 
 def polling(
-    session: BrowserSession, hosts: Sequence[str], *, timeout_s: float, poll_s: float
+    session: BrowserSession, origins: Sequence[str], *, timeout_s: float, poll_s: float
 ) -> Iterator[tuple[PageState | None, bool]]:
     """Yield what the site's tab shows, every `poll_s`, until `timeout_s` runs out.
 
@@ -665,7 +692,7 @@ def polling(
     deadline = time.monotonic() + timeout_s
     while True:
         try:
-            seen = observe(session, hosts, settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())))
+            seen = observe(session, origins, settle_s=max(0.0, min(SETTLE_S, deadline - time.monotonic())))
         except BrowserError:
             if not session.client.responding():
                 raise
@@ -681,7 +708,7 @@ def await_signin(
     session: BrowserSession,
     *,
     timeout_s: float,
-    hosts: Sequence[str],
+    origins: Sequence[str],
     poll_s: float = LOGIN_POLL_S,
     link_sent_ends: bool = True,
 ) -> Arrival:
@@ -693,7 +720,7 @@ def await_signin(
     Without it — the second phase — the code field is what the page keeps
     showing until the link is spent, and only signed in ends the wait early.
     """
-    for state, code in polling(session, hosts, timeout_s=timeout_s, poll_s=poll_s):
+    for state, code in polling(session, origins, timeout_s=timeout_s, poll_s=poll_s):
         if state is not None and state.logged_in:
             return Arrival.SIGNED_IN
         if code and link_sent_ends:
@@ -717,17 +744,17 @@ def _login_by_link(settings: Settings, session: Whose, *, sink: Sink, flags: Seq
             settings, command="login", flags=flags, site=site_of(settings), browser=browser
         ) as traced:
             timeout_s = settings.timeouts.login_s
-            if not signed_in(browser, session.url, hosts=session.hosts):
+            if not signed_in(browser, session.url, origins=session.origins):
                 sink.block(sign_in_block(settings, session))
                 # `poll_s` read at call time, so a test can shorten the module's cadence.
-                arrival = await_signin(browser, timeout_s=timeout_s, hosts=session.hosts, poll_s=LOGIN_POLL_S)
+                arrival = await_signin(browser, timeout_s=timeout_s, origins=session.origins, poll_s=LOGIN_POLL_S)
                 if arrival is Arrival.TIMED_OUT:
                     raise AuthError(detail=LOGIN_TIMED_OUT.format(seconds=timeout_s))
                 if arrival is Arrival.LINK_SENT:
                     _logger.info("sign-in link sent")
                     sink.line(LINK_SENT_LINE.format(minutes=timeout_s / 60))
                     arrival = await_signin(
-                        browser, timeout_s=timeout_s, hosts=session.hosts, poll_s=LOGIN_POLL_S, link_sent_ends=False
+                        browser, timeout_s=timeout_s, origins=session.origins, poll_s=LOGIN_POLL_S, link_sent_ends=False
                     )
                     if arrival is Arrival.TIMED_OUT:
                         raise AuthError(
@@ -769,7 +796,7 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
     session = whose(settings)
     browser = running or launcher.launch(settings, session.url)
     try:
-        answer = signed_in(browser, session.url, hosts=session.hosts)
+        answer = signed_in(browser, session.url, origins=session.origins)
     finally:
         # A browser this command started is a browser this command cleans up;
         # one that was already running belongs to whoever started it.

@@ -52,11 +52,14 @@ ROWS: Mapping[str, str] = {
     "every chip": "every upload accepted",
     "title": "chat title",
     "rename": "rename affordance",
-    # the export page (`32`), out of `31`'s four rows
-    "export page": "export page",
-    "export button": "export button",
-    "export confirmation": "export confirmation",
-    "export requested": "export requested",
+    # the settings panel (`32`, corrected by `51`, `52` and this slice)
+    "settings panel": "export page",
+    "export row": "export button",
+    "export screen": "export confirmation",
+    "export period": "export period",
+    "export toast": "export requested",
+    # a sign-in that lapses while a run is under way
+    "involuntary logout": "involuntary logout",
 }
 """Each thing the mock can show, and the row of the map it comes from.
 
@@ -129,22 +132,43 @@ WHAT_THE_MOCK_DOES: Mapping[str, str] = {
         "text input; a renamed title survives a reload"
     ),
     "export page": (
-        "/settings/data-privacy-controls — the tool's placeholder path, re-typed — "
-        "with no composer on it; signed out it redirects to /login like every page"
+        "a settings dialog over /new, opened by the address alone: markup on the "
+        "chat page shown when the fragment is #settings/data-privacy-controls, "
+        "with the composer and the file input behind it. `31`'s "
+        "/settings/data-privacy-controls was a placeholder and is gone — signed "
+        "in it is now not found, which is what the real path serves"
     ),
     "export button": (
-        'a visible button[data-testid="export-data"], with a hidden twin before it '
-        "in the DOM so that a click that did not filter by visibility would miss"
+        'six [data-settings-row] button[data-cds="Button"] under the panel, of '
+        "which the Export row is the first visible one and a row above it holds a "
+        "switch rather than a button. The first of the six is invisible, so that "
+        '"the first visible match" is a claim this page can falsify; six is the '
+        "count a sketch of the real panel took"
     ),
     "export confirmation": (
-        'pressing the button opens a [role="dialog"] holding a '
-        '[data-testid="confirm-export"] submit button; nothing is asked of the '
-        "site until that is pressed"
+        "the Export row moves the address to "
+        "#settings/data-privacy-controls/export-data and the panel renders a "
+        "second screen in place of the first, carrying a visible "
+        '[data-testid="export-confirm-button"]. In place of, not over: a sketch '
+        "of the real second screen counts one confirmation and no export rows"
+    ),
+    "export period": (
+        'the second screen carries a [role="radiogroup"] of All / Last 30 days / '
+        "Last 90 days / Custom with All checked, and the ask touches none of it — "
+        "exactly as the tool does not"
     ),
     "export requested": (
-        'confirming POSTs /api/exports, and a [role="status"] appears only once '
-        "the ask is counted and a link minted — the link is served at a /__mock/ "
-        "address on the mock's own host, and printed where an email would be sent"
+        'confirming POSTs /api/exports, which answers 202, and a [data-cds="Toast"] '
+        '[role="dialog"] h2 reading exactly "Export started" is raised only once '
+        "the ask is counted and a link minted. The link is an index at a /__mock/ "
+        "address on the mock's own host, printed where an email would be sent"
+    ),
+    "involuntary logout": (
+        "a request whose session the site no longer knows is answered "
+        "/logout?involuntary&returnTo=…, and /logout answers "
+        "/login?from&reauth&returnTo — two hops, as observed. Only a POST to the "
+        "witness (/__mock/expire-session) can cause it: nothing the tool drives "
+        "can, because an expiry is something that happens to a run"
     ),
 }
 """What the mock does for each row, in one line.

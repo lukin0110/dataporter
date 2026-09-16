@@ -41,8 +41,16 @@ DEFAULT_PORT = 8444
 
 IDENTITY = Identity(program=PROGRAM_NAME, site=SITE_HOST, hosts=(SITE_HOST, AUTH_HOST), port=DEFAULT_PORT)
 
-SITE_ORIGIN = f"https://{SITE_HOST}"
-AUTH_ORIGIN = f"https://{AUTH_HOST}"
-"""How a page on one host names the other. Absolute, because a redirect between
-two hosts cannot be spelled any other way; the operator's Chrome sends both to
-the mock, and the mock's tests ask for the path themselves."""
+AUTH_PORT = DEFAULT_PORT + 1
+"""The second socket (`65`). The two hosts used to be one socket told apart by
+the `Host` header, which the operator's resolver rule supplied; with no rule and
+no TLS there is no name to route on, so the second origin is a second port.
+
+Cheaper than it was, too: it was the certificate covering two SANs that made two
+names awkward, and there is no certificate now."""
+
+SITE_ORIGIN = f"http://127.0.0.1:{DEFAULT_PORT}"
+AUTH_ORIGIN = f"http://127.0.0.1:{AUTH_PORT}"
+"""How a page on one origin names the other. Absolute, because a redirect between
+two origins cannot be spelled any other way; the same app answers both sockets,
+so a path is served identically whichever one asked for it."""

@@ -41,7 +41,7 @@ HEADER = {
     "command": "login",
     "flags": [],
     "source": "chatgpt",
-    "host": "chatgpt.com",
+    "host": "127.0.0.1",
     "account": "rehearsal",
     "export_fingerprint": None,
     "tool": "dataporter 0.1.0",
@@ -130,7 +130,7 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
                     "command": name.split()[0],
                     "flags": flags,
                     "source": mock.source,
-                    "host": mock.hosts[0],
+                    "host": extraction.TRACE_HOST,
                 })
             ]
             if name == "login --link":
@@ -153,7 +153,7 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
         mock=mock,
         settings=settings,
         runner=runner,
-        extra_args=("--host-resolver-rules=MAP x 127.0.0.1:1",),
+        extra_args=("--no-sandbox",),
         seeded={"chats": 3, "files": 1},
         links=changes.get("links", list(LINKS)),
         counted=changes.get("counted", dict(CLAUDE_LEDGER if mock.link_signin else LEDGER)),
@@ -174,11 +174,20 @@ def test_the_link_is_masked_in_a_recorded_argv() -> None:
     assert running.masked(argv, ("",)) == tuple(argv)
 
 
-def test_a_two_host_mock_gets_one_resolver_rule() -> None:
+def test_a_two_origin_mock_needs_nothing_of_chromes() -> None:
+    """`65`: the second origin is a second port, not a second name to map.
+
+    One resolver rule used to map both of the mock chatgpt.com's host names onto
+    its single socket. There is no rule and no mapping now — the tool is told
+    where to go by `--mock` — so the auth origin is simply another address it
+    already knows.
+    """
     settings = running.Settings(root=Path("/r"), mode="non-interactive", port=8444)
-    arguments = running.chrome_args(settings, "PIN", hosts=("chatgpt.com", "auth.openai.com"))
-    assert arguments[0] == "--host-resolver-rules=MAP chatgpt.com 127.0.0.1:8444, MAP auth.openai.com 127.0.0.1:8444"
-    assert running.chrome_args(settings, "PIN")[0] == "--host-resolver-rules=MAP claude.ai 127.0.0.1:8444"
+    arguments = running.chrome_args(settings)
+    assert not [item for item in arguments if "resolver" in item or "certificate" in item]
+    # What is left is the machine's, not the mock's.
+    assert set(arguments) <= {"--no-proxy-server", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"}
+    assert extraction.CHATGPT.hosts == ("chatgpt.com", "auth.openai.com")
 
 
 def test_traces_are_gathered_from_the_account_home_too(tmp_path: Path) -> None:
@@ -231,7 +240,7 @@ def test_the_claude_half_counts_each_file_twice_and_needs_no_crossing(tmp_path: 
     assert [item.name for item in checks if not item.passed] == []
     assert len(checks) == 14
     gap = next(item for item in checks if item.name.startswith("ledger: the gap"))
-    assert gap.detail == "gaps [2, 2] == 1 × 2, files carried [None, None]"
+    assert gap.detail == "gaps [2, 2] == 1 × 2, files carried [0, 0]"
 
 
 def test_the_claude_half_signs_in_with_two_commands_and_two_links(tmp_path: Path) -> None:
@@ -241,7 +250,12 @@ def test_the_claude_half_signs_in_with_two_commands_and_two_links(tmp_path: Path
     assert by_name["login signs the source account in"].detail == "exit 0, login --link exit 0"
     assert by_name["ledger: sign-ins == the seeding's + the tool's"].detail == "2 == 1 + 1 (a link spent)"
     assert by_name["ledger: sign-in links minted == the seeding's + the tool's"].passed
-    assert by_name["one trace per step that drove a tab, each naming the source"].detail == "[1, 1, 1, 1] for 4 steps"
+    # Six, not `49`'s four: Claude's two fetches drive a tab now, because a real
+    # link answered 403 to a request without the session (`f9e0310`).
+    assert (
+        by_name["one trace per step that drove a tab, each naming the source"].detail
+        == "[1, 1, 1, 1, 1, 1] for 6 steps"
+    )
 
     assert by_name["login saw the link sent and said so"].passed
 

@@ -22,7 +22,21 @@ from dataporter.sources.base import Reading, Source
 if TYPE_CHECKING:
     from dataporter.export.source import ExportView
 
+ORIGIN = "https://claude.ai"
+"""Where claude.ai is: the one stored spelling of *where*, and the one field a
+mock source replaces (`65`)."""
+
 HOST = "claude.ai"
+"""Kept as a name because the docstrings and the UI map spell it, and because
+`Source.host` derives the same string from `ORIGIN`."""
+
+MOCK_ORIGIN = "http://127.0.0.1:8443"
+"""Where `--mock` points instead (`65`).
+
+Plain HTTP, because a mock on loopback needs no certificate and Chrome treats
+`http://127.0.0.1` as a trustworthy origin anyway. Hardcoded, and re-typed rather
+than imported from `mock/`: the two projects share no code (ADR 0003), so the
+port is spelled in both and `claudemock.DEFAULT_PORT` is the other spelling."""
 
 SIGN_IN_LINK_PATH = "magic-link"
 """Where a sign-in link lands on claude.ai (*observed 2026-09-15*, from the
@@ -157,9 +171,9 @@ def read(view: "ExportView") -> Reading:
 CLAUDE = Source(
     name="claude",
     display_name="Claude",
-    host=HOST,
-    auth_hosts=(),
-    login_url=f"https://{HOST}/new",
+    origin=ORIGIN,
+    auth_origins=(),
+    login_path="/new",
     sign_in_paths=("login(/.*)?", f"{SIGN_IN_LINK_PATH}(/.*)?"),
     app_paths=("new", "chat/[0-9a-f-]{36}"),
     export_page_path=EXPORT_PAGE_PATH,

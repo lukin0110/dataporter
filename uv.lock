@@ -1097,7 +1097,6 @@ name = "mocks"
 version = "0.2.0"
 source = { editable = "mock" }
 dependencies = [
-    { name = "cryptography" },
     { name = "fastapi" },
     { name = "python-multipart" },
     { name = "uvicorn" },
@@ -1110,7 +1109,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "uvicorn", specifier = ">=0.52.4" },

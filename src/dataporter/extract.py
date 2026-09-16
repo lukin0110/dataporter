@@ -45,7 +45,6 @@ import hashlib
 import os
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 import uuid
 import zipfile
@@ -413,7 +412,7 @@ def _sign_in_to_source(
     needed them.
     """
     url = sites.export_page_url(source) if url is None else url
-    state = browser_session.current_state(browser, url, hosts=source.hosts)
+    state = browser_session.current_state(browser, url, origins=source.origins)
     if not export_page.signed_out(state, source):
         return
     if source.sign_in_by_link:
@@ -433,7 +432,7 @@ def _sign_in_to_source(
         browser,
         timeout_s=settings.timeouts.login_s,
         url=url,
-        hosts=source.hosts,
+        origins=source.origins,
     )
     if arrived is None:
         raise AuthError(detail=browser_session.LOGIN_TIMED_OUT.format(seconds=settings.timeouts.login_s))
@@ -511,8 +510,8 @@ def fetch(
     home = _account_home(settings)
     source = sources.of(settings)
     log.enable_run_log(settings.logs_dir)
-    if urllib.parse.urlsplit(link).scheme != LINK_SCHEME:
-        raise FetchError(LINK_NOT_HTTPS)
+    if not links.is_followable(link, source.origins):
+        raise FetchError(links.not_followable(source.origins))
 
     ask = read_ask(settings)
     asked_at = None if ask is None else ask.asked_at
@@ -714,7 +713,7 @@ def index_and_files(
     leave its download under the account home. (Raised by Copilot in review
     on #52.)
     """
-    got = download.fetch(settings, browser, link, into=into, hosts=source.hosts)
+    got = download.fetch(settings, browser, link, into=into, origins=source.origins)
     manifest_path = got.path.rename(into / MANIFEST_FILENAME)
     collected.append(manifest_path)
     _landed(manifest_path, name=manifest_path.name, size=got.bytes, sink=sink, quiet=quiet)
@@ -726,7 +725,7 @@ def index_and_files(
     parts = []
     for item in manifest.data_files:
         _logger.info("export part", extra={"category": item.category, "part": item.part})
-        each = download.fetch(settings, browser, item.export_url, into=into, hosts=source.hosts)
+        each = download.fetch(settings, browser, item.export_url, into=into, origins=source.origins)
         parts.append(each.path.rename(into / Path(item.filename).name))
         collected.append(parts[-1])
         _landed(parts[-1], name=parts[-1].name, size=each.bytes, sink=sink, quiet=quiet)
@@ -777,7 +776,7 @@ def _download_through_session(
             _sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
             with tracing.redacting():
                 try:
-                    got = download.fetch(settings, browser, link, into=into, hosts=source.hosts)
+                    got = download.fetch(settings, browser, link, into=into, origins=source.origins)
                 except download.DownloadStopped as exc:
                     raise _not_an_archive(settings, source, exc) from exc
             traced.exit_code = ExitCode.OK
@@ -918,7 +917,11 @@ def _read(path: Path, display: str, source: "Source") -> "Reading":
     try:
         with ExportView.open(path, display=display) as view:
             looks = sources.recognised(view.names())
-            if looks is not None and looks is not source:
+            # By name and not by identity (`65`): `recognised` reads the real
+            # registry, and under `--mock` the source in hand is the same vendor
+            # at another origin — a different object, and `Source` is `eq=False`.
+            # An identity check here called every mock archive the wrong source's.
+            if looks is not None and looks.name != source.name:
                 raise FetchError(
                     sources.LOOKS_LIKE.format(looks=looks.display_name, asked=source.display_name, display=display)
                 )

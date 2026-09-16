@@ -45,8 +45,9 @@ from dataporter import importer as importing
 from dataporter import log, render, signin, state
 from dataporter import verify as verifying
 from dataporter.browser import launcher
+from dataporter.browser import probe as probing
+from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
-from dataporter.browser.probe import MIGRATION_SITE, NEW_CHAT_URL
 from dataporter.config import Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import HermesError
@@ -303,15 +304,23 @@ in it.
 """
 
 
-def prompt(*, short_id: str, conversation_id: str, question_file: Path, workspace: Path) -> str:
+def prompt(
+    *,
+    short_id: str,
+    conversation_id: str,
+    question_file: Path,
+    workspace: Path,
+    origin: str = probing.CLAUDE_ORIGIN,
+    mock: bool = False,
+) -> str:
     """One probe's task prompt. Names files and ids, as `11`'s prompt does."""
     return "\n".join([
         HEAD,
         f"short_id: {short_id}",
         f"conversation_id: {conversation_id}",
-        f"chat url: {verifying.chat_url(conversation_id)}",
+        f"chat url: {verifying.chat_url(conversation_id, origin)}",
         f"question file: {question_file}",
-        f"helper: {prompting.helper_command(workspace)}",
+        f"helper: {prompting.helper_command(workspace, mock=mock)}",
         "",
         TAIL,
     ])
@@ -348,6 +357,8 @@ class Prober:
             conversation_id=conversation_id,
             question_file=self.question_file,
             workspace=self.settings.workspace,
+            origin=browser_session.destination_origin(self.settings),
+            mock=self.settings.mock,
         )
         try:
             result = self._run(text, short_id)
@@ -451,12 +462,12 @@ def ask_all(
     lock.acquire()
     answers: list[Probe] = []
     try:
-        browser = launcher.launch(settings, NEW_CHAT_URL)
+        browser = launcher.launch(settings, probing.new_chat_url(browser_session.destination_origin(settings)))
         asking = Prober(settings)
         file = read(settings)
         try:
             with watching.watched(
-                settings, command="followup", flags=flags, site=MIGRATION_SITE, browser=browser
+                settings, command="followup", flags=flags, site=browser_session.site_of(settings), browser=browser
             ) as traced:
                 signin.ensure_signed_in(settings, browser)
                 for position, (uuid, entry) in enumerate(wanted):

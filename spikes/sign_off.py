@@ -86,6 +86,12 @@ of a pause: `run.json` holds the one that is open, and clears it on resume."""
 NEW_CHAT_PATH = "/new"
 CHAT_PREFIX = "/chat/"
 CLAUDE_HOSTS = frozenset({"claude.ai", "www.claude.ai"})
+MOCK_HOSTS = frozenset({"127.0.0.1:8443"})
+"""What `--mock` puts in a profile's history instead (`65`).
+
+With the port, because `Visit.of` reads `netloc` and not `hostname` — two mocks on
+loopback differ by nothing else, and an audit that dropped the port would call a
+visit to either of them the other's."""
 
 GO = "go"
 NO_GO = "NO-GO"
@@ -696,7 +702,7 @@ class Visit:
         return cls(url=url, host=parts.netloc.casefold(), path=parts.path)
 
 
-def classify(urls: Iterable[str], known: set[str]) -> dict[str, list[Visit]]:
+def classify(urls: Iterable[str], known: set[str], *, hosts: frozenset[str] = CLAUDE_HOSTS) -> dict[str, list[Visit]]:
     """Split the history into the three buckets `21`'s criterion cares about.
 
     `expected` is what the criterion allows — `/new`, and a `/chat/<id>` whose id
@@ -706,6 +712,10 @@ def classify(urls: Iterable[str], known: set[str]) -> dict[str, list[Visit]]:
     should decide whether a path the tool never asks for is a finding. `foreign`
     is any other host at all, and there is no benign reason for one to be in a
     profile this tool launched.
+
+    `hosts` is which host counts as the destination's: the real site's names, or
+    the mock's address under `--mock` (`65`). The audit asks the same three
+    questions either way; only what it measures them against moves.
     """
     buckets: dict[str, list[Visit]] = {
         "expected": [],
@@ -715,7 +725,7 @@ def classify(urls: Iterable[str], known: set[str]) -> dict[str, list[Visit]]:
     }
     for url in urls:
         visit = Visit.of(url)
-        if visit.host not in CLAUDE_HOSTS:
+        if visit.host not in hosts:
             buckets["foreign"].append(visit)
         elif visit.path.rstrip("/") == NEW_CHAT_PATH:
             buckets["expected"].append(visit)
@@ -740,7 +750,7 @@ def known_chats(workspace: Workspace) -> set[str]:
     return known
 
 
-def safety(workspace: Workspace, *, export: Path | None, profile: Path) -> list[Check]:
+def safety(workspace: Workspace, *, export: Path | None, profile: Path, mock: bool = False) -> list[Check]:
     """Return the two §17 criteria.
 
     The export is untouched, and so is everything that is not this migration.
@@ -772,7 +782,7 @@ def safety(workspace: Workspace, *, export: Path | None, profile: Path) -> list[
     if not profile.is_dir():
         checks.append(Check("browser history", UNMEASURED, f"no profile at {profile}", UNKNOWN))
         return checks
-    buckets = classify(history_urls(profile), known_chats(workspace))
+    buckets = classify(history_urls(profile), known_chats(workspace), hosts=MOCK_HOSTS if mock else CLAUDE_HOSTS)
     paths = sorted({visit.path for visit in buckets["other_claude"]})
     hosts = sorted({visit.host for visit in buckets["foreign"]})
     checks.extend([
@@ -905,6 +915,11 @@ def parser() -> argparse.ArgumentParser:
         default=None,
         help="Browser profile. Default: <workspace>/browser-profile",
     )
+    safety_command.add_argument(
+        "--mock",
+        action="store_true",
+        help="The run was against a mock: expect its address in the history, not the site's.",
+    )
     return root
 
 
@@ -933,7 +948,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     profile = args.profile or workspace_path / "browser-profile"
     return print_checks(
         "Safety (§17)",
-        safety(workspace, export=args.export, profile=Path(profile)),
+        safety(workspace, export=args.export, profile=Path(profile), mock=args.mock),
     )
 
 

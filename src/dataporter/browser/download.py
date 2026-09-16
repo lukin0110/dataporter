@@ -99,7 +99,7 @@ def fetch(
     link: str,
     *,
     into: Path,
-    hosts: "Sequence[str]",
+    origins: "Sequence[str]",
     poll_s: float = POLL_S,
 ) -> Downloaded:
     """Navigate the source session's tab to the link and catch what the browser downloads.
@@ -112,9 +112,9 @@ def fetch(
     and the download cancelled the moment it is passed.
     """
     into.mkdir(parents=True, exist_ok=True)
-    tabs = browser_session.tabs_on(session.client, hosts)
+    tabs = browser_session.tabs_on(session.client, origins)
     if not tabs:
-        raise BrowserError(detail=NO_TAB.format(host=hosts[0]))
+        raise BrowserError(detail=NO_TAB.format(host=origins[0]))
     started = time.monotonic()
     ts = tracing.timestamp()
     with session.client.browser_connection() as browser:

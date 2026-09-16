@@ -16,10 +16,10 @@ account and no model. Two sites today, and one project (brief `05` §53,
   it since 2026-09-14 — `docs/rehearsal-03.md` is the record — and [the walk](#the-walk)
   below is what a person takes through it by hand.
 
-What the two share — a certificate minted for a site's host names and a key Chrome
-is told to trust, a session that survives the browser closing, the witness routes
-the tool never drives, the ledger and its block, the reachability block, the
-obedient reply, a link minted instead of an email — is `mockcore`, a package
+What the two share — the wire they are served on, a session that survives the
+browser closing, the witness routes the tool never drives, the ledger and its
+block, the reachability block, the obedient reply, a link minted instead of an
+email — is `mockcore`, a package
 neither site owns. Each site is a package beside it: its pages, its paths, its
 selectors, its archive, its citations of its UI map.
 
@@ -42,58 +42,44 @@ uv run --package mocks claude-mock serve
 uv run --package mocks chatgpt-mock serve
 ```
 
-Each prints the one thing you need in order to reach it — nobody composes a
-resolver rule by hand. The mock claude.ai:
+Each prints where it is. Reaching it is a flag on the tool and nothing else:
 
 ```text
-Mock claude.ai listening on https://127.0.0.1:8443
+Mock claude.ai listening on http://127.0.0.1:8443
 
-Add to <workspace>/config.toml before running the tool:
-
-[browser]
-extra_args = [
-  "--host-resolver-rules=MAP claude.ai 127.0.0.1:8443",
-  "--ignore-certificate-errors-spki-list=AbCdEf0123456789AbCdEf0123456789AbCdEf0123456789=",
-]
-
-Set in the tool's environment before fetching an export link from it:
-
-  SSL_CERT_FILE=/home/you/.cache/claude-mock/claude-mock.pem
+Run the tool with --mock to reach it: dataporter --mock login --account <label>
 
 ```
 
-The mock chatgpt.com answers two names, because OpenAI documents that signing in
-passes through `auth.openai.com` as well as `chatgpt.com`, so its rule maps both
-and its certificate names both; and its block has no `SSL_CERT_FILE` line, because
-the tool cannot fetch its export link at all (below):
-
 ```text
-Mock chatgpt.com listening on https://127.0.0.1:8444
+Mock chatgpt.com listening on http://127.0.0.1:8444
 
-Add to <workspace>/config.toml before running the tool:
-
-[browser]
-extra_args = [
-  "--host-resolver-rules=MAP chatgpt.com 127.0.0.1:8444, MAP auth.openai.com 127.0.0.1:8444",
-  "--ignore-certificate-errors-spki-list=ZyXwVu9876543210ZyXwVu9876543210ZyXwVu9876543210=",
-]
+Run the tool with --mock to reach it: dataporter --mock login --account <label>
 
 ```
 
-On a machine whose environment names a proxy — `https_proxy` and friends, which
-Chrome reads on Linux — each mock prints a note, because a proxy resolves the host
-name itself and the resolver rule would never fire. `"--no-proxy-server"` in the
-same list is the answer for Chrome, and for the mock claude.ai `no_proxy=127.0.0.1`
-beside `SSL_CERT_FILE` is the answer for the tool's own fetch of an export link,
-which reads the same proxy.
+**Plain HTTP on loopback, and no certificate anywhere.** Until `65` a mock served
+TLS *as* the site it stands in for, because the tool refused every URL that was not
+`https://` on the real host and had to be steered from outside — a resolver rule
+mapping the name, an SPKI pin trusting one key, and a `[browser] extra_args` table
+an operator pasted into a `config.toml`
+([ADR 0001](../docs/adr/0001-no-door-in-the-wall.md)). `--mock` replaces all of it
+([ADR 0010](../docs/adr/0010-the-mock-is-reached-by-a-flag.md)): it changes the
+tool's **origin** and nothing else, and Chrome treats `http://127.0.0.1` as a
+trustworthy origin, so no page behaves differently for the loss.
 
-The tool then reaches a mock the way any operator's configuration reaches
-anything: Chrome maps the host names, and trusts **this key and no other**. There
-is no flag, no environment variable and no host setting in the tool that names a
-mock ([ADR 0001](../docs/adr/0001-no-door-in-the-wall.md)). Each mock keeps its
-key under `~/.cache/<command>/` between runs, so a pin written into a config keeps
-working after a restart; delete the directory and the next start mints a new key
-and prints a new pin.
+The mock chatgpt.com answers on **two ports**: `8444` for the site and `8445` for
+the auth origin, because OpenAI documents that signing in passes through
+`auth.openai.com` as well as `chatgpt.com`. It used to be one socket told apart by
+the `Host` header the resolver rule supplied; with no rule there is no name to
+route on, so the second origin is a second socket. Only the first is printed — a
+sign-in reaches the other by a redirect and nothing else.
+
+The tool is pointed at a mock by `--mock` and by nothing else: not
+`DATAPORTER_MOCK`, not `config.toml`. The two walls are disjoint, so a command that
+forgot the flag refuses the mock and one that was given it by mistake refuses the
+real site; and what a mock run writes goes to `~/.dataporter/mock/` and
+`./migration-mock`, apart from anything real.
 
 The credentials are invented and configured here. Both mocks default to
 `rehearsal@example.invalid` and `rehearsal-not-a-real-password`; `--email` and
@@ -105,7 +91,7 @@ no password sign-in (the tool's brief `07`), and neither does its mock.
 ## Sign in to the mock claude.ai
 
 The mock claude.ai signs people in by link (`49`, brief `07` §79), as the real site
-does. The address step mints a sign-in link — `https://claude.ai/magic-link#<token>:…`,
+does. The address step mints a sign-in link — `http://127.0.0.1:8443/magic-link#<token>:…`,
 the token in the fragment, as the real one is — and, having no inbox to send it to,
 prints it in its own terminal and lists it for any other:
 
@@ -134,21 +120,18 @@ The pending sign-in survives the browser closing: its cookie lives an hour, so a
 
 ### Two mocks at once
 
-A rehearsal that extracts from one site and migrates into another needs both mocks
-up in one Chrome, and Chrome keeps **one value per argument**: two
-`--host-resolver-rules` in one list and the second silently wins. Merge the two
-blocks by hand — every `MAP` into one rule, comma-separated, and both pins into one
-list, comma-separated:
+Nothing to merge since `65`. Start both; each is on its own port and the tool finds
+whichever its `--source` names:
 
-```toml
-[browser]
-extra_args = [
-  "--host-resolver-rules=MAP claude.ai 127.0.0.1:8443, MAP chatgpt.com 127.0.0.1:8444, MAP auth.openai.com 127.0.0.1:8444",
-  "--ignore-certificate-errors-spki-list=AbCdEf0123456789AbCdEf0123456789AbCdEf0123456789=,ZyXwVu9876543210ZyXwVu9876543210ZyXwVu9876543210=",
-]
+```sh
+uv run --package mocks claude-mock serve      # 8443
+uv run --package mocks chatgpt-mock serve     # 8444, and 8445 for the auth origin
 ```
 
-A printed merged block is left for the day a rehearsal needs one (§58).
+This used to be the awkward part. Chrome keeps **one value per argument**, so two
+`--host-resolver-rules` in one `extra_args` list meant the second silently won, and
+an operator running both mocks had to merge every `MAP` into one rule and both SPKI
+pins into one list by hand. There is no rule and no pin now.
 
 ## Ask it for an export
 
@@ -160,43 +143,54 @@ uv run --package mocks claude-mock exports       # one link per line, oldest fir
 uv run --package mocks chatgpt-mock exports
 ```
 
-The archive a link downloads is the mock's own chats, rendered in the site's own
-export shape at the moment of the fetch — so a run can migrate into a mock and then
-extract what it migrated. One ask mints one link, at once; a second ask adds a
-second link, so two extractions file two snapshots. A link lives until the process
-stops, and a link nobody asked for is `404`. Here the two sites part:
+What a link serves is the mock's own chats, rendered in the site's own export shape
+at the moment of the fetch — so a run can migrate into a mock and then extract what
+it migrated. One ask mints one link, at once; a second ask adds a second link, so
+two extractions file two snapshots. A link lives until the process stops, and a link
+nobody asked for is `404`.
 
-- **The mock claude.ai's link needs no session** (brief 03 §35). It is an address
-  on the mock's own host and port, under `/__mock/`, and the tool fetches it with
-  Python rather than with Chrome — which is why the block also names the
-  certificate to trust, and why on any other `--host` the tool cannot fetch a link
-  and `serve` says so. Both moves of an extraction, end to end, with no account:
+**Both links want the session.** OpenAI documents that a ChatGPT export must be
+downloaded "while you are signed in to the same account that requested it", and a
+real Claude link, minutes old and well inside its day, answered `403` to a request
+without one. So each link is on its own site's host — where the browser's cookie is
+— and the tool points the source session's tab at it. Open a link in the signed-in
+Chrome and the file downloads; open it where there is no session and it is the
+sign-in page. The *listing* of links stays open: it stands in for the inbox, and the
+inbox is not the account.
 
-  ```sh
-  #   the source session: the two sign-in commands above, first
-  dataporter --non-interactive extract --account mock         # the ask; the mock prints the link
-  LINK=$(uv run --package mocks claude-mock exports | tail -n 1)
-  SSL_CERT_FILE=~/.cache/claude-mock/claude-mock.pem no_proxy=127.0.0.1 \
-    dataporter extract --account mock --link "$LINK"          # the fetch; a snapshot is filed
-  dataporter snapshots
+Where the two sites part is what the link serves.
+
+- **The mock chatgpt.com's link is the archive.** One zip at
+  `http://127.0.0.1:8444/__mock/exports/<token>.zip`, fetched as often as you like.
+
+- **The mock claude.ai's link is an index.** `http://127.0.0.1:8443/__mock/exports/<token>`
+  serves a `manifest.json` in the vendor's shape — `instructions`, `created_at`,
+  `total_files`, `data_files[]`, `version` — naming one zip per *category*:
+
+  ```text
+  light_metadata-000.zip    users.json
+  conversations-000.zip     conversations.json      ← the one an importer reads
   ```
 
-  The sign-in itself is never unattended (brief `07` §76): `login` opens the
-  window and waits, and `login --link` spends the link in it. A rehearsal has no
-  person at that window, so `rehearsal/` plays one — it enters the address over
-  the debug port and reads the link where the inbox would be.
+  Each is at an address of its own, under the account rather than under the index,
+  and **may be fetched once**: the second time is `404`. The manifest says so about
+  its own files, in its own words, on every real export — so a fetch retried against
+  the same link fails here exactly as it does on the real site.
 
-- **The mock chatgpt.com's link wants a session.** OpenAI documents that the
-  export must be downloaded "while you are signed in to the same account that
-  requested it", and the mock mirrors it: the link is
-  `https://chatgpt.com/__mock/exports/<token>.zip` — on the site's host, where the
-  browser's session cookie is — and the archive is served to the signed-in session
-  and refused with `403` to anyone else. Open the link in the signed-in Chrome and
-  the zip downloads; open it in a window with no session, or fetch it with `curl`
-  at the mock's address, and it is refused. The listing of links stays open: it
-  stands in for the inbox, and the inbox is not the account. The tool's fetch,
-  which downloads without a browser, cannot fetch it; that is the fact the tool's
-  ChatGPT half has to meet, and it meets it here first (§54).
+Both moves of an extraction, end to end, with no account:
+
+```sh
+#   the source session: the two sign-in commands above, first
+dataporter --non-interactive extract --account mock   # the ask; the mock prints the link
+LINK=$(uv run --package mocks claude-mock exports | tail -n 1)
+dataporter extract --account mock --link "$LINK"      # the fetch; a snapshot is filed
+dataporter snapshots
+```
+
+The sign-in itself is never unattended (brief `07` §76): `login` opens the window and
+waits, and `login --link` spends the link in it. A rehearsal has no person at that
+window, so `rehearsal/` plays one — it enters the address over the debug port and
+reads the link where the inbox would be.
 
 ## Ask it what it did
 
@@ -218,9 +212,10 @@ Sign-in links minted:          0
 
 ```
 
-This is the witness. Nothing in the tool can tell a rehearsal from a real run, so
-the mock is the only party that can say what really happened on the other side of
-the wire — and a rehearsal record whose numbers do not reconcile with these is not a
+This is the witness. The tool can tell a rehearsal from a real run since `65` — it
+was given `--mock` — but it still only knows what it *tried* to do, so the mock
+remains the only party that can say what really happened on the other side of the
+wire — and a rehearsal record whose numbers do not reconcile with these is not a
 rehearsal (§25). The same seven counts for every site, under a heading that names
 it, because two mocks running at once keep two ledgers; the seventh is a sign-in
 link minted where an email would go, which only the mock claude.ai does. The
@@ -236,9 +231,10 @@ in the shape the brief describes — and imports nothing from the tool that wrot
 0003). Four kinds of line:
 
 - **`header`**, the first line: the command, the source and host, the tool, browser and
-  agent versions, and the browser's arguments. A trace of a *mock* shows the resolver
-  rule that points the site's names at it in `chrome_arguments`, and the certificate
-  line below shows an issuer equal to its subject, since a mock signs its own; a trace of
+  agent versions, and the browser's arguments. A trace of a *mock* names `127.0.0.1`
+  as its host, which is the point: it says so by its own contents, so it can never be
+  mistaken for evidence about the real site. There is no `certificate` line at all,
+  because there is no TLS (`65`); a trace of
   the real site shows neither.
 - **`sketch`**: a page in outline. Its `controls` — a button, a text box, a dialog, a
   status region, each by role and label — are the labels the mock's pages should carry;
@@ -251,7 +247,7 @@ in the shape the brief describes — and imports nothing from the tool that wrot
   helper printed. The sequence of moves is the procedure the mock is driven through.
 - **`observation`**: what the page did on its own — a `navigation`, a `url_changed`
   after the first submit, a `dialog_opened` by type, a `request` and its `response` by
-  method, path, status, type, size and timing, the `certificate`, a tab appearing. The
+  method, path, status, type, size and timing, a tab appearing. The
   requests are the traffic a page script should make and the pace it should make it at;
   the URL change is the moment `history.replaceState` should fire.
 
@@ -291,8 +287,8 @@ The behaviours both mocks have, and worth knowing before you read the code:
 - **Chats.** A submit creates a chat with its own id and URL; reloading that URL
   shows every turn; a rename survives a reload; a file input takes a file and shows
   it by name.
-- **An export page.** A control, a confirmation, and a status region that appears
-  only once the ask has been counted and a link minted.
+- **An export page.** A control, a confirmation, and an answer that appears only
+  once the ask has been counted and a link minted.
 - **In memory.** State lives for as long as the process does, so a run in several
   sessions sees the same chats throughout. Restarting resets it.
 
@@ -306,15 +302,30 @@ The behaviours both mocks have, and worth knowing before you read the code:
   signs in the browser that asked, once, at `/magic-link`, whose own script reads
   the token off the fragment and posts it back.
 - **The chat's own menu** carries the title and renames it.
-- **The export page** at the tool's placeholder path, with the tool's placeholder
-  selectors, all of them *unknown*; the link on the mock's own address, behind no
-  session.
+- **The settings panel**, not a page: claude.ai asks for an export from a dialog
+  over the app, at `/new#settings/data-privacy-controls`. A fragment never reaches a
+  server, so the panel is markup on the chat page and the page's own script opens it
+  on the address, with the composer and the file input behind it. Six rows offer a
+  button and the Export row is the first *visible* one — the first of the six is
+  there and not shown, so that a click helper which did not filter by visibility
+  would press the wrong thing. The Export row moves the address to
+  `…/export-data` and a second screen replaces the first, carrying the confirmation
+  and a `Conversations from` period the ask never touches. Confirming answers `202`
+  and raises a toast reading exactly `Export started`. Every one of those rows is
+  still *unknown*: they are a person's reading of one account on one day.
+- **A session that can lapse.** `POST /__mock/expire-session` throws every session
+  away; the browser keeps its cookie and the site stops knowing it, so the next page
+  it asks for answers `/logout?involuntary&returnTo=…` and then the sign-in page —
+  the two hops a real account took, in
+  [`docs/spike/traces/login-2026-09-15.jsonl`](../docs/spike/traces/login-2026-09-15.jsonl).
+  Nothing the tool drives can ask for it, because an expiry is something that
+  happens *to* a run.
 
 ### `chatgpt-mock`
 
 - **Sign-in on two hosts.** A landing page at the root with a **Log in** control
   and a **Sign up** that leads nowhere useful; **Log in** goes to
-  `https://auth.openai.com/log-in`, where the email step and the password step each
+  `http://127.0.0.1:8445/log-in`, where the email step and the password step each
   have a **Continue**, and **Continue with Google**, **Microsoft** and **Apple**
   lead nowhere useful; a right pair comes back to `chatgpt.com` with a one-time code
   that becomes the session. No banner: no source reports one. The auth host's
@@ -341,30 +352,28 @@ The behaviours both mocks have, and worth knowing before you read the code:
 
 The tool's own run through this mock is `rehearsal/run.py --protocol extraction`
 (brief `06`, `46`); the walk is the same trip taken by a person with a Chrome, which is
-how the mock was proven before the tool could drive it (§56). Start it, add its two
-lines to a Chrome — a throwaway profile is enough:
+how the mock was proven before the tool could drive it (§56). Start it and point a
+Chrome at its address — a throwaway profile is enough, and nothing else is needed
+since `65`:
 
 ```sh
 uv run --package mocks chatgpt-mock serve
-chromium --user-data-dir=/tmp/walk \
-  '--host-resolver-rules=MAP chatgpt.com 127.0.0.1:8444, MAP auth.openai.com 127.0.0.1:8444' \
-  --ignore-certificate-errors-spki-list=<the pin it printed> \
-  --no-proxy-server https://chatgpt.com/
+chromium --user-data-dir=/tmp/walk http://127.0.0.1:8444/
 ```
 
 and walk it, checking each signal against [the map](../docs/chatgpt-ui-map.md):
 
-1. **Land.** `https://chatgpt.com/` is a page with a **Log in** button and a **Sign
-   up** button. Any other address — `https://chatgpt.com/c/anything` — comes back
+1. **Land.** `http://127.0.0.1:8444/` is a page with a **Log in** button and a **Sign
+   up** button. Any other address — `http://127.0.0.1:8444/c/anything` — comes back
    here.
 2. **Sign in, and be refused.** **Log in** takes you to
-   `https://auth.openai.com/log-in`: an email field and **Continue**, and the three
+   `http://127.0.0.1:8445/log-in`: an email field and **Continue**, and the three
    providers. Enter `rehearsal@example.invalid`, then a wrong password: you are back
    at the email step with an alert. Enter the right pair: you are on
-   `https://chatgpt.com/` with a composer, a sidebar, a **New chat** link and a
+   `http://127.0.0.1:8444/` with a composer, a sidebar, a **New chat** link and a
    profile button.
 3. **Create a chat and watch the reply grow.** Type a line and press Enter. The
-   address becomes `https://chatgpt.com/c/<uuid>`, your turn is on the page as a
+   address becomes `http://127.0.0.1:8444/c/<uuid>`, your turn is on the page as a
    `user` turn, the one control now reads **Stop streaming**, and the reply appears
    after a moment and grows. When it is whole the control reads **Send prompt**
    again and the turn carries **Copy response**. A message that asks for no
@@ -403,12 +412,15 @@ about chatgpt.com, and it turns no row *observed* (§56).
 
 ## What it cannot do yet
 
-Named so that a later slice can claim them (§21, §28, §57, §58). On either site: a
-rate limit, a login expiry mid-run, a modal or a JavaScript dialog in the way, a
+Named so that a later slice can claim them (§21, §28, §57, §58). `64` claimed one of
+them: the mock claude.ai can now show a login expiry mid-run, on request. What is
+left, on either site: a rate limit, a modal or a JavaScript dialog in the way, a
 generation error, a CAPTCHA or security challenge, a code prompt at sign-in; on the
 export page, a link that expires, an export already requested and still processing,
 a rate limit on asking, and an email — a mock has no clock a link could die on and no
-inbox to send to. On the mock chatgpt.com besides: the composer as the site serves it
+inbox to send to. Nor does either panel render *late*: a real one was measured
+appearing about 2.9 s after the navigation and the mock's is there at once, so the
+wait `62` built is not exercised here. On the mock chatgpt.com besides: the composer as the site serves it
 after its redesign of September 2026, which is the highest-risk *reported* row on its
 map; the auth host's real screens and chain; the zip's file name; the confirmation
 screen's words; interim assistant messages before the answer; an archive split over
@@ -436,8 +448,8 @@ mock/
 ├── pyproject.toml          the distribution `mocks`: two commands, one dependency set
 ├── README.md               this file
 ├── src/
-│   ├── mockcore/           what the sites share: certificate, ledger, reply, sessions,
-│   │                       exports, wire, cli — and knows no site
+│   ├── mockcore/           what the sites share: ledger, reply, sessions, exports,
+│   │                       wire, cli — and knows no site
 │   ├── claudemock/         the mock claude.ai: site, pages, server, archive, uimap, cli
 │   └── chatgptmock/        the mock chatgpt.com: the same six, its own
 └── tests/                  one suite, prefixed by owner

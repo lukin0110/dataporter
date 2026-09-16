@@ -42,11 +42,18 @@ from pathlib import PurePath
 from typing import Any, NoReturn, Protocol
 
 from dataporter.browser import helpers
+from dataporter.sources import claude as claude_source
 from dataporter.steps import Step
 
-NEW_CHAT_URL = "https://claude.ai/new"
-CHAT_URL = "https://claude.ai/chat/{uuid}"
-LOGIN_URL = "https://claude.ai/login"
+ORIGIN = "https://claude.ai"
+"""Where the destination is, by default. `ScriptedAgent.origin` overrides it for a
+run against a mock (`65`): the *real* Hermes is never told a site — its skill names
+claude.ai and is installed once and never varies (ADR 0010) — but this stands where
+Hermes stands, and the rehearsal that packages it knows which address it is driving."""
+
+NEW_CHAT_URL = f"{ORIGIN}/new"
+CHAT_URL = ORIGIN + "/chat/{uuid}"
+LOGIN_URL = f"{ORIGIN}/login"
 
 SCALARS = (
     "short_id",
@@ -91,6 +98,18 @@ class Task:
     """What to rename the chat to (`17`), or `""` when the prompt said `none`."""
     helper: tuple[str, ...]
     """The helper command prefix, split into argv."""
+
+
+def origin_of(task: Task) -> str:
+    """Return where this task's destination is, read off the prompt (`65`).
+
+    The helper prefix the prompt gives is the invocation the tool wants its
+    helpers run as, and it carries `--mock` when the run does. So an agent that
+    reads it is told exactly as much as the tool tells it, and nothing has to be
+    plumbed here: a real Hermes gets the same prefix and does not look, which is
+    why its skill still names claude.ai (ADR 0010).
+    """
+    return claude_source.MOCK_ORIGIN if "--mock" in task.helper else ORIGIN
 
 
 def parse(prompt: str) -> Task:
@@ -188,6 +207,10 @@ class ScriptedAgent:
     recoveries: list[str] = field(default_factory=list)
     """Which rows of `13`'s table fired, in order. A test asserts on the outcome;
     this is what says the outcome came from the row it was meant to come from."""
+    origin: str = ORIGIN
+    """Where this run's destination is (`65`). Every URL below is built from it,
+    so a scripted agent in a `--mock` rehearsal drives the mock exactly as the
+    tool around it does."""
     uploaded_attachments: list[str] = field(default_factory=list)
     failed_attachments: list[dict[str, str]] = field(default_factory=list)
     """`16`'s two lists, by file name. The prompt gives paths; what the result
@@ -255,8 +278,7 @@ class ScriptedAgent:
             self.halt("needs_human", "dialog", "a dialog is in the way", "ambiguous_ui")
         return state
 
-    @staticmethod
-    def signed_out(state: dict[str, Any]) -> bool:
+    def signed_out(self, state: dict[str, Any]) -> bool:
         """`13`'s login-expiry signal, as a helper can see it.
 
         The login page is outside the migration surface, so no helper will drive
@@ -267,19 +289,20 @@ class ScriptedAgent:
         if state.get("kind") == "login":
             return True
         return state.get("error") == helpers.OUTSIDE_MIGRATION_SURFACE and str(state.get("url", "")).startswith(
-            LOGIN_URL
+            f"{self.origin}/login"
         )
 
     def url(self, task: Task) -> str:
         """Where this run belongs: its chat, or `/new` while it has no id."""
         if self.conversation_id is None:
-            return NEW_CHAT_URL
-        return CHAT_URL.format(uuid=self.conversation_id)
+            return f"{self.origin}/new"
+        return f"{self.origin}/chat/{self.conversation_id}"
 
     # -- the run ------------------------------------------------------------ #
 
     def run(self, prompt: str) -> dict[str, Any]:
         task = parse(prompt)
+        self.origin = origin_of(task)
         try:
             return self.migrate(task)
         except StoppedError as stopped:
@@ -373,7 +396,7 @@ class ScriptedAgent:
     def new_chat(self, task: Task, state: dict[str, Any]) -> None:
         """`new_chat`: on `/new`, with nothing in the composer."""
         if state.get("kind") != "new_chat":
-            self.browser.navigate(NEW_CHAT_URL)
+            self.browser.navigate(f"{self.origin}/new")
             state = self.look(task)
         if state.get("kind") != "new_chat" or state.get("composer_chars") != 0:
             self.give_up("browser", "no empty composer on /new")

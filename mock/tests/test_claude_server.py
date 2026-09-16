@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 
 from claudemock import server
 from claudemock.site import Site
-from mockcore import certificate
+from mockcore import wire
 
 from conftest import EMAIL, WALL, Client, NoRedirect
 
@@ -63,11 +63,35 @@ def sign_in(client: Client, *, email: str = EMAIL) -> str:
     return str(json.loads(body)["next"])
 
 
-def test_signed_out_every_page_is_the_login_page(running: Client) -> None:
-    """`signed out`: the row the tool reads as an expired session."""
+def test_signed_out_every_page_goes_to_the_login_page_by_way_of_logout(running: Client) -> None:
+    """`signed out` and `involuntary logout`: the two hops a real account takes.
+
+    `/settings/data-privacy-controls` is in the list because it is *not* a page
+    here any more — `51` found it serves nothing on claude.ai — so it falls to the
+    catch-all and takes the same two hops as anything else nobody asked for.
+    """
     for path in ("/", "/new", "/chat/anything", "/settings/data-privacy-controls"):
         status, _, location = running.request(path, follow=False)
-        assert (status, location) == (303, "/login")
+        assert (status, location) == (303, f"/logout?involuntary=1&returnTo={path}")
+    status, _, location = running.request("/logout?involuntary=1&returnTo=/new", follow=False)
+    assert (status, location) == (303, "/login?from=logout&reauth=1&returnTo=/new")
+
+
+def test_a_session_the_site_has_forgotten_is_an_involuntary_logout(running: Client, site: Site) -> None:
+    """`involuntary logout`: a sign-in that lapses in the middle of a run.
+
+    The browser keeps its cookie and the site stops knowing the token, which is
+    what makes this different from never having signed in — and identical from
+    the outside, which is the point.
+    """
+    sign_in(running)
+    status, _, _ = running.request("/new", follow=False)
+    assert status == 200
+    status, payload, _ = running.post_json("/__mock/expire-session", {})
+    assert (status, json.loads(payload)) == (200, {"expired": 1})
+    assert running.cookies.get("mock_session")
+    status, _, location = running.request("/new", follow=False)
+    assert (status, location) == (303, "/logout?involuntary=1&returnTo=/new")
 
 
 def test_the_login_page_hides_the_form_behind_the_banner(running: Client) -> None:
@@ -104,7 +128,7 @@ def test_the_link_is_listed_where_the_inbox_would_be(running: Client) -> None:
     _, text, _ = running.request("/__mock/sign-in-links")
     lines = text.splitlines()
     assert len(lines) == 1
-    assert lines[0].startswith("https://claude.ai/magic-link#")
+    assert lines[0].startswith(f"{running.base}/magic-link#")
     token, address = newest_link(running)
     assert (len(token), address) == (32, EMAIL)
     _, body, _ = running.request("/__mock/sign-in-links.json")
@@ -199,7 +223,7 @@ def test_the_pending_sign_in_outlives_the_browser(running: Client) -> None:
     _, _, _ = running.post("/login/email", urlencode({"email": EMAIL}).encode())
     request = urllib.request.Request(running.base + "/login/email", data=urlencode({"email": EMAIL}).encode())
     request.add_header("Cookie", f"mock_login={running.cookies['mock_login']}")
-    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=running.context), NoRedirect())
+    opener = urllib.request.build_opener(NoRedirect())
     try:
         opener.open(request, timeout=10)
     except urllib.error.HTTPError as answer:
@@ -272,7 +296,7 @@ def test_an_upload_with_no_name_is_refused(running: Client) -> None:
 
 def test_the_api_refuses_a_session_that_is_not_signed_in(running: Client) -> None:
     status, _, location = running.post_json("/api/chats", {"text": SEED})
-    assert (status, location) == (303, "/login")
+    assert (status, location) == (303, "/logout?involuntary=1&returnTo=/api/chats")
 
 
 def test_the_ledger_is_served_as_a_block_and_as_json(running: Client) -> None:
@@ -284,64 +308,176 @@ def test_the_ledger_is_served_as_a_block_and_as_json(running: Client) -> None:
     assert json.loads(payload)["sign_ins"] == 1
 
 
-# -- the export page (`32`) --------------------------------------------------- #
+# -- the settings panel and the export (`32`, `51`) --------------------------- #
 
 
-def test_the_export_page_has_the_button_the_dialog_and_the_status_hidden(running: Client) -> None:
-    """`export page`, `export button`, `export confirmation`, `export requested`, at rest."""
+def path_of(link: str, client: "Client") -> str:
+    """Return the path of a link the mock minted, which is spelled with its own address.
+
+    The address the socket really bound (`65`), not a name: there is no resolver
+    rule any more, so a link is where the browser can actually reach it — which
+    under the tests is an ephemeral port.
+    """
+    assert link.startswith(client.base), (link, client.base)
+    return link.removeprefix(client.base)
+
+
+def ask_for_an_export(client: Client) -> tuple[int, dict[str, object]]:
+    status, body, _ = client.post_json("/api/exports", {})
+    return status, json.loads(body)
+
+
+def fetch(client: Client, path: str) -> tuple[int, bytes]:
+    """Take a link the way the tool now does: in the browser, carrying its session."""
+    return client.get_bytes(path, cookies=True)
+
+
+def test_the_settings_panel_is_markup_on_the_app_and_not_a_page(running: Client) -> None:
+    """`export page`: claude.ai asks for an export from a dialog at a fragment of `/new`.
+
+    A fragment never reaches a server, so the panel ships with the chat page and
+    the page's own script opens it on the address. The path `31` guessed is not
+    served at all — signed in, it is not found, which is what the real one does.
+    """
     sign_in(running)
-    status, page, _ = running.request("/settings/data-privacy-controls")
+    status, page, _ = running.request("/new")
     assert status == 200
-    decoy = page.index('<button class="invisible" data-testid="export-data">')
-    assert decoy < page.index('<button data-testid="export-data">Export data</button>')
-    assert '<div role="dialog" aria-label="Export data" hidden>' in page
-    assert '<button type="submit" data-testid="confirm-export">' in page
-    assert '<div role="status" data-testid="export-requested" hidden>' in page
-    assert "<div contenteditable" not in page
+    assert '<div data-perf-screen="data-privacy-controls" role="dialog" aria-label="Settings" hidden></div>' in page
+    assert "#settings/data-privacy-controls" in page
+    assert "<div contenteditable" in page  # the app is behind it, as on the real panel
+    status, _, _ = running.request("/settings/data-privacy-controls", follow=False)
+    assert status == 404
 
 
-def test_an_export_ask_is_counted_and_answers_with_a_link(running: Client, site: Site) -> None:
+def test_the_panel_offers_six_buttons_of_which_the_export_row_is_the_first_visible(running: Client) -> None:
+    """`export button`: matched by position, so the position has to be worth matching."""
     sign_in(running)
-    status, body, _ = running.post_json("/api/exports", {})
-    payload = json.loads(body)
-    assert (status, payload["ok"]) == (200, True)
-    assert payload["link"].startswith(running.base + "/__mock/exports/")
-    assert payload["link"].endswith(".zip")
+    _, page, _ = running.request("/new")
+    root = page[page.index('<template id="settings-root">') : page.index("</template>")]
+    assert root.count('button data-cds="Button"') == 6  # the count a sketch of the real panel took
+    assert root.count('role="switch"') == 1
+    visible_export = root.index("<div data-settings-row>\n    <span>Export data</span>")
+    # First the row that is there and not shown, then a row holding a switch and
+    # no button at all, and only then the Export row: so the first match of the
+    # tool's selector is invisible and the first *visible* match is the right one.
+    assert root.index('data-settings-row class="invisible"') < root.index('role="switch"') < visible_export
+    assert root.index('button data-cds="Button"') < root.index('role="switch"')
+    assert visible_export < root.index("<span>Manage memories</span>")
+
+
+def test_the_second_screen_carries_the_confirmation_and_the_period(running: Client) -> None:
+    """`export confirmation` and `export period`: a screen of its own, at an address of its own."""
+    sign_in(running)
+    _, page, _ = running.request("/new")
+    screen = page[page.index('<template id="settings-export">') :]
+    assert '<button type="button" data-testid="export-confirm-button">Export</button>' in screen
+    assert '<div role="radiogroup" aria-label="Conversations from">' in screen
+    assert 'value="All" checked' in screen
+    assert "#settings/data-privacy-controls/export-data" in page
+
+
+def test_an_export_ask_is_accepted_and_answers_with_a_link(running: Client, site: Site) -> None:
+    """202, because the real one answers accepted rather than done."""
+    sign_in(running)
+    status, payload = ask_for_an_export(running)
+    assert (status, payload["ok"]) == (202, True)
+    link = str(payload["link"])
+    assert link.startswith(running.base + "/__mock/exports/")
+    assert not link.endswith(".zip")  # the index, not one of the zips it names
     assert site.counters()["exports_requested"] == 1
 
 
 def test_an_export_ask_needs_a_session(running: Client, site: Site) -> None:
     status, _, location = running.post_json("/api/exports", {})
-    assert (status, location) == (303, "/login")
+    assert (status, location) == (303, "/logout?involuntary=1&returnTo=/api/exports")
     assert site.counters()["exports_requested"] == 0
 
 
-def test_the_link_serves_the_chats_as_an_export(running: Client, site: Site) -> None:
-    """The archive is the vendor's shape, rendered from the chats at the moment of the fetch."""
+def test_the_link_serves_a_manifest_naming_a_part_per_category(running: Client, site: Site) -> None:
+    """What `adb0494` taught the tool: a Claude export is an index and its parts."""
     sign_in(running)
     _, body, _ = running.post_json("/api/chats", {"text": SEED})
     chat_id = json.loads(body)["id"]
     site.chat(chat_id).reply.started -= 10  # ty: ignore[possibly-unbound-attribute]
     running.post_json(f"/api/chats/{chat_id}/title", {"title": "Notes on pooling"})
-    _, asked, _ = running.post_json("/api/exports", {})
-    path = json.loads(asked)["link"].removeprefix(running.base)
+    _, payload = ask_for_an_export(running)
 
-    status, payload = running.get_bytes(path)
+    status, index = fetch(running, path_of(str(payload["link"]), running))
     assert status == 200
-    assert zipfile.is_zipfile(io.BytesIO(payload))
-    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-        assert sorted(archive.namelist()) == ["conversations.json", "users.json"]
-        conversations = json.loads(archive.read("conversations.json"))
+    manifest = json.loads(index)
+    assert manifest["total_files"] == 2
+    assert [each["filename"] for each in manifest["data_files"]] == [
+        "light_metadata-000.zip",
+        "conversations-000.zip",
+    ]
+
+    members = {}
+    for each in manifest["data_files"]:
+        status, part = fetch(running, path_of(each["export_url"], running))
+        assert status == 200
+        with zipfile.ZipFile(io.BytesIO(part)) as opened:
+            members[each["category"]] = sorted(opened.namelist())
+            if each["category"] == "conversations":
+                conversations = json.loads(opened.read("conversations.json"))
+    assert members == {"light_metadata": ["users.json"], "conversations": ["conversations.json"]}
     assert [conversation["uuid"] for conversation in conversations] == [chat_id]
     assert conversations[0]["name"] == "Notes on pooling"
     assert [turn["sender"] for turn in conversations[0]["chat_messages"]] == ["human", "assistant"]
     assert conversations[0]["chat_messages"][1]["text"] == "MIGRATION-ACK aa000001 1/1"
 
 
+def test_a_parts_address_carries_nothing_of_the_links_own_token(running: Client) -> None:
+    """The tool files the manifest, so whatever is in a part's URL is on disk.
+
+    A real manifest hangs its files under the account's uuid — the same one in
+    every export — and gives each a hex token of its own, so the link an operator
+    pasted survives nowhere. `the link is in no file the run left` is the
+    rehearsal criterion that says so, and this is the same claim at the unit.
+    """
+    sign_in(running)
+    _, payload = ask_for_an_export(running)
+    link = str(payload["link"])
+    token = link.rsplit("/", 1)[-1]
+    _, index = fetch(running, path_of(link, running))
+    urls = [each["export_url"] for each in json.loads(index)["data_files"]]
+    assert urls
+    assert all(token not in url for url in urls)
+    assert all(url.startswith(running.base + "/__mock/export/") for url in urls)
+
+
+def test_a_part_may_be_fetched_once_and_the_index_as_often_as_you_like(running: Client) -> None:
+    """The manifest's own words about its own files: each URL can only be used once."""
+    sign_in(running)
+    _, payload = ask_for_an_export(running)
+    link = path_of(str(payload["link"]), running)
+    status, index = fetch(running, link)
+    assert status == 200
+    assert fetch(running, link)[0] == 200  # the index may be read again
+
+    part = path_of(json.loads(index)["data_files"][0]["export_url"], running)
+    assert fetch(running, part)[0] == 200
+    assert fetch(running, part)[0] == 404
+
+
+def test_an_export_is_fetched_through_the_session(running: Client) -> None:
+    """`f9e0310`: a real link answered 403 to a request without the session."""
+    sign_in(running)
+    _, payload = ask_for_an_export(running)
+    link = path_of(str(payload["link"]), running)
+    _, index = fetch(running, link)
+    part = path_of(json.loads(index)["data_files"][0]["export_url"], running)
+
+    signed_out = Client(running.base)
+    assert signed_out.request(link, follow=False)[0] == 303
+    assert signed_out.request(part, follow=False)[0] == 303
+    assert fetch(running, part)[0] == 200  # and the part was not spent by the refusal
+
+
 def test_a_link_nobody_asked_for_is_not_found(running: Client) -> None:
     """What the tool reports as `link refused: HTTP 404`, and leaves the ask open on."""
-    status, _ = running.get_bytes("/__mock/exports/deadbeef.zip")
-    assert status == 404
+    sign_in(running)
+    assert fetch(running, "/__mock/exports/deadbeef")[0] == 404
+    assert fetch(running, "/__mock/export/deadbeef/download/f00d.zip")[0] == 404
 
 
 def test_the_open_links_are_listed_as_text_and_as_json(running: Client) -> None:
@@ -354,7 +490,7 @@ def test_the_open_links_are_listed_as_text_and_as_json(running: Client) -> None:
 
     _, text, _ = running.request("/__mock/exports")
     assert text == "".join(f"{link}\n" for link in links)
-    running.get_bytes(links[0].removeprefix(running.base))
+    fetch(running, path_of(links[0], running))
     _, payload, _ = running.request("/__mock/exports.json")
     listed = json.loads(payload)
     assert [entry["link"] for entry in listed] == links
@@ -363,13 +499,13 @@ def test_the_open_links_are_listed_as_text_and_as_json(running: Client) -> None:
     assert all(entry["token"] in entry["link"] for entry in listed)
 
 
-def test_a_link_is_announced_as_it_is_minted(site: Site, material: certificate.Material) -> None:
+def test_a_link_is_announced_as_it_is_minted(site: Site) -> None:
     """The mock has no inbox: the link goes to whoever `serve` was told to tell — sign-in links too (`49`)."""
     announced: list[str] = []
     sign_ins: list[str] = []
-    started = server.serve(site, port=0, material=material, announce=announced.append, announce_sign_in=sign_ins.append)
+    started = server.serve(site, port=0, announce=announced.append, announce_sign_in=sign_ins.append)
     try:
-        client = Client(f"https://127.0.0.1:{started.port}")
+        client = Client(wire.origin_of("127.0.0.1", started.port))
         sign_in(client)
         _, body, _ = client.post_json("/api/exports", {})
     finally:

@@ -340,6 +340,13 @@ NonInteractive = Annotated[
         help="Never wait for a person: headless Chrome, sign in from credentials.",
     ),
 ]
+Mock = Annotated[
+    bool,
+    typer.Option(
+        "--mock",
+        help="Talk to the local mock instead of the real site, and keep its state apart.",
+    ),
+]
 Email = Annotated[
     str | None,
     typer.Option(
@@ -374,6 +381,7 @@ def main(
     non_interactive: NonInteractive = False,
     email: Email = None,
     password_file: PasswordFile = None,
+    mock: Mock = False,
 ) -> None:
     """Migrate a Claude export into another Claude account, via Hermes."""
     log.configure_logging(verbose=verbose)
@@ -383,6 +391,7 @@ def main(
             non_interactive=non_interactive,
             email=email,
             password_file=password_file,
+            mock=mock,
         )
     except ConfigError as exc:
         fail(str(exc))

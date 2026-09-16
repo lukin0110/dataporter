@@ -38,7 +38,7 @@ between the look and the click."""
 
 def export_page_url(source: "Source") -> str:
     """Where the source's export page is, built from the path spelled once."""
-    return f"https://{source.host}{source.export_page_path}"
+    return f"{source.origin}{source.export_page_path}"
 
 
 def not_the_export_page(source: "Source") -> str:
@@ -47,9 +47,17 @@ def not_the_export_page(source: "Source") -> str:
 
 
 def _wall(source: "Source", paths: "Sequence[str]") -> re.Pattern[str]:
-    """One pattern: the site's host with these paths, and every auth host whole."""
-    own = rf"^https://{re.escape(source.host)}/({'|'.join(paths)})(\?.*)?$"
-    others = "".join(rf"|^https://{re.escape(host)}/.*$" for host in source.auth_hosts)
+    """One pattern: the site's origin with these paths, and every auth origin whole.
+
+    The **origin** and not the host, so the scheme and the port are inside the
+    wall rather than assumed by it. That is what makes the two modes disjoint
+    (`65`): a wall built on `https://claude.ai` admits no localhost, and one
+    built on `http://127.0.0.1:8443` admits no claude.ai, so a run that forgot
+    `--mock` — or was given it by mistake — stops at the wall with the URL in
+    hand instead of quietly driving the wrong site.
+    """
+    own = rf"^{re.escape(source.origin)}/({'|'.join(paths)})(\?.*)?$"
+    others = "".join(rf"|^{re.escape(origin)}/.*$" for origin in source.auth_origins)
     return re.compile(own + others)
 
 
@@ -109,7 +117,7 @@ def extraction_site(source: "Source") -> Site:
 def extraction_surface(source: "Source") -> Surface:
     """§36's wall for the ask, with the site a sketch on it counts."""
     return Surface(
-        host=source.host, site=extraction_site(source), allowed=extraction_pattern(source), hosts=source.hosts
+        origin=source.origin, site=extraction_site(source), allowed=extraction_pattern(source), origins=source.origins
     )
 
 
@@ -119,4 +127,4 @@ def login_surface(source: "Source") -> Surface:
     from dataporter.browser import login_form  # ruff: ignore[import-outside-top-level] - see `extraction_site`
 
     site = Site(source.name, source.host, {**probing.SELECTORS, **login_form.SELECTORS}, hosts=source.hosts)
-    return Surface(host=source.host, site=site, allowed=login_pattern(source), hosts=source.hosts)
+    return Surface(origin=source.origin, site=site, allowed=login_pattern(source), origins=source.origins)
