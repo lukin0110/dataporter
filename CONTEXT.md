@@ -173,6 +173,13 @@ account home keeps as a record. The vendor is not told: the session becomes unus
 not revoked.
 _Avoid_: logout (outside the command name), revoke, disconnect, forget, log off
 
+**Involuntary sign-out**:
+A sign-out nobody asked for: the site stops knowing a session and sends the browser to
+its own sign-in page. The browser still carries the cookie, so from outside it is
+indistinguishable from never having signed in. Brief 02 §21 calls it *a login expiry in
+the middle of a run*, which is the same thing said from the run's side.
+_Avoid_: involuntary logout, forced logout, session timeout
+
 **Account home**:
 The directory that holds what the tool keeps about one source account that is not a
 snapshot: its session, its open ask, what a fetch stages on the way to the store, and its

@@ -14,8 +14,12 @@ construction (§46), and the tool's guard refuses any line that would.
   home, **read end to end by the person committing it**. The reading is a check, not a
   redaction: a trace that turns out to carry something it should not is a bug in the
   tool, fixed there first, and the trace is not committed until it is.
-- Named `<command>-<YYYY-MM-DD>.jsonl` — `login-2026-09-20.jsonl` — and never edited
-  after. A trace is a record of what was; a trimmed one is a different document.
+- Named `<command>[-<flag>]-<YYYY-MM-DD>.jsonl` — `login-2026-09-20.jsonl`, or
+  `login-link-2026-09-15.jsonl` — and never edited after. A trace is a record of what
+  was; a trimmed one is a different document. The flag is there because one command can
+  be two journeys on one day: `login` opens the window and waits, `login --link` spends
+  the link in it (§73), and both leave a trace of `login`. Without it the second file
+  could only take the first's name.
 - With the reason for a missing `end` line in the commit message, when there is one: a
   run that was killed leaves no last line, and that is worth a sentence.
 

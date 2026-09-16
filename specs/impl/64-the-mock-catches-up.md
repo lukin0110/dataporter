@@ -82,7 +82,7 @@ The mock's export page last changed in `dd64919`. Since then:
   `Content-Disposition` Chrome *renders* `application/json`, and the fetch correctly
   reports `the link led to a page, not an archive (HTTP 200)`. The real manifest arrives as
   a download with a 90-character filename, so the vendor sends the header too.
-- **An involuntary logout** (§21, amended): a request whose session the site no longer
+- **An involuntary sign-out** (§21, amended): a request whose session the site no longer
   knows is answered `/logout?involuntary&returnTo=…`, and `/logout` answers
   `/login?from&reauth&returnTo` — two hops, as the trace records. `POST
   /__mock/expire-session` (`wire.EXPIRE_PATH`, `Sessions.close_all`) is the only way to
@@ -99,7 +99,7 @@ The mock's export page last changed in `dd64919`. Since then:
   `login-2026-09-15.jsonl` and `login-link-2026-09-15.jsonl`, from the throwaway account,
   read end to end, unedited. Four rows of the UI map are marked from them — `signed out`,
   `link requested`, `sign-in link`, `signed in by the link` — and one is new,
-  `involuntary logout`.
+  `involuntary sign-out`.
 - **The rehearsal**: `CLAUDE.session_bound = True`, which puts Claude's two fetches among
   the steps that drive a tab. The auth-host criterion now keys off `len(mock.hosts) > 1`,
   which is the question it was always asking.
@@ -117,7 +117,7 @@ The mock's export page last changed in `dd64919`. Since then:
 - **The redirect to another host.** Real part URLs `302` to `storage.googleapis.com`; the
   mock serves its parts off `claude.ai`, so `download.py`'s redirect-chain reasoning is
   still only exercised by the mock chatgpt.com's two hosts.
-- **The involuntary logout in the protocol.** The capability and the door are here;
+- **The involuntary sign-out in the protocol.** The capability and the door are here;
   wiring a drill into `rehearsal/extraction.py`'s step list would change what
   `docs/rehearsal-03.md` recorded, and belongs with the record that replaces it.
 - **Marking the four export rows.** The committable traces are of `login` runs; every

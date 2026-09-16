@@ -64,7 +64,7 @@ def sign_in(client: Client, *, email: str = EMAIL) -> str:
 
 
 def test_signed_out_every_page_goes_to_the_login_page_by_way_of_logout(running: Client) -> None:
-    """`signed out` and `involuntary logout`: the two hops a real account takes.
+    """`signed out` and `involuntary sign-out`: the two hops a real account takes.
 
     `/settings/data-privacy-controls` is in the list because it is *not* a page
     here any more — `51` found it serves nothing on claude.ai — so it falls to the
@@ -78,7 +78,7 @@ def test_signed_out_every_page_goes_to_the_login_page_by_way_of_logout(running: 
 
 
 def test_a_session_the_site_has_forgotten_is_an_involuntary_logout(running: Client, site: Site) -> None:
-    """`involuntary logout`: a sign-in that lapses in the middle of a run.
+    """`involuntary sign-out`: a sign-in that lapses in the middle of a run.
 
     The browser keeps its cookie and the site stops knowing the token, which is
     what makes this different from never having signed in — and identical from

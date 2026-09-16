@@ -59,7 +59,7 @@ ROWS: Mapping[str, str] = {
     "export period": "export period",
     "export toast": "export requested",
     # a sign-in that lapses while a run is under way
-    "involuntary logout": "involuntary logout",
+    "involuntary sign-out": "involuntary sign-out",
 }
 """Each thing the mock can show, and the row of the map it comes from.
 
@@ -163,7 +163,7 @@ WHAT_THE_MOCK_DOES: Mapping[str, str] = {
         "the ask is counted and a link minted. The link is an index at a /__mock/ "
         "address on the mock's own host, printed where an email would be sent"
     ),
-    "involuntary logout": (
+    "involuntary sign-out": (
         "a request whose session the site no longer knows is answered "
         "/logout?involuntary&returnTo=…, and /logout answers "
         "/login?from&reauth&returnTo — two hops, as observed. Only a POST to the "

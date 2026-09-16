@@ -29,10 +29,9 @@ not read is said there too.
 | [D3](#d3--33s-workspace-beside-the-snapshot) | §33 says a snapshot's import writes its workspace beside it; `30` refuses to | `/code-review` of `30` | no |
 | [D5](#d5--list-or-tuple-in-the-export-model) | The export model is called immutable and `frozen=True` is shallow | review of `02` (PR #2) | no |
 | [D6](#d6--attribute-docstrings-on-constants) | A string after an assignment: this repo's convention, or dead code? | reviews of `06` and `10` (PRs #11, #17) | no |
-| [D7](#d7--how-the-wall-is-described) | ADR `0001` and §22 describe a wall narrower and wider than the one that ships | review of brief `02` (PR #35) | no |
 | [D8](#d8--the-vendored-skills-broken-references) | Vendored skills cite skills this repo does not have | review of the skills install (PR #23) | no |
 
-None of the eight blocks a merge: each is a question about words, budgets, conventions or
+None of the five blocks a merge: each is a question about words, budgets, conventions or
 paperwork, and the code does something defensible today. They are here so that
 "defensible today" does not quietly become "decided".
 
@@ -138,32 +137,6 @@ same finding arrived twice and will arrive again.
 
 **Settled by:** a line in [`specs/README.md`](../specs/README.md)'s *Shared decisions*
 (option 1), or a slice (option 2).
-
-## D7 — How the wall is described
-
-The helpers' wall is a host *and* a path: `^https://claude\.ai/(new|chat/[0-9a-f-]{36})(\?.*)?$`,
-and since `31` there is a second one — the extraction surface, which is the sign-in page
-and the export page and nothing else. Two documents describe it as something else:
-
-| Where | What it says | What ships |
-| --- | --- | --- |
-| [`adr/0001`](adr/0001-no-door-in-the-wall.md), first sentence | refuses every URL that is not `https://claude.ai/new` or `https://claude.ai/chat/<id>` | a query string is allowed, `<id>` is a uuid, and `31` added a surface the sentence does not mention |
-| [`specs/02-claude-mock.md`](../specs/02-claude-mock.md) §22 | "The helpers' refusal of every URL that is not on `claude.ai`" | the host is the smaller half of the check; a `claude.ai/settings/profile` is refused too |
-
-Both were raised in the review of brief `02` and neither was answered. §22's sentence is
-the one that matters: it is the argument for the mock being reached by operator
-configuration rather than by a setting, and it understates the property it rests on.
-
-**Options.**
-
-1. **Amend both.** A sentence in the ADR that names the pattern and says there are now
-   two surfaces, and an amendment to §22 saying host *and* path. The ADR is ours to
-   correct; §22 is a brief, so it is an amendment rather than an edit in passing.
-2. **Amend §22 only**, and let the ADR keep a simplification that was true when it was
-   written. Cheaper, and it leaves a document that a reader of `08` will find wrong.
-
-**Settled by:** an amendment to [`specs/02-claude-mock.md`](../specs/02-claude-mock.md) §22,
-and an edit to `adr/0001`.
 
 ## D8 — The vendored skills' broken references
 

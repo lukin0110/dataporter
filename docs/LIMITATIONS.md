@@ -220,8 +220,9 @@ the three are here because `21`'s sign-off quotes this file and not that one.
   the two hops a real account took on 2026-09-15 — and no protocol asks for it yet, so in
   practice a rehearsal that passes still says only that the protocol runs end to end
   against a site that behaves. It says nothing about the other five. *by construction*
-- **The mock answers in English, and the account was served Spanish.** Every control
-  label in `docs/spike/traces/login-2026-09-15.jsonl`'s sketches is `es-419` — the
+- **The mock answers in English, and the account was served Spanish.** `64` found it
+  reading the account logs: every control label in
+  `docs/spike/traces/login-2026-09-15.jsonl`'s sketches is `es-419` — the
   composer is `Escribe tu mensaje para Claude`. One signal the tool reads by its *words*:
   `REQUESTED_SELECTOR` is paired with `REQUESTED_TEXT`, `Export started`, because the
   toast container is the site's notification furniture and matching its shape alone once
@@ -360,15 +361,17 @@ the rest of this file is about; both are about what a backup does *not* promise.
   whatever `--account` said. The label is the operator's claim about whose account it is,
   and the tool cannot check it. *by construction*
 - **A snapshot keeps the vendor's manifest, and the manifest names the parts' URLs.**
-  A Claude snapshot holds `manifest.json` exactly as the vendor served it, and each entry
+  Read off a real snapshot by `64`: a Claude one holds `manifest.json` exactly as the
+  vendor served it, and each entry
   in it carries an `export_url` — the address that part was downloaded from. Those
   addresses are single-use and were spent by the fetch that filed them, so what is on disk
   is a list of dead links; the link an operator pasted is not among them, because the
   parts hang under the account's id and not under it. It is still more of a vendor's URL
   than §32 keeps anywhere else, and a source whose parts were *not* single-use would be
   filing live credentials. *by construction*
-- **Every download costs about twenty seconds after the bytes have landed.** Measured
-  across every successful fetch in the account homes on 2026-09-14 and 2026-09-15: 21.1 s
+- **Every download costs about twenty seconds after the bytes have landed.** `64`
+  measured it across every successful fetch in the account homes on 2026-09-14 and
+  2026-09-15: 21.1 s
   for a 741-byte manifest and 21.1 s for a 22,913-byte archive alike, while the trace
   shows the bytes arriving in about one second. The arithmetic points at
   `timeouts.cdp_call_s` (20.0) being waited out on the `Page.navigate` Chrome never
