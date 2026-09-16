@@ -48,7 +48,7 @@ CDP_PORT = {cdp_port}
 SERVER_PORT = {server_port}
 
 SURFACE = helpers.Surface(
-    host="127.0.0.1",
+    origin="http://127.0.0.1:%d" % SERVER_PORT,
     allowed=re.compile(
         r"^http://127\\.0\\.0\\.1:%d/(new|chat/[0-9a-f-]{{36}})(\\?.*)?$" % SERVER_PORT
     ),

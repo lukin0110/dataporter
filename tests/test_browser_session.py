@@ -70,6 +70,11 @@ def chrome() -> Iterator[FakeChrome]:
         yield fake
 
 
+DESTINATION = browser_session.CLAUDE_ORIGINS
+"""The real destination's origins. Passed outright since `65` took the defaults
+off these functions: a default naming the real site is how a `--mock` run ends
+up driving claude.ai, so the tests name it too."""
+
 # --------------------------------------------------------------------------- #
 # Choosing the tab
 # --------------------------------------------------------------------------- #
@@ -77,7 +82,7 @@ def chrome() -> Iterator[FakeChrome]:
 
 def test_an_existing_claude_tab_is_used(chrome: FakeChrome, tmp_path: Path) -> None:
     session = session_for(chrome, tmp_path)
-    page = browser_session.open_claude_tab(session)
+    page = browser_session.open_claude_tab(session, NEW_CHAT_URL, origins=DESTINATION)
     try:
         assert page.target.id == "page-1"
     finally:
@@ -95,7 +100,7 @@ def test_a_blank_tab_is_navigated_rather_than_a_second_one_opened(
     """
     with FakeChrome(targets=[FakeTarget(id="page-1", url="about:blank", evaluate=page_state())]) as chrome:
         session = session_for(chrome, tmp_path)
-        page = browser_session.open_claude_tab(session, NEW_CHAT_URL)
+        page = browser_session.open_claude_tab(session, NEW_CHAT_URL, origins=DESTINATION)
         try:
             assert page.target.id == "page-1"
         finally:
@@ -107,7 +112,7 @@ def test_a_blank_tab_is_navigated_rather_than_a_second_one_opened(
 def test_a_tab_is_created_when_there_is_none(tmp_path: Path) -> None:
     with FakeChrome(targets=[]) as chrome:
         session = session_for(chrome, tmp_path)
-        page = browser_session.open_claude_tab(session, NEW_CHAT_URL)
+        page = browser_session.open_claude_tab(session, NEW_CHAT_URL, origins=DESTINATION)
         try:
             assert page.target.url == NEW_CHAT_URL
         finally:
@@ -133,7 +138,7 @@ def test_a_failed_navigation_does_not_leak_the_connection(tmp_path: Path) -> Non
         session = session_for(chrome, tmp_path)
         for _ in range(3):
             with pytest.raises(BrowserError, match="ERR_CONNECTION_REFUSED"):
-                browser_session.open_claude_tab(session, NEW_CHAT_URL)
+                browser_session.open_claude_tab(session, NEW_CHAT_URL, origins=DESTINATION)
         deadline = time.monotonic() + 5.0
         while chrome.open_connections and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -160,7 +165,7 @@ def test_current_state_counts_the_claude_tabs(tmp_path: Path) -> None:
         ]
     ) as chrome:
         session = session_for(chrome, tmp_path)
-        assert browser_session.current_state(session).tab_count == 2
+        assert browser_session.current_state(session, NEW_CHAT_URL, origins=DESTINATION).tab_count == 2
 
 
 # --------------------------------------------------------------------------- #
@@ -184,7 +189,7 @@ def test_wait_for_login_returns_once_a_composer_appears(chrome: FakeChrome, tmp_
 
     chrome.targets[0].evaluate = evaluate
     session = session_for(chrome, tmp_path)
-    state = browser_session.wait_for_login(session, timeout_s=5.0, poll_s=0.01)
+    state = browser_session.wait_for_login(session, url=NEW_CHAT_URL, origins=DESTINATION, timeout_s=5.0, poll_s=0.01)
     assert state is not None
     assert state.logged_in
     assert seen["probes"] == 3
@@ -193,7 +198,10 @@ def test_wait_for_login_returns_once_a_composer_appears(chrome: FakeChrome, tmp_
 def test_wait_for_login_gives_up(chrome: FakeChrome, tmp_path: Path) -> None:
     chrome.targets[0].evaluate = LOGGED_OUT
     session = session_for(chrome, tmp_path)
-    assert browser_session.wait_for_login(session, timeout_s=0.05, poll_s=0.01) is None
+    assert (
+        browser_session.wait_for_login(session, url=NEW_CHAT_URL, origins=DESTINATION, timeout_s=0.05, poll_s=0.01)
+        is None
+    )
 
 
 class StopWaitingError(Exception):
@@ -234,7 +242,7 @@ def test_a_wait_never_sleeps_past_its_own_deadline(
     session = session_for(chrome, tmp_path)
 
     with pytest.raises(StopWaitingError):
-        browser_session.wait_for_login(session, timeout_s=30.0, poll_s=300.0)
+        browser_session.wait_for_login(session, url=NEW_CHAT_URL, origins=DESTINATION, timeout_s=30.0, poll_s=300.0)
 
     assert len(slept) == 1
     assert 0 < slept[0] <= 30.0
@@ -257,7 +265,7 @@ def test_a_failed_probe_is_not_a_failed_login(chrome: FakeChrome, tmp_path: Path
 
     chrome.responder = responder
     session = session_for(chrome, tmp_path)
-    state = browser_session.wait_for_login(session, timeout_s=5.0, poll_s=0.01)
+    state = browser_session.wait_for_login(session, url=NEW_CHAT_URL, origins=DESTINATION, timeout_s=5.0, poll_s=0.01)
     assert state is not None
     assert seen["probes"] == 2
 
@@ -266,14 +274,14 @@ def test_a_browser_that_has_gone_away_ends_the_wait(chrome: FakeChrome, tmp_path
     session = session_for(chrome, tmp_path)
     chrome.stop()
     with pytest.raises(BrowserError):
-        browser_session.wait_for_login(session, timeout_s=5.0, poll_s=0.01)
+        browser_session.wait_for_login(session, url=NEW_CHAT_URL, origins=DESTINATION, timeout_s=5.0, poll_s=0.01)
 
 
 def test_signed_in_is_one_probe(chrome: FakeChrome, tmp_path: Path) -> None:
     session = session_for(chrome, tmp_path)
-    assert browser_session.signed_in(session)
+    assert browser_session.signed_in(session, NEW_CHAT_URL, origins=DESTINATION)
     chrome.targets[0].evaluate = LOGGED_OUT
-    assert not browser_session.signed_in(session)
+    assert not browser_session.signed_in(session, NEW_CHAT_URL, origins=DESTINATION)
 
 
 # --------------------------------------------------------------------------- #

@@ -21,8 +21,7 @@ import pytest
 from typer.testing import CliRunner
 
 from dataporter import cli
-from dataporter.browser import export_page, helpers, launcher
-from dataporter.browser import session as browser_session
+from dataporter.browser import export_page, helpers, launcher, probe
 from dataporter.config import AccountsSettings, BrowserSettings, Settings, TimeoutSettings, with_account
 from dataporter.exit_codes import ExitCode
 from fake_chrome import FakeChrome, FakeTarget, free_port, page_state
@@ -316,4 +315,4 @@ def test_the_session_commands_are_the_only_ones_that_take_an_account() -> None:
 def test_neither_surface_admits_the_other_s_pages() -> None:
     """The two walls, held to each other in one place (§36)."""
     assert not helpers.CLAUDE.permits(export_page.EXPORT_PAGE_URL)
-    assert not export_page.EXTRACTION_SURFACE.permits(browser_session.NEW_CHAT_URL)
+    assert not export_page.EXTRACTION_SURFACE.permits(probe.NEW_CHAT_URL)

@@ -2,7 +2,7 @@
 
 import json
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import pytest
@@ -565,7 +565,7 @@ def test_a_browser_that_goes_away_fails_the_session_check(
     profiling.run_setup(settings)
     adopt_instead(monkeypatch, chrome)
 
-    def collapse(session: launcher.BrowserSession, url: str = "") -> bool:
+    def collapse(session: launcher.BrowserSession, url: str = "", *, origins: Sequence[str] = ()) -> bool:
         raise BrowserError(detail="cdp unreachable")
 
     monkeypatch.setattr(hermes_doctor.browser_session, "signed_in", collapse)

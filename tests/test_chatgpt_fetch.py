@@ -378,7 +378,7 @@ def test_live_a_signed_in_tab_downloads_and_a_signed_out_one_is_refused(gated: s
         settings = Settings(workspace=Path(directory) / "migration", timeouts=TimeoutSettings(download_idle_s=20.0))
         into = Path(directory) / "tmp"
         visit(session, f"{gated}/gate")
-        got = download.fetch(settings, session, f"{gated}/__mock/exports/t.zip", into=into, hosts=("127.0.0.1",))
+        got = download.fetch(settings, session, f"{gated}/__mock/exports/t.zip", into=into, origins=(gated,))
         assert got.path.read_bytes() == chatgpt_zip.read_bytes()
         assert got.bytes == len(chatgpt_zip.read_bytes())
         assert (got.suffix, got.filename_chars) == (".zip", len("chatgpt-export.zip"))
@@ -390,9 +390,9 @@ def test_live_a_signed_in_tab_downloads_and_a_signed_out_one_is_refused(gated: s
         finally:
             page.close()
         with pytest.raises(download.DownloadStopped) as raised:
-            download.fetch(settings, session, f"{gated}/__mock/exports/t.zip", into=into, hosts=("127.0.0.1",))
+            download.fetch(settings, session, f"{gated}/__mock/exports/t.zip", into=into, origins=(gated,))
         assert (raised.value.reason, raised.value.status) == (download.REFUSED, 403)
 
         with pytest.raises(download.DownloadStopped) as raised:
-            download.fetch(settings, session, f"{gated}/gate", into=into, hosts=("127.0.0.1",))
+            download.fetch(settings, session, f"{gated}/gate", into=into, origins=(gated,))
         assert raised.value.reason == download.PAGE

@@ -39,6 +39,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
+from functools import cache
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Self
 from urllib.parse import urlparse, urlsplit
@@ -137,12 +138,24 @@ SELECTORS: Mapping[str, str] = MappingProxyType(dict(_SELECTORS))
 """The same table, by name, for `33`'s site: what a sketch counts on a page."""
 
 
-def migration_site(origin: str = CLAUDE_ORIGIN) -> Site:
-    """Return the destination as a trace describes it: its host, and what a sketch counts."""
+@cache
+def migration_site(origin: str) -> Site:
+    """Return the destination as a trace describes it: its host, and what a sketch counts.
+
+    Cached, so there is one `Site` per origin and `migration_site(CLAUDE_ORIGIN)`
+    *is* `MIGRATION_SITE`. Thirty-odd call sites pass it as a trace label and a
+    test asks `is`; a fresh object per call would have made every one of them a
+    different site for no reason (`65`).
+
+    No default argument, deliberately: `@cache` keys on what it was *called*
+    with, so a default would make `migration_site()` and
+    `migration_site(CLAUDE_ORIGIN)` two entries and two objects. One way to call
+    it is the only way that keeps `is` meaning anything.
+    """
     return Site("claude", urlsplit(origin).hostname or "", SELECTORS)
 
 
-MIGRATION_SITE = migration_site()
+MIGRATION_SITE = migration_site(CLAUDE_ORIGIN)
 """claude.ai as a trace describes it (brief `04` §50): the destination of every
 migration, and the one site this module knows."""
 

@@ -8,6 +8,7 @@ selectors — against a real Chrome rendering the checked-in page fixtures.
 
 import time
 from collections.abc import Iterator
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -324,9 +325,15 @@ def live() -> Iterator[tuple[launcher.BrowserSession, PageServer]]:
         yield pair
 
 
+def origin_of(url: str) -> str:
+    """Return the scheme and authority of `url` — what a tab is matched by since `65`."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
 def visit(session: launcher.BrowserSession, url: str) -> PageState:
     """Navigate the tab and probe it once the document has settled."""
-    page: Page = browser_session.open_claude_tab(session, url)
+    page: Page = browser_session.open_claude_tab(session, url, origins=(origin_of(url),))
     try:
         page.navigate(url)
         deadline = time.monotonic() + 30.0
@@ -408,7 +415,7 @@ def test_live_migrated_chat_page(
         ack_line(short, 1, 2),
         ack_line(short, 2, 2),
     ]
-    page: Page = browser_session.open_claude_tab(session, url)
+    page: Page = browser_session.open_claude_tab(session, url, origins=(origin_of(url),))
     try:
         page.navigate(url)
         deadline = time.monotonic() + 30.0

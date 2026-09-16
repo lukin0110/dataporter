@@ -1075,7 +1075,7 @@ def fixture_surface(server: PageServer) -> helpers.Surface:
     setting.
     """
     return helpers.Surface(
-        host="127.0.0.1",
+        origin=f"http://127.0.0.1:{server.port}",
         allowed=re.compile(rf"^http://127\.0\.0\.1:{server.port}/(new|chat/[0-9a-f-]{{36}})(\?.*)?$"),
     )
 
