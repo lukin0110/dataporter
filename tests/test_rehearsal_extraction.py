@@ -104,7 +104,7 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
         "extract (ask 2)",
         "extract --link (fetch 2)",
         "session status",
-        "session logout",
+        "logout",
         "snapshots",
     ]
     driving = (

@@ -223,5 +223,7 @@ manual job:
    contain page snapshots and therefore conversation content. `setup` prints this path on
    every run for exactly this moment.
 
-`dataporter session logout` removes the browser profile alone, which is the
-local half of step 3. It ends no session anywhere else and touches nothing in the account.
+`dataporter logout --source claude --account <label>` empties a *source* account's home
+— its session, its open ask and anything a fetch staged — and keeps its logs. It ends no
+session anywhere else and touches nothing in the account. The destination has no such
+command: its profile is inside the workspace, and step 3 removes it.

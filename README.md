@@ -143,7 +143,8 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 | `setup` | Create the Hermes profile and install the migration skill. |
 | `doctor` | Check Hermes, Chrome and the configuration. Exits `6` at the first failure. |
 | `login` | Open the dedicated browser profile and wait for you to sign in. `--account LABEL` (and `--source`) signs in to a *source* account instead of the destination. |
-| `session status` / `session logout` | Whether that profile is signed in; remove it locally. Same two options, same meaning. |
+| `logout` | Sign out of a source account: remove its session, its open ask and its staged downloads, keeping its logs. `--source`, `--account` (required). |
+| `session status` | Whether a source account's profile is signed in. `--source`, `--account` (required). |
 | `extract` | Ask a source for an account's export, then file what comes back as a snapshot. `--source`, `--account`, `--link`, `--from`, `--abandon`, `--store`. |
 | `snapshots` | What the store holds: source, account, stamp, conversations, state. `--json`. |
 | `inspect <export>` | What the export contains, and what is migratable. A snapshot works wherever an export does. |
@@ -222,10 +223,11 @@ and what one press on the vendor's page does not promise.
 
 The source account gets its own browser session, because one browser profile holds one
 signed-in identity per site: `login --account old-personal` signs it in, `session status
---account old-personal` says whether it still is, and `session logout --account
-old-personal` throws it away. Without `--account` all three mean the destination, exactly
-as before. **One at a time**: every session shares `browser.cdp_port`, so a Chrome still
-running for one account makes the next command exit `2` — close it and run again.
+--account old-personal` says whether it still is, and `logout --account old-personal`
+throws it away. The last two name an account always; only `login` still means the
+destination when you leave `--account` out. **One at a time**: every session shares
+`browser.cdp_port`, so a Chrome still running for one account makes the next command
+exit `2` — close it and run again.
 
 The ask itself never uses a model: the tool goes to the page, presses the button, and
 records that it did. Unattended (`--non-interactive`) it is the same one press, on a
@@ -343,8 +345,10 @@ The workspace holds content by design: a seed *is* a conversation. What does not
 content is the terminal and the run logs — no title and no message is printed or logged at
 any verbosity (§10), which is what makes a log safe to paste into an issue.
 
-`session logout` removes the browser profile only. It does not sign the destination
-account out anywhere else, and it deletes nothing in the account.
+`logout` removes a source account's session, its open ask and anything a fetch staged,
+and keeps its logs. It does not sign the account out anywhere else, and it deletes nothing
+in the account or in the store. The destination's profile is inside the workspace and goes
+with it.
 
 ## Developing
 

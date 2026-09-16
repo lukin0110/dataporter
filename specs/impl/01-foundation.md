@@ -43,7 +43,8 @@ error taxonomy and an exit-code convention. No migration behaviour.
   dataporter judge [--only UUID]...
   dataporter setup
   dataporter doctor
-  dataporter session status | logout
+  dataporter logout --account LABEL [--source SRC]
+  dataporter session status --account LABEL [--source SRC]
   dataporter browser probe | paste | attach | await-response | close-extra-tabs
   ```
 

@@ -28,8 +28,8 @@ COMMANDS: list[list[str]] = [
     ["snapshots"],
     ["status"],
     ["login"],
+    ["logout"],
     ["session", "status"],
-    ["session", "logout"],
     ["browser", "probe"],
     ["browser", "paste"],
     ["browser", "attach"],
@@ -124,27 +124,29 @@ def test_extract_help_carries_every_flag(runner: CliRunner) -> None:
         assert flag in result.stdout
 
 
-@pytest.mark.parametrize("command", [["login"], ["session", "status"], ["session", "logout"]])
+@pytest.mark.parametrize("command", [["login"], ["logout"], ["session", "status"]])
 def test_the_session_commands_carry_the_account_options(runner: CliRunner, command: list[str]) -> None:
     """`31`: each of `07`'s three commands gains a label and the source it belongs to.
 
-    Without one, the command means the destination.
+    On `login`, absence still means the destination; on the other two it is required
+    (§86).
     """
     result = runner.invoke(cli.app, [*command, "--help"], catch_exceptions=False)
     for flag in ("--source", "--account"):
         assert flag in result.stdout
 
 
-def test_the_account_options_are_optional_on_the_session_commands() -> None:
-    """A literal `None` rather than a required option.
+def test_only_login_may_leave_the_account_out() -> None:
+    """A property of the signature, not of a code path.
 
-    §35's "absent means the destination" is a property of the signature, not of a code
-    path.
+    §35 made "absent means the destination" true of all three; §86 leaves it true of
+    `login` alone, and the other two carry `extract`'s required option instead.
     """
-    for command in (cli.login, cli.session_status, cli.session_logout):
-        parameters = inspect.signature(command).parameters
-        assert parameters["account"].default is None
-        assert parameters["source"].default is None
+    assert inspect.signature(cli.login).parameters["account"].default is None
+    for command in (cli.session_status, cli.logout):
+        assert inspect.signature(command).parameters["account"].default is inspect.Parameter.empty
+    for command in (cli.login, cli.session_status, cli.logout):
+        assert inspect.signature(command).parameters["source"].default is None
 
 
 def test_source_has_no_literal_default(runner: CliRunner, workspace: Path) -> None:

@@ -167,9 +167,16 @@ _Avoid_: using it for the snapshot itself
 The browser session signed in to a source account, kept apart from the destination's.
 _Avoid_: extraction session, second profile
 
+**Sign-out**:
+Discarding a source session and everything that depended on it, leaving only what the
+account home keeps as a record. The vendor is not told: the session becomes unusable,
+not revoked.
+_Avoid_: logout (outside the command name), revoke, disconnect, forget, log off
+
 **Account home**:
 The directory that holds what the tool keeps about one source account that is not a
-snapshot: its session, its open ask, its logs. Never in the store.
+snapshot: its session, its open ask, what a fetch stages on the way to the store, and its
+logs. Never in the store.
 _Avoid_: profile directory, session directory
 
 ### Browser and agent

@@ -49,6 +49,14 @@ ATTACHMENTS_DIRNAME = "attachments"
 SEEDS_DIRNAME = "seeds"
 PILOT_DIRNAME = "pilot"
 BROWSER_PROFILE_DIRNAME = "browser-profile"
+ASK_FILENAME = "ask.json"
+TMP_DIRNAME = "tmp"
+"""Under the account home: the open ask, and where a download lands before it is
+verified. Neither is ever in the store.
+
+Here rather than in `extract`, which is where they are written, because `browser.session`
+names them when it signs out (`63`) and `extract` already imports it. One module holds the
+shape of an account home, and it is the one that computes the paths."""
 HERMES_DIRNAME = "hermes"
 DEFAULT_HERMES_HOME = Path("~/.hermes")
 DEFAULT_STORE = Path("~/.dataporter/store")
@@ -703,7 +711,7 @@ class Settings(BaseSettings):
         """Chrome's `--user-data-dir` (`07`, `31`).
 
         Not configurable: the point of the dedicated profile is that it is
-        *ours*, created by us, deletable by `session logout`, and never the
+        *ours*, created by us, deletable by `logout`, and never the
         operator's everyday one (§17).
 
         Where it is depends on whose session it is. Without an account it is the
@@ -725,7 +733,8 @@ class Settings(BaseSettings):
         Inside the workspace and not configurable, for the same reason the seeds
         directory is not: these are intermediate artefacts of one migration, and
         the stdout of a Hermes run contains page snapshots — so it belongs in the
-        directory `.gitignore` already excludes and `session logout` leaves alone.
+        directory `.gitignore` already excludes and `logout` never reaches: it acts
+        on an account home, and this is in the workspace.
         """
         return self.workspace / HERMES_DIRNAME
 
@@ -904,7 +913,7 @@ SOURCE_WITHOUT_ACCOUNT = "--source names the vendor of an account; give --accoun
 
 
 def with_session_account(settings: Settings, source: str | None, account: str | None) -> Settings:
-    """Whose session `login`, `session status` and `session logout` mean (`31`).
+    """Whose session `login` means when its `--account` is absent (`31`, §86).
 
     `None` for `account` is the destination, which is what those three commands
     have always meant and go on meaning: the settings come back untouched, so

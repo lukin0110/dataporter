@@ -273,7 +273,8 @@ What §73's two commands do not promise.
   sees it first, but a machine slow enough — or a person closing the window — leaves
   `login --link` with a browser that has stopped answering after a link it has already
   spent. It says so and names `session status`, exit `1`, rather than claiming either
-  way. *by construction*
+  way — or `login`, for the destination, which has no `session status` to be sent to
+  (§86). *by construction*
 - **The sign-in link's host is not pinned**, as the export link's is not: `https` is the
   whole check, and a link that signs in somebody else's account signs this profile in as
   them. The label is the operator's word. *by construction*
@@ -287,6 +288,32 @@ What §73's two commands do not promise.
 - **A link that hops through another host** — a mail provider's click tracking — takes the
   tab off claude.ai for a moment. `login`'s wait never opens a tab, so that moment costs a
   poll and nothing else; whether real sign-in links do hop is unknown. *unknown*
+
+## Signing out (`63`)
+
+What `logout` does not promise.
+
+- **The session is discarded, not revoked.** Sign-out deletes what this machine holds; it
+  tells the vendor nothing, and Claude goes on considering that session valid until it
+  expires on its own. A profile directory that was swept into a backup before the sign-out
+  is still a signed-in session in that backup. Revoking would mean driving the app to a
+  menu on a session that works, which is the case sign-out is least needed in. *by
+  construction*
+- **A browser the tool cannot claim blocks a sign-out.** Chrome does not report its
+  `--user-data-dir` over CDP, so the only browser sign-out will close is one the profile's
+  own marker names. Anything else answering on `browser.cdp_port` — another account's
+  window, an unrelated Chrome started with the same debug port — is exit `2`, and the
+  account stays signed in until it is closed. Refusing is the safe half: deleting a profile
+  under a running Chrome is what leaves a half-written one. *by construction*
+- **The destination cannot be signed out, or asked about.** Both session commands name a
+  source account (§86). The destination's profile is inside the workspace and goes when the
+  workspace does; `docs/runbook.md` is where that is written down. *by construction*
+- **An archive a crashed fetch left behind goes with everything else.** `tmp/` is removed
+  whole, and `fetch` can leave a complete, correct archive there by dying between the
+  download and the filing. The link that produced it was single-use, so it cannot be
+  fetched again. Nothing warns before the fact: one sign-out prints one block, and a line
+  that appeared only sometimes would be a second golden block for a case a person can see
+  by looking. *by construction*
 
 ## The store (`30`)
 

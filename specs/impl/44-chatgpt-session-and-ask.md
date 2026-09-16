@@ -9,7 +9,7 @@
 
 ## Goal
 
-`login`, `session status` and `session logout` for `--source chatgpt`; the extraction
+`login`, `session status` and `logout` for `--source chatgpt`; the extraction
 surface across two hosts; the export page driven straight to its path and asked on with
 two clicks; and the unattended sign-in as a walk the tool makes itself, with no agent.
 Every step a move, so a ChatGPT run leaves what a Claude run leaves (§67).

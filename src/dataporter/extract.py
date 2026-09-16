@@ -63,7 +63,7 @@ from dataporter import trace as tracing
 from dataporter.browser import download, export_page, launcher, sites
 from dataporter.browser import session as browser_session
 from dataporter.browser import watch as watching
-from dataporter.config import Settings
+from dataporter.config import ASK_FILENAME, TMP_DIRNAME, Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import (
     AuthError,
@@ -81,11 +81,6 @@ if TYPE_CHECKING:  # pragma: no cover - the browser is imported where it is used
     from dataporter.sources.base import Reading, Source
 
 _logger = log.get_logger(__name__)
-
-ASK_FILENAME = "ask.json"
-TMP_DIRNAME = "tmp"
-"""Under the account home: the open ask, and where a download lands before it is
-verified. Neither is ever in the store."""
 
 DOWNLOAD_CHUNK = 1 << 16
 """How much of a response is read at a time. Small enough that the byte cap is

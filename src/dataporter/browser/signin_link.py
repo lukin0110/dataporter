@@ -120,7 +120,7 @@ def spend(settings: Settings, link: str, *, sink: Sink = DISCARD, flags: Sequenc
                 except BrowserError:
                     if running is None or browser.client.responding():
                         raise
-                    sink.note(WINDOW_CLOSED.format(command=browser_session.status_command(settings)))
+                    sink.note(WINDOW_CLOSED.format(command=browser_session.check_command(settings)))
                     traced.exit_code = ExitCode.FAILED
                     return LoginOutcome(exit_code=ExitCode.FAILED)
                 command = browser_session.login_command(settings)

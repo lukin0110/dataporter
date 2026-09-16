@@ -1,4 +1,4 @@
-"""What `login`, `session status` and `session logout` actually do.
+"""What `login`, `session status` and `logout` actually do.
 
 Everything the three commands know about tabs, waiting and profiles is here, so
 that `12`'s run loop can ask the same questions ("is this session usable?")
@@ -20,7 +20,7 @@ from dataporter.browser import watch as watching
 from dataporter.browser.cdp import CdpClient, Page, Target
 from dataporter.browser.launcher import BrowserSession, PortInUseError
 from dataporter.browser.probe import CLAUDE_HOST, MIGRATION_SITE, NEW_CHAT_URL, PageKind, PageState, probe
-from dataporter.config import Settings
+from dataporter.config import ASK_FILENAME, TMP_DIRNAME, Settings
 from dataporter.console import DISCARD, Sink
 from dataporter.errors import AuthError, BrowserError, UsageError
 from dataporter.exit_codes import ExitCode
@@ -232,33 +232,89 @@ def signed_in(session: BrowserSession, url: str = NEW_CHAT_URL, *, hosts: Sequen
     return current_state(session, url, hosts=hosts).logged_in
 
 
-def remove_profile(settings: Settings) -> bool:
-    """Delete the browser profile. `False` if there was nothing to delete.
+def account_home_of(settings: Settings) -> "Path":
+    """Return the account home a sign-out acts on. `UsageError` when no account was named.
 
-    Local only: nothing is sent to claude.ai, so the *account* is not signed out
-    anywhere else. Refuses while a browser is on the debug port, because deleting
-    the directory under a running Chrome leaves a half-written profile and a
-    browser that still holds the session in memory.
+    The CLI never reaches this: `--account` is required there and click refuses first
+    (§82). The library is a surface of its own (`23`), so it has its own door.
+    """
+    home = settings.account_home
+    if home is None:
+        raise UsageError(NO_ACCOUNT)
+    return home
+
+
+def discard_session(settings: Settings, home: "Path") -> bool:
+    """Delete the session, the open ask and what a fetch staged. `False` if there was none.
+
+    `logs/` is not touched: they are the record of what was done rather than the means of
+    doing it again, and §10 keeps a name, a title and a message out of them (§83). The
+    three that go are named rather than swept for, so that the day an account home grows
+    a fourth, §83 is what decides its fate and not an accident of what is on disk
+    ([ADR 0009](../../../docs/adr/0009-sign-out-keeps-only-the-logs.md)).
+
+    Local only: nothing is sent to the vendor, so the *account* is not signed out
+    anywhere else (§84).
+    """
+    _close_our_window(settings)
+    removed = False
+    for path in (settings.browser_profile_dir, home / ASK_FILENAME, home / TMP_DIRNAME):
+        removed = _remove(path) or removed
+    if removed:
+        _logger.info("session discarded")
+    return removed
+
+
+def _close_our_window(settings: Settings) -> None:
+    """Close the window we opened on this profile; refuse the port to anybody else.
+
+    Deleting a profile under a running Chrome leaves a half-written directory and a
+    browser still holding the session in memory, so this runs before anything is removed
+    (§85) — a refusal that arrived after the ask was gone would be a sign-out that half
+    happened and reported failure.
+
+    `adopt` answers the one question that can be answered: the marker names the browser
+    on the port, so that browser is the window *we* opened on *this* profile, and closing
+    it is what a person signing out meant. Anything else is `PortInUseError` from `adopt`
+    itself, because Chrome does not say which profile it holds and a guess deletes the
+    wrong thing.
+
+    Closing is an ask, not a guarantee. `BrowserSession.close` deliberately sends no
+    signal to an adopted browser — the process belongs to an earlier run and is holding
+    the operator's session — so it waits, warns and returns. Taking that warning for a
+    closed browser would put this command straight back to deleting under a running
+    Chrome, which is the one thing the old blanket refusal got right.
     """
     client = CdpClient(port=settings.browser.cdp_port, timeout=settings.timeouts.cdp_call_s)
+    running = launcher.adopt(client, settings.browser_profile_dir)
+    if running is None:
+        return
+    running.close()
     if client.responding():
         raise PortInUseError(
-            detail=f"a browser is still running on port {settings.browser.cdp_port} — "
-            f"close it, then run session logout again",
+            detail=STILL_RUNNING.format(port=client.port, command=logout_command(settings)),
             transient=False,
         )
-    profile: Path = settings.browser_profile_dir
-    if not profile.exists():
+
+
+def _remove(path: "Path") -> bool:
+    """Delete one file or directory. `False` when it was not there.
+
+    The first `OSError` stops the whole sign-out: a read-only filesystem, a permission
+    the operator can grant, a file another process is holding. All fixable at the
+    keyboard, so this is `StateError` — "the workspace cannot be used as asked", exit
+    `2` — rather than the exit `70` an escaping OSError would earn. What was already
+    removed stays removed, and the command is the same command run twice.
+    """
+    if not path.exists():
         return False
     try:
-        shutil.rmtree(profile)
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
     except OSError as exc:
-        # A read-only filesystem, a permission the operator can grant, a file
-        # another process is holding. All fixable at the keyboard, so this is
-        # `StateError` — "the workspace cannot be used as asked", exit `2` —
-        # rather than the exit `70` an escaping OSError would earn.
-        raise StateError(f"cannot remove {profile}: {exc.strerror or exc}") from exc
-    _logger.info("browser profile removed")
+        raise StateError(f"cannot remove {path}: {exc.strerror or exc}") from exc
     return True
 
 
@@ -269,8 +325,22 @@ def remove_profile(settings: Settings) -> bool:
 LOGIN_PROMPT = "Log in to Claude in the browser window that just opened."
 LOGGED_IN = "Logged in. Session stored in {profile}/."
 LOGIN_TIMED_OUT = "timed out after {seconds:g}s waiting for login"
-REMOVED = "Removed {profile}/."
-NOTHING_TO_REMOVE = "Nothing to remove: {profile}/ does not exist."
+SIGNED_OUT_BLOCK = """\
+{heading}
+Removed {home}/, except its logs.
+"""
+"""§82's first block, golden: the sign-in's mirror, and the directory it emptied."""
+
+NOTHING_TO_REMOVE = "Nothing to remove: {home}/ has no session."
+"""§82's second ending, exit `0`. Sign-out states an end, and this one already held —
+which is also why a mistyped label lands here rather than on an error nobody can register
+an account against."""
+
+NO_ACCOUNT = "logout names a source account; give --account LABEL"
+"""Exit `2` from the library alone (§86, `23`)."""
+
+STILL_RUNNING = "a browser is still running on port {port} — close it, then run: {command}"
+"""Exit `2`: our own window was asked to close and did not. Nothing is removed."""
 
 
 @dataclass(frozen=True)
@@ -290,7 +360,7 @@ class StatusOutcome:
 
 @dataclass(frozen=True)
 class LogoutOutcome:
-    """`session logout`: whether there was a profile to remove."""
+    """`logout`: whether there was anything to remove."""
 
     removed: bool
     exit_code: ExitCode = ExitCode.OK
@@ -489,9 +559,21 @@ def login_command(settings: Settings) -> str:
     return _command(settings, "login")
 
 
-def status_command(settings: Settings) -> str:
-    """Return this invocation's `session status`, with the account's flags as above."""
+def check_command(settings: Settings) -> str:
+    """Return what to run to see whether a sign-in landed, as a person would type it.
+
+    `session status` with the account's flags — or `login`, where there is no account:
+    §86 left the destination without a `session status` to be sent to, and a remedy that
+    cannot be typed is worse than a blunter one that can.
+    """
+    if settings.account is None:
+        return login_command(settings)
     return _command(settings, "session status")
+
+
+def logout_command(settings: Settings) -> str:
+    """Return this invocation's `logout`, with the account's flags as above."""
+    return _command(settings, "logout")
 
 
 def _command(settings: Settings, command: str) -> str:
@@ -519,6 +601,14 @@ def signed_in_block(settings: Settings, session: "Whose | None" = None) -> str:
     session = whose(settings) if session is None else session
     return SIGNED_IN_BLOCK.format(
         heading=_heading(f"Signed in to {session.vendor}", settings), profile=settings.browser_profile_dir
+    )
+
+
+def signed_out_block(settings: Settings, session: "Whose | None" = None) -> str:
+    """Return §82's block for this invocation."""
+    session = whose(settings) if session is None else session
+    return SIGNED_OUT_BLOCK.format(
+        heading=_heading(f"Signed out of {session.vendor}", settings), home=account_home_of(settings)
     )
 
 
@@ -693,13 +783,17 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
 
 
 def logout(settings: Settings, *, sink: Sink = DISCARD) -> LogoutOutcome:
-    """Remove the browser profile.
+    """Sign out: discard the session, the open ask and what a fetch staged (§83).
 
-    Local only, and said so: the account itself is untouched, and a session on another
-    machine is not ended by this.
+    Local only, and said so (§84): the account itself is untouched, and a session on
+    another machine is not ended by this. The account home is resolved before the run log
+    is enabled, so a refusal never leaves a log behind in a workspace it was not about.
     """
+    home = account_home_of(settings)
     log.enable_run_log(settings.logs_dir)
-    removed = remove_profile(settings)
-    profile = settings.browser_profile_dir
-    sink.line(REMOVED.format(profile=profile) if removed else NOTHING_TO_REMOVE.format(profile=profile))
+    removed = discard_session(settings, home)
+    if removed:
+        sink.block(signed_out_block(settings))
+    else:
+        sink.line(NOTHING_TO_REMOVE.format(home=home))
     return LogoutOutcome(removed=removed)

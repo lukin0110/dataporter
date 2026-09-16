@@ -182,7 +182,7 @@ def test_accepted_types_are_normalised(workspace: Path) -> None:
 def test_the_browser_profile_lives_in_the_workspace(workspace: Path) -> None:
     """Not configurable.
 
-    The point of the dedicated profile is that it is ours, and that `session logout`
+    The point of the dedicated profile is that it is ours, and that `logout`
     knows where to find it (§17).
     """
     settings = load_settings()

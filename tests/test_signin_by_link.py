@@ -463,6 +463,29 @@ def test_a_window_that_closes_under_the_link_names_status_rather_than_guessing(
     assert navigations(chrome) == [LINK]
 
 
+def test_a_closed_window_names_a_command_that_can_be_run(
+    runner: CliRunner, chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quick: None
+) -> None:
+    """The same note for the destination, where there is no `session status` to be sent to.
+
+    Brief 08 §86 gave both session commands a required `--account`, so the remedy this
+    note used to name is one click refuses. `login` is blunter and can be typed.
+    """
+    adoptable(chrome, make_settings(tmp_path, chrome.port), monkeypatch)
+    page_of(chrome).stage = "link_sent"
+
+    def responder(_chrome: FakeChrome, call: Call) -> None:
+        if call.method == "Page.navigate":
+            chrome.stop_http()
+
+    chrome.responder = responder
+
+    result = runner.invoke(cli.app, ["login", "--link", LINK], catch_exceptions=False)
+
+    assert result.exit_code == ExitCode.FAILED
+    assert result.stderr.endswith("check with: dataporter login\n")
+
+
 def test_a_code_prompt_on_a_login_path_of_its_own_is_still_a_code_prompt(
     runner: CliRunner, chrome: FakeChrome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quick: None
 ) -> None:

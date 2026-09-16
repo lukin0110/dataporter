@@ -2,7 +2,7 @@
 
 The profile is the point. Chrome runs with `--user-data-dir` inside the
 workspace, so the destination account's session lives in a directory we created,
-that `session logout` can delete, and that has nothing to do with the browser the
+that `logout` can delete, and that has nothing to do with the browser the
 operator reads mail in. That is what makes §17's promise keepable — the source
 account's cookies are never in the browser Hermes drives — and it sidesteps
 Chrome 136+, which refuses to open a debug port on the default profile.
@@ -92,7 +92,7 @@ class PortInUseError(BrowserError):
     """The debug port is occupied by a browser this tool must not touch.
 
     Raised when the port answers and the browser on it is not the one we
-    launched, and when `session logout` finds a browser running over the profile
+    launched, and when `logout` finds a browser running over the profile
     it was asked to delete. Its own class because it is the one browser failure
     that is a usage error (exit `2`) rather than an environment one (exit `6`):
     nothing is missing, the operator just has something in the way.
