@@ -243,7 +243,7 @@ def test_the_wait_opens_no_tab_while_the_link_hops_through_another_host(
         target.url = NEW_URL
 
     threading.Timer(0.05, land).start()
-    arrival = browser_session.await_signin(session, timeout_s=5.0, hosts=("claude.ai",), poll_s=0.01)
+    arrival = browser_session.await_signin(session, timeout_s=5.0, origins=("https://claude.ai",), poll_s=0.01)
 
     assert arrival is browser_session.Arrival.SIGNED_IN
     assert "Target.createTarget" not in chrome.methods()

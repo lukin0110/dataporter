@@ -239,7 +239,7 @@ def test_a_real_form_is_filled_and_lands_on_new(
     session, server = live
     visit(session, server.url("/login/form"))
     surface = login_form.Surface(
-        host="127.0.0.1",
+        origin=f"http://127.0.0.1:{server.port}",
         allowed=re.compile(r"^http://127\.0\.0\.1:\d+/(login(/.*)?|new)$"),
     )
     result = login_form.fill_and_submit(session, CREDENTIALS, timeout_s=10.0, surface=surface)

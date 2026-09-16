@@ -328,7 +328,7 @@ SEEDED = (
 
 def _fixture_surface(server: PageServer) -> helpers.Surface:
     return helpers.Surface(
-        host="127.0.0.1",
+        origin=f"http://127.0.0.1:{server.port}",
         allowed=re.compile(rf"^http://127\.0\.0\.1:{server.port}/leaky(\?.*)?$"),
         site=Site("claude", "127.0.0.1", probe.SELECTORS),
     )

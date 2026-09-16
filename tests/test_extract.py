@@ -30,7 +30,7 @@ import pytest
 from orval import pretty_bytes
 from typer.testing import CliRunner
 
-from dataporter import cli, extract, log, sources, store
+from dataporter import cli, extract, links, log, sources, store
 from dataporter.config import Settings, load_settings, with_account, with_store_dir
 from dataporter.console import Collected
 from dataporter.errors import FetchError, NetworkError, StoreError, UsageError
@@ -473,8 +473,12 @@ def test_the_real_opener_streams_a_served_archive(
     chunks, a timeout that is per read — and
     `test_a_link_that_is_not_https_is_refused_before_any_request` is what proves
     the rule this stands down.
+
+    Patched on `links` and not on `extract`: since `65` the check is
+    `links.is_followable`, and `extract.LINK_SCHEME` is a re-export nothing reads.
+    Patching the re-export was a no-op that let the refusal through.
     """
-    monkeypatch.setattr(extract, "LINK_SCHEME", "http")
+    monkeypatch.setattr(links, "LINK_SCHEME", "http")
     outcome = extract.fetch(settings, served)
 
     assert outcome.path is not None
