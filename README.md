@@ -311,10 +311,11 @@ dp.extract_skills("work")               # the skills an export does not carry
 | `extract_skills(account, stamp=None)` | Collect the skills the account wrote. `stamp` files them beside an existing snapshot. |
 | `doctor()` | Check Hermes, Chrome, the profile and the pacing. `exit_code` is `6` when a check failed. |
 
-Every method takes `source=` to name the vendor (`claude` unless you say otherwise) and
-`sink=` to say where the lines go. Each returns the same frozen outcome the command line
-acts on, with an `exit_code` and the facts the command printed. Five things are worth
-knowing before the first call:
+Every method takes `sink=` to say where the lines go. Every method above `doctor` also
+takes `source=` to name the vendor (`claude` unless you say otherwise); `doctor` is about
+the environment rather than an account, so it takes neither that nor a label. Each returns
+the same frozen outcome the command line acts on, with an `exit_code` and the facts the
+command printed. Five things are worth knowing before the first call:
 
 - **Pass `workspace=` or `store=` if the defaults are wrong for you.** They are `./migration`
   and `~/.dataporter/store`, relative to whatever process is calling.
