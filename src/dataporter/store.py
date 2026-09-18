@@ -86,6 +86,17 @@ SNAPSHOT_FILES = (ARCHIVE_NAME, MANIFEST_NAME, COMPLETE_NAME)
 A snapshot of a vendor that served several files has those beside them, named as
 the vendor named them and listed in the manifest's `parts`."""
 
+APPENDING_NAME = "APPENDING"
+"""The lock an append holds while a snapshot grows (`66`, ADR 0011): zero
+bytes, created `O_CREAT | O_EXCL` before anything else and removed last, so of
+two appends to one stamp exactly one gets in and the other is refused before it
+has read, checked or taken anything down. An `unlink` was tried as the lock
+first and is not one: measured on macOS 26 (APFS), two threads unlinking one
+file *both* returned success. `O_EXCL` is what every other file in the store
+already trusts, and it holds here. A crash leaves it behind, beside a marker
+that is also gone — an unfinished snapshot, which `_existing` refuses anyway.
+(Raised by Copilot in review on #64.)"""
+
 SKILLS_DIRNAME = "skills"
 SKILL_SUFFIX = ".skill"
 """Where a snapshot keeps the skills the account wrote, one file each, as the
@@ -106,6 +117,7 @@ export is not read into memory to be filed."""
 
 SNAPSHOT_EXISTS = "snapshot already exists: {path}"
 SNAPSHOT_UNFINISHED = "snapshot is unfinished, so nothing can be added to it: {path}"
+APPEND_UNDER_WAY = "another extract-skills is adding to this snapshot: {path}"
 STORE_UNWRITABLE = "cannot write to the store ({reason}): {path}"
 COPY_MISMATCH = "the copy in the store does not match what was downloaded; remove it and try again: {path}"
 WORKSPACE_IN_SNAPSHOT = "the workspace cannot be inside a snapshot: {path}"
@@ -327,11 +339,14 @@ class SnapshotRow(StoreModel):
     """How many skills the snapshot holds (`66`); `None` for one that holds no
     `skills` key, which is every manifest written before there were any."""
     archived: bool = True
-    """Whether the manifest names an archive. `False` only for a snapshot of the
-    skills alone (`66`), and the one fact that decides what the count column
-    counts: an archive of no conversations is still an archive, and a row that
-    read the count instead would call it `3 skills`. (Raised by Copilot in
-    review on #64.)"""
+    """Whether the snapshot holds an archive: every origin but `skills` does.
+    `False` only for a snapshot of the skills alone (`66`), and the one fact
+    that decides what the count column counts — never the count: an archive of
+    no conversations is still an archive, and a snapshot of the skills alone
+    whose every skill was refused still counts skills, and says `0 skills`
+    beside its gap. Read off the origin rather than off the archive's digest,
+    which is a fact about how it came to be and not about what a writer chose
+    to record. (Raised by Copilot in review on #64, twice.)"""
 
     @property
     def label(self) -> str:
@@ -340,13 +355,13 @@ class SnapshotRow(StoreModel):
     @property
     def unit(self) -> str:
         """What the count column counts: conversations, or skills for a snapshot with no archive."""
-        return SKILLS_UNIT if not self.archived and self.skills else CONVERSATIONS_UNIT
+        return CONVERSATIONS_UNIT if self.archived else SKILLS_UNIT
 
     @property
     def count(self) -> str:
-        if self.conversations is None:
-            return UNKNOWN_COUNT
-        return f"{self.skills}" if self.unit == SKILLS_UNIT else f"{self.conversations}"
+        if self.unit == SKILLS_UNIT:
+            return f"{self.skills or 0}"
+        return UNKNOWN_COUNT if self.conversations is None else f"{self.conversations}"
 
     @property
     def note(self) -> str:
@@ -510,21 +525,35 @@ class Store:
         told the snapshot is finished and be wrong. That is the same promise
         `file_archive` keeps by writing the marker after the fsync, made twice.
 
+        One append at a time, and `APPENDING` is how: created exclusively
+        before the manifest is read, so a second append is refused before it
+        has read, checked or taken anything down — and cannot pull the marker
+        out from under a winner that has since put it back. Released last, and
+        on every way out. (Raised by Copilot in review on #64.)
+
         A stamp that does not exist is created, and its manifest holds an empty
         `archive`: a snapshot of the skills alone (brief `09` §91), which
         `rows()` reads as complete rather than as unreadable.
         """
         directory = self.directory(filing.source, filing.account, filing.stamp)
-        skills_dir = directory / SKILLS_DIRNAME
-        existing = self._existing(directory)
-        for staged in filing.skills:
-            target = skills_dir / staged.filename
-            if target.exists():
-                raise StoreError(SNAPSHOT_EXISTS.format(path=target))
-        if existing is None:
+        if not directory.exists():
             self._make_directory(directory)
-        else:
-            _remove(directory / COMPLETE_NAME)
+            return self._append(directory, filing, existing=None)
+        _lock_append(directory / APPENDING_NAME)
+        try:
+            return self._append(directory, filing, existing=self._existing(directory))
+        finally:
+            (directory / APPENDING_NAME).unlink(missing_ok=True)
+
+    def _append(self, directory: Path, filing: SkillsFiling, *, existing: Snapshot | None) -> tuple[Path, Snapshot]:
+        """Add the skills to `directory`, which is this append's alone: fresh, or locked."""
+        skills_dir = directory / SKILLS_DIRNAME
+        if existing is not None:
+            for staged in filing.skills:
+                target = skills_dir / staged.filename
+                if target.exists():
+                    raise StoreError(SNAPSHOT_EXISTS.format(path=target))
+            _take_down(directory / COMPLETE_NAME)
         try:
             skills_dir.mkdir(exist_ok=True)
         except OSError as exc:
@@ -581,6 +610,9 @@ class Store:
         that never finished, and either way not one to add to: what its manifest
         names is not yet a promise. A directory with a marker and no readable
         manifest is worse — nothing can be added to a description nobody can read.
+
+        A reading, made under `APPENDING`, which is what decides between two
+        appends that would otherwise both read the same finished snapshot.
         """
         if not directory.exists():
             return None
@@ -649,7 +681,7 @@ class Store:
                 stamp=directory.name,
                 state=INCOMPLETE,
                 conversations=None if snapshot is None else snapshot.counts.conversations,
-                archived=snapshot is None or bool(snapshot.archive.sha256),
+                archived=snapshot is None or snapshot.origin != "skills",
             )
         if snapshot is None:
             return SnapshotRow(source=source, account=account, stamp=directory.name, state=UNREADABLE)
@@ -661,7 +693,7 @@ class Store:
             conversations=snapshot.counts.conversations,
             gaps=snapshot.gap_count,
             skills=snapshot.counts.skills,
-            archived=bool(snapshot.archive.sha256),
+            archived=snapshot.origin != "skills",
         )
 
 
@@ -717,10 +749,27 @@ def _rewrite(path: Path, data: bytes) -> None:
         raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
 
 
-def _remove(path: Path) -> None:
-    """Take a marker down. Only ever `COMPLETE`, and only for the length of an append."""
+def _lock_append(path: Path) -> None:
+    """Create `APPENDING` exclusively, or be refused: the one append at a time (ADR 0011)."""
+    try:
+        os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, SNAPSHOT_MODE))
+    except FileExistsError as exc:
+        raise StoreError(APPEND_UNDER_WAY.format(path=path.parent)) from exc
+    except OSError as exc:
+        raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
+
+
+def _take_down(path: Path) -> None:
+    """Take the marker down. Only ever `COMPLETE`, only under `APPENDING`, and only for the length of an append.
+
+    Not a lock — see `APPENDING_NAME` for the measurement that says why — but
+    still refused when the marker is already gone: `_existing` checked it a
+    moment ago, so a marker missing now is a snapshot something else unfinished.
+    """
     try:
         path.unlink()
+    except FileNotFoundError as exc:
+        raise StoreError(SNAPSHOT_UNFINISHED.format(path=path.parent)) from exc
     except OSError as exc:
         raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
 

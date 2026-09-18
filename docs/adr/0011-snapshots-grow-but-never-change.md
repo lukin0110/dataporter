@@ -22,6 +22,17 @@ Nothing here renames, nothing moves, and no file is appended to in the byte sens
 manifest rewritten in full is a `PUT` to the same key, which is the one write an object
 store does best. What the rule was protecting is not what this gives up.
 
+One append at a time, and a file says so: `APPENDING`, zero bytes, created
+`O_CREAT | O_EXCL` before the manifest is read and removed last, on every way out.
+Of two appends to one stamp, exactly one gets in and the other is refused before it
+has read, checked or taken anything down — so a loser can never pull the marker out
+from under a winner that has since put it back. The lock is a created file and not
+an unlinked one on purpose: taking `COMPLETE` down *was* the lock in the first cut,
+and on macOS 26 (APFS) two threads unlinking one file both returned success, so it
+locked nothing. `O_EXCL` is what every other file in the store already trusts, and
+the append trusts the same thing. A crash leaves `APPENDING` behind beside a marker
+that is also gone, which is an unfinished snapshot and refused as one.
+
 What it does give up is the promise that a snapshot read twice reads the same. A reader
 that saw a snapshot before its skills arrived and cached the manifest now holds a stale one.
 That is accepted because the store has exactly one reader today — `Store.rows()`, which

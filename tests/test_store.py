@@ -10,6 +10,7 @@ what is on disk and in what order it got there, and the one golden string is the
 import hashlib
 import json
 import os
+import threading
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -648,7 +649,15 @@ def test_a_manifest_that_cannot_be_rewritten_or_a_marker_that_will_not_come_down
 
     monkeypatch.setattr(Path, "unlink", stuck)
     with pytest.raises(StoreError, match="Operation not permitted"):
-        store._remove(tmp_path / "COMPLETE")
+        store._take_down(tmp_path / "COMPLETE")
+
+
+def test_a_marker_already_gone_is_refused_as_unfinished(tmp_path: Path) -> None:
+    """`_take_down` is not the lock, and still refuses a marker that is gone: something else left the snapshot unfinished."""
+    with pytest.raises(StoreError) as raised:
+        store._take_down(tmp_path / "stamp" / store.COMPLETE_NAME)
+
+    assert str(raised.value) == f"snapshot is unfinished, so nothing can be added to it: {tmp_path / 'stamp'}"
 
 
 def test_a_skills_directory_that_cannot_be_made_is_a_store_error(tmp_path: Path) -> None:
@@ -691,3 +700,111 @@ def test_an_archive_of_no_conversations_with_skills_still_counts_conversations(t
         (True, 0, 2, "conversations", "0")
     ]
     assert store.listing(rows) == "claude/old-personal   2026-09-12T20-51-07Z   0 conversations   complete\n"
+
+
+def test_two_appends_at_once_leave_one_finished_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two appends to one stamp at once: one holds `APPENDING`, the other is refused before it reads a thing.
+
+    The gate inside the lock is reached by both — the loser on its way out
+    with its refusal, the winner having created the lock — so both have tried
+    before either goes on, which is the interleaving that used to leave a
+    winner's snapshot marked unfinished. `unlink` cannot be the lock: two
+    threads unlinking one file both succeed on this platform, which is how
+    the first version of this test failed. Whichever wins, the marker is back
+    at the end and the manifest names exactly what is on disk. (Raised by
+    Copilot in review on #64.)
+    """
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, _ = store.Store(root).file_archive(path, filing(path))
+    tried = threading.Barrier(2, timeout=10)
+    original_lock = store._lock_append
+
+    def both_try_before_either_goes_on(lock: Path) -> None:
+        try:
+            original_lock(lock)
+        finally:
+            tried.wait()
+
+    monkeypatch.setattr(store, "_lock_append", both_try_before_either_goes_on)
+    outcomes: dict[str, str] = {}
+
+    def append(name: str) -> None:
+        try:
+            store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, name)))
+            outcomes[name] = "filed"
+        except StoreError as exc:
+            outcomes[name] = str(exc)
+
+    workers = [threading.Thread(target=append, args=(name,)) for name in ("a", "b")]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    filed = sorted(name for name, outcome in outcomes.items() if outcome == "filed")
+    assert filed in (["a"], ["b"])
+    loser = next(outcome for outcome in outcomes.values() if outcome != "filed")
+    assert loser == f"another extract-skills is adding to this snapshot: {directory}"
+    assert (directory / store.COMPLETE_NAME).exists()
+    assert not (directory / store.APPENDING_NAME).exists()
+    manifest = store.read_manifest(directory / store.MANIFEST_NAME)
+    assert manifest is not None
+    assert [skill.filename for skill in manifest.skills] == [f"{filed[0]}.skill"]
+    assert sorted(item.name for item in (directory / store.SKILLS_DIRNAME).iterdir()) == [f"{filed[0]}.skill"]
+
+
+def test_a_lock_left_behind_refuses_the_next_append_and_touches_nothing(tmp_path: Path) -> None:
+    """A crash mid-append leaves `APPENDING`; the next append is refused, and the marker is not touched."""
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, _ = store.Store(root).file_archive(path, filing(path))
+    (directory / store.APPENDING_NAME).write_bytes(b"")
+
+    with pytest.raises(StoreError) as raised:
+        store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    assert str(raised.value) == f"another extract-skills is adding to this snapshot: {directory}"
+    assert (directory / store.COMPLETE_NAME).exists()
+    assert not (directory / store.SKILLS_DIRNAME).exists()
+
+
+def test_a_refused_append_leaves_the_marker_and_the_lock_as_it_found_them(tmp_path: Path) -> None:
+    """A target already there is found under the lock and before the take-down: nothing is touched, the lock released."""
+    root = tmp_path / "store"
+    directory, _ = store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    with pytest.raises(StoreError, match="already exists"):
+        store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    assert (directory / store.COMPLETE_NAME).exists()
+    assert not (directory / store.APPENDING_NAME).exists()
+    assert store.Store(root).rows()[0].state == "complete"
+
+
+def test_a_snapshot_of_the_skills_alone_with_none_filed_still_counts_skills(tmp_path: Path) -> None:
+    """Every skill refused: the row says `0 skills` beside its gap, because the unit is the archive's absence, not a count."""
+    root = tmp_path / "store"
+    gap = store.Gap(kind="skill_not_downloaded", count=3, reason="skills could not be downloaded")
+    store.Store(root).file_skills(
+        store.SkillsFiling(source="claude", account="old-personal", stamp=STAMP, skills=(), gaps=(gap,))
+    )
+
+    rows = store.Store(root).rows()
+    assert [(row.archived, row.skills, row.unit, row.count, row.note) for row in rows] == [
+        (False, 0, "skills", "0", "3 gaps")
+    ]
+    assert store.listing(rows) == "claude/old-personal   2026-09-12T20-51-07Z   0 skills   3 gaps\n"
+
+
+def test_a_snapshot_of_the_skills_alone_is_not_one_to_import(
+    runner: CliRunner, workspace: Path, tmp_path: Path
+) -> None:
+    """`inspect` and `import` read a snapshot as the export inside it, and this one has none (`66`)."""
+    root = tmp_path / "store"
+    directory, _ = store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    result = runner.invoke(cli.app, ["inspect", str(directory)], catch_exceptions=False)
+
+    assert result.exit_code == ExitCode.USAGE
+    assert result.stderr == f"error: snapshot holds skills and no archive, so there is nothing to import: {directory}\n"

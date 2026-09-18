@@ -99,13 +99,17 @@ nothing in the source account. The mock's side of it, and the rehearsal, are [`6
   `sign_in_to_source`, `digest_of` — and `export_page.bring_to_export_page` with them,
   because `ruff`'s `PLC2701` refuses an underscored import across modules and a second
   spelling of any of them would be a second thing to keep in step.
-- **Filing.** A new `Store` method files the skills directory: create
-  `<stamp>/skills/`, copy each staged file in as `<name>.skill` with `SNAPSHOT_MODE`,
-  rewrite `snapshot.json`, then re-write `COMPLETE` last — the same order as
-  `file_archive`, for the same reason. It **refuses** if a target file exists rather than
-  replacing it, and it never touches `export.zip`, `parts` or `export_fingerprint`. On a
-  stamp that does not exist it creates the directory and writes a manifest whose `archive`
-  is empty, so `Store.rows()` reads it as a complete snapshot rather than an unreadable one.
+- **Filing.** A new `Store` method files the skills directory: take the append's lock —
+  `APPENDING`, created `O_CREAT | O_EXCL`, so a second append to the same stamp is
+  refused before it reads a thing — then read the manifest, refuse if a target file
+  exists, take `COMPLETE` down, copy each staged file in as `<name>.skill` with
+  `SNAPSHOT_MODE`, rewrite `snapshot.json`, re-write `COMPLETE`, and release the lock last
+  and on every way out — the same order as `file_archive`, for the same reason. It never
+  touches `export.zip`, `parts` or `export_fingerprint`. On a stamp that does not exist it
+  creates the directory — its own atomic lock — and writes a manifest whose `archive` is
+  empty, so `Store.rows()` reads it as a complete snapshot rather than an unreadable one.
+  Not `unlink` as the lock: measured on macOS, two unlinks of one file both succeed
+  (ADR 0011).
 - **Filenames**: `<name>.skill`, where `name` is the listing's, which the vendor already
   constrains to lowercase letters, numbers and hyphens. Anything outside that set is slugged;
   a collision takes `-1`, `-2`, `-3` in listing order. `allowAndName` means the vendor's
