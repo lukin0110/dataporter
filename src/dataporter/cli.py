@@ -30,6 +30,7 @@ from typer.core import TyperGroup
 
 from dataporter import PROGRAM_NAME, console, log
 from dataporter import extract as extracting
+from dataporter import extract_skills as skills_extracting
 from dataporter import followup as following
 from dataporter import importer as importing
 from dataporter import judge as judging
@@ -526,6 +527,18 @@ does not guess whose account it is looking at. §35 had the session commands mea
 the destination when the option was absent; brief 08 §86 ends that, and `login` is the
 one command left where its absence still means the destination."""
 
+Stamp = Annotated[
+    str | None,
+    typer.Option(
+        "--stamp",
+        metavar="STAMP",
+        help="File the skills under this snapshot, beside its archive. Defaults to a snapshot of their own, now.",
+    ),
+]
+"""`66`'s one flag. A stamp and nothing else — `store.parse_stamp` is what
+checks it, in the library — so that the value is a directory name the store
+already orders by, and `../..` is refused for not being a moment."""
+
 AttachmentsDir = Annotated[
     Path | None,
     typer.Option(
@@ -737,6 +750,28 @@ def extract(
         extracting.extract_command(
             with_account(with_store_dir(context.settings, store), source, account),
             extracting.ExtractRequest(link=link, from_path=from_path, abandon=abandon),
+            sink=console.Terminal(),
+            flags=given_flags(ctx),
+            quiet=context.quiet,
+        )
+    )
+
+
+@app.command("extract-skills")
+def extract_skills(
+    ctx: typer.Context,
+    account: Account,
+    source: Source = None,
+    *,
+    stamp: Stamp = None,
+    store: StoreDir = None,
+) -> None:
+    """Collect the skills the account wrote and file them beside its archive."""
+    context = app_context(ctx)
+    finish(
+        skills_extracting.extract_skills_command(
+            with_account(with_store_dir(context.settings, store), source, account),
+            skills_extracting.SkillsRequest(stamp=stamp),
             sink=console.Terminal(),
             flags=given_flags(ctx),
             quiet=context.quiet,

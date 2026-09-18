@@ -8,6 +8,7 @@ and compared byte for byte with what the seam now derives from `CLAUDE`.
 import re
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -104,7 +105,8 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     """Two regular expressions, byte for byte, because a wall is easier to trust when it is one line long."""
     assert export_page.EXTRACTION_SURFACE.allowed.pattern == (
         r"^https://claude\.ai/(login(/.*)?|magic-link(/.*)?"
-        r"|new(\?[^#]*)?\#settings/data\-privacy\-controls(/.*)?)(\?.*)?$"
+        r"|new(\?[^#]*)?\#settings/data\-privacy\-controls(/.*)?"
+        r"|api/organizations/[0-9a-f-]{36}/skills/download\-dot\-skill\-file)(\?.*)?$"
     )
     assert login_form.LOGIN_SURFACE.allowed.pattern == (
         r"^https://claude\.ai/(login(/.*)?|magic-link(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
@@ -122,8 +124,43 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/other")
     # The export is a subtree: the panel, and the screen the button that asks is on.
     assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/data-privacy-controls/export-data")
+    # `66`'s third door: the address one skill is served from, with its query —
+    # and only that. The list is read in the page and never navigated to, and
+    # the page the skills are listed on is not admitted at all (§46).
+    org = "ccbfbca0-c0b7-4421-835e-1dbaeacc6b29"
+    assert export_page.EXTRACTION_SURFACE.permits(
+        f"https://claude.ai/api/organizations/{org}/skills/download-dot-skill-file?skill_id=skill_01x"
+    )
+    assert not export_page.EXTRACTION_SURFACE.permits(f"https://claude.ai/api/organizations/{org}/skills/list-skills")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/api/organizations")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/customize/skills/mine")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/customize/skills/discover")
+    assert not login_form.LOGIN_SURFACE.permits(
+        f"https://claude.ai/api/organizations/{org}/skills/download-dot-skill-file?skill_id=skill_01x"
+    )
+    # A skill id is the vendor's string: an `&`, `#` or `/` in it is percent-encoded
+    # into the query, so it cannot open a second parameter, a fragment or a segment,
+    # and the wall still admits the one door. (Raised by Copilot in review on #64.)
+    hostile = sites.skills_download_url(CLAUDE, org, "a&b#c/d e")
+    assert hostile.endswith("/skills/download-dot-skill-file?skill_id=a%26b%23c%2Fd%20e")
+    assert export_page.EXTRACTION_SURFACE.permits(hostile)
+    assert sites.skills_list_url(CLAUDE, "o/r#g") == "https://claude.ai/api/organizations/o%2Fr%23g/skills/list-skills"
     assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
     assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
+
+
+def test_a_source_has_skills_only_with_all_three_addresses() -> None:
+    """`has_skills` gates the command, and a source missing the organisations read is not skilled.
+
+    All three, because the organisations read comes first and a source with the
+    list and download alone would pass the check and then read the origin root.
+    (Raised by Copilot in review on #64.)
+    """
+    assert CLAUDE.has_skills
+    assert not CHATGPT.has_skills
+    assert not replace(CLAUDE, organizations_path="").has_skills
+    assert not replace(CLAUDE, skills_list_path="").has_skills
+    assert not replace(CLAUDE, skills_download_path="").has_skills
 
 
 def test_the_ask_block_s_words_are_the_source_s() -> None:

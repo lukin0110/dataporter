@@ -20,6 +20,7 @@ from typer.testing import CliRunner
 
 from dataporter import cli, console
 from dataporter import extract as extracting
+from dataporter import extract_skills as skills_extracting
 from dataporter import importer as importing
 from dataporter import report as reporting
 from dataporter import seed as seeding
@@ -39,6 +40,8 @@ from dataporter.config import (
 from dataporter.exit_codes import ExitCode
 from dataporter.state import Status
 from fake_export_page import FakeExportPage, browser
+from fake_skills_page import FakeSkillsPage, entry
+from fake_skills_page import browser as skills_browser
 from world import FIRST, World, cli_env
 
 
@@ -208,6 +211,44 @@ def test_extract_the_ask_is_the_same_through_the_library(
 
     assert (outcome.exit_code, sink.stderr) == (code, err)
     assert without_account(sink.stdout, "library") == without_account(out, "cli")
+
+
+@pytest.mark.slow
+def test_extract_skills_is_the_same_through_the_library(
+    runner: CliRunner,
+    workspace: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`66`, twice: once as a call and once as a command, two browsers and two stores.
+
+    Two stores, as `extract --from` needs, because the second run would otherwise
+    land in the first one's stamp; two accounts, so the label is the one byte the
+    blocks differ by beside the moment.
+    """
+    page = FakeSkillsPage(entries=[entry("skill_01a", "research-helper")], bodies={"skill_01a": b"PK\x03\x04 one"})
+    with skills_browser(page) as chrome:
+        monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
+        settings = with_store_dir(ask_settings(tmp_path, chrome.port, "library"), tmp_path / "store-library")
+        fake_launch(monkeypatch, chrome.port)
+        sink = console.Collected()
+        outcome = skills_extracting.extract_skills_command(settings, skills_extracting.SkillsRequest(), sink=sink)
+
+    page = FakeSkillsPage(entries=[entry("skill_01a", "research-helper")], bodies={"skill_01a": b"PK\x03\x04 one"})
+    with skills_browser(page, port=chrome.port) as second:
+        fake_launch(monkeypatch, second.port)
+        code, out, err = invoke(runner, "extract-skills", "--account", "cli", "--store", str(tmp_path / "store-cli"))
+
+    assert (outcome.exit_code, sink.stderr) == (code, err)
+    assert without_seconds(blanked(without_account(sink.stdout, "library"), tmp_path)) == without_seconds(
+        blanked(without_account(out, "cli"), tmp_path)
+    )
+    assert outcome.skills == 1
+
+
+def without_seconds(text: str) -> str:
+    """Return a skills block with its duration taken out: two runs are two clocks."""
+    return re.sub(r" in \d+s\.", " in <took>.", text)
 
 
 def ask_settings(tmp_path: Path, port: int, account: str) -> Settings:

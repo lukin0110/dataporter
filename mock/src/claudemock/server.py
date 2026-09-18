@@ -51,7 +51,7 @@ from mockcore.wire import (
 from pydantic import BaseModel
 
 from claudemock import archive, pages
-from claudemock.site import SIGN_IN_LINK_PATH, Chat, SignInLink, Site
+from claudemock.site import SIGN_IN_LINK_PATH, Chat, SignInLink, Site, Skill
 
 if TYPE_CHECKING:
     from mockcore.sessions import Pending
@@ -87,6 +87,18 @@ def attachment(filename: str) -> dict[str, str]:
     return {"Content-Disposition": f'attachment; filename="{filename}"'}
 
 
+ORGANIZATIONS_PATH = "/api/organizations"
+SKILLS_LIST_PATH = "/api/organizations/{org}/skills/list-skills"
+SKILL_DOWNLOAD_PATH = "/api/organizations/{org}/skills/download-dot-skill-file"
+SKILLS_JSON_PATH = "/__mock/skills.json"
+"""The three addresses a skills extraction reads (`67`; the tool's `skills list`
+and `skill download` rows), re-typed rather than imported (ADR 0003), and the
+witness that lists what was served. All three site routes want the session, as
+the real ones do; the download names its skill in the query, as the real one
+does, and is served as a zip with the header that makes it a download."""
+
+ORGANISATION_NAME = "Mock organisation"
+
 REFUSED = "Those details do not match an account here."
 NO_CODE = "That code was not accepted."
 """What the code field answers to anything typed into it: the mock mints no
@@ -99,6 +111,26 @@ class MessageIn(BaseModel):
 
 class TitleIn(BaseModel):
     title: str = ""
+
+
+def skill_json(skill: Skill) -> dict[str, Any]:
+    """Return one listing entry in the vendor's shape, fields the tool ignores included.
+
+    The description and the display name are here so that a rehearsal can prove
+    they never leave the page: the tool keeps five fields and the snapshot's
+    manifest carries the name alone.
+    """
+    return {
+        "id": skill.id,
+        "name": skill.name,
+        "display_name": skill.display_name,
+        "description": skill.description,
+        "creator_type": skill.creator_type,
+        "enabled": skill.enabled,
+        "backing_plugin_id": skill.plugin_id,
+        "source": "plugin" if skill.plugin_id else "user",
+        "is_shared": False,
+    }
 
 
 def chat_json(chat: Chat, now: float) -> dict[str, Any]:
@@ -378,6 +410,51 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
         link = link_of(export)
         announce(link)
         return JSONResponse({"ok": True, "link": link}, status_code=HTTPStatus.ACCEPTED)
+
+    # -- the account's skills (`67`) ---------------------------------------- #
+
+    @app.get(ORGANIZATIONS_PATH)
+    def organisations(_session: Session) -> Response:
+        """List the one organisation the account belongs to: its uuid is what every skills address hangs under."""
+        return JSONResponse([{"uuid": site.org_uuid, "name": ORGANISATION_NAME}])
+
+    @app.get(SKILLS_LIST_PATH)
+    def list_skills(_session: Session, org: str) -> Response:
+        """List every skill the account holds, ours or not, in the vendor's shape (`skills list`)."""
+        if org != site.org_uuid:
+            return not_found()
+        return JSONResponse({"skills": [skill_json(skill) for skill in site.list_skills()]})
+
+    @app.get(SKILL_DOWNLOAD_PATH)
+    def download_skill(_session: Session, org: str, skill_id: str = "") -> Response:
+        """Serve one skill's file as a download (`skill download`), or refuse the one that is broken.
+
+        `500` for the refused one rather than a hang: a route that never answers
+        would hold a worker for the length of the tool's idle budget, and what
+        §93 asks is that *a* failure be a gap, not that every failure be.
+        """
+        if org != site.org_uuid:
+            return not_found()
+        skill = site.serve_skill(skill_id)
+        if skill is None:
+            return not_found()
+        if skill.refused:
+            return JSONResponse({"error": "internal"}, status_code=HTTPStatus.INTERNAL_SERVER_ERROR)
+        return Response(archive.skill_file(skill), media_type="application/zip", headers=attachment(skill.filename))
+
+    @app.get(SKILLS_JSON_PATH)
+    def skills_json() -> list[dict[str, Any]]:
+        """Return what the account holds and how often each file went out: the witness's half, behind no session."""
+        return [
+            {
+                "id": skill.id,
+                "name": skill.name,
+                "creator_type": skill.creator_type,
+                "refused": skill.refused,
+                "served": skill.served,
+            }
+            for skill in site.skills()
+        ]
 
     @app.post("/api/uploads")
     async def upload(session: Session, request: Request) -> Response:

@@ -60,6 +60,12 @@ ROWS: Mapping[str, str] = {
     "export toast": "export requested",
     # a sign-in that lapses while a run is under way
     "involuntary sign-out": "involuntary sign-out",
+    # the account's own skills (`66`, `67`)
+    "organisations": "skills list",
+    "skills list": "skills list",
+    "skill authorship": "skill authorship",
+    "skill download": "skill download",
+    "skill name": "skill name",
 }
 """Each thing the mock can show, and the row of the map it comes from.
 
@@ -169,6 +175,32 @@ WHAT_THE_MOCK_DOES: Mapping[str, str] = {
         "/login?from&reauth&returnTo — two hops, as observed. Only a POST to the "
         "witness (/__mock/expire-session) can cause it: nothing the tool drives "
         "can, because an expiry is something that happens to a run"
+    ),
+    "skills list": (
+        "GET /api/organizations answers one organisation with a uuid the site "
+        "mints; GET /api/organizations/<org>/skills/list-skills answers "
+        '{"skills": [...]} in the vendor\'s shape, six entries seeded as a mix — '
+        "four the account wrote, one of Anthropic's, one nobody's — each read "
+        "counted as `skills_listed`. Both want the session"
+    ),
+    "skill authorship": (
+        "`creator_type` is `user`, `anthropic` or `organization`; the `user` "
+        "ones include one switched off and one inside a plugin, so a rehearsal "
+        "can prove both are filed, and the third value is one the tool does not "
+        "know, so it can prove that one is not"
+    ),
+    "skill download": (
+        "GET /api/organizations/<org>/skills/download-dot-skill-file?skill_id=… "
+        "answers a zip holding SKILL.md as application/zip with a "
+        "Content-Disposition attachment named <name>.skill, counted as "
+        "`skills_served`; one seeded skill answers 500 instead, so that the "
+        "tool's gap is a served failure and not a fake's. /__mock/skills.json "
+        "lists what was served, for the reconciliation"
+    ),
+    "skill name": (
+        "every seeded name is lowercase letters and hyphens, the rule the real "
+        "dialog states; the mock enforces nothing, because a rehearsal never "
+        "creates one"
     ),
 }
 """What the mock does for each row, in one line.

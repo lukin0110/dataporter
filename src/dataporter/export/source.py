@@ -71,6 +71,10 @@ NOT_IMPORTABLE = (
     "{what} cannot be imported by this build ({display}); "
     "a snapshot of a source the tool cannot import is still a backup (ADR 0005)"
 )
+NO_ARCHIVE = "snapshot holds skills and no archive, so there is nothing to import: {display}"
+"""A snapshot of the skills alone (`66`) is a snapshot and not an export: there
+is no archive in it for an importer to read, and it says so in a sentence rather
+than in a missing file."""
 
 _TOKEN = re.compile(r"[^A-Za-z0-9_.:/-]")
 
@@ -299,6 +303,12 @@ class _SnapshotSource(ExportView):
             # "a ChatGPT snapshot" is what the operator pointed at.
             name = store.SOURCE_NAMES.get(manifest.source, manifest.source)
             raise ExportError(detail=NOT_IMPORTABLE.format(what=f"a {name} snapshot", display=display))
+        if manifest is not None and manifest.origin == "skills":
+            # A snapshot of the skills alone (`66`, brief 09 §91): a snapshot,
+            # and not one an importer reads — there is no archive in it to
+            # open, and a missing file would say so less well than this does.
+            # (Raised by Copilot in review on #64.)
+            raise ExportError(detail=NO_ARCHIVE.format(display=display))
         self._archive = _ZipSource(path / store.ARCHIVE_NAME, display)
 
     @property

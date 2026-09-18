@@ -148,6 +148,22 @@ class Source:
     other source today.
     """
 
+    organizations_path: str = ""
+    """Where the site lists the organisations a signed-in account belongs to, on
+    `origin` — the address a skills extraction reads first, since every other
+    skills address is under one organisation (`66`). Empty for a source with no
+    skills to extract, which is every source but Claude today."""
+
+    skills_list_path: str = ""
+    """The address that lists an account's skills, with `{org}` where the
+    organisation's uuid goes. Read *in the page*, on the site's own origin, and
+    never navigated to (`66`, brief `09` §92)."""
+
+    skills_download_path: str = ""
+    """The address one skill is served from, with `{org}` and `{skill}`. The tab
+    is pointed at it and the browser's download caught, as a link's is (`45`),
+    which is why it is a door in the extraction wall and the list is not."""
+
     def __post_init__(self) -> None:
         # Read-only from the moment it is built, as `Site` does it: a frozen
         # dataclass protects the binding and not the mapping.
@@ -178,6 +194,17 @@ class Source:
     def origins(self) -> tuple[str, ...]:
         """Every origin the source session touches, the site's own first."""
         return (self.origin, *self.auth_origins)
+
+    @property
+    def has_skills(self) -> bool:
+        """Whether this source has skills a person wrote, and all three addresses to read them by.
+
+        All three, not the two `66` first checked: the organisations read comes
+        first and its address is as required as the list's and the download's,
+        so a source missing it would pass the command's capability check and
+        then read the origin root. (Raised by Copilot in review on #64.)
+        """
+        return bool(self.organizations_path and self.skills_list_path and self.skills_download_path)
 
     @property
     def login_url(self) -> str:

@@ -1,7 +1,7 @@
 """The ledger block, byte for byte.
 
-`26`'s golden string, with `32`'s row under it, `49`'s under that and `38`'s
-heading over it — the site's own, since two mocks running at once keep two ledgers
+`26`'s golden string, with `32`'s row under it, `49`'s under that, `67`'s two
+under those, and `38`'s heading over it — the site's own, since two mocks running at once keep two ledgers
 (§54). Brief `02`'s block (§21) illustrates the shape and leaves it to the slice;
 this is where the slice pins it. `rehearsal/run.py` rebuilds §21's five rows from
 the numbers for the record — the sixth is always zero in a migration rehearsal —
@@ -23,6 +23,8 @@ def test_the_block_is_the_golden_string() -> None:
         renames=8,
         exports_requested=1,
         links_minted=2,
+        skills_listed=3,
+        skills_served=9,
     )
     assert ledger.block() == (
         "Mock claude.ai — ledger\n"
@@ -34,6 +36,8 @@ def test_the_block_is_the_golden_string() -> None:
         "Renames:                       8\n"
         "Exports requested:             1\n"
         "Sign-in links minted:          2\n"
+        "Skill lists read:              3\n"
+        "Skills served:                 9\n"
         "\n"
     )
 
@@ -47,6 +51,8 @@ def test_a_fresh_ledger_is_all_zeros() -> None:
         "renames": 0,
         "exports_requested": 0,
         "links_minted": 0,
+        "skills_listed": 0,
+        "skills_served": 0,
     }
 
 

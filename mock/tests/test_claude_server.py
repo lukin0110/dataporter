@@ -512,3 +512,97 @@ def test_a_link_is_announced_as_it_is_minted(site: Site) -> None:
         started.close()
     assert announced == [json.loads(body)["link"]]
     assert sign_ins == [site.link_of(site.sign_in_links()[0])]
+
+
+# -- the account's skills (`67`) ---------------------------------------------- #
+
+
+def organisation(client: Client) -> str:
+    _, body, _ = client.request(server.ORGANIZATIONS_PATH)
+    return str(json.loads(body)[0]["uuid"])
+
+
+def test_the_skills_addresses_want_the_session(running: Client) -> None:
+    status, _, location = running.request(server.ORGANIZATIONS_PATH, follow=False)
+    assert (status, location) == (303, "/logout?involuntary=1&returnTo=/api/organizations")
+
+
+def test_the_list_is_the_vendor_s_shape_and_the_organisation_is_one(running: Client, site: Site) -> None:
+    sign_in(running)
+    org = organisation(running)
+    assert org == site.org_uuid
+    _, body, _ = running.request(server.SKILLS_LIST_PATH.format(org=org))
+    listed = json.loads(body)["skills"]
+    assert [item["name"] for item in listed] == [
+        "research-helper",
+        "standup-notes",
+        "plugin-helper",
+        "broken-skill",
+        "docs",
+        "shared-thing",
+    ]
+    assert set(listed[0]) == {
+        "id",
+        "name",
+        "display_name",
+        "description",
+        "creator_type",
+        "enabled",
+        "backing_plugin_id",
+        "source",
+        "is_shared",
+    }
+    assert listed[2]["backing_plugin_id"] == "plugin_01mock"
+    assert listed[2]["source"] == "plugin"
+    assert site.counters()["skills_listed"] == 1
+    status, _, _ = running.request(server.SKILLS_LIST_PATH.format(org="not-the-org"))
+    assert status == 404
+
+
+def test_a_skill_is_served_as_a_download_and_the_broken_one_answers_500(running: Client, site: Site) -> None:
+    sign_in(running)
+    org = organisation(running)
+    by_name = {skill.name: skill for skill in site.skills()}
+    path = server.SKILL_DOWNLOAD_PATH.format(org=org)
+
+    status, payload = running.get_bytes(f"{path}?skill_id={by_name['research-helper'].id}", cookies=True)
+    assert status == 200
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        assert archive.namelist() == ["research-helper/SKILL.md"]
+        assert archive.read("research-helper/SKILL.md").startswith(b"---\nname: research-helper\n")
+    again = running.get_bytes(f"{path}?skill_id={by_name['research-helper'].id}", cookies=True)
+    assert again == (200, payload), "the same skill is the same bytes every time"
+
+    status, _ = running.get_bytes(f"{path}?skill_id={by_name['broken-skill'].id}", cookies=True)
+    assert status == 500
+    status, _ = running.get_bytes(f"{path}?skill_id=skill_nobody_minted", cookies=True)
+    assert status == 404
+    signed_out = Client(running.base)
+    status, _, location = signed_out.request(f"{path}?skill_id={by_name['docs'].id}", follow=False)
+    assert (status, location.split("?")[0]) == (303, "/logout"), (
+        "without the session it is the sign-in, like everything else"
+    )
+
+    assert site.counters()["skills_served"] == 2
+    _, body, _ = running.request(server.SKILLS_JSON_PATH)
+    served = {item["name"]: item["served"] for item in json.loads(body)}
+    assert served == {
+        "research-helper": 2,
+        "standup-notes": 0,
+        "plugin-helper": 0,
+        "broken-skill": 0,
+        "docs": 0,
+        "shared-thing": 0,
+    }
+
+
+def test_the_download_carries_the_header_that_makes_it_a_download(running: Client, site: Site) -> None:
+    """Without it Chrome would render the zip as a document, and the tool would read a page where a file should be."""
+    sign_in(running)
+    org = organisation(running)
+    skill = next(item for item in site.skills() if item.name == "plugin-helper")
+    request = urllib.request.Request(f"{running.base}{server.SKILL_DOWNLOAD_PATH.format(org=org)}?skill_id={skill.id}")
+    request.add_header("Cookie", running._cookie_header())  # ruff: ignore[private-member-access] - the test's own client
+    with urllib.request.urlopen(request, timeout=10) as answer:
+        assert answer.headers["Content-Type"] == "application/zip"
+        assert answer.headers["Content-Disposition"] == 'attachment; filename="plugin-helper.skill"'

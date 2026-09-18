@@ -47,7 +47,7 @@ from mockcore.exports import Export, Part
 from mockcore.reply import Turn
 
 from claudemock import EXPORT_CATEGORIES
-from claudemock.site import Chat
+from claudemock.site import Chat, Skill
 
 CONVERSATIONS_FILE = "conversations.json"
 USERS_FILE = "users.json"
@@ -213,6 +213,25 @@ def payload_of(member: str, chats: Sequence[Chat], *, email: str, now: float) ->
     if member == CONVERSATIONS_FILE:
         return conversations(chats, email=email, now=now)
     return users(email)
+
+
+SKILL_FILE = "SKILL.md"
+"""The one member a skill's file carries here. A real `.skill` is a zip of the
+skill's directory; the mock's holds its front matter and a heading, which is
+enough for the file to be a zip the tool keeps unopened (ADR 0005)."""
+
+
+def skill_file(skill: Skill) -> bytes:
+    """Return one skill as the site serves it: a zip holding `SKILL.md`, the same bytes every time (`67`)."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        entry = zipfile.ZipInfo(f"{skill.name}/{SKILL_FILE}", date_time=ENTRY_DATE_TIME)
+        entry.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(
+            entry,
+            f"---\nname: {skill.name}\ndescription: {skill.description}\n---\n\n# {skill.display_name}\n",
+        )
+    return buffer.getvalue()
 
 
 def render(category: str, chats: Sequence[Chat], *, email: str, now: float) -> bytes:

@@ -337,7 +337,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
        are **not** required to get this far (`61`): the session this runs on is
        the account's Chrome profile, and a profile a person signed in to needs
        no credential at all. They are required where a sign-in is attempted —
-       `_sign_in_to_source`, unattended — and the refusal there is the same
+       `sign_in_to_source`, unattended — and the refusal there is the same
        `MISSING_CREDENTIALS`, exit `2`. Demanding them at the door would make
        an unattended backup impossible for a source whose sign-in no tool can
        automate (brief 07), which is every Claude account.
@@ -369,7 +369,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            _sign_in_to_source(settings, browser, source, sink=sink)
+            sign_in_to_source(settings, browser, source, sink=sink)
             result = export_page.request_export(settings, browser, source=source)
             traced.exit_code = ExitCode.OK if result.requested and result.pressed_at is not None else ExitCode.FAILED
     finally:
@@ -391,7 +391,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     return ExtractOutcome()
 
 
-def _sign_in_to_source(
+def sign_in_to_source(
     settings: Settings,
     browser: "BrowserSession",
     source: "Source",
@@ -528,7 +528,7 @@ def fetch(
                 settings, source, link, temp_dir, sink=sink, flags=flags, collected=downloaded, quiet=quiet
             )[1]
             temp = archive_among(parts, source)
-            size, digest = temp.stat().st_size, _digest(temp)
+            size, digest = temp.stat().st_size, digest_of(temp)
         elif source.fetch_needs_session:
             temp, size, digest = _download_through_session(
                 settings, source, link, temp_dir, sink=sink, flags=flags, quiet=quiet
@@ -603,7 +603,7 @@ def file(settings: Settings, path: Path, *, sink: Sink = DISCARD) -> ExtractOutc
         origin="file",
         asked_at=None,
         stamp=store.stamp_of(datetime.now(UTC)),
-        sha256=_digest(path),
+        sha256=digest_of(path),
         size=path.stat().st_size,
     )
     directory, snapshot = store.Store(settings.store_dir).file_archive(path, filing)
@@ -677,7 +677,7 @@ def _download_manifest_and_parts(
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            _sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
             with tracing.redacting():
                 try:
                     manifest_path, parts = index_and_files(
@@ -716,7 +716,7 @@ def index_and_files(
     got = download.fetch(settings, browser, link, into=into, origins=source.origins)
     manifest_path = got.path.rename(into / MANIFEST_FILENAME)
     collected.append(manifest_path)
-    _landed(manifest_path, name=manifest_path.name, size=got.bytes, sink=sink, quiet=quiet)
+    landed(manifest_path, name=manifest_path.name, size=got.bytes, sink=sink, quiet=quiet)
     manifest = manifest_of(manifest_path)
     if manifest is None:
         raise FetchError(NOT_A_MANIFEST)
@@ -728,7 +728,7 @@ def index_and_files(
         each = download.fetch(settings, browser, item.export_url, into=into, origins=source.origins)
         parts.append(each.path.rename(into / Path(item.filename).name))
         collected.append(parts[-1])
-        _landed(parts[-1], name=parts[-1].name, size=each.bytes, sink=sink, quiet=quiet)
+        landed(parts[-1], name=parts[-1].name, size=each.bytes, sink=sink, quiet=quiet)
     return manifest_path, parts
 
 
@@ -773,7 +773,7 @@ def _download_through_session(
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            _sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
             with tracing.redacting():
                 try:
                     got = download.fetch(settings, browser, link, into=into, origins=source.origins)
@@ -785,8 +785,8 @@ def _download_through_session(
     # The record names the guid the browser gave the file: a source that serves
     # one archive has no manifest to name it, and the vendor's own suggestion is
     # never kept (§66). The line names what the file is about to become.
-    _landed(got.path, name=store.ARCHIVE_NAME, size=got.bytes, sink=sink, quiet=quiet)
-    return got.path, got.bytes, _digest(got.path)
+    landed(got.path, name=store.ARCHIVE_NAME, size=got.bytes, sink=sink, quiet=quiet)
+    return got.path, got.bytes, digest_of(got.path)
 
 
 def _not_an_archive(settings: Settings, source: "Source", stopped: download.DownloadStopped) -> FetchError:
@@ -861,7 +861,7 @@ def _download(
             "bytes": size,
         },
     )
-    _landed(target, name=store.ARCHIVE_NAME, size=size, sink=sink, quiet=quiet)
+    landed(target, name=store.ARCHIVE_NAME, size=size, sink=sink, quiet=quiet)
     return size, digest.hexdigest()
 
 
@@ -944,7 +944,7 @@ def _gaps(reading: "Reading") -> tuple[store.Gap, ...]:
     return (store.Gap(kind=plan.BYTES_NOT_IN_EXPORT, count=missing, reason=reason),)
 
 
-def _digest(path: Path) -> str:
+def digest_of(path: Path) -> str:
     """Return the SHA-256 of a file already on disk, read a chunk at a time."""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
@@ -975,17 +975,17 @@ def block(settings: Settings, snapshot: store.Snapshot, *, first: str, no_ask: b
         lines.append(NO_ASK_ON_RECORD)
     lines.append(source.counts_line.format(**snapshot.counts.model_dump()))
     lines.extend(GAP_LINE.format(count=gap.count, reason=gap.reason) for gap in snapshot.gaps)
-    lines.extend(["", SNAPSHOT_LINE.format(path=_display(settings, snapshot))])
+    lines.extend(["", SNAPSHOT_LINE.format(path=display_of(settings, snapshot))])
     return "".join(f"{line}\n" for line in lines)
 
 
-def _display(settings: Settings, snapshot: store.Snapshot) -> str:
+def display_of(settings: Settings, snapshot: store.Snapshot) -> str:
     """Where the snapshot is, spelled as the store was configured."""
     root = Path(settings.store_display)
     return str(root / snapshot.source / snapshot.account / snapshot.stamp)
 
 
-def _landed(path: Path, *, name: str, size: int, sink: Sink, quiet: bool) -> None:
+def landed(path: Path, *, name: str, size: int, sink: Sink, quiet: bool) -> None:
     """Say that a file landed, the moment the browser finished writing it.
 
     Said twice: a `downloaded` record naming the staging path, and
@@ -1029,7 +1029,7 @@ def _log_filed(settings: Settings, snapshot: store.Snapshot) -> None:
     manifest beside it does not. `safe_token` bounds the name and strips control
     characters so a vendor's name cannot forge a line an operator reads.
     """
-    directory = Path(_display(settings, snapshot))
+    directory = Path(display_of(settings, snapshot))
     for name in (snapshot.archive.name, *(part.name for part in snapshot.parts)):
         _logger.info("filed", extra={"path": str(directory / log.safe_token(name))})
 

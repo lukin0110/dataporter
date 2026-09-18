@@ -30,9 +30,24 @@ LEDGER = {
     "renames": 0,
     "exports_requested": 2,
     "links_minted": 0,
+    "skills_listed": 0,
+    "skills_served": 0,
 }
-CLAUDE_LEDGER = {**LEDGER, "links_minted": 2}
-"""The mock claude.ai signs in by link (`49`): one link for the seeding, one for the tool."""
+CLAUDE_LEDGER = {**LEDGER, "links_minted": 2, "skills_listed": 3, "skills_served": 9}
+"""The mock claude.ai signs in by link (`49`): one link for the seeding, one for the
+tool. And its account has skills (`67`): three `extract-skills` runs read the list
+three times and take the three servable skills each time."""
+
+SKILLS = [
+    {"id": "skill_a", "name": "research-helper", "creator_type": "user", "refused": False, "served": 3},
+    {"id": "skill_b", "name": "standup-notes", "creator_type": "user", "refused": False, "served": 3},
+    {"id": "skill_c", "name": "plugin-helper", "creator_type": "user", "refused": False, "served": 3},
+    {"id": "skill_d", "name": "broken-skill", "creator_type": "user", "refused": True, "served": 0},
+    {"id": "skill_e", "name": "docs", "creator_type": "anthropic", "refused": False, "served": 0},
+    {"id": "skill_f", "name": "shared-thing", "creator_type": "organization", "refused": False, "served": 0},
+]
+"""What the mock claude.ai's witness says after a clean run: the mix it seeds, served as `67` expects."""
+OURS = ["plugin-helper", "research-helper", "standup-notes"]
 
 HEADER = {
     "trace": 1,
@@ -56,51 +71,134 @@ def line(**fields: Any) -> str:
     return json.dumps(fields, separators=(",", ":"))
 
 
-def snapshot(store_root: Path, source: str, stamp: str, *, gaps: int, files: int | None) -> Path:
+def snapshot(
+    store_root: Path,
+    source: str,
+    stamp: str,
+    *,
+    gaps: int,
+    files: int | None,
+    skills: list[str] | None = None,
+    skill_gap: int = 0,
+    origin: str = "ask",
+) -> Path:
     directory = store_root / source / extraction.ACCOUNT / stamp
     directory.mkdir(parents=True)
-    (directory / store.ARCHIVE_NAME).write_bytes(b"PK\x03\x04" + stamp.encode())
+    if origin != "skills":
+        (directory / store.ARCHIVE_NAME).write_bytes(b"PK\x03\x04" + stamp.encode())
+    every_gap = [store.Gap(kind="bytes_not_in_export", count=gaps, reason="files")] if gaps else []
+    if skill_gap:
+        every_gap.append(
+            store.Gap(kind="skill_not_downloaded", count=skill_gap, reason="skill could not be downloaded")
+        )
     manifest = store.Snapshot(
         source=source,
         account=extraction.ACCOUNT,
         stamp=stamp,
-        origin="ask",
+        origin=origin,  # type: ignore[arg-type]
         filed_at=running.datetime(2026, 9, 14, 10, 0, tzinfo=running.UTC),
         tool_version="0.1.0",
-        counts=store.Counts(conversations=3, files=files),
-        gaps=[store.Gap(kind="bytes_not_in_export", count=gaps, reason="files")] if gaps else [],
+        counts=store.Counts(
+            conversations=0 if origin == "skills" else 3, files=files, skills=len(skills or []) or None
+        ),
+        skills=[
+            store.SkillFile(name=name, filename=f"{name}.skill", bytes=5, sha256="a" * 64) for name in skills or []
+        ],
+        gaps=every_gap,
     )
     (directory / store.MANIFEST_NAME).write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     (directory / store.COMPLETE_NAME).write_bytes(b"")
     return directory
 
 
-def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **changes: Any) -> extraction.Half:
-    """Return a finished half, as the files §68's criteria read: two snapshots, traces, outcomes."""
-    settings = running.Settings(root=tmp_path / mock.source, mode="non-interactive", port=mock.port)
-    settings.workspace.mkdir(parents=True, exist_ok=True)
-    store_root = tmp_path / "store"
+def _snapshots_for(store_root: Path, mock: extraction.Mock, changes: dict[str, Any]) -> Path:
+    """File the two archive snapshots §68 expects, and — for a mock with skills — what `67` adds; return the first."""
     gaps = changes.get("gaps", LEDGER["files_accepted"] * mock.files_per_upload)
-    snapshot(
+    files = changes.get("files", 0 if mock.session_bound else None)
+    filed_skills = changes.get("skills", list(OURS)) if mock.has_skills else None
+    skill_gap = changes.get("skill_gap", 1) if mock.has_skills else 0
+    first = snapshot(
         store_root,
         mock.source,
         "2026-09-14T10-00-01Z",
         gaps=gaps,
-        files=changes.get("files", 0 if mock.session_bound else None),
+        files=files,
+        skills=filed_skills,
+        skill_gap=skill_gap,
     )
-    snapshot(
-        store_root,
-        mock.source,
-        "2026-09-14T10-00-02Z",
-        gaps=gaps,
-        files=changes.get("files", 0 if mock.session_bound else None),
-    )
+    snapshot(store_root, mock.source, "2026-09-14T10-00-02Z", gaps=gaps, files=files)
+    if mock.has_skills:
+        snapshot(
+            store_root,
+            mock.source,
+            "2026-09-14T10-00-03Z",
+            gaps=0,
+            files=None,
+            skills=filed_skills,
+            skill_gap=skill_gap,
+            origin="skills",
+        )
+    return first
+
+
+def _stdout_for(name: str, mock: extraction.Mock, heading: str) -> str:
+    """Return what a modelled step printed: enough of each block for the criteria to read."""
+    if name == "login" and mock.link_signin:
+        return f"Claude sign-in — rehearsal\n…\n{running.LINK_SENT_LINE} …\nSigned in to Claude — rehearsal\n"
+    if name == "snapshots":
+        rows = (
+            f"{mock.source}/rehearsal   2026-09-14T10-00-01Z   3 conversations   1 gap\n"
+            f"{mock.source}/rehearsal   2026-09-14T10-00-02Z   3 conversations   1 gap\n"
+        )
+        if mock.has_skills:
+            rows += f"{mock.source}/rehearsal   2026-09-14T10-00-03Z   3 skills          1 gap\n"
+        return rows
+    if name.startswith("extract-skills"):
+        return f"{mock.display_name} skills — rehearsal\n\nDownloaded 3 skills in 2s.\n3 skills.\n"
+    return heading if name.startswith("extract") else ""
+
+
+def _trace_for(position: int, name: str, mock: extraction.Mock, traces: Path) -> Path:
+    """Write the trace a modelled step left — a header, the moves the criteria look for, an end — and return where."""
+    flags = ["--link"] if "--link" in name else []
+    lines = [
+        json.dumps({
+            **HEADER,
+            "command": name.split(maxsplit=1)[0],
+            "flags": flags,
+            "source": mock.source,
+            "host": extraction.TRACE_HOST,
+        })
+    ]
+    if name == "login --link":
+        lines.append(line(kind="move", helper="sign-in-link", ok=True))
+    if name == "login" and not mock.link_signin:
+        lines += [
+            line(kind="observation", what="navigation", host=mock.hosts[-1], path="/log-in", query=[]),
+            line(kind="observation", what="certificate", host=mock.hosts[0], issuer="x", subject="x"),
+            line(kind="observation", what="certificate", host=mock.hosts[-1], issuer="x", subject="x"),
+            line(kind="move", helper="password-step", ok=True),
+        ]
+    lines.append(line(kind="observation", what="end", exit=0))
+    path = traces / f"{position:02d}-{name}.jsonl"
+    path.write_text("".join(f"{item}\n" for item in lines), encoding="utf-8")
+    return path
+
+
+def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **changes: Any) -> extraction.Half:
+    """Return a finished half, as the files §68's criteria read: the snapshots, the traces, the outcomes."""
+    settings = running.Settings(root=tmp_path / mock.source, mode="non-interactive", port=mock.port)
+    settings.workspace.mkdir(parents=True, exist_ok=True)
+    store_root = tmp_path / "store"
+    first = _snapshots_for(store_root, mock, changes)
+    archive_digest = hashlib.sha256((first / store.ARCHIVE_NAME).read_bytes()).hexdigest()
     heading = f"{mock.display_name} extraction — rehearsal\n\n"
     names = [
         "login",
         *(["login --link"] if mock.link_signin else []),
         "extract (ask 1)",
         "extract --link (fetch 1)",
+        *(extraction.SKILLS_STEPS if mock.has_skills else []),
         "extract (ask 2)",
         "extract --link (fetch 2)",
         "session status",
@@ -111,41 +209,23 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
         {"login", "extract (ask 1)", "extract (ask 2)"}
         | ({"extract --link (fetch 1)", "extract --link (fetch 2)"} if mock.session_bound else set())
         | ({"login --link"} if mock.link_signin else set())
+        | (set(extraction.SKILLS_STEPS) if mock.has_skills else set())
     )
-    steps: list[running.Outcome] = []
     traces = settings.root / "traces"
     traces.mkdir(parents=True, exist_ok=True)
+    steps: list[running.Outcome] = []
     for position, name in enumerate(names, 1):
-        stdout = heading if name.startswith("extract") else ""
-        if name == "login" and mock.link_signin:
-            stdout = f"Claude sign-in — rehearsal\n…\n{running.LINK_SENT_LINE} …\nSigned in to Claude — rehearsal\n"
-        if name == "snapshots":
-            stdout = f"{mock.source}/rehearsal   2026-09-14T10-00-01Z   3 conversations   1 gap\n{mock.source}/rehearsal   2026-09-14T10-00-02Z   3 conversations   1 gap\n"
-        outcome = running.Outcome(name=name, argv=(name,), exit_code=0, seconds=1.0, stdout=stdout)
+        refused = name == "extract-skills (again)"
+        outcome = running.Outcome(
+            name=name,
+            argv=(name,),
+            exit_code=2 if refused else 0,
+            seconds=1.0,
+            stdout=_stdout_for(name, mock, heading),
+            stderr="error: snapshot already exists: …/skills/research-helper.skill\n" if refused else "",
+        )
         if name in driving:
-            flags = ["--link"] if name.endswith("--link") or "--link" in name else []
-            lines = [
-                json.dumps({
-                    **HEADER,
-                    "command": name.split()[0],
-                    "flags": flags,
-                    "source": mock.source,
-                    "host": extraction.TRACE_HOST,
-                })
-            ]
-            if name == "login --link":
-                lines.append(line(kind="move", helper="sign-in-link", ok=True))
-            if name == "login" and not mock.link_signin:
-                lines += [
-                    line(kind="observation", what="navigation", host=mock.hosts[-1], path="/log-in", query=[]),
-                    line(kind="observation", what="certificate", host=mock.hosts[0], issuer="x", subject="x"),
-                    line(kind="observation", what="certificate", host=mock.hosts[-1], issuer="x", subject="x"),
-                    line(kind="move", helper="password-step", ok=True),
-                ]
-            lines.append(line(kind="observation", what="end", exit=0))
-            path = traces / f"{position:02d}-{name}.jsonl"
-            path.write_text("".join(f"{item}\n" for item in lines), encoding="utf-8")
-            outcome.trace = path.relative_to(settings.root)
+            outcome.trace = _trace_for(position, name, mock, traces).relative_to(settings.root)
             outcome.traces = 1
         steps.append(outcome)
     runner = running.Runner(settings=settings, env={}, steps=steps)
@@ -159,6 +239,8 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
         counted=changes.get("counted", dict(CLAUDE_LEDGER if mock.link_signin else LEDGER)),
         first_digest=changes.get("first_digest", extraction.digest_of(store_root / mock.source / extraction.ACCOUNT)),
         blocks={"ask": heading + "Export requested …", "fetch 1": heading + "Downloaded 0.0 MB.", "fetch 2": heading},
+        archive_digest=changes.get("archive_digest", archive_digest),
+        skills=changes.get("witness", [dict(item) for item in SKILLS]) if mock.has_skills else [],
     )
 
 
@@ -207,7 +289,7 @@ def test_traces_are_gathered_from_the_account_home_too(tmp_path: Path) -> None:
     assert outcome.traces == 1
 
 
-def test_the_ledger_block_has_seven_rows_under_the_site_s_heading() -> None:
+def test_the_ledger_block_has_nine_rows_under_the_site_s_heading() -> None:
     assert extraction.ledger_block(extraction.CHATGPT, LEDGER) == (
         "Mock chatgpt.com — ledger\n"
         "\n"
@@ -217,9 +299,13 @@ def test_the_ledger_block_has_seven_rows_under_the_site_s_heading() -> None:
         "Files accepted:                1\n"
         "Renames:                       0\n"
         "Exports requested:             2\n"
-        "Sign-in links minted:          0"
+        "Sign-in links minted:          0\n"
+        "Skill lists read:              0\n"
+        "Skills served:                 0"
     )
-    assert extraction.ledger_block(extraction.CLAUDE, CLAUDE_LEDGER).endswith("Sign-in links minted:          2")
+    assert extraction.ledger_block(extraction.CLAUDE, CLAUDE_LEDGER).endswith(
+        "Sign-in links minted:          2\nSkill lists read:              3\nSkills served:                 9"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -238,7 +324,7 @@ def test_the_claude_half_counts_each_file_twice_and_needs_no_crossing(tmp_path: 
     half = half_for(tmp_path, extraction.CLAUDE)
     checks = extraction.criteria(half, store=tmp_path / "store")
     assert [item.name for item in checks if not item.passed] == []
-    assert len(checks) == 14
+    assert len(checks) == 21
     gap = next(item for item in checks if item.name.startswith("ledger: the gap"))
     assert gap.detail == "gaps [2, 2] == 1 × 2, files carried [0, 0]"
 
@@ -250,11 +336,11 @@ def test_the_claude_half_signs_in_with_two_commands_and_two_links(tmp_path: Path
     assert by_name["login signs the source account in"].detail == "exit 0, login --link exit 0"
     assert by_name["ledger: sign-ins == the seeding's + the tool's"].detail == "2 == 1 + 1 (a link spent)"
     assert by_name["ledger: sign-in links minted == the seeding's + the tool's"].passed
-    # Six, not `49`'s four: Claude's two fetches drive a tab now, because a real
-    # link answered 403 to a request without the session (`f9e0310`).
+    # Nine: `49`'s four, Claude's two fetches — a real link answered 403 to a
+    # request without the session (`f9e0310`) — and `67`'s three skills runs.
     assert (
         by_name["one trace per step that drove a tab, each naming the source"].detail
-        == "[1, 1, 1, 1, 1, 1] for 6 steps"
+        == "[1, 1, 1, 1, 1, 1, 1, 1, 1] for 9 steps"
     )
 
     assert by_name["login saw the link sent and said so"].passed
@@ -300,6 +386,59 @@ def test_one_link_for_two_asks_fails(tmp_path: Path) -> None:
     assert [item.name for item in checks if not item.passed] == ["the mock minted one link per ask"]
 
 
+def test_the_skills_criteria_read_the_witness_and_the_manifests(tmp_path: Path) -> None:
+    """`67`: what the tool filed against what the mock listed and served, in seven checks."""
+    half = half_for(tmp_path, extraction.CLAUDE)
+    by_name = {item.name: item for item in extraction.criteria(half, store=tmp_path / "store")}
+    assert by_name["extract-skills files the account's own skills beside the archive"].detail == (
+        f"{OURS} == {OURS}, counts.skills 3"
+    )
+    assert by_name["the gap is the one skill the mock refused"].detail == "gaps [1, 1] == 1 refused (broken-skill)"
+    assert by_name["ledger: the mock served only the skills the account wrote, once per run"].detail == (
+        "lists read 3 == 3, served 9 == 3 × 3"
+    )
+    assert by_name["a second extract-skills into the same stamp is refused"].detail == "exit 2"
+    assert by_name["no skill's name is in a trace"].passed
+
+
+def test_a_skill_that_is_not_ours_but_was_served_fails_the_ledger(tmp_path: Path) -> None:
+    witness = [dict(item) for item in SKILLS]
+    witness[4]["served"] = 3
+    half = half_for(tmp_path, extraction.CLAUDE, witness=witness, counted={**CLAUDE_LEDGER, "skills_served": 12})
+    failed = {item.name: item.detail for item in extraction.criteria(half, store=tmp_path / "store") if not item.passed}
+    assert failed == {
+        "ledger: the mock served only the skills the account wrote, once per run": (
+            "lists read 3 == 3, served 12 == 3 × 3, served though not ours: docs"
+        )
+    }
+
+
+def test_an_archive_the_append_changed_fails(tmp_path: Path) -> None:
+    half = half_for(tmp_path, extraction.CLAUDE, archive_digest="0" * 64)
+    failed = [item.name for item in extraction.criteria(half, store=tmp_path / "store") if not item.passed]
+    assert failed == ["the append left the archive untouched"]
+
+
+def test_a_second_run_that_was_not_refused_fails(tmp_path: Path) -> None:
+    half = half_for(tmp_path, extraction.CLAUDE)
+    for step in half.runner.steps:
+        if step.name == "extract-skills (again)":
+            step.exit_code = 0
+            step.stderr = ""
+    failed = [item.name for item in extraction.criteria(half, store=tmp_path / "store") if not item.passed]
+    assert failed == ["a second extract-skills into the same stamp is refused"]
+
+
+def test_a_name_in_a_skills_trace_fails(tmp_path: Path) -> None:
+    half = half_for(tmp_path, extraction.CLAUDE)
+    step = next(item for item in half.runner.steps if item.name == extraction.SKILLS_STEPS[0])
+    assert step.trace is not None
+    with (half.settings.root / step.trace).open("a", encoding="utf-8") as handle:
+        handle.write(line(kind="sketch", controls=[{"role": "button", "label": "View standup-notes"}]) + "\n")
+    failed = {item.name: item.detail for item in extraction.criteria(half, store=tmp_path / "store") if not item.passed}
+    assert failed == {"no skill's name is in a trace": "standup-notes"}
+
+
 # --------------------------------------------------------------------------- #
 # The record
 # --------------------------------------------------------------------------- #
@@ -325,6 +464,8 @@ def test_the_record_carries_both_halves_and_a_mark_on_every_number(tmp_path: Pat
     assert text.startswith("# Rehearsal 03 — extraction\n")
     assert "## The mock claude.ai" in text
     assert "Mock claude.ai — ledger" in text
+    assert "Skills served:                 9" in text
+    assert "extract-skills` into that snapshot" in text
     assert "**Verdict:** passed. *measured on 2026-09-14*" in text
     for row in text.splitlines():
         if row.startswith("| ") and " pass |" in row:
@@ -351,13 +492,15 @@ def test_digest_of_reads_the_oldest_snapshot(tmp_path: Path) -> None:
     assert extraction.digest_of(tmp_path / "nowhere") == ("", "")
 
 
-RECORD = Path(__file__).resolve().parents[1] / "docs" / "rehearsal-03.md"
+RECORDS = tuple(sorted((Path(__file__).resolve().parents[1] / "docs").glob("rehearsal-0[3-9].md")))
+"""Every extraction rehearsal recorded so far: `03` (`46`) and `04` (`67`)."""
 
 
-@pytest.mark.skipif(not RECORD.exists(), reason="no extraction rehearsal has been recorded")
-def test_the_committed_record_keeps_the_discipline() -> None:
+@pytest.mark.skipif(not RECORDS, reason="no extraction rehearsal has been recorded")
+@pytest.mark.parametrize("record", RECORDS, ids=lambda path: path.stem)
+def test_the_committed_record_keeps_the_discipline(record: Path) -> None:
     """Every criterion row marked, both halves present, and no link anywhere in it (§66)."""
-    text = RECORD.read_text(encoding="utf-8")
+    text = record.read_text(encoding="utf-8")
     rows = [row for row in text.splitlines() if row.startswith("| ") and ("| pass |" in row or "| FAIL |" in row)]
     assert rows, "no criteria rows"
     assert all(re.search(r"\| \*measured on \d{4}-\d{2}-\d{2}\* \|$", row) for row in rows)
@@ -366,3 +509,10 @@ def test_the_committed_record_keeps_the_discipline() -> None:
     assert "Exports requested:             2" in text
     assert "__mock/exports" not in text
     assert "**Chrome:** unknown" not in text
+    if record.stem == "rehearsal-04":
+        # `67`: the mock claude.ai served nine skill files over three runs, and its
+        # ledger and its two blocks say so; the mock chatgpt.com has none to serve.
+        assert "Skills served:                 9" in text
+        assert "Skills served:                 0" in text
+        assert text.count("Gaps: 1 skill could not be downloaded") == 2
+        assert "no skill's name is in a trace | none | pass |" in text

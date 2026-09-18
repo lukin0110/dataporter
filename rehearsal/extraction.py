@@ -19,6 +19,12 @@ Three things are this protocol's own:
   lists it; the runner reads it, hands it to the tool on a command line, and
   records the step with `<link>` in its place. §66 is the tool's rule and this
   is the runner's copy of it, and the last criterion greps for the token.
+- **The mock claude.ai's half extracts its skills too** (`67`, the tool's brief
+  `09`): `extract-skills` into the first snapshot, into it again — which the
+  store refuses — and into a snapshot of its own. What the mock listed and
+  served is read off its witness and reconciled with what the tool filed, so
+  the filter the whole command rests on is proved against a served mix rather
+  than a fake's.
 - **No scripted agent is needed for either half.** §61's walk is the tool's
   own, and the mock claude.ai's sign-in is brief 07's two commands (`49`):
   `login` in the background, the runner playing the person at the window
@@ -38,7 +44,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -63,6 +69,17 @@ CHATGPT_PORT = 8444
 EXPORTS_JSON_PATH = "/__mock/exports.json"
 SIGN_IN_LINKS_JSON_PATH = "/__mock/sign-in-links.json"
 LINK_MARK = "<link>"
+
+SKILLS_JSON_PATH = "/__mock/skills.json"
+SKILL_GAP = "skill_not_downloaded"
+BYTES_GAP = "bytes_not_in_export"
+"""The witness that says what the mock listed and served, and the two gap kinds
+a snapshot can carry after `67` — re-typed rather than imported, as every
+spelling the runner shares with the tool is."""
+
+SKILLS_RUNS = 3
+"""How many times the protocol runs `extract-skills` against the mock claude.ai:
+into the first snapshot, into it again, and into one of its own."""
 
 SEED_CHATS = 3
 SEED_FILE = ("notes.txt", b"twelve bytes\n")
@@ -206,6 +223,10 @@ class Mock:
     Claude export names a file twice (`files` and `files_v2`, `30`), ChatGPT's
     once."""
     sign_in: Callable[[Client, str, str], None]
+    has_skills: bool = False
+    """Whether the site's account has skills the tool extracts (`67`): the mock
+    claude.ai's does, and the protocol runs `extract-skills` three times against
+    it; the mock chatgpt.com has nothing of the kind."""
 
     @property
     def display_name(self) -> str:
@@ -223,6 +244,7 @@ CLAUDE = Mock(
     link_signin=True,
     files_per_upload=2,
     sign_in=sign_in_claude,
+    has_skills=True,
 )
 CHATGPT = Mock(
     source="chatgpt",
@@ -262,6 +284,12 @@ def seed(mock: Mock, settings: running.Settings) -> dict[str, int]:
         if status != 200:
             raise RuntimeError(f"the mock refused a seeding chat: HTTP {status}")
     return {"chats": SEED_CHATS, "files": 1}
+
+
+def skills_witness(settings: running.Settings) -> list[dict[str, Any]]:
+    """Return what the mock claude.ai holds and how often each skill was served: the reconciliation's other side."""
+    loaded = running.witness_json(settings.host, settings.port, SKILLS_JSON_PATH)
+    return [dict(item) for item in loaded]
 
 
 def links(settings: running.Settings) -> list[str]:
@@ -371,8 +399,14 @@ class Half:
     links: list[str]
     counted: dict[str, int]
     first_digest: tuple[str, str]
-    """The first snapshot's archive and manifest, hashed after the first fetch (§39, question 6)."""
+    """The first snapshot's archive and manifest, hashed once the first fetch — and,
+    on the mock claude.ai, the skills that joined it — are filed (§39, question 6)."""
     blocks: dict[str, str]
+    archive_digest: str = ""
+    """The first snapshot's archive, hashed right after the first fetch and before
+    any skills joined it: what `extract-skills --stamp` must leave alone (`67`)."""
+    skills: list[dict[str, Any]] = field(default_factory=list)
+    """The mock's own account of its skills, read off the witness after the protocol."""
 
 
 def protocol(
@@ -395,7 +429,26 @@ def protocol(
     blocks["fetch 1"] = runner.run(
         "extract --link (fetch 1)", "extract", *source, "--link", first, secrets=(first,)
     ).stdout
-    first_digest = digest_of(store / mock.source / ACCOUNT)
+    account = store / mock.source / ACCOUNT
+    archive_digest = digest_of(account)[0]
+    if mock.has_skills:
+        # `67`: into the snapshot the fetch just filed, into it again, and into
+        # one of its own. The second is the store refusing, which is the point.
+        stamp = first_stamp(account)
+        blocks["skills"] = runner.run(
+            "extract-skills (into the first snapshot)", "extract-skills", *source, "--stamp", stamp
+        ).stdout
+        runner.run(
+            "extract-skills (again)",
+            "extract-skills",
+            *source,
+            "--stamp",
+            stamp,
+            deliberate=True,
+            note="refused: the files are already there",
+        )
+        blocks["skills alone"] = runner.run("extract-skills (a snapshot of its own)", "extract-skills", *source).stdout
+    first_digest = digest_of(account)
     runner.run("extract (ask 2)", "extract", *source)
     minted = links(settings)
     second = minted[-1] if len(minted) > 1 else ""
@@ -403,6 +456,7 @@ def protocol(
         "extract --link (fetch 2)", "extract", *source, "--link", second, secrets=(second,)
     ).stdout
     counted = running.ledger(settings.host, settings.port)
+    skills = skills_witness(settings) if mock.has_skills else []
     runner.run("session status", "session", "status", *source)
     runner.run("logout", "logout", *source)
     return Half(
@@ -415,12 +469,25 @@ def protocol(
         counted=counted,
         first_digest=first_digest,
         blocks=blocks,
+        archive_digest=archive_digest,
+        skills=skills,
     )
+
+
+def stamps_of(account: Path) -> list[Path]:
+    """Return every stamp directory under one account, oldest first."""
+    return sorted(path for path in account.glob("*") if path.is_dir()) if account.exists() else []
+
+
+def first_stamp(account: Path) -> str:
+    """Return the oldest snapshot's stamp, or an empty string: what `extract-skills --stamp` is pointed at."""
+    stamps = stamps_of(account)
+    return stamps[0].name if stamps else ""
 
 
 def digest_of(account: Path) -> tuple[str, str]:
     """Return the oldest snapshot's archive and manifest hashes, or empty strings."""
-    stamps = sorted(path for path in account.glob("*") if path.is_dir()) if account.exists() else []
+    stamps = stamps_of(account)
     if not stamps:
         return "", ""
     first = stamps[0]
@@ -487,7 +554,11 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
     """§68's checks, as numbers and verdicts, for one mock."""
     mock, settings, steps = half.mock, half.settings, half.runner.steps
     account = store / mock.source / ACCOUNT
-    found = manifests(account)
+    every = manifests(account)
+    # A snapshot of the skills alone (`67`) is a snapshot, and not one of the two
+    # the fetches filed: what §68's criteria count is the archives.
+    found = [item for item in every if item.get("origin") != "skills"]
+    alone = [item for item in every if item.get("origin") == "skills"]
     by_name = {step.name: step for step in steps}
     asks = [by_name.get("extract (ask 1)"), by_name.get("extract (ask 2)")]
     fetches = [by_name.get("extract --link (fetch 1)"), by_name.get("extract --link (fetch 2)")]
@@ -499,7 +570,9 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
     # rehearsal to run afterwards is what said so.
     fetched = all(step is not None and step.ok and heading in step.stdout.splitlines() for step in fetches)
     conversations = [int(item.get("counts", {}).get("conversations", -1)) for item in found]
-    gaps = [sum(int(gap.get("count", 0)) for gap in item.get("gaps", [])) for item in found]
+    gaps = [
+        sum(int(gap.get("count", 0)) for gap in item.get("gaps", []) if gap.get("kind") == BYTES_GAP) for item in found
+    ]
     files = [item.get("counts", {}).get("files") for item in found]
     expected_gap = half.counted.get("files_accepted", 0) * mock.files_per_upload
     stamps = [item["_stamp"] for item in found]
@@ -509,6 +582,7 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
         (["login", "login --link"] if mock.link_signin else ["login"])
         + ["extract (ask 1)", "extract (ask 2)"]
         + (["extract --link (fetch 1)", "extract --link (fetch 2)"] if mock.session_bound else [])
+        + (SKILLS_STEPS if mock.has_skills else [])
     )
     traced = {step.name: step.traces for step in steps}
     headers = [trace_lines(settings.root, step)[0] if step.trace else {} for step in steps]
@@ -521,6 +595,7 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
     login = by_name.get("login")
     spent = by_name.get("login --link")
     login_lines = trace_lines(settings.root, login) if login else []
+    expected_rows = 3 if mock.has_skills else 2
     # What the tool did that the mock counts as a sign-in: a password typed
     # (ChatGPT's walk), or a link spent (Claude's two commands).
     tool_sign_ins = (1 if spent is not None and spent.ok else 0) if mock.link_signin else password_steps
@@ -570,11 +645,12 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
             "archive and manifest hashes equal" if half.first_digest == digest_of(account) else "changed",
         ),
         running.Criterion(
-            "snapshots lists both rows",
+            "snapshots lists every row",
             "snapshots" in by_name
             and by_name["snapshots"].ok
-            and by_name["snapshots"].stdout.count(f"{mock.source}/{ACCOUNT}") == 2,
-            f"{by_name['snapshots'].stdout.count(f'{mock.source}/{ACCOUNT}') if 'snapshots' in by_name else 0} rows",
+            and by_name["snapshots"].stdout.count(f"{mock.source}/{ACCOUNT}") == expected_rows,
+            f"{by_name['snapshots'].stdout.count(f'{mock.source}/{ACCOUNT}') if 'snapshots' in by_name else 0}"
+            f" rows, {expected_rows} expected",
         ),
         running.Criterion(
             "the link is in no file the run left",
@@ -607,6 +683,8 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
                 f"{half.counted.get('links_minted', 0)} == 1 + 1",
             ),
         ]
+    if mock.has_skills:
+        checks += skills_criteria(half, found, alone, by_name, account)
     if len(mock.hosts) > 1:
         # By the path and not by the host (`65`). The auth origin is a second
         # port on loopback now, and a trace records a bare hostname — so the two
@@ -623,6 +701,91 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
             )
         )
     return checks
+
+
+SKILLS_STEPS = [
+    "extract-skills (into the first snapshot)",
+    "extract-skills (again)",
+    "extract-skills (a snapshot of its own)",
+]
+"""The three `extract-skills` steps, by name: every one drives a tab and leaves a trace."""
+
+
+def skills_criteria(  # ruff: ignore[too-many-locals] - one local per criterion
+    half: Half,
+    found: Sequence[Mapping[str, Any]],
+    alone: Sequence[Mapping[str, Any]],
+    by_name: Mapping[str, running.Outcome],
+    account: Path,
+) -> list[running.Criterion]:
+    """`67`'s checks: what the tool filed against what the mock listed and served."""
+    ours = [item for item in half.skills if item.get("creator_type") == "user"]
+    expected = sorted(str(item["name"]) for item in ours if not item.get("refused"))
+    refused = [str(item["name"]) for item in ours if item.get("refused")]
+    first = found[0] if found else {}
+    own = alone[0] if alone else {}
+    filed = sorted(str(skill.get("name")) for skill in first.get("skills", []))
+    filed_alone = sorted(str(skill.get("name")) for skill in own.get("skills", []))
+    skill_gaps = [
+        sum(int(gap.get("count", 0)) for gap in item.get("gaps", []) if gap.get("kind") == SKILL_GAP)
+        for item in (first, own)
+    ]
+    again = by_name.get("extract-skills (again)")
+    refused_again = again is not None and not again.ok and "already exists" in again.stderr
+    archive_now = digest_of(account)[0]
+    served_not_ours = sorted(
+        str(item["name"]) for item in half.skills if item.get("served", 0) and item.get("creator_type") != "user"
+    )
+    listed_reads = half.counted.get("skills_listed", 0)
+    served = half.counted.get("skills_served", 0)
+    names = [str(item["name"]) for item in half.skills]
+    traced_names = sorted({
+        name
+        for step_name in SKILLS_STEPS
+        if (step := by_name.get(step_name)) is not None
+        for line in trace_lines(half.settings.root, step)
+        for name in names
+        if name in json.dumps(line)
+    })
+    listing = by_name["snapshots"].stdout if "snapshots" in by_name else ""
+    return [
+        running.Criterion(
+            "extract-skills files the account's own skills beside the archive",
+            bool(first) and filed == expected and first.get("counts", {}).get("skills") == len(expected),
+            f"{filed} == {expected}, counts.skills {first.get('counts', {}).get('skills')}",
+        ),
+        running.Criterion(
+            "the append left the archive untouched",
+            bool(half.archive_digest) and half.archive_digest == archive_now,
+            "archive hash equal" if half.archive_digest == archive_now else "archive hash changed",
+        ),
+        running.Criterion(
+            "a second extract-skills into the same stamp is refused",
+            refused_again,
+            f"exit {again.exit_code}" if again else "not run",
+        ),
+        running.Criterion(
+            "a snapshot of the skills alone is complete and listed",
+            len(alone) == 1 and filed_alone == expected and " skills " in listing,
+            f"{len(alone)} skills-only snapshot(s), {filed_alone}, listed as skills: {' skills ' in listing}",
+        ),
+        running.Criterion(
+            "the gap is the one skill the mock refused",
+            skill_gaps == [len(refused)] * 2,
+            f"gaps {skill_gaps} == {len(refused)} refused ({', '.join(refused) or 'none'})",
+        ),
+        running.Criterion(
+            "ledger: the mock served only the skills the account wrote, once per run",
+            not served_not_ours and listed_reads == SKILLS_RUNS and served == SKILLS_RUNS * len(expected),
+            f"lists read {listed_reads} == {SKILLS_RUNS}, served {served} == {SKILLS_RUNS} × {len(expected)}"
+            + (f", served though not ours: {', '.join(served_not_ours)}" if served_not_ours else ""),
+        ),
+        running.Criterion(
+            "no skill's name is in a trace",
+            not traced_names,
+            "none" if not traced_names else ", ".join(traced_names),
+        ),
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -643,8 +806,10 @@ a mock can answer them.
 
 An extraction rehearsal is §68's protocol run by the shipped tool against each
 site's mock: the account seeded through the mock's own routes, then `login`, an
-ask, the link read from the listing that stands in for the inbox, the fetch, a
-second ask and a second fetch, `snapshots`, `session status`, `logout`.
+ask, the link read from the listing that stands in for the inbox, the fetch —
+and, on the mock claude.ai, `extract-skills` into that snapshot, into it again,
+and into one of its own (`67`) — a second ask and a second fetch, `snapshots`,
+`session status`, `logout`.
 It is **not evidence about either site**: every `*unknown*` and `*reported*` row
 of [`claude-ui-map.md`](claude-ui-map.md) and
 [`chatgpt-ui-map.md`](chatgpt-ui-map.md) is what it was after it (§56). The
@@ -689,18 +854,7 @@ HALF = """\
 
 ### The blocks, and the ledger beside them
 
-```text
-{ask_block}
-```
-
-```text
-{fetch_1}
-```
-
-```text
-{fetch_2}
-```
-
+{blocks}
 ```text
 {ledger_block}
 ```
@@ -720,6 +874,10 @@ CANNOT_EXERCISE = """\
   reads the listing where a person would read a message.
 - The 24-hour expiry of a link, an export already requested and still
   processing, a rate limit on asking: the mocks have no clock (§58).
+- Whether claude.ai's `list-skills` and `download-dot-skill-file` answer as the
+  mock's do: the rows they stand on were read once on a personal account and are
+  `*unknown*` in the map (`66`), and only a run against a throwaway account with a
+  committed trace turns them.
 - The auth host's real screens and the real Data controls path: the walk and
   the path are the mock's, and the first real run is what corrects them (§69).
 - Whether the real ChatGPT link needs the session at all: the mock mirrors the
@@ -753,11 +911,19 @@ STANDING_FINDINGS = (
         "may be taken once — so a fetch that is retried against the same link fails "
         "here exactly as it does on the real site."
     ),
+    (
+        "The mock claude.ai's account holds six skills seeded as a mix — four the "
+        "account wrote, one of Anthropic's, one with a `creator_type` the tool does "
+        "not know — and one of the four answers `500`. `extract-skills` runs three "
+        "times: the store takes the first, refuses the second, and files the third "
+        "on its own; the witness says only the account's own were ever served, "
+        "once per run, and the refused one is one gap in each snapshot (`67`)."
+    ),
 )
 
 
 def ledger_block(mock: Mock, counted: Mapping[str, int]) -> str:
-    """Return the mock's seven-row block, rebuilt from its numbers under its own heading."""
+    """Return the mock's nine-row block, rebuilt from its numbers under its own heading."""
     labels = (
         ("sign_ins", "Sign-ins:"),
         ("chats_created", "Chats created:"),
@@ -766,6 +932,8 @@ def ledger_block(mock: Mock, counted: Mapping[str, int]) -> str:
         ("renames", "Renames:"),
         ("exports_requested", "Exports requested:"),
         ("links_minted", "Sign-in links minted:"),
+        ("skills_listed", "Skill lists read:"),
+        ("skills_served", "Skills served:"),
     )
     lines = [mock.heading, ""]
     for key, label in labels:
@@ -785,9 +953,7 @@ def render_half(half: Half, checks: Sequence[running.Criterion], mark: str) -> s
             f"| `{step.name}` | {step.exit_code} | {step.seconds:g} | {step.note or ''} |" for step in steps
         ),
         traces="\n".join(running.trace_row(half.settings.root, step) for step in steps),
-        ask_block=half.blocks.get("ask", "").strip("\n"),
-        fetch_1=half.blocks.get("fetch 1", "").strip("\n"),
-        fetch_2=half.blocks.get("fetch 2", "").strip("\n"),
+        blocks="".join(f"```text\n{text.strip(chr(10))}\n```\n\n" for text in half.blocks.values()),
         ledger_block=ledger_block(half.mock, half.counted),
         criteria="\n".join(f"| {item.name} | {item.detail} | {item.verdict} | {mark} |" for item in checks),
     )

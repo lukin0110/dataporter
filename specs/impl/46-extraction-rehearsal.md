@@ -105,6 +105,11 @@ the mock claude.ai is the first `30` and `31` have had.
   Run on 2026-09-14: every criterion passed against both mocks, and the record is
   [`docs/rehearsal-03.md`](../../docs/rehearsal-03.md); `Done`.
 
+*Amended by [`67`](67-the-mock-grows-skills.md):* the mock claude.ai's half runs
+`extract-skills` three times after the first fetch and reconciles seven more criteria
+against the mock's skills witness; its ledger has nine rows, and the record renders a
+half's blocks generically rather than three fixed ones.
+
 ## Risks
 
 - **The mock claude.ai's unattended `login` still needs the scripted `hermes`** on the

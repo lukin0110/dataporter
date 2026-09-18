@@ -309,7 +309,7 @@ def test_the_session_commands_are_the_only_ones_that_take_an_account() -> None:
         and node.func.id in {TAKES_AN_ACCOUNT, "with_account"}
     }
 
-    assert takes == {"login", "session_status", "logout", "extract"}
+    assert takes == {"login", "session_status", "logout", "extract", "extract_skills"}
 
 
 def test_neither_surface_admits_the_other_s_pages() -> None:
