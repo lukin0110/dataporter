@@ -674,3 +674,20 @@ def test_a_skill_whose_copy_does_not_match_stops_before_the_marker(tmp_path: Pat
         store.Store(root).file_skills(skills_filing(STAMP, wrong))
 
     assert not (root / "claude" / "old-personal" / STAMP / store.COMPLETE_NAME).exists()
+
+
+def test_an_archive_of_no_conversations_with_skills_still_counts_conversations(tmp_path: Path) -> None:
+    """The unit is decided by the archive, not by the count: an archive of none is still an archive.
+
+    (Raised by Copilot in review on #64.)
+    """
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    store.Store(root).file_archive(path, filing(path, counts=store.Counts(conversations=0)))
+    store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a"), staged(tmp_path, "b")))
+
+    rows = store.Store(root).rows()
+    assert [(row.archived, row.conversations, row.skills, row.unit, row.count) for row in rows] == [
+        (True, 0, 2, "conversations", "0")
+    ]
+    assert store.listing(rows) == "claude/old-personal   2026-09-12T20-51-07Z   0 conversations   complete\n"

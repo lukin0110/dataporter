@@ -326,6 +326,12 @@ class SnapshotRow(StoreModel):
     skills: int | None = None
     """How many skills the snapshot holds (`66`); `None` for one that holds no
     `skills` key, which is every manifest written before there were any."""
+    archived: bool = True
+    """Whether the manifest names an archive. `False` only for a snapshot of the
+    skills alone (`66`), and the one fact that decides what the count column
+    counts: an archive of no conversations is still an archive, and a row that
+    read the count instead would call it `3 skills`. (Raised by Copilot in
+    review on #64.)"""
 
     @property
     def label(self) -> str:
@@ -334,7 +340,7 @@ class SnapshotRow(StoreModel):
     @property
     def unit(self) -> str:
         """What the count column counts: conversations, or skills for a snapshot with no archive."""
-        return SKILLS_UNIT if self.skills and not self.conversations else CONVERSATIONS_UNIT
+        return SKILLS_UNIT if not self.archived and self.skills else CONVERSATIONS_UNIT
 
     @property
     def count(self) -> str:
@@ -643,6 +649,7 @@ class Store:
                 stamp=directory.name,
                 state=INCOMPLETE,
                 conversations=None if snapshot is None else snapshot.counts.conversations,
+                archived=snapshot is None or bool(snapshot.archive.sha256),
             )
         if snapshot is None:
             return SnapshotRow(source=source, account=account, stamp=directory.name, state=UNREADABLE)
@@ -654,6 +661,7 @@ class Store:
             conversations=snapshot.counts.conversations,
             gaps=snapshot.gap_count,
             skills=snapshot.counts.skills,
+            archived=bool(snapshot.archive.sha256),
         )
 
 

@@ -283,10 +283,12 @@ def _fetch_each(
     for item in ours:
         filename = names[item.id]
         address = sites.skills_download_url(source, org, item.id)
+        before = frozenset(into.iterdir())
         try:
             got = download.fetch(settings, browser, address, into=into, origins=source.origins)
         except download.DownloadStopped as exc:
             _logger.info("skill not downloaded", extra={"reason": exc.reason, "status": exc.status})
+            _sweep(into, before)
             missing += 1
             continue
         collected.append(got.path)
@@ -303,6 +305,22 @@ def _fetch_each(
             )
         )
     return staged, missing
+
+
+def _sweep(into: Path, before: frozenset[Path]) -> None:
+    """Remove what a download that did not finish left in the staging dir.
+
+    `download.fetch` names what it caught and nothing else, and `45` says
+    outright that an interrupted run's `.crdownload` is left where it fell —
+    right for a fetch that then fails, since `logout` sweeps the staging dir. A
+    skills extraction goes on to *succeed* after a gap (§93), so what a stalled
+    download wrote would otherwise sit under the account home behind a run
+    that reported success. Only what this attempt added: what was there before
+    is an earlier skill of this run, on its way to the store. (Raised by
+    Copilot in review on #64.)
+    """
+    for path in set(into.iterdir()) - set(before):
+        path.unlink(missing_ok=True)
 
 
 # --------------------------------------------------------------------------- #

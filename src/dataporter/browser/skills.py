@@ -43,6 +43,9 @@ if TYPE_CHECKING:
 
 _logger = log.get_logger(__name__)
 
+HTTP_ERROR = 400
+"""The first status that is the site refusing rather than answering."""
+
 ORG_TAG = "dataporter:skills_org"
 LIST_TAG = "dataporter:skills_list"
 """What names each expression in a CDP trace, and how the test suite's fake
@@ -64,11 +67,20 @@ party's work in this account's snapshot. Missing one of ours is a gap a person
 notices and a second run fixes; the other mistake is not."""
 
 NO_ANSWER = "no answer"
+NOT_THE_SHAPE = "not the shape the tool reads"
 ORG_UNREADABLE = "could not read the account's organisation ({why})"
 LIST_UNREADABLE = "could not read the account's skills ({why})"
-"""Why a read stopped the extraction. A status when the site gave one, `no
-answer` when the page returned nothing the tool recognises — which is what the
-interstitial an attestation puts in the way answers a same-origin `fetch` with."""
+"""Why a read stopped the extraction. A status when the site refused; the
+status and `not the shape the tool reads` when the site answered and the body
+was not what the read expects — a list that is not a list, an entry that is
+not an object; `no answer` when the page returned nothing at all, which is
+what the interstitial an attestation puts in the way answers a same-origin
+`fetch` with.
+
+The shape is refused rather than read as empty, because an empty list is an
+answer — *no skills of your own* — and a body the tool does not recognise is
+not one. A read that turned the second into the first would report success on
+the day the vendor renamed a key. (Raised by Copilot in review on #64.)"""
 
 
 def expression(tag: str, body: str) -> str:
@@ -110,7 +122,10 @@ def list_js(source: "Source", org: str) -> str:
         "  const response = await fetch(url, { credentials: 'same-origin' });\n"
         "  if (!response.ok) return { status: response.status };\n"
         "  const body = await response.json();\n"
-        "  const items = body && Array.isArray(body.skills) ? body.skills : [];\n"
+        "  const items = body && Array.isArray(body.skills) ? body.skills : null;\n"
+        "  if (items === null || !items.every((item) => item !== null && typeof item === 'object')) {\n"
+        "    return { status: response.status };\n"
+        "  }\n"
         "  const text = (value) => (typeof value === 'string' ? value : '');\n"
         "  return {\n"
         "    status: response.status,\n"
@@ -158,9 +173,9 @@ def read_list(page: Page, source: "Source", org: str) -> tuple[Listed, ...]:
     """
     raw = page.evaluate(list_js(source, org))
     items = raw.get("skills") if isinstance(raw, dict) else None
-    if not isinstance(items, list):
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
         raise BrowserError(detail=LIST_UNREADABLE.format(why=_why(raw)))
-    listed = tuple(_listed(item) for item in items if isinstance(item, dict))
+    listed = tuple(_listed(item) for item in items)
     _logger.info("skills listed", extra={"listed": len(listed), "ours": sum(item.ours for item in listed)})
     return listed
 
@@ -176,6 +191,8 @@ def _listed(item: dict[str, Any]) -> Listed:
 
 
 def _why(raw: Any) -> str:
-    """Return why a read failed: a status, or `no answer`."""
+    """Return why a read failed: a status, the status and the shape, or `no answer`."""
     status = raw.get("status") if isinstance(raw, dict) else None
-    return f"HTTP {status}" if isinstance(status, int) and status else NO_ANSWER
+    if not isinstance(status, int) or not status:
+        return NO_ANSWER
+    return f"HTTP {status}" if status >= HTTP_ERROR else f"HTTP {status}, {NOT_THE_SHAPE}"

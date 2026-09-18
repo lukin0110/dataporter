@@ -81,6 +81,10 @@ class FakeSkillsPage:
     list_status: int = 200
     """What the two reads answer. A status other than `200` is a read that failed."""
 
+    list_answers: dict[str, Any] | None = None
+    """What the list read answers verbatim, when a test wants a body the
+    expression would not recognise — a `200` that is not a list of skills."""
+
     signed_out: bool = False
     """Whether the site sends the export page's request to `/login` instead."""
 
@@ -115,6 +119,8 @@ class FakeSkillsPage:
         """Return what `list_js` returns: five fields per entry, and nothing else of them."""
         if self.list_status != 200:
             return {"status": self.list_status}
+        if self.list_answers is not None:
+            return dict(self.list_answers)
         return {
             "status": 200,
             "skills": [
@@ -137,6 +143,9 @@ class FakeSkillsPage:
         push = self.chrome.push
         push(frame_navigated(url))
         if skill_id in self.stalls:
+            # Chrome had begun writing: a `.crdownload` that then stops growing.
+            assert self.download_dir is not None
+            (self.download_dir / f"guid-{len(self.fetched)}.crdownload").write_bytes(b"PK\x03\x04 half")
             return
         body = self.bodies.get(skill_id)
         if body is None:

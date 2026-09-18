@@ -328,6 +328,9 @@ def test_a_download_that_stalls_is_the_same_gap(
     assert outcome.snapshot is not None
     assert [skill.name for skill in outcome.snapshot.skills] == ["standup-notes"]
     assert outcome.snapshot.gap_count == 1
+    # What the stalled download wrote is swept before the run reports success:
+    # nothing of the account's is left under its home behind a green run.
+    assert list((settings.accounts_dir / "claude" / ACCOUNT / extract.TMP_DIRNAME).iterdir()) == []
 
 
 @pytest.mark.slow
@@ -462,6 +465,30 @@ def test_a_list_that_cannot_be_read_files_nothing(
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize(
+    "answer",
+    [{"status": 200}, {"status": 200, "skills": "none"}, {"status": 200, "skills": ["not an object"]}],
+    ids=["no-list", "list-is-a-string", "entry-is-not-an-object"],
+)
+def test_a_list_that_is_not_a_list_is_an_error_and_never_an_empty_account(
+    settings: Settings, page: FakeSkillsPage, launches: list[str], answer: dict[str, object]
+) -> None:
+    """A `200` the tool does not recognise is a failed read, not *no skills of your own*.
+
+    Reading it as empty would report success on the day the vendor renamed a
+    key. (Raised by Copilot in review on #64.)
+    """
+    page.list_answers = answer
+
+    with pytest.raises(BrowserError) as raised:
+        run(settings)
+
+    assert raised.value.detail == "could not read the account's skills (HTTP 200, not the shape the tool reads)"
+    assert page.fetched == []
+    assert not settings.store_dir.exists()
+
+
+@pytest.mark.slow
 def test_headless_names_the_bot_check_when_a_read_fails(
     chrome: FakeChrome, page: FakeSkillsPage, launches: list[str], tmp_path: Path
 ) -> None:
@@ -475,7 +502,7 @@ def test_headless_names_the_bot_check_when_a_read_fails(
     # `HTTP 200` and not `no answer`: the site answered, and with nothing usable,
     # which is what an interstitial's page looks like to a same-origin `fetch`.
     assert raised.value.detail == (
-        "could not read the account's organisation (HTTP 200)"
+        "could not read the account's organisation (HTTP 200, not the shape the tool reads)"
         "; headless Chrome is served a bot check on this page — try without --non-interactive"
     )
 
