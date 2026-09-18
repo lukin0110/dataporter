@@ -467,8 +467,14 @@ def test_a_list_that_cannot_be_read_files_nothing(
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "answer",
-    [{"status": 200}, {"status": 200, "skills": "none"}, {"status": 200, "skills": ["not an object"]}],
-    ids=["no-list", "list-is-a-string", "entry-is-not-an-object"],
+    [
+        {"status": 200},
+        {"status": 200, "skills": "none"},
+        {"status": 200, "skills": ["not an object"]},
+        {"status": 200, "skills": [{"creator_type": "user"}]},
+        {"status": 200, "skills": [{"id": "", "name": "x", "creator_type": "user"}]},
+    ],
+    ids=["no-list", "list-is-a-string", "entry-is-not-an-object", "entry-without-id-or-name", "entry-with-an-empty-id"],
 )
 def test_a_list_that_is_not_a_list_is_an_error_and_never_an_empty_account(
     settings: Settings, page: FakeSkillsPage, launches: list[str], answer: dict[str, object]
@@ -476,7 +482,9 @@ def test_a_list_that_is_not_a_list_is_an_error_and_never_an_empty_account(
     """A `200` the tool does not recognise is a failed read, not *no skills of your own*.
 
     Reading it as empty would report success on the day the vendor renamed a
-    key. (Raised by Copilot in review on #64.)
+    key — and an entry with no `id` is not a skill the tool can fetch, so
+    reading it as one would file a gap for a thing that was never there.
+    (Raised by Copilot in review on #64, twice.)
     """
     page.list_answers = answer
 

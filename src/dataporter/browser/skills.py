@@ -123,7 +123,10 @@ def list_js(source: "Source", org: str) -> str:
         "  if (!response.ok) return { status: response.status };\n"
         "  const body = await response.json();\n"
         "  const items = body && Array.isArray(body.skills) ? body.skills : null;\n"
-        "  if (items === null || !items.every((item) => item !== null && typeof item === 'object')) {\n"
+        "  const named = (value) => typeof value === 'string' && value !== '';\n"
+        "  const entry = (item) => item !== null && typeof item === 'object'\n"
+        "    && named(item.id) && named(item.name) && named(item.creator_type);\n"
+        "  if (items === null || !items.every(entry)) {\n"
         "    return { status: response.status };\n"
         "  }\n"
         "  const text = (value) => (typeof value === 'string' ? value : '');\n"
@@ -170,14 +173,30 @@ def read_list(page: Page, source: "Source", org: str) -> tuple[Listed, ...]:
 
     Ours or not, so that a log can say how many were listed beside how many
     were kept — the number that tells a person the filter did something.
+
+    An entry is a skill only with an `id`, a `name` and a `creator_type`, each
+    a string with something in it: the first is what the download address
+    needs, the second what the file is named after, the third what the filter
+    reads. The expression refuses the rest; this refuses them again, because a
+    fake answers the tag and not the JavaScript. (Raised by Copilot in review
+    on #64.)
     """
     raw = page.evaluate(list_js(source, org))
     items = raw.get("skills") if isinstance(raw, dict) else None
-    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+    if not isinstance(items, list) or not all(_is_entry(item) for item in items):
         raise BrowserError(detail=LIST_UNREADABLE.format(why=_why(raw)))
     listed = tuple(_listed(item) for item in items)
     _logger.info("skills listed", extra={"listed": len(listed), "ours": sum(item.ours for item in listed)})
     return listed
+
+
+REQUIRED = ("id", "name", "creator_type")
+"""What an entry has to carry to be a skill the tool can act on."""
+
+
+def _is_entry(item: Any) -> bool:
+    """Whether `item` is an object carrying the three required fields, each a non-empty string."""
+    return isinstance(item, dict) and all(isinstance(item.get(name), str) and item[name] for name in REQUIRED)
 
 
 def _listed(item: dict[str, Any]) -> Listed:
