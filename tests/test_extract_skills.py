@@ -252,6 +252,36 @@ def test_the_skills_the_account_wrote_are_fetched_and_the_rest_are_not(
 
 
 @pytest.mark.slow
+def test_a_staged_cleanup_that_fails_does_not_fail_a_filed_run(
+    settings: Settings, page: FakeSkillsPage, launches: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The snapshot is filed; a staged file that will not delete is logged, not raised (§93).
+
+    Cleanup is best-effort: a `finally` that raised would turn a run whose
+    snapshot is already in the store into a failure. (Raised by Copilot in
+    review on #64.)
+    """
+    real_unlink = Path.unlink
+
+    def stubborn(self: Path, *, missing_ok: bool = False) -> None:
+        # Only the staging dir, and only at the `finally`: nothing on the happy
+        # path unlinks a staged file before the run has filed its snapshot.
+        if self.parent.name == extract.TMP_DIRNAME:
+            raise OSError(13, "Permission denied")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", stubborn)
+    outcome, _ = run(settings, stamp=STAMP)
+    monkeypatch.undo()
+
+    assert outcome.exit_code == ExitCode.OK
+    assert outcome.snapshot is not None
+    assert outcome.skills == 2
+    staged = sorted((settings.accounts_dir / "claude" / ACCOUNT / extract.TMP_DIRNAME).iterdir())
+    assert staged, "the files that could not be removed are left where they fell"
+
+
+@pytest.mark.slow
 def test_the_block_is_the_brief_block(settings: Settings, page: FakeSkillsPage, launches: list[str]) -> None:
     """§94's block, byte for byte, with `60`'s line per skill before it and the clock pinned."""
     outcome, sink = run(settings, stamp=STAMP, clock=iter((0.0, 4.0)).__next__)

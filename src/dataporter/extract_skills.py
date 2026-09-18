@@ -33,7 +33,7 @@ Two rules that are not obvious from the code alone:
 
 import re
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -176,8 +176,10 @@ def extract_skills_command(
     finally:
         # Whatever happened, the bytes under the account home are not something
         # anybody asked us to keep: the store has them, or the run failed.
-        for path in collected:
-            path.unlink(missing_ok=True)
+        # Best-effort, so a cleanup that cannot be made does not mask the
+        # browser or store error that reached here — nor turn a run that filed
+        # its snapshot into a failure. (Raised by Copilot in review on #64.)
+        _discard(collected)
     took = pretty_duration(round(clock() - started))
     sink.block(block(settings, source, snapshot, downloaded=len(staged), took=took, gaps=filing.gaps))
     return SkillsOutcome(snapshot=snapshot, path=directory / store.SKILLS_DIRNAME, skills=len(staged))
@@ -307,6 +309,23 @@ def _fetch_each(
     return staged, missing
 
 
+def _discard(paths: "Iterable[Path]") -> None:
+    """Remove staged files without ever raising: cleanup is best-effort (`66`).
+
+    The one write in this module that must not decide the command's outcome. A
+    file left because it could not be removed is logged and swept by `logout`,
+    the way `45`'s `.crdownload` is; raising here would replace the run's real
+    error, or fail a run whose snapshot is already filed — the mistake the
+    store made with `APPENDING` and fixed the same way. (Raised by Copilot in
+    review on #64.)
+    """
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            _logger.warning("staged file not removed", extra={"reason": exc.strerror or str(exc)})
+
+
 def _sweep(into: Path, before: frozenset[Path]) -> None:
     """Remove what a download that did not finish left in the staging dir.
 
@@ -319,8 +338,7 @@ def _sweep(into: Path, before: frozenset[Path]) -> None:
     is an earlier skill of this run, on its way to the store. (Raised by
     Copilot in review on #64.)
     """
-    for path in set(into.iterdir()) - set(before):
-        path.unlink(missing_ok=True)
+    _discard(set(into.iterdir()) - set(before))
 
 
 # --------------------------------------------------------------------------- #
