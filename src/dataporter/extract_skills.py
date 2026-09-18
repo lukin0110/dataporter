@@ -95,7 +95,7 @@ SKILL = "skill"
 SKILLS = "skills"
 """`1 skill.` and not `1 skills.`, as `store.GAPS_ONE` already has it."""
 
-NOT_DOWNLOADED = "skill_not_downloaded"
+NOT_DOWNLOADED = store.SKILL_GAP
 NOT_DOWNLOADED_REASON = "skills could not be downloaded"
 NOT_DOWNLOADED_REASON_ONE = "skill could not be downloaded"
 """The one gap kind a skills extraction has (§93): listed, and not landed. Two

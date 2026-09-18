@@ -146,7 +146,7 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 | `logout` | Sign out of a source account: remove its session, its open ask and its staged downloads, keeping its logs. `--source`, `--account` (required). |
 | `session status` | Whether a source account's profile is signed in. `--source`, `--account` (required). |
 | `extract` | Ask a source for an account's export, then file what comes back as a snapshot. `--source`, `--account`, `--link`, `--from`, `--abandon`, `--store`. |
-| `extract-skills` | Collect the skills the account wrote and file them into a snapshot beside the archive. An export does not carry them. `--source`, `--account`, `--stamp`. |
+| `extract-skills` | Collect the skills the account wrote and file them into a snapshot beside the archive. An export does not carry them. `--source`, `--account`, `--stamp`, `--store`. |
 | `snapshots` | What the store holds: source, account, stamp, conversations, state. `--json`. |
 | `inspect <export>` | What the export contains, and what is migratable. A snapshot works wherever an export does. |
 | `seeds <export>` | Write the migration seeds without touching a browser. |

@@ -841,6 +841,51 @@ def test_a_refused_append_leaves_the_marker_and_the_lock_as_it_found_them(tmp_pa
     assert store.Store(root).rows()[0].state == "complete"
 
 
+def test_a_second_append_replaces_the_skill_gap_and_keeps_the_archive_s(tmp_path: Path) -> None:
+    """A retry that lands the skill clears the gap (§93), and an archive's own gap survives it.
+
+    The append used to concatenate gaps, so a retry left the stale
+    `skill_not_downloaded` and stacked more on every run. (Raised by Copilot in
+    review on #64.)
+    """
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    bytes_gap = store.Gap(kind="bytes_not_in_export", count=3, reason="files")
+    store.Store(root).file_archive(path, filing(path, gaps=(bytes_gap,)))
+    skill_gap = store.Gap(kind=store.SKILL_GAP, count=1, reason="skill could not be downloaded")
+
+    _, after_first = store.Store(root).file_skills(
+        store.SkillsFiling(
+            source="claude", account="old-personal", stamp=STAMP, skills=(staged(tmp_path, "a"),), gaps=(skill_gap,)
+        )
+    )
+    assert sorted(gap.kind for gap in after_first.gaps) == ["bytes_not_in_export", store.SKILL_GAP]
+
+    # The second run lands "b" (a file not already there) and reports no gap.
+    _, after_second = store.Store(root).file_skills(
+        store.SkillsFiling(
+            source="claude", account="old-personal", stamp=STAMP, skills=(staged(tmp_path, "b"),), gaps=()
+        )
+    )
+    assert [gap.kind for gap in after_second.gaps] == ["bytes_not_in_export"]
+    assert [skill.name for skill in after_second.skills] == ["a", "b"]
+    assert store.Store(root).rows()[0].gaps == 3
+
+
+def test_an_incomplete_skills_only_snapshot_still_counts_the_skills_it_has(tmp_path: Path) -> None:
+    """A failed append leaves `COMPLETE` down; the row is incomplete and still says how many skills are named.
+
+    `archived` is false and the count is the manifest's, not `0 skills`. (Raised
+    by Copilot in review on #64.)
+    """
+    root = tmp_path / "store"
+    directory, _ = store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a"), staged(tmp_path, "b")))
+    (directory / store.COMPLETE_NAME).unlink()
+
+    row = store.Store(root).rows()[0]
+    assert (row.state, row.archived, row.skills, row.unit, row.count) == ("incomplete", False, 2, "skills", "2")
+
+
 def test_a_snapshot_of_the_skills_alone_with_none_filed_still_counts_skills(tmp_path: Path) -> None:
     """Every skill refused: the row says `0 skills` beside its gap, because the unit is the archive's absence, not a count."""
     root = tmp_path / "store"

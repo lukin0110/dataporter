@@ -8,6 +8,7 @@ and compared byte for byte with what the seam now derives from `CLAUDE`.
 import re
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -146,6 +147,20 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     assert sites.skills_list_url(CLAUDE, "o/r#g") == "https://claude.ai/api/organizations/o%2Fr%23g/skills/list-skills"
     assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
     assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
+
+
+def test_a_source_has_skills_only_with_all_three_addresses() -> None:
+    """`has_skills` gates the command, and a source missing the organisations read is not skilled.
+
+    All three, because the organisations read comes first and a source with the
+    list and download alone would pass the check and then read the origin root.
+    (Raised by Copilot in review on #64.)
+    """
+    assert CLAUDE.has_skills
+    assert not CHATGPT.has_skills
+    assert not replace(CLAUDE, organizations_path="").has_skills
+    assert not replace(CLAUDE, skills_list_path="").has_skills
+    assert not replace(CLAUDE, skills_download_path="").has_skills
 
 
 def test_the_ask_block_s_words_are_the_source_s() -> None:

@@ -99,6 +99,14 @@ that is also gone — an unfinished snapshot, which `_existing` refuses anyway.
 
 SKILLS_DIRNAME = "skills"
 SKILL_SUFFIX = ".skill"
+SKILL_GAP = "skill_not_downloaded"
+"""The gap kind a skills append owns (§93): a skill listed and not landed.
+
+Named here, in the store's vocabulary, so that an append can drop a previous
+run's skill gaps before recording this run's — a retry that gets the skill fixes
+the snapshot rather than stacking a second gap and calling the completed
+snapshot still-missing. An archive's own gap — `bytes_not_in_export` — is
+another kind, and untouched. (Raised by Copilot in review on #64.)"""
 """Where a snapshot keeps the skills the account wrote, one file each, as the
 vendor served them (brief `09` §91, `66`). A snapshot may hold these and no
 archive: `extract-skills` with no `--stamp` files one of its own."""
@@ -591,7 +599,9 @@ class Store:
             update={
                 "skills": skills,
                 "counts": base.counts.model_copy(update={"skills": len(skills)}),
-                "gaps": [*base.gaps, *filing.gaps],
+                # This run's skill gaps replace a prior run's, so a retry that
+                # lands the skill clears the gap; every other kind is kept.
+                "gaps": [gap for gap in base.gaps if gap.kind != SKILL_GAP] + list(filing.gaps),
             }
         )
         data = (snapshot.model_dump_json(indent=2) + "\n").encode("utf-8")
@@ -693,6 +703,7 @@ class Store:
                 stamp=directory.name,
                 state=INCOMPLETE,
                 conversations=None if snapshot is None else snapshot.counts.conversations,
+                skills=None if snapshot is None else snapshot.counts.skills,
                 archived=snapshot is None or snapshot.origin != "skills",
             )
         if snapshot is None:

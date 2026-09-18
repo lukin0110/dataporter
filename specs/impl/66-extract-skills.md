@@ -24,6 +24,9 @@ nothing in the source account. The mock's side of it, and the rehearsal, are [`6
 - **`--account LABEL`, required**, and **`--source SRC`** defaulting through
   `Settings.source`, both declared with the existing `Account` and `Source` annotations and
   resolved by `config.with_account`, exactly as `logout`'s are (`63`).
+- **`--store DIR`**, the shared `StoreDir` option, as `extract` and `snapshots` carry it:
+  the skills file into the store, so the command names where. Documented in the README's
+  command row beside the other three.
 - **`--stamp STAMP`**, optional, a new `Stamp` annotation with no literal default. It is
   validated with the existing `store.parse_stamp` **in the library, not the CLI** — the
   command body stays branch-free (`23`) — and a value that does not parse is a
@@ -47,9 +50,11 @@ nothing in the source account. The mock's side of it, and the rehearsal, are [`6
     formatted with that uuid, returning one object per skill holding **only** `id`, `name`,
     `creator_type`, `enabled` and whether a `backing_plugin_id` is set. The description and
     the display name are left in the page: nothing needs them (§38).
-  - `download_url(source, org, skill_id)` — builds `Source.skills_download_path`. It is
-    built from the `Source` and the listing's `id`, never from anything else a response
-    carried.
+  The address one skill is served from is `sites.skills_download_url(source, org,
+  skill_id)`, in `browser/sites.py` beside the two walls — built from the `Source` and the
+  listing's `id`, never from anything a response carried, and percent-encoding both so an
+  id with URL syntax cannot change the request. `browser/skills.py` reads; `sites` spells
+  the addresses.
 
   Both expressions are tag-dispatched the way `export_page`'s are, so a fake answers them
   by tag rather than by parsing JS. They are async IIFEs of their own rather than
@@ -122,10 +127,13 @@ nothing in the source account. The mock's side of it, and the rehearsal, are [`6
 - **`SnapshotRow` and the listing** learn `skills`, so `dataporter snapshots` reports a
   skills-only snapshot as something other than `0 conversations`.
 - **Gaps** (§93): a listed skill whose fetch does not land is a `Gap` of kind
-  `extract_skills.NOT_DOWNLOADED` (`skill_not_downloaded`), with a count and the reason an
-  operator reads — `1 skill could not be downloaded`. The stop reason `download.fetch`
-  gave — refused, stalled, cancelled — goes to the run log and not into the manifest,
-  which §38 keeps to labels and numbers. The run still exits `0`. Failing `org_js` or `list_js` is a `BrowserError`, nothing is
+  `store.SKILL_GAP` (`skill_not_downloaded`), with a count and the reason an operator reads
+  — `1 skill could not be downloaded`. The stop reason `download.fetch` gave — refused,
+  stalled, cancelled — goes to the run log and not into the manifest, which §38 keeps to
+  labels and numbers. The run still exits `0`. An append **replaces** a prior run's skill
+  gaps rather than stacking them, so a second run that lands the skill clears the gap
+  (§93's "a second run fixes"); an archive's `bytes_not_in_export` gap is another kind and
+  is kept. Failing `org_js` or `list_js` is a `BrowserError`, nothing is
   filed, and the exit code is the one that read failed with.
 - **The blocks** (§94), golden:
 

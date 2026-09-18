@@ -197,8 +197,14 @@ class Source:
 
     @property
     def has_skills(self) -> bool:
-        """Whether this source has skills a person wrote, and both addresses to read them by."""
-        return bool(self.skills_list_path and self.skills_download_path)
+        """Whether this source has skills a person wrote, and all three addresses to read them by.
+
+        All three, not the two `66` first checked: the organisations read comes
+        first and its address is as required as the list's and the download's,
+        so a source missing it would pass the command's capability check and
+        then read the origin root. (Raised by Copilot in review on #64.)
+        """
+        return bool(self.organizations_path and self.skills_list_path and self.skills_download_path)
 
     @property
     def login_url(self) -> str:
