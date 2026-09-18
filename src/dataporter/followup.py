@@ -458,6 +458,11 @@ def ask_all(
     if failure is not None:
         raise HermesError(detail=f"{failure.label}: {failure.detail}")
 
+    # After the "nothing to do" answer and the Hermes check, before the lock
+    # (`69`): `Importer._preflight` asks about Hermes before the session, and a
+    # command that asked the two questions in the other order would report a
+    # different failure on the same machine.
+    browser_session.require_session(settings)
     lock = state.WorkspaceLock(settings.workspace)
     lock.acquire()
     answers: list[Probe] = []

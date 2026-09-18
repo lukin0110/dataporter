@@ -29,6 +29,7 @@ from typing import Any
 import pytest
 
 import dataporter
+from conftest import signed_in
 from dataporter import Dataporter, api, console, sources
 from dataporter import extract as extracting
 from dataporter import extract_skills as skills_extracting
@@ -424,10 +425,17 @@ def test_the_four_extract_modes_are_four_methods() -> None:
         assert callable(getattr(Dataporter, name))
 
 
+def has_a_session(*accounts: str) -> None:
+    """Give each account the profile `69` asks for, through the suite's one spelling."""
+    for name in accounts:
+        signed_in(with_account(load_settings(), "claude", name))
+
+
 @pytest.mark.slow
 def test_the_ask_is_the_operation(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`31`'s ask, through both doors: two browsers, because an ask closes its own."""
     accounts_at(workspace, monkeypatch)
+    has_a_session("library", "cli")
     page = FakeExportPage()
     with browser(page) as chrome:
         fake_launch(monkeypatch, chrome.port)
@@ -448,6 +456,7 @@ def test_the_ask_is_the_operation(workspace: Path, monkeypatch: pytest.MonkeyPat
 def test_extract_skills_is_the_operation(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`66`, through both doors: two browsers and two stores, as the CLI's twin needs."""
     accounts_at(workspace, monkeypatch)
+    has_a_session("library", "cli")
     bodies = {"skill_01a": b"PK\x03\x04 one"}
     page = FakeSkillsPage(entries=[entry("skill_01a", "research-helper")], bodies=bodies)
     with skills_browser(page) as chrome:
@@ -478,6 +487,7 @@ def test_a_stamp_files_the_skills_beside_an_archive(
 ) -> None:
     """§89's `--stamp`, as a keyword: one moment of an account is one directory."""
     accounts_at(workspace, monkeypatch)
+    has_a_session("a")
     dp = Dataporter(store=workspace / "store")
     filed = dp.file("a", export_zip)
     assert filed.snapshot is not None

@@ -353,7 +353,14 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     record claiming otherwise.
     """
     account = _account(settings)
-    log.enable_run_log(settings.logs_dir)
+    # Both browserless refusals, in this order, and both before the run log.
+    #
+    # The open ask keeps the precedence step 1 of this docstring gives it: a
+    # person holding one wants to be told to fetch it or abandon it, which is a
+    # more useful answer than `not logged in` even when both are true. And both
+    # come before `enable_run_log` for `logout`'s reason (`69`) — a refusal that
+    # opened no browser and touched no account should leave no log saying it
+    # did, which matters most for a mistyped label.
     open_ask = read_ask(settings)
     if open_ask is not None:
         raise StoreError(
@@ -363,13 +370,15 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
                 asked_at=open_ask.asked_at.strftime(ASKED_AT_FORMAT),
             )
         )
+    browser_session.require_session(settings)
+    log.enable_run_log(settings.logs_dir)
     source = sources.of(settings)
     browser = launcher.launch(settings, sites.export_page_url(source))
     try:
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            sign_in_to_source(settings, browser, source, sink=sink)
+            sign_in_or_record(settings, browser, source, sink=sink, traced=traced)
             result = export_page.request_export(settings, browser, source=source)
             traced.exit_code = ExitCode.OK if result.requested and result.pressed_at is not None else ExitCode.FAILED
     finally:
@@ -389,6 +398,29 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     _logger.info("ask recorded", extra={"source": settings.source, "account": account})
     sink.block(ask_block(written))
     return ExtractOutcome()
+
+
+def sign_in_or_record(
+    settings: Settings,
+    browser: "BrowserSession",
+    source: "Source",
+    *,
+    sink: Sink,
+    traced: "tracing.Opened",
+    url: str | None = None,
+) -> None:
+    """`sign_in_to_source`, with the trace told how the run ended if it ended here (`70`).
+
+    `watched` writes the exit code the body assigned it, and a body that raises
+    assigns nothing — so a trace of the one failure `70` exists to report would
+    be the only trace that does not say how its run ended. Two commands open a
+    source session inside a `watched`, so the pair is spelled once, here.
+    """
+    try:
+        sign_in_to_source(settings, browser, source, sink=sink, url=url)
+    except AuthError:
+        traced.exit_code = ExitCode.NOT_AUTHENTICATED
+        raise
 
 
 def sign_in_to_source(
@@ -412,7 +444,7 @@ def sign_in_to_source(
     needed them.
     """
     url = sites.export_page_url(source) if url is None else url
-    state = browser_session.current_state(browser, url, origins=source.origins)
+    state = browser_session.current_state(browser, url, origins=source.origins, sign_in=source.sign_in_selectors)
     if not export_page.signed_out(state, source):
         return
     if source.sign_in_by_link:
@@ -509,6 +541,12 @@ def fetch(
     started = clock()
     home = _account_home(settings)
     source = sources.of(settings)
+    if source.link_serves_manifest or source.fetch_needs_session:
+        # Only where the download goes through the session (`69`). A source whose
+        # link `urllib` may follow needs no session, and refusing that fetch for
+        # want of one would be a refusal about nothing. Both sources require one
+        # today; the condition is written for the day one does not.
+        browser_session.require_session(settings)
     log.enable_run_log(settings.logs_dir)
     if not links.is_followable(link, source.origins):
         raise FetchError(links.not_followable(source.origins))
@@ -677,7 +715,7 @@ def _download_manifest_and_parts(
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            sign_in_or_record(settings, browser, source, sink=sink, traced=traced, url=source.login_url)
             with tracing.redacting():
                 try:
                     manifest_path, parts = index_and_files(
@@ -773,7 +811,7 @@ def _download_through_session(
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            sign_in_or_record(settings, browser, source, sink=sink, traced=traced, url=source.login_url)
             with tracing.redacting():
                 try:
                     got = download.fetch(settings, browser, link, into=into, origins=source.origins)

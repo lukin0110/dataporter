@@ -25,6 +25,7 @@ import pytest
 from orval import pretty_bytes
 from pydantic import SecretStr
 
+from conftest import signed_in
 from dataporter import extract, log, store
 from dataporter import trace as tracing
 from dataporter.browser import download, helpers, launcher
@@ -41,7 +42,7 @@ from dataporter.config import (
     with_account,
 )
 from dataporter.console import Collected
-from dataporter.errors import FetchError, UsageError
+from dataporter.errors import AuthError, FetchError, UsageError
 from dataporter.exit_codes import ExitCode
 from fake_chatgpt_pages import LOGIN_BUTTON, ROOT, FakeChatgptPages, Step, browser
 from fake_chrome import FakeChrome
@@ -396,3 +397,27 @@ def test_live_a_signed_in_tab_downloads_and_a_signed_out_one_is_refused(gated: s
         with pytest.raises(download.DownloadStopped) as raised:
             download.fetch(settings, session, f"{gated}/gate", into=into, origins=(gated,))
         assert raised.value.reason == download.PAGE
+
+
+def test_a_fetch_that_stops_signed_out_says_exit_3_in_its_trace(
+    site: FakeChatgptPages, chrome: FakeChrome, tmp_path: Path, launches: list[str]
+) -> None:
+    """`70`: the two fetch paths open a session inside a `watched` as the ask does.
+
+    `trace.opened` writes `ExitCode.INTERNAL` for a handle nobody assigned, so a
+    fetch that stopped at a sign-in used to leave a trace saying `70` while the
+    command exited `3` — the one failure whose trace disagreed with its own
+    command. Attended and signed out, so the wait runs out rather than walking in.
+    """
+    attended = signed_in(make_settings(chrome, tmp_path).model_copy(update={"non_interactive": False}))
+    site.go(Step.LANDING)
+
+    with pytest.raises(AuthError):
+        extract.fetch(attended, LINK, sink=Collected())
+
+    written = trace_lines(attended)
+    assert written[-1]["what"] == "end"
+    assert written[-1]["exit"] == int(ExitCode.NOT_AUTHENTICATED)
+    # And the link was never navigated to: a single-use link survives a run that
+    # stopped at a sign-in (`61`).
+    assert site.links == []

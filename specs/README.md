@@ -316,6 +316,18 @@ covers — `30` because the store is what its `ask`, `fetch` and `file` write in
           (68 amends `23`'s no-re-export rule and `25`'s bullet above)
 ```
 
+`69` is the first of three about one failure: a command that needs a session and has none
+used to open a browser to be told so, and on claude.ai it was not even told so correctly.
+This one is the half that needs no browser at all — the profile directory is absent, so
+there is nothing that could be signed in, which is the shortcut `session status` has had
+since `07` given a name and handed to the other seven commands. `70` is the half only the
+vendor can answer, and `71` is the mock and the rehearsal that prove it.
+
+```text
+07, 31, 63, 66 ─> 69
+07, 31, 51, 62 ─> 70 ─> 71
+```
+
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
 own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
 straight to `14`. Both need `12` and nothing else, and both were built against it
@@ -407,6 +419,9 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [66](impl/66-extract-skills.md) | `extract-skills` | §88–§95, §32 (amended), §33 (amended), §36 (amended) | Built |
 | [67](impl/67-the-mock-grows-skills.md) | The mock grows skills | §90, §91, §93, §94 | Done |
 | [68](impl/68-the-facade.md) | The facade | — tooling | Done |
+| [69](impl/69-the-preflight.md) | The preflight: no session, no browser | §8, §35, §86 | Done |
+| [70](impl/70-the-sign-in-screen.md) | The sign-in screen, at the address that was asked for | §35, §36, §77 | Done |
+| [71](impl/71-the-mock-grows-a-sign-in-screen.md) | The mock grows a sign-in screen | §21, §35, §36 | Done |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real

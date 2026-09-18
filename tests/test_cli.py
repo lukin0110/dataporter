@@ -338,3 +338,28 @@ def test_a_judge_error_is_exit_6(runner: CliRunner, workspace: Path, monkeypatch
     result = runner.invoke(cli.app, ["judge"], catch_exceptions=False)
     assert result.exit_code == ExitCode.ENVIRONMENT
     assert result.stderr == "error: the judge extra is not installed\n"
+
+
+@pytest.mark.parametrize("command", [["extract"], ["extract-skills"]])
+def test_an_account_with_no_session_is_exit_3_before_a_browser(
+    runner: CliRunner,
+    workspace: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+) -> None:
+    """`69`: the remedy carries the account's flags, on stderr, with no Chrome."""
+    monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
+    result = runner.invoke(cli.app, [*command, "--source", "claude", "--account", "work"], catch_exceptions=False)
+    assert result.exit_code == ExitCode.NOT_AUTHENTICATED
+    assert result.stderr == "error: not logged in — run: dataporter login --source claude --account work\n"
+    assert not result.stdout
+
+
+def test_a_destination_with_no_session_is_exit_3_before_a_browser(
+    runner: CliRunner, workspace: Path, export_zip: Path
+) -> None:
+    """The same code and the same stream, with §86's account-less remedy."""
+    result = runner.invoke(cli.app, ["import", str(export_zip)], catch_exceptions=False)
+    assert result.exit_code == ExitCode.NOT_AUTHENTICATED
+    assert result.stderr == "error: not logged in — run: dataporter login\n"

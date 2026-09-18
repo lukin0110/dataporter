@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from conftest import signed_in
 from dataporter import cli, console
 from dataporter import extract as extracting
 from dataporter import extract_skills as skills_extracting
@@ -30,6 +31,7 @@ from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import (
+    AccountsSettings,
     BrowserSettings,
     Settings,
     TimeoutSettings,
@@ -183,6 +185,17 @@ def test_extract_abandon_is_the_same_through_the_library(
     assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
 
 
+def has_a_session(tmp_path: Path, *accounts: str) -> None:
+    """Give each account the profile `69` asks for, through the suite's one spelling.
+
+    Built from `tmp_path` rather than from `load_settings()`: the CLI half of
+    each of these tests reads the accounts directory out of the environment, and
+    this is the same directory it will find there.
+    """
+    for name in accounts:
+        signed_in(Settings(accounts=AccountsSettings(dir=tmp_path / "accounts"), source="claude", account=name))
+
+
 @pytest.mark.slow
 def test_extract_the_ask_is_the_same_through_the_library(
     runner: CliRunner,
@@ -200,6 +213,7 @@ def test_extract_the_ask_is_the_same_through_the_library(
     with browser(page) as chrome:
         monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
         settings = ask_settings(tmp_path, chrome.port, "library")
+        has_a_session(tmp_path, "library", "cli")
         fake_launch(monkeypatch, chrome.port)
         sink = console.Collected()
         outcome = extracting.ask(settings, sink=sink)
@@ -230,6 +244,7 @@ def test_extract_skills_is_the_same_through_the_library(
     with skills_browser(page) as chrome:
         monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
         settings = with_store_dir(ask_settings(tmp_path, chrome.port, "library"), tmp_path / "store-library")
+        has_a_session(tmp_path, "library", "cli")
         fake_launch(monkeypatch, chrome.port)
         sink = console.Collected()
         outcome = skills_extracting.extract_skills_command(settings, skills_extracting.SkillsRequest(), sink=sink)

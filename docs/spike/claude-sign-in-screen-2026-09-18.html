@@ -1,0 +1,126 @@
+<!--
+  claude.ai's sign-in screen, served in place of the export page, 2026-09-18.
+
+  A TRIM, not a capture. The page as served is ~200 KB of build hashes, i18n
+  catalogues, inlined CSS and marketing furniture, none of which says anything
+  about the rows it is cited for. What is kept is the <head>'s identifying meta
+  and the sign-in card, verbatim; what is cut is every <script>, every
+  <style>, the navigation, the pricing section, the FAQ, the footer and the
+  cookie banner. Two attributes of <head> are removed rather than cut with
+  their element: `data-ion-ip-country`, which is where the person was, and
+  `data-ion-served-at`, which is when.
+
+  Why it is here: `70`. A signed-out request for
+  `/new#settings/data-privacy-controls` is not redirected — the SPA renders this
+  at that address, so the URL still says `/new` and only the markup tells the
+  two apart. The two signals `sources/claude.py` reads for it are marked below.
+
+  Nothing in this file is content: no account name, no conversation title, no
+  address. The page is the one a signed-out browser is shown, in Spanish
+  (`lang="es-419"`), which is the point — none of the two signals is a word.
+-->
+<html data-compile-hints="on" data-build-id="1f11de917c" data-git-hash="1f11de917ceb02712dfdd5addec3fc38b21e7190"
+      data-version="1.0.0" data-color-version="v2" data-document-variant="full" data-entry-document="app"
+      lang="es-419" data-theme="claude" data-mode="dark" data-density="comfortable" class="cds-root">
+<head>
+  <meta charset="UTF-8">
+  <title>Sign in - Claude</title>
+  <meta name="x-route-title" data-router-head="" data-intended-title="Sign in - Claude">
+  <meta name="description" content="Sign in to Claude, Anthropic's AI assistant for problem solvers." data-router-head="">
+  <link rel="canonical" href="https://claude.ai">
+  <link rel="preconnect" href="https://js.hcaptcha.com">
+  <link rel="preconnect" href="https://accounts.google.com">
+  <link rel="preload" href="https://assets.claude.ai/videos/login-hero-kt3-still-005fec8b.webp" as="image" media="(min-width: 64rem)">
+</head>
+<body class="bg-surface-1 text-primary font-sans min-h-screen">
+
+<!-- SIGNAL 1 of 2 — SIGN_IN_ATTESTATION_SELECTOR.
+     Two invisible attestation containers, one per channel. The `send_magic_link`
+     channel is the one that matters: a magic-link *sender* is mounted, which
+     nothing on a signed-in page needs. Both are aria-hidden and sized to zero,
+     which is why the selector is matched by presence and never by visibility.
+     The same pair, on the same two channels, is in
+     `claude-sign-in-link-sent.html` from 2026-09-15. -->
+<div aria-hidden="true" data-client-attestation="hcaptcha-invisible" data-client-attestation-channel="default"
+     style="position: absolute; width: 0px; height: 0px; overflow: hidden;">
+  <iframe aria-hidden="true" data-hcaptcha-widget-id="0s06kjysjwop" data-hcaptcha-response=""
+          src="https://newassets.hcaptcha.com/captcha/v1/.../static/hcaptcha.html#frame=checkbox-invisible"
+          style="display: none;"></iframe>
+  <textarea id="h-captcha-response-0s06kjysjwop" name="h-captcha-response" style="display: none;"></textarea>
+</div>
+<div aria-hidden="true" data-client-attestation="hcaptcha-invisible" data-client-attestation-channel="send_magic_link"
+     style="position: absolute; width: 0px; height: 0px; overflow: hidden;">
+  <iframe aria-hidden="true" data-hcaptcha-widget-id="15atgmd9ruhr" data-hcaptcha-response=""
+          src="https://newassets.hcaptcha.com/captcha/v1/.../static/hcaptcha.html#frame=checkbox-invisible"
+          style="display: none;"></iframe>
+  <textarea id="h-captcha-response-15atgmd9ruhr" name="h-captcha-response" style="display: none;"></textarea>
+</div>
+
+<main>
+  <h2 class="text-center text-primary font-display">Cuestiona lo que viene</h2>
+  <h3 class="text-center text-primary font-claude-response">Tu compañero de ideas para grandes ambiciones</h3>
+
+  <div class="mt-8 p-7 max-w-md text-center border-0.5 border-border-300 rounded-[2rem] flex flex-col bg-surface-1">
+    <div class="flex flex-col gap-5" aria-busy="false">
+      <div class="flex flex-col gap-3">
+        <div class="grid gap-3">
+          <button type="button" data-cds="Button" data-size="lg" data-testid="login-with-google">
+            <span class="inline-flex min-w-0 items-center gap-1"><span>Continuar con Google</span></span>
+          </button>
+          <p role="status" class="sr-only"></p>
+          <button type="button" data-cds="Button" data-size="lg" data-testid="login-with-apple">
+            <span class="inline-flex min-w-0 items-center gap-1"><span>Continuar con Apple</span></span>
+          </button>
+        </div>
+        <p class="text-secondary pb-px text-center text-xs uppercase">o</p>
+
+        <!-- SIGNAL 2 of 2 — SIGN_IN_FORM_SELECTOR.
+             A form holding both the address field and the control that submits
+             it: `form:has([data-testid="email"]):has([data-testid="continue"])`.
+             Both test ids in one form, which is the first step of the sign-in
+             and not the `link sent` step — that one keeps `continue` but
+             replaces `email` with `code`, so this selector does not match it.
+             Matched on the ids and never on the labels, which are Spanish here
+             and another language elsewhere. -->
+        <form novalidate="" data-cds="Form" action="" class="flex flex-col gap-4 sm:min-w-[20rem]">
+          <div data-cds="Field" class="flex flex-col gap-xs font-sans">
+            <input data-cds="TextInput" data-size="lg" data-testid="email" autocomplete="email"
+                   aria-label="Correo electrónico" placeholder="Ingresa tu correo electrónico" required=""
+                   class="cds-input" id="email" type="email" value="">
+          </div>
+          <div class="flex flex-col">
+            <span tabindex="-1" class="inline-flex w-full" data-trigger-disabled="">
+              <button type="submit" data-cds="Button" data-size="lg" data-testid="continue">
+                <span class="inline-flex min-w-0 items-center gap-1">Continuar con correo electrónico</span>
+              </button>
+            </span>
+            <div class="overflow-hidden max-h-0 opacity-0" aria-hidden="true">
+              <button type="button" data-cds="Button" data-size="lg" tabindex="-1">
+                <span class="inline-flex min-w-0 items-center gap-1">Continuar con SSO</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="text-xs text-muted leading-relaxed">
+      Al continuar, confirmas que conoces la
+      <a data-cds="TextLink" href="https://www.anthropic.com/legal/..." target="_blank" rel="noopener">Política de Privacidad</a>
+      de Anthropic.
+    </div>
+  </div>
+
+  <div class="mt-6 flex justify-center">
+    <button type="button" data-cds="Button" data-size="lg" data-testid="download-desktop-app">
+      <span class="inline-flex min-w-0 items-center gap-1">Descargar aplicación de escritorio</span>
+    </button>
+  </div>
+</main>
+
+<!-- Cut from here: the marketing navigation, the `#pricing` plan cards, the
+     `#faq` accordion, the footer, the cookie consent banner, every <script>
+     and every <style>. None of them is a signal this file is cited for, and
+     the pricing section in particular is the kind of furniture a redesign
+     moves without the account's state changing at all. -->
+</body>
+</html>

@@ -215,6 +215,16 @@ class Site:
         self._strays: set[str] = set()
         """Browsers that opened a link whose sign-in was not theirs (`link opened elsewhere`)."""
         self._exports = Exports(wall=wall)
+        self.signed_out_in_place = False
+        """Which of the two signed-out shapes to answer with (`71`).
+
+        The map has both, and both are observed. `False` is the redirect —
+        `/logout?involuntary` and then `/login` — which is what `50` and `53`
+        drive and what a mock run has always shown. `True` is the other one:
+        the sign-in screen rendered at the address that was asked for, which is
+        the state `70` reads and the one an ask actually meets. A switch rather
+        than a guess, because nobody has established when the real site picks
+        which; the witness route is what moves it."""
         self._skills: dict[str, Skill] = {skill.id: skill for skill in seeded_skills()}
         """The account's skills (`67`), seeded rather than posted: a rehearsal
         reads them, it never writes one."""

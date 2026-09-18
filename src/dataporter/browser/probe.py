@@ -238,6 +238,8 @@ _STATE_OBJECT = """(() => {
       generating: labelled('Stop').length > 0,
       send_enabled: labelled('Send').some((b) => !disabled(b)),
       dom_dialogs: all('[role="dialog"]').filter(visible).length,
+      sign_in_showing:
+        signIn.length > 0 && signIn.every((s) => document.querySelector(s) !== null),
     };
   })()"""
 """No content, only facts about it.
@@ -245,6 +247,18 @@ _STATE_OBJECT = """(() => {
 `composer_chars` counts what `08`'s `paste` would read back — see `blockText` in
 the prelude — so that "the composer is empty" and "the seed went in whole" are
 answers to the same question and cannot disagree.
+
+`sign_in_showing` is `70`'s, and it is the one field here computed from selectors
+the *caller* supplies rather than from this module's own: what a sign-in screen
+looks like belongs to the source (`42`), and this module reads whatever it is
+handed. Every one of them must match, and an empty list is `false` — so a caller
+that passes nothing gets the answer every caller had before this field existed.
+
+`document.querySelector` and not `visible`: both of the signals Claude declares
+are present-but-invisible by design — an attestation container is `aria-hidden`
+and sized to zero — and a visibility filter would reject the evidence. The
+question is whether the sign-in machinery is *mounted*, not whether it is on
+screen.
 """
 
 _LAST_MESSAGE_OBJECT = """(() => {
@@ -311,8 +325,6 @@ answering `document` rather than as a title that will not match. It is a
 provenance, not a value: `docs/claude-ui-map.md` is where the row gets corrected.
 """
 
-PAGE_STATE_JS = expression(PAGE_STATE_TAG, f"  return {_STATE_OBJECT};")
-
 
 def _expect_const(expect: Sequence[str]) -> str:
     """`expect` as a JavaScript const.
@@ -323,11 +335,37 @@ def _expect_const(expect: Sequence[str]) -> str:
     return f"  const expect = {json.dumps([item for item in expect if item])};\n"
 
 
+def _sign_in_const(sign_in: Sequence[str]) -> str:
+    """`sign_in` as a JavaScript const: what a sign-in screen looks like (`70`).
+
+    Empty strings are dropped for `_expect_const`'s reason turned around: an
+    empty selector is a `SyntaxError` inside `querySelector`, and one left in
+    would make the whole expression throw rather than answer.
+    """
+    return f"  const signIn = {json.dumps([item for item in sign_in if item])};\n"
+
+
+def page_state_js(sign_in: Sequence[str] = ()) -> str:
+    """Return the state expression, told what a sign-in screen looks like (`70`)."""
+    return expression(PAGE_STATE_TAG, _sign_in_const(sign_in) + f"  return {_STATE_OBJECT};")
+
+
+PAGE_STATE_JS = page_state_js()
+"""The state expression for a caller that names no sign-in screen — which is
+every caller but the extraction's probe, and the answer they all had before `70`."""
+
+
 def page_view_js(expect: Sequence[str] = ()) -> str:
-    """State and last message in one evaluate, so a poll sees one moment."""
+    """State and last message in one evaluate, so a poll sees one moment.
+
+    No sign-in selectors: `08`'s poll asks about a chat rather than about whether
+    the account is signed out, and `_STATE_OBJECT` needs the const to exist
+    either way. `page_state_js` is the one builder a caller names them to (`70`).
+    """
     return expression(
         PAGE_VIEW_TAG,
         _expect_const(expect)
+        + _sign_in_const(())
         + f"  return Object.assign({{}}, {_STATE_OBJECT}, "
         + f"{{last_message: {_LAST_MESSAGE_OBJECT}}});",
     )
@@ -343,6 +381,7 @@ def page_report_js(expect: Sequence[str] = (), expect_title: str | None = None) 
     return expression(
         PAGE_REPORT_TAG,
         _expect_const(expect)
+        + _sign_in_const(())
         + f"  const expectTitle = {json.dumps(expect_title)};\n"
         + f"  return Object.assign({{}}, {_STATE_OBJECT}, {{\n"
         + f"    last_message: {_LAST_MESSAGE_OBJECT},\n"
@@ -391,6 +430,17 @@ class PageState(BaseModel):
     dialogs: tuple[str, ...]
     conversation_id: str | None
     tab_count: int
+    sign_in_showing: bool = False
+    """Whether the vendor's **sign-in screen** is rendered here (`70`).
+
+    The second way a site says signed out, and the one an ask meets: claude.ai
+    renders its sign-in at the address that was asked for rather than redirecting,
+    so `kind` still reads `NEW_CHAT` and only the markup tells the two apart.
+
+    A default, so that every caller who names no sign-in selectors — which is all
+    of them but the extraction's probe — keeps the object it had. `logged_in` is
+    deliberately not derived from it: see `70`.
+    """
 
 
 class LastMessage(BaseModel):
@@ -599,6 +649,7 @@ def _state_from(page: Page, raw: Any, tab_count: int) -> PageState:
         dialogs=tuple(dialogs),
         conversation_id=conversation_id_of(url),
         tab_count=tab_count,
+        sign_in_showing=bool(raw.get("sign_in_showing")),
     )
     # The URL is not logged: a claude.ai chat URL carries only a uuid, but this
     # probe also runs against fixtures and, one day, against a mistyped address.
@@ -614,13 +665,13 @@ def _state_from(page: Page, raw: Any, tab_count: int) -> PageState:
     return state
 
 
-def probe(page: Page, *, tab_count: int = 1) -> PageState:
+def probe(page: Page, *, tab_count: int = 1, sign_in: Sequence[str] = ()) -> PageState:
     """Read the page. One CDP evaluate, plus whatever events are already queued.
 
     `tab_count` is the caller's: a page cannot see its siblings, and the count
     that matters — claude.ai tabs — is a question for the target list.
     """
-    return _state_from(page, page.evaluate(PAGE_STATE_JS), tab_count)
+    return _state_from(page, page.evaluate(page_state_js(sign_in)), tab_count)
 
 
 def _messages_from(raw: Any) -> tuple[LastMessage, ...]:

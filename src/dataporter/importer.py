@@ -855,6 +855,11 @@ class Importer:
         """
         paused = self._pause_to_resume()
         export_path = self._recorded_export()
+        # Here and not in `resume_command` (`69`): both refusals above are ones
+        # this command can already make without a browser, and "nothing to
+        # resume" is exit `4` whether or not anybody is signed in. Still before
+        # the lock and the launch, which is the whole point of the check.
+        browser_session.require_session(self.settings)
         parsed = load_export(export_path)
         self.command = "resume"
         self.export_fingerprint = parsed.fingerprint
@@ -2225,6 +2230,11 @@ def import_command(
         )
 
     if not request.dry_run:
+        # Exit `3` before a browser or a workspace is touched (`69`): a run with
+        # no destination session to reuse has nothing to reuse, and §8 says the
+        # account is authenticated before the migration begins. Inside the
+        # `dry_run` guard, because a dry run opens no browser and needs none.
+        browser_session.require_session(settings)
         if settings.non_interactive:
             # Exit `2` before a browser or a workspace is touched: a run that
             # would stop at the first sign-in form should not have started.
@@ -2283,6 +2293,9 @@ def resume_command(
         signin.gate(settings)
     log.enable_run_log(settings.workspace)
     try:
+        # `69`'s check is inside `Importer.resume`, after the pause has been
+        # found: a workspace with nothing to resume is exit `4` whether or not
+        # there is a session, and it costs no browser either way.
         outcome = Importer(settings, progress=reporting.Reporter(quiet=quiet), flags=flags).resume()
     except NothingToResumeError:
         sink.line(NOTHING_TO_RESUME)

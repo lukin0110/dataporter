@@ -94,6 +94,36 @@ def test_a_session_the_site_has_forgotten_is_an_involuntary_logout(running: Clie
     assert (status, location) == (303, "/logout?involuntary=1&returnTo=/new")
 
 
+def test_the_other_signed_out_shape_answers_in_place(running: Client) -> None:
+    """`sign-in screen in place` (`70`, `71`): no redirect, and both signals.
+
+    The state the ask actually meets. The tool reads the markup because the URL
+    cannot tell it anything — `/new` is `/new` either way — so what this asserts
+    is a `200` at the address that was asked for, and both of the two things the
+    tool looks for present in what comes back.
+    """
+    status, payload, _ = running.post_json("/__mock/signed-out-shape", {"in_place": True})
+    assert (status, json.loads(payload)) == (200, {"in_place": True})
+
+    status, body, _ = running.request("/new", follow=False)
+
+    assert status == 200
+    assert 'data-client-attestation-channel="send_magic_link"' in body
+    assert 'data-testid="email"' in body
+    assert 'data-testid="continue"' in body
+    # Both in one form: a page with the two ids in different elements is not
+    # this state, and `:has()` is what the tool asks with.
+    form = body[body.index("<form") : body.index("</form>")]
+    assert 'data-testid="email"' in form
+    assert 'data-testid="continue"' in form
+
+
+def test_the_shape_switch_leaves_the_redirect_as_the_default(running: Client) -> None:
+    """A mock that had quietly changed shape would make `50` and `53` untestable."""
+    status, _, location = running.request("/new", follow=False)
+    assert (status, location) == (303, "/logout?involuntary=1&returnTo=/new")
+
+
 def test_the_login_page_hides_the_form_behind_the_banner(running: Client) -> None:
     _, body, _ = running.request("/login")
     assert 'id="cookie-banner"' in body

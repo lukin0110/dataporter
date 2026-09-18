@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import signed_in
 from dataporter import extract, extract_skills, log, store
 from dataporter.browser import launcher, sites
 from dataporter.browser import skills as reading
@@ -81,7 +82,7 @@ def launches(monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome) -> list[str]:
 
 
 def make_settings(port: int, tmp_path: Path, *, headless: bool | None = None, idle_s: float = 1.0) -> Settings:
-    return with_account(
+    built = with_account(
         Settings(
             workspace=tmp_path / "migration",
             accounts=AccountsSettings(dir=tmp_path / "accounts"),
@@ -93,6 +94,7 @@ def make_settings(port: int, tmp_path: Path, *, headless: bool | None = None, id
         "claude",
         ACCOUNT,
     )
+    return signed_in(built)
 
 
 @pytest.fixture

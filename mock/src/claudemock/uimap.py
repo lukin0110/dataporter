@@ -31,6 +31,8 @@ ROWS: Mapping[str, str] = {
     # page → the rows it is built out of
     "login": "signed out",
     "sign-in form": "sign-in form",
+    # the other way the site says signed out (`70`, `71`)
+    "sign-in screen in place": "sign-in screen in place",
     # the sign-in by link (`49`), out of brief 07's rows
     "link requested": "link requested",
     "link sent": "link sent",
@@ -79,6 +81,15 @@ WHAT_THE_MOCK_DOES: Mapping[str, str] = {
     "signed out": (
         "any page but /login redirects to /login, which has no composer — so the "
         "tool's probe reads `kind: login` and `logged_in: false`"
+    ),
+    "sign-in screen in place": (
+        "with /__mock/signed-out-shape set, a signed-out request is answered "
+        "`200` at the address it asked for instead of being redirected: two "
+        'aria-hidden [data-client-attestation="hcaptcha-invisible"] containers, '
+        "one on the channel send_magic_link, and a form holding "
+        '[data-testid="email"] and [data-testid="continue"] together. Both '
+        "signals or neither — a mock that served one of them would let a rule "
+        "that cannot tell the two states apart pass a rehearsal"
     ),
     "sign-in form": (
         "a banner that hides the form until it is dismissed once, provider and "

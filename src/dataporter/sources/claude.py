@@ -115,6 +115,46 @@ is tuned in: an ask that under-claims wastes a minute, and an ask that
 over-claims sends a person to wait for an email nobody asked for.
 """
 
+SIGN_IN_ATTESTATION_SELECTOR = '[data-client-attestation-channel="send_magic_link"]'
+SIGN_IN_FORM_SELECTOR = 'form:has([data-testid="email"]):has([data-testid="continue"])'
+"""What a **sign-in screen** is, on claude.ai (*observed 2026-09-18*,
+`docs/spike/claude-sign-in-screen-2026-09-18.html`). Both must match.
+
+The state they exist for is the one `signed_out` could not see. A signed-out
+request for the export page is not redirected: the application renders its
+sign-in at `/new#settings/data-privacy-controls`, so `kind_of` reads `/new`,
+answers `NEW_CHAT`, and the `/login` test that `signed_out` is built on never
+fires. The ask then pressed nothing, waited out `timeouts.ask_s` and reported
+that the panel had not appeared — sixty seconds, exit `1`, and the real reason
+appended as a guess.
+
+Both signals are **positive evidence of a sign-in**, which is the direction that
+matters: a redesign of the *export* page cannot produce either of them, so the
+check cannot fabricate a signed-out account the way an absence-check would. A
+redesign of the *sign-in* page makes it stop firing instead, which costs the
+minute this replaces and nothing more.
+
+The first is the magic-link sender: an `aria-hidden` attestation container on the
+channel `send_magic_link`, mounted where a link can be sent and nowhere a signed-in
+page needs one. The same container, on the same channel, is in
+`docs/spike/claude-sign-in-link-sent.html` from 2026-09-15, which is the second
+page it has been seen on. Matched by presence and never by visibility: it is
+sized to zero, so `PRELUDE_JS`'s `visible()` would throw the evidence away.
+
+The second is a form holding both the address field and the control that submits
+it. Two test ids in one element, by `:has()`, rather than two matches anywhere on
+the page — a page with an `email` input somewhere and a `continue` button
+somewhere else is not this. It matches the **first** step of the sign-in and not
+the `link sent` step, which keeps `continue` and replaces `email` with `code`;
+that is correct here, because an extraction never enters an address and so never
+reaches the second screen. Widening it to `continue` alone would cover both and
+would be the generosity `REQUESTED_SELECTOR` above is a warning about.
+
+What is deliberately *not* read: `<title>Sign in - Claude`. The page is
+`lang="es-419"` and every visible word on it is Spanish while that title is
+English, so matching it would be depending on an inconsistency.
+"""
+
 ORGANIZATIONS_PATH = "/api/organizations"
 SKILLS_LIST_PATH = "/api/organizations/{org}/skills/list-skills"
 SKILLS_DOWNLOAD_PATH = "/api/organizations/{org}/skills/download-dot-skill-file?skill_id={skill}"
@@ -204,6 +244,8 @@ CLAUDE = Source(
         "CONFIRM_BUTTON_SELECTOR": CONFIRM_BUTTON_SELECTOR,
         "REQUESTED_SELECTOR": REQUESTED_SELECTOR,
         "REQUESTED_TEXT": REQUESTED_TEXT,
+        "SIGN_IN_ATTESTATION_SELECTOR": SIGN_IN_ATTESTATION_SELECTOR,
+        "SIGN_IN_FORM_SELECTOR": SIGN_IN_FORM_SELECTOR,
     },
     fetch_needs_session=FETCH_NEEDS_SESSION,
     link_serves_manifest=True,

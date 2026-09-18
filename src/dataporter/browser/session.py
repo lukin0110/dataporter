@@ -174,6 +174,7 @@ def current_state(
     *,
     settle_s: float = SETTLE_S,
     origins: Sequence[str],
+    sign_in: Sequence[str] = (),
 ) -> PageState:
     """Probe the site's tab, opening one if there is not one yet.
 
@@ -187,11 +188,15 @@ def current_state(
     the page's JavaScript, so the probe's own `Runtime.evaluate` times out and
     the caller learns something is wrong — and `12`, which holds one connection
     open for a whole conversation, sees the events themselves.
+
+    `sign_in` is what a **sign-in screen** looks like on this site (`70`), which
+    only the source knows. Nothing here interprets it; it rides the evaluate the
+    probe was making anyway, and a caller that names none gets `False`.
     """
     page = open_claude_tab(session, url, origins=origins)
     try:
         settled(page, timeout_s=settle_s)
-        return probe(page, tab_count=max(len(tabs_on(session.client, origins)), 1))
+        return probe(page, tab_count=max(len(tabs_on(session.client, origins)), 1), sign_in=sign_in)
     finally:
         page.close()
 
@@ -644,6 +649,61 @@ def signed_out_line(settings: Settings) -> str:
     return SIGNED_OUT_LINE.format(command=login_command(settings))
 
 
+def never_signed_in(settings: Settings) -> bool:
+    """Whether this account has no session on disk at all (`69`).
+
+    The profile directory is the whole test, and deliberately nothing cleverer.
+    Chrome's cookie store could be read and a record of our own could be kept;
+    the first breaks ADR 0008's promise that the tool never learns what the
+    cookie is, and the second is a second source of truth that goes stale the
+    first time a session lapses. This one is honest without a browser: it is
+    what `logout` removes (§83), and it needs nothing kept.
+
+    It answers less than it looks like it answers. `launcher.ensure_profile`
+    creates the directory on *every* launch, so one `login` that timed out
+    leaves it behind for good and only `logout` takes it away again. So this is
+    true of an account home that has never had a browser and false ever after,
+    which is the line between `69` and `70`: a session that exists and has
+    lapsed is the vendor's to report, not the filesystem's.
+    """
+    return not settings.browser_profile_dir.exists()
+
+
+def require_session(settings: Settings) -> None:
+    """Refuse a command that needs a session before it opens a browser (`69`).
+
+    `AuthError` and not a returned code, because every caller of this was asked
+    to *do* something and could not. `status` is the one command that asks the
+    question rather than needing the answer, so it reads `never_signed_in`
+    itself and keeps its bare line on stdout.
+
+    Called as early as a command can call it without changing what that command
+    would otherwise report — which for `verify` and `followup` means after they
+    have found there is nothing to do, since sending somebody to `login` for
+    work that does not exist is a worse answer than exit `4`.
+
+    **A session that something else could make is not required here.** Under
+    `--non-interactive`, a source with an unattended sign-in walks its own form
+    and ends up with the profile it started without, so refusing it for not
+    having one already would break the only way a ChatGPT backup bootstraps
+    itself. `signin.gate` is what that run answers to instead — exit `2` and the
+    credentials it needs — which is the division `gate`'s own docstring draws.
+
+    That escape is a **source account's** alone, which is what `account` tests
+    for. `signin.can_sign_in` reads `settings.source`, and the four commands that
+    need the *destination's* session name no account at all — their profile is
+    the workspace's and the destination is a Claude account however `--source` is
+    set (§75). Without this clause, `--source chatgpt --non-interactive import`
+    would turn their preflight off for a sign-in that could never happen.
+    """
+    from dataporter import signin  # ruff: ignore[import-outside-top-level] - `signin` imports this module
+
+    if settings.account is not None and settings.non_interactive and signin.can_sign_in(settings):
+        return
+    if never_signed_in(settings):
+        raise AuthError(detail=signed_out_line(settings))
+
+
 def observe(session: BrowserSession, origins: Sequence[str], *, settle_s: float = SETTLE_S) -> tuple[PageState, bool]:
     """Probe the site's tab without opening one: the state, and whether the code field is showing.
 
@@ -787,9 +847,12 @@ def status(settings: Settings, *, sink: Sink = DISCARD) -> StatusOutcome:
     # Raises `PortInUseError` when the port answers and the browser on it is not
     # ours, which is the right answer to "what is my session doing" as well.
     running = launcher.adopt(client, settings.browser_profile_dir)
-    if running is None and not settings.browser_profile_dir.exists():
+    if running is None and never_signed_in(settings):
         # No profile and no browser: there is nothing that could be signed in,
         # and starting Chrome to be told so would cost ten seconds and a window.
+        # The same test the other seven commands make, by the same name (`69`);
+        # a line rather than the `AuthError` they raise, because this command was
+        # asked the question and answering it is a success.
         sink.line(signed_out_line(settings))
         return StatusOutcome(signed_in=False, exit_code=ExitCode.NOT_AUTHENTICATED)
 

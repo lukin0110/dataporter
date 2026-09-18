@@ -453,6 +453,46 @@ def login_page(*, step: str, banner: bool, error: str = "", address: str = "") -
     return shell("Sign in", "\n".join(parts), LOGIN_JS)
 
 
+def sign_in_screen() -> bytes:
+    """Return the sign-in screen the site renders *in place* (`sign-in screen in place`, `70`).
+
+    Not a redirect and not `/login`: this is what a signed-out request for the
+    app page is answered with at that page's own address, so the URL still says
+    `/new` and only the markup says otherwise. Re-typed from
+    `docs/spike/claude-sign-in-screen-2026-09-18.html`, and only the parts a row
+    is cited for.
+
+    Two of them, and the tool needs both. The attestation container is
+    `aria-hidden` and sized to zero — which is why the tool matches it by
+    presence and never by visibility, and why this one is written that way here
+    as well. The form holds the address field and the control that submits it,
+    by the same two test ids the real page carries, in one element: a page with
+    an `email` somewhere and a `continue` somewhere else is not this state, and
+    a mock that spread them would let a rule that could not tell the difference
+    pass a rehearsal.
+
+    The words are English here where the real page was Spanish. That is not a
+    difference that matters: nothing in either signal is a word.
+    """
+    return shell(
+        "Sign in",
+        '<div aria-hidden="true" data-client-attestation="hcaptcha-invisible" '
+        'data-client-attestation-channel="default" '
+        'style="position:absolute;width:0;height:0;overflow:hidden"></div>\n'
+        '<div aria-hidden="true" data-client-attestation="hcaptcha-invisible" '
+        'data-client-attestation-channel="send_magic_link" '
+        'style="position:absolute;width:0;height:0;overflow:hidden"></div>\n'
+        '<main id="signin-screen">\n<h1>Sign in</h1>\n'
+        '<button type="button" data-testid="login-with-google">Continue with Google</button>\n'
+        '<button type="button" data-testid="login-with-apple">Continue with Apple</button>\n'
+        '<form method="post" action="/login/email">\n'
+        '  <input data-testid="email" type="email" name="email" autocomplete="email" '
+        'aria-label="Email" placeholder="Enter your email">\n'
+        '  <button type="submit" data-testid="continue">Continue with email</button>\n'
+        "</form>\n</main>",
+    )
+
+
 def magic_link_page() -> bytes:
     """Return where a sign-in link lands: nothing to see, and a script that spends it (`sign-in link`)."""
     return shell("Sign in", '<main id="magic-link">\n<p>Signing you in…</p>\n</main>', MAGIC_LINK_JS)

@@ -242,7 +242,9 @@ The ask itself never uses a model: the tool goes to the page, presses the button
 records that it did. Unattended (`--non-interactive`) it is the same one press, on a
 profile a person signed in; a Claude session that has expired stops the run with exit `3`
 and `login` as the remedy, because Claude's sign-in is a link behind an attestation and no
-credential can make it (brief 07).
+credential can make it (brief 07). An account that was never signed in at all stops with
+the same line and the same code *before a browser opens*: there is no session on disk to
+reuse, and that is answerable without asking the vendor.
 
 **Both moves work with no account at all.** `mock/` is a served stand-in for the site —
 its settings panel, its sign-in, its export link — and `--mock` is what points the tool

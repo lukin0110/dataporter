@@ -199,6 +199,11 @@ def build(tmp_path: Path, export_dir: Path, monkeypatch: pytest.MonkeyPatch) -> 
     # copy rather than a subprocess and `12`'s preflight checks for it.
     hermes.with_profile(settings.hermes.profile, **profile_config(settings))
     skilling.install(settings)
+    # The profile directory a signed-in operator would have left (`69`): `fake_launch`
+    # below stands for `07`'s adoption of a browser already on the port, and a browser
+    # on the port means a profile on disk. Without it every run in a world would be
+    # refused before it started, which is the preflight working rather than failing.
+    settings.browser_profile_dir.mkdir(parents=True, exist_ok=True)
 
     def fake_launch(settings: Settings, url: str) -> launcher.BrowserSession:
         """`07`'s adoption, without a Chrome.

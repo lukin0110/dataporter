@@ -91,6 +91,10 @@ def test_the_extraction_site_s_selectors_are_the_ones_the_ask_had() -> None:
         "CONFIRM_BUTTON_SELECTOR": '[data-testid="export-confirm-button"]',
         "REQUESTED_SELECTOR": '[data-cds="Toast"] [role="dialog"] h2',
         "REQUESTED_TEXT": "Export started",
+        # `70`: a sketch of the export page now counts these two as well, so a
+        # trace of a run that stopped signed out carries the evidence for it.
+        "SIGN_IN_ATTESTATION_SELECTOR": '[data-client-attestation-channel="send_magic_link"]',
+        "SIGN_IN_FORM_SELECTOR": 'form:has([data-testid="email"]):has([data-testid="continue"])',
         "EMAIL_SELECTOR": 'input[type="email"], input[autocomplete="username"]',
         "PASSWORD_SELECTOR": 'input[type="password"], input[autocomplete="current-password"]',
         "CODE_SELECTOR": 'input[data-testid="code"], input[autocomplete="one-time-code"]',
@@ -272,3 +276,27 @@ def test_importing_the_sources_imports_nothing_of_the_browser() -> None:
         "assert not loaded, loaded\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True, timeout=60)
+
+
+def test_only_claude_knows_what_a_sign_in_screen_looks_like() -> None:
+    """`70`: two selectors for the source somebody read, and none for the other.
+
+    Empty is a fact — nobody has read a signed-out ChatGPT export page — and not
+    a shrug: an empty pair answers `False` on every page, which leaves
+    `signed_out_at_root` the question's only answer for that source.
+    """
+    assert CLAUDE.sign_in_selectors == (
+        '[data-client-attestation-channel="send_magic_link"]',
+        'form:has([data-testid="email"]):has([data-testid="continue"])',
+    )
+    assert CHATGPT.sign_in_selectors == ()
+
+
+def test_a_sign_in_screen_is_a_conjunction_and_an_empty_pair_is_false() -> None:
+    """The rule the page runs, stated here in Python so both spellings are visible."""
+    both = probe.page_state_js(CLAUDE.sign_in_selectors)
+    assert '"[data-client-attestation-channel=\\"send_magic_link\\"]"' in both
+    assert "signIn.every(" in both
+    # An empty list is `false`, not `true`: `[].every()` is `true`, and the
+    # length guard is what stops a caller that named nothing reading as signed out.
+    assert "signIn.length > 0 &&" in both

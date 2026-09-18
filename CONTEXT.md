@@ -190,6 +190,12 @@ indistinguishable from never having signed in. Brief 02 §21 calls it *a login e
 the middle of a run*, which is the same thing said from the run's side.
 _Avoid_: involuntary logout, forced logout, session timeout
 
+**Sign-in screen**:
+The vendor's sign-in page rendered in place of the page that was asked for, at that
+page's own address. The second way a site says signed out: a redirect changes the URL
+and this does not, so only the page's own markup tells them apart.
+_Avoid_: login page, signed-out page, sign-in surface
+
 **Account home**:
 The directory that holds what the tool keeps about one source account that is not a
 snapshot: its session, its open ask, what a fetch stages on the way to the store, and its

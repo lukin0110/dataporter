@@ -12,13 +12,16 @@ was requested, and no browser at all when an ask is already open.
 """
 
 import json
+import shutil
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from pydantic import SecretStr
 from typer.testing import CliRunner
 
+from conftest import signed_in
 from dataporter import cli, extract, log, signin, store
 from dataporter.browser import export_page, helpers, launcher
 from dataporter.browser.cdp import CdpClient
@@ -34,6 +37,7 @@ from dataporter.config import (
 from dataporter.console import Collected
 from dataporter.errors import AuthError, BrowserError, StoreError
 from dataporter.exit_codes import ExitCode
+from dataporter.sources import claude as claude_source
 from fake_chrome import FakeChrome, FakeTarget
 from fake_export_page import SIGNED_OUT_URL, FakeExportPage, Stage, browser, visit
 
@@ -79,7 +83,7 @@ def launches(monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome) -> list[str]:
 @pytest.fixture
 def settings(chrome: FakeChrome, tmp_path: Path) -> Settings:
     """One invocation, about one source account, pointed at the fake browser."""
-    return with_account(
+    built = with_account(
         Settings(
             workspace=tmp_path / "migration",
             accounts=AccountsSettings(dir=tmp_path / "accounts"),
@@ -90,6 +94,7 @@ def settings(chrome: FakeChrome, tmp_path: Path) -> Settings:
         "claude",
         ACCOUNT,
     )
+    return signed_in(built)
 
 
 def expected_block(asked_at: str) -> str:
@@ -696,3 +701,86 @@ def test_both_clicks_are_moves_in_the_account_home_s_trace(
     assert written[-1]["what"] == "end"
     assert written[-1]["exit"] == 0
     assert not (settings.workspace / "logs").exists()
+
+
+# --------------------------------------------------------------------------- #
+# `70`: the sign-in screen, at the address that was asked for
+# --------------------------------------------------------------------------- #
+
+BOTH_SIGNALS = (claude_source.SIGN_IN_ATTESTATION_SELECTOR, claude_source.SIGN_IN_FORM_SELECTOR)
+
+
+def test_a_sign_in_screen_at_the_export_page_is_exit_3_and_no_click(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """`70`: the URL still says `/new`, and only the markup says otherwise.
+
+    The failure this replaces: `signed_out` read the path, found no `/login`,
+    and let the ask spend `timeouts.ask_s` on a page with no button before
+    reporting that the panel had not appeared.
+    """
+    page.sign_in_signals = BOTH_SIGNALS
+
+    with pytest.raises(AuthError) as raised:
+        extract.ask(settings)
+
+    assert raised.value.detail == f"not logged in — run: dataporter login --source claude --account {ACCOUNT}"
+    assert page.clicks == []
+    assert page.view_reads == 0
+
+
+@pytest.mark.parametrize("signal", BOTH_SIGNALS)
+def test_one_signal_alone_is_not_a_sign_in_screen(
+    settings: Settings, page: FakeExportPage, launches: list[str], signal: str
+) -> None:
+    """The rule is a conjunction, and a half-match is not a signed-out account.
+
+    This is the direction that matters: the check must not be made true by a page
+    that merely has an email field on it, or an attestation container mounted for
+    some other reason.
+    """
+    page.sign_in_signals = (signal,)
+    outcome = extract.ask(settings)
+
+    assert outcome.exit_code == ExitCode.OK
+    assert page.clicks == [export_page.EXPORT_BUTTON_SELECTOR, export_page.CONFIRM_BUTTON_SELECTOR]
+
+
+def test_an_ask_that_stops_signed_out_says_so_in_its_trace(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """`70`: `watched` records what the body assigned, and a body that raises assigns nothing."""
+    page.sign_in_signals = BOTH_SIGNALS
+
+    with pytest.raises(AuthError):
+        extract.ask(settings)
+
+    written = [json.loads(line) for line in _trace_lines(settings)]
+    assert written[-1]["what"] == "end"
+    assert written[-1]["exit"] == int(ExitCode.NOT_AUTHENTICATED)
+
+
+def _trace_lines(settings: Settings) -> list[str]:
+    traces = sorted((settings.logs_dir / "logs").glob("trace-*.jsonl"))
+    assert traces, "the ask left no trace"
+    return traces[-1].read_text(encoding="utf-8").splitlines()
+
+
+def test_an_open_ask_is_refused_before_the_missing_session_is(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """`69` kept step 1 of `ask`'s own order: the open ask speaks first.
+
+    Both refusals are browserless and both come before the run log, so the only
+    question is which is more useful to somebody holding both — and it is the
+    one that says there is an export already on its way.
+    """
+    store.Store(settings.store_dir)
+    extract.write_ask(settings, datetime.now(UTC))
+    shutil.rmtree(settings.browser_profile_dir)
+
+    with pytest.raises(StoreError) as raised:
+        extract.ask(settings)
+
+    assert "an ask is already open" in str(raised.value)
+    assert launches == []

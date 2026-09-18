@@ -254,8 +254,14 @@ def signed_out(state: PageState, source: "Source" = CLAUDE) -> bool:
     `docs/claude-ui-map.md` asked of a different URL; to the site's root with no
     composer on it for a source whose landing page is that (§65), which is the
     `signed out` row of its own map.
+
+    Or no redirect at all (`70`). claude.ai renders its **sign-in screen** at the
+    address that was asked for, so the URL still says `/new` and `state.kind` still
+    says `NEW_CHAT`; `sign_in_showing` is the source's own two selectors, read in
+    the page, and it is the only one of these three tests that reads the markup
+    rather than the address.
     """
-    if state.kind is probing.PageKind.LOGIN:
+    if state.kind is probing.PageKind.LOGIN or state.sign_in_showing:
         return True
     return source.signed_out_at_root and state.kind is probing.PageKind.NEW_CHAT and not state.composer_present
 
