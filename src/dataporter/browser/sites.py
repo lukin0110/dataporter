@@ -21,6 +21,7 @@ out the same `Site` object, which is what a test that asks `is` expects.
 import re
 from functools import cache
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from dataporter.browser import probe as probing
 from dataporter.browser.helpers import Surface
@@ -57,12 +58,22 @@ def organizations_url(source: "Source") -> str:
 
 def skills_list_url(source: "Source", org: str) -> str:
     """Where one organisation's skills are listed (`66`). Read in the page, never navigated to."""
-    return f"{source.origin}{source.skills_list_path.format(org=org)}"
+    return f"{source.origin}{source.skills_list_path.format(org=quote(org, safe=''))}"
 
 
 def skills_download_url(source: "Source", org: str, skill_id: str) -> str:
-    """Where one skill is served from (`66`): the tab is pointed at it and the download caught."""
-    return f"{source.origin}{source.skills_download_path.format(org=org, skill=skill_id)}"
+    """Where one skill is served from (`66`): the tab is pointed at it and the download caught.
+
+    The organisation and the skill are the vendor's own strings, put into a path
+    segment and a query value, so both are percent-encoded: an id carrying `&`,
+    `#` or `/` would otherwise change the request — a different query, a
+    fragment, another segment — and could carry it past the wall's one door.
+    `safe=''` because nothing in either is a delimiter we mean to keep. (Raised
+    by Copilot in review on #64.)
+    """
+    org_q = quote(org, safe="")
+    skill_q = quote(skill_id, safe="")
+    return f"{source.origin}{source.skills_download_path.format(org=org_q, skill=skill_q)}"
 
 
 def _skills_door(source: "Source") -> tuple[str, ...]:

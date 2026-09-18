@@ -539,11 +539,23 @@ class Store:
         if not directory.exists():
             self._make_directory(directory)
             return self._append(directory, filing, existing=None)
-        _lock_append(directory / APPENDING_NAME)
+        lock = directory / APPENDING_NAME
+        _lock_append(lock)
         try:
-            return self._append(directory, filing, existing=self._existing(directory))
-        finally:
-            (directory / APPENDING_NAME).unlink(missing_ok=True)
+            result = self._append(directory, filing, existing=self._existing(directory))
+        except BaseException:
+            # The append did not complete: release the lock best-effort and let
+            # the append's own error stand — a failure to release now would
+            # only mask the reason the operator needs.
+            lock.unlink(missing_ok=True)
+            raise
+        # The append completed and the snapshot is `COMPLETE` on disk. Releasing
+        # the lock is the last write, and a failure to make it is raised rather
+        # than swallowed: the snapshot is whole, but a lock left behind would
+        # refuse every later append as one still in progress, and that an
+        # operator must be told to clear. (Raised by Copilot in review on #64.)
+        _release_append(lock)
+        return result
 
     def _append(self, directory: Path, filing: SkillsFiling, *, existing: Snapshot | None) -> tuple[Path, Snapshot]:
         """Add the skills to `directory`, which is this append's alone: fresh, or locked."""
@@ -755,6 +767,23 @@ def _lock_append(path: Path) -> None:
         os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, SNAPSHOT_MODE))
     except FileExistsError as exc:
         raise StoreError(APPEND_UNDER_WAY.format(path=path.parent)) from exc
+    except OSError as exc:
+        raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
+
+
+def _release_append(path: Path) -> None:
+    """Remove the append lock after a completed append, translating a failure the store's own way.
+
+    Its own function, and not `unlink(missing_ok=True)` in a `finally`, for two
+    reasons the `finally` got wrong: a raw `OSError` there masked the completed
+    append's result, and a lock silently left behind refused every later append
+    for good. A lock already gone is fine — nothing to release — but a release
+    that cannot be made is a `StoreError` naming it.
+    """
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
     except OSError as exc:
         raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
 

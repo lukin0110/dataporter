@@ -754,6 +754,37 @@ def test_two_appends_at_once_leave_one_finished_snapshot(tmp_path: Path, monkeyp
     assert sorted(item.name for item in (directory / store.SKILLS_DIRNAME).iterdir()) == [f"{filed[0]}.skill"]
 
 
+def test_a_release_that_fails_is_a_store_error_not_a_masked_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The append completed; the lock would not come off. The snapshot is whole, and the failure is named, not swallowed.
+
+    A raw `OSError` from the `finally` used to mask the completed result and
+    strand `APPENDING`, refusing every later append for good. (Raised by Copilot
+    in review on #64.)
+    """
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, _ = store.Store(root).file_archive(path, filing(path))
+    real_unlink = Path.unlink
+
+    def stubborn(self: Path, *, missing_ok: bool = False) -> None:
+        if self.name == store.APPENDING_NAME:
+            raise OSError(5, "Input/output error")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", stubborn)
+    with pytest.raises(store.StoreError, match="Input/output error"):
+        store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    monkeypatch.undo()
+    # The append itself finished: the skill is filed, the marker is back, and the
+    # snapshot reads complete — only the lock was left, which the message named.
+    assert (directory / store.SKILLS_DIRNAME / "a.skill").exists()
+    assert (directory / store.COMPLETE_NAME).exists()
+    assert store.Store(root).rows()[0].state == "complete"
+
+
 def test_a_lock_left_behind_refuses_the_next_append_and_touches_nothing(tmp_path: Path) -> None:
     """A crash mid-append leaves `APPENDING`; the next append is refused, and the marker is not touched."""
     root = tmp_path / "store"

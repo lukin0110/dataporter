@@ -137,6 +137,13 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     assert not login_form.LOGIN_SURFACE.permits(
         f"https://claude.ai/api/organizations/{org}/skills/download-dot-skill-file?skill_id=skill_01x"
     )
+    # A skill id is the vendor's string: an `&`, `#` or `/` in it is percent-encoded
+    # into the query, so it cannot open a second parameter, a fragment or a segment,
+    # and the wall still admits the one door. (Raised by Copilot in review on #64.)
+    hostile = sites.skills_download_url(CLAUDE, org, "a&b#c/d e")
+    assert hostile.endswith("/skills/download-dot-skill-file?skill_id=a%26b%23c%2Fd%20e")
+    assert export_page.EXTRACTION_SURFACE.permits(hostile)
+    assert sites.skills_list_url(CLAUDE, "o/r#g") == "https://claude.ai/api/organizations/o%2Fr%23g/skills/list-skills"
     assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
     assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
 
