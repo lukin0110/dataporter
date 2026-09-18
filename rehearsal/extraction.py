@@ -298,16 +298,20 @@ def skills_witness(settings: running.Settings) -> list[dict[str, Any]]:
     return [dict(item) for item in loaded]
 
 
-def lapse_the_session(settings: running.Settings, *, in_place: bool) -> None:
-    """Make the mock forget every session, in the shape `71` wants to see (`70`).
+def forget_the_session(settings: running.Settings, *, answer_in_place: bool) -> None:
+    """Make the mock forget every session, and say how to answer the next request (`71`).
 
-    Two asks, in this order: the shape first, so that the very next request is
-    answered the new way, then the sessions thrown away. What the browser holds
-    is unchanged — it still carries the cookie and the profile is still on disk —
-    so what follows is an **involuntary sign-out**, not an account that was never
-    signed in. That is the difference between `70`'s half of this and `69`'s.
+    Two asks, about two different things: `answer_in_place` chooses which of the
+    map's two signed-out shapes the site answers with, and the expiry is what
+    makes there be anything to answer. The shape goes first, so that the very
+    next request is answered the new way.
+
+    What the browser holds is unchanged — it still carries the cookie and the
+    profile is still on disk — so what follows is an **involuntary sign-out**,
+    not an account that was never signed in. That is the difference between
+    `70`'s half of this and `69`'s.
     """
-    running.tell_witness(settings.host, settings.port, SIGNED_OUT_SHAPE_PATH, {"in_place": in_place})
+    running.tell_witness(settings.host, settings.port, SIGNED_OUT_SHAPE_PATH, {"in_place": answer_in_place})
     running.tell_witness(settings.host, settings.port, EXPIRE_PATH, {})
 
 
@@ -483,7 +487,7 @@ def protocol(
         # its sign-in screen at that page's own address, and the ask has to read
         # the markup because the URL says nothing. Then `logout` takes the
         # profile away, and the next ask never opens a browser at all.
-        lapse_the_session(settings, in_place=True)
+        forget_the_session(settings, answer_in_place=True)
         blocks["signed out in place"] = runner.run(
             "extract (the sign-in screen, in place)",
             "extract",
@@ -722,7 +726,9 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
         )
         # `--mock` and all: a remedy that dropped the flag would send a person
         # from a mock run to the real site, which is why `_command` puts it first.
-        remedy = f"not logged in — run: {PROGRAM_NAME} --mock login --source {mock.source} --account {ACCOUNT}"
+        remedy = running.SIGNED_OUT_LINE.format(
+            command=f"{PROGRAM_NAME} --mock login --source {mock.source} --account {ACCOUNT}"
+        )
         checks += [
             running.Criterion(
                 "login saw the link sent and said so",

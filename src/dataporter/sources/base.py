@@ -201,8 +201,8 @@ class Source:
 
         Every one of them must match for the screen to be recognised, so the
         order is only the order they are read in. Empty for a source whose
-        signed-out pages nobody has read — ChatGPT — and empty is `False`
-        rather than "always signed out": a guessed selector is a claim, and
+        sign-in screen nobody has read — ChatGPT — and empty is `False` rather
+        than "always signed out": a guessed selector is a claim, and
         `signed_out_at_root` is how that source answers the question meanwhile.
         """
         return tuple(

@@ -222,3 +222,36 @@ def _fingerprint(export_zip: Path) -> str:
     from dataporter.export import load_export  # ruff: ignore[import-outside-top-level] - one test's own concern
 
     return load_export(export_zip).fingerprint
+
+
+# --------------------------------------------------------------------------- #
+# The one escape, and how far it reaches
+# --------------------------------------------------------------------------- #
+
+
+def test_an_unattended_source_that_can_sign_itself_in_is_not_refused(account: Settings) -> None:
+    """A ChatGPT backup bootstraps itself: the walk ends with the profile it lacked.
+
+    `signin.gate` is the door that run answers to instead — exit `2` and the
+    credentials — which is the division `gate`'s own docstring draws.
+    """
+    unattended = with_account(account.model_copy(update={"non_interactive": True}), "chatgpt", ACCOUNT)
+    assert browser_session.never_signed_in(unattended) is True
+    browser_session.require_session(unattended)
+
+
+def test_the_escape_does_not_reach_the_destination(destination: Settings) -> None:
+    """`--source chatgpt` names no account here, so it cannot turn the check off.
+
+    The four workspace commands need the *destination's* profile, and the
+    destination is a Claude account however `--source` is set (§75). Reading
+    `--source` alone would have disabled their preflight for a sign-in that
+    could never happen.
+    """
+    unattended = destination.model_copy(update={"non_interactive": True, "source": "chatgpt"})
+    assert unattended.account is None
+
+    with pytest.raises(AuthError) as raised:
+        browser_session.require_session(unattended)
+
+    assert raised.value.detail == DESTINATION_SIGNED_OUT

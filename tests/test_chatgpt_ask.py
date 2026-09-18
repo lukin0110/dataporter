@@ -15,6 +15,7 @@ import pytest
 from pydantic import SecretStr
 from typer.testing import CliRunner
 
+from conftest import signed_in
 from dataporter import cli, extract, signin
 from dataporter.browser import chatgpt_login, helpers, launcher, login_form
 from dataporter.browser.cdp import CdpClient
@@ -73,7 +74,7 @@ def launches(monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome) -> list[str]:
 def make_settings(
     chrome: FakeChrome, tmp_path: Path, *, non_interactive: bool = True, credentials: bool = True
 ) -> Settings:
-    signed_in = with_account(
+    built = with_account(
         Settings(
             workspace=tmp_path / "migration",
             non_interactive=non_interactive,
@@ -87,10 +88,7 @@ def make_settings(
         "chatgpt",
         ACCOUNT,
     )
-    # The account has a session (`69`): these tests are about what happens
-    # inside one, and the preflight is what stops a command without one.
-    signed_in.browser_profile_dir.mkdir(parents=True, exist_ok=True)
-    return signed_in
+    return signed_in(built)
 
 
 @pytest.fixture

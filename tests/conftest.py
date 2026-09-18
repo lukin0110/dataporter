@@ -132,6 +132,19 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(name, raising=False)
 
 
+def signed_in(settings: Settings) -> Settings:
+    """Give an account the profile a signed-in operator would have left (`69`).
+
+    Here rather than in five modules because five of them need it for the same
+    reason: their fake browser stands in for one already on the port, and a
+    browser on the port means a profile on disk. Without it `require_session`
+    refuses before the fake is ever reached — which is the preflight working, and
+    not what those tests are about.
+    """
+    settings.browser_profile_dir.mkdir(parents=True, exist_ok=True)
+    return settings
+
+
 @pytest.fixture
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Return an empty directory that is also the cwd, so `./migration` is predictable."""

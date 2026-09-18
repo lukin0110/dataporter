@@ -76,6 +76,13 @@ LINK_SENT_LINE = "The link is on its way."
 """The start of the line `login` prints on seeing the link sent (brief 07 §73),
 which the extraction criteria look for in the step's stdout."""
 
+SIGNED_OUT_LINE = "not logged in — run: {command}"
+"""What a command with no usable session says (`69`, `70`), re-typed rather than
+imported for the reason `LINK_SENT_LINE` is: a rehearsal drives the shipped tool
+from outside, and asserting against the tool's own constant would pass however it
+was reworded. `{command}` is filled in with `--mock` and the account's flags,
+because a remedy that dropped either would send a person to the wrong place."""
+
 
 # --------------------------------------------------------------------------- #
 # Reaching the mock

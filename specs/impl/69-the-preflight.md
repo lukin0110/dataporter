@@ -35,8 +35,9 @@ Nothing an operator reads changes. It is the same `SIGNED_OUT_LINE` and the same
   `never_signed_in` is `not settings.browser_profile_dir.exists()` and nothing else.
   `require_session` raises `AuthError(detail=signed_out_line(settings))` when it is true,
   which `cli.py:217` already turns into `error: <detail>` on stderr and exit `3` — **unless
-  something could still make the session**, which is `settings.non_interactive and
-  signin.can_sign_in(settings)`. See the Design notes.
+  something could still make the session**, which is
+  `settings.account is not None and settings.non_interactive and signin.can_sign_in(settings)`.
+  See the Design notes.
 
 - **`status`** — its inline disk test becomes the same call:
 
@@ -57,9 +58,9 @@ Nothing an operator reads changes. It is the same `SIGNED_OUT_LINE` and the same
   | `extract --link` (fetch) | `extract.fetch`, before `enable_run_log`, **only** when `source.link_serves_manifest or source.fetch_needs_session` |
   | `extract-skills` | `extract_skills.extract_skills_command`, after the `has_skills` refusal, before `enable_run_log` |
   | `import` | `importer.import_command`, inside `if not request.dry_run:`, beside `signin.gate` |
-  | `resume` | `importer.resume_command`, beside `signin.gate` |
+  | `resume` | `Importer.resume`, after `_pause_to_resume` and `_recorded_export` — see Design notes |
   | `verify` | `verify.verify_all`, after the `NOTHING_TO_DO` return, before `lock.acquire()` |
-  | `followup` | `followup`, after the `NOTHING_TO_DO` return, before `lock.acquire()` |
+  | `followup` | `followup.ask_all`, after the `NOTHING_TO_DO` return **and** the Hermes check, before `lock.acquire()` |
 
 - **The README** — the paragraph that already says a lapsed Claude session stops a run with
   exit `3` gains the other half: an account that was never signed in stops with the same
@@ -105,6 +106,14 @@ about either way, so theirs goes beside `signin.gate` or just before the browser
 and, for `verify` and `followup`, *after* the `NOTHING_TO_DO` return, because telling
 somebody to sign in for work that does not exist is a worse answer than exit `4`.
 
+Two of them sit a layer in from where a reader would look first, and both for that same
+rule. `resume`'s check is inside `Importer.resume` rather than in `resume_command`,
+because "nothing to resume" is exit `4` whether or not anybody is signed in and
+`_pause_to_resume` is what knows; it still runs before the lock and before the launch.
+`followup`'s comes after `hermes_doctor.local_failure` as well, so that a machine missing
+Hermes reports the same failure it reported before — which is the order
+`Importer._preflight` already uses.
+
 **A session something else could make is not required.** Found while building, and it is
 the one condition in the check beside the directory: under `--non-interactive`, a source
 with an unattended sign-in walks its own form and ends with a profile it started without.
@@ -119,6 +128,13 @@ It is one condition inside `require_session` rather than seven at the call sites
 is one rule; `signin` is imported inside the function because `signin` imports this module,
 which `observe` already does for `login_form`.
 
+And it is a **source account's** escape alone, which is the `settings.account is not None`
+half of it. `signin.can_sign_in` reads `settings.source`, while the four commands that need
+the *destination's* session name no account at all — their profile is the workspace's, and
+the destination is a Claude account however `--source` is set (§75). Without that half,
+`--source chatgpt --non-interactive import` would have turned their preflight off for a
+sign-in that could never happen. Found in review, not in writing.
+
 **The fetch is conditional and the others are not.** `fetch` has a browserless path — a
 source whose link may be downloaded by `urllib` — and a preflight there would refuse a
 fetch that needs no session at all. Both sources require one today, so the condition is
@@ -127,9 +143,9 @@ true the day a source does not.
 
 ## Acceptance criteria
 
-1. `never_signed_in` is the only place in `src/` that tests `browser_profile_dir.exists()`
-   against a decision: `grep -rn "browser_profile_dir.exists" src/` returns exactly two
-   lines, its own and `status`'s.
+1. `never_signed_in` is the **only** place in `src/` that tests
+   `browser_profile_dir.exists()`: `grep -rn "browser_profile_dir.exists" src/` returns
+   exactly one line, its own. `status` reads the function rather than repeating the test.
 2. For each of the seven, called against a settings whose profile does not exist:
    `AuthError` is raised and no Chrome was launched — the `no_browser` fixture in
    `tests/test_preflight.py` makes `launcher.launch` an `AssertionError`. The detail is
@@ -155,9 +171,14 @@ true the day a source does not.
    `4` and not `3`.
 8. Under `--non-interactive`, a source with an unattended sign-in is not refused for a
    missing profile: `tests/test_chatgpt_ask.py` and `tests/test_unattended.py` pass
-   unchanged, credentials and all.
-9. `logout` against a missing profile still reports `Nothing to remove: …` and exits `0`.
-10. `make check-all` passes — 2173 tests, coverage 99.06% — except the one pre-existing
+   unchanged, credentials and all, and
+   `tests/test_preflight.py::test_an_unattended_source_that_can_sign_itself_in_is_not_refused`
+   says so directly.
+9. That escape does not reach the destination: `--source chatgpt --non-interactive` with
+   no account still refuses, because no unattended sign-in could make *that* profile.
+   `tests/test_preflight.py::test_the_escape_does_not_reach_the_destination`.
+10. `logout` against a missing profile still reports `Nothing to remove: …` and exits `0`.
+11. `make check-all` passes — 2173 tests, coverage 99.06% — except the one pre-existing
     macOS-only Hermes environment test, whose files this slice does not touch.
 
 ## Risks

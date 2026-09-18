@@ -91,15 +91,16 @@ ORGANIZATIONS_PATH = "/api/organizations"
 SKILLS_LIST_PATH = "/api/organizations/{org}/skills/list-skills"
 SKILL_DOWNLOAD_PATH = "/api/organizations/{org}/skills/download-dot-skill-file"
 SKILLS_JSON_PATH = "/__mock/skills.json"
-SIGNED_OUT_SHAPE_PATH = "/__mock/signed-out-shape"
-"""Where a run asks for the other signed-out shape (`71`): the sign-in screen
-rendered in place of the page, rather than the two redirects. Behind no session,
-like every witness route — the operator speaking to the mock, not the tool."""
 """The three addresses a skills extraction reads (`67`; the tool's `skills list`
 and `skill download` rows), re-typed rather than imported (ADR 0003), and the
 witness that lists what was served. All three site routes want the session, as
 the real ones do; the download names its skill in the query, as the real one
 does, and is served as a zip with the header that makes it a download."""
+
+SIGNED_OUT_SHAPE_PATH = "/__mock/signed-out-shape"
+"""Where a run asks for the other signed-out shape (`71`): the sign-in screen
+rendered in place of the page, rather than the two redirects. Behind no session,
+like every witness route — the operator speaking to the mock, not the tool."""
 
 ORGANISATION_NAME = "Mock organisation"
 

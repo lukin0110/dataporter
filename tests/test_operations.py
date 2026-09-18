@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from conftest import signed_in
 from dataporter import cli, console
 from dataporter import extract as extracting
 from dataporter import extract_skills as skills_extracting
@@ -30,6 +31,7 @@ from dataporter.browser import launcher
 from dataporter.browser import session as browser_session
 from dataporter.browser.cdp import CdpClient
 from dataporter.config import (
+    AccountsSettings,
     BrowserSettings,
     Settings,
     TimeoutSettings,
@@ -184,14 +186,14 @@ def test_extract_abandon_is_the_same_through_the_library(
 
 
 def has_a_session(tmp_path: Path, *accounts: str) -> None:
-    """Give each account the profile a signed-in operator would have left (`69`).
+    """Give each account the profile `69` asks for, through the suite's one spelling.
 
-    The fake browser `fake_launch` puts on the port stands in for one already
-    running, and a browser on the port means a profile on disk. Without it the
-    preflight refuses before either door is reached.
+    Built from `tmp_path` rather than from `load_settings()`: the CLI half of
+    each of these tests reads the accounts directory out of the environment, and
+    this is the same directory it will find there.
     """
     for name in accounts:
-        (tmp_path / "accounts" / "claude" / name / "browser-profile").mkdir(parents=True, exist_ok=True)
+        signed_in(Settings(accounts=AccountsSettings(dir=tmp_path / "accounts"), source="claude", account=name))
 
 
 @pytest.mark.slow

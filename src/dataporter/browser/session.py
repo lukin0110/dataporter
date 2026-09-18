@@ -688,10 +688,17 @@ def require_session(settings: Settings) -> None:
     having one already would break the only way a ChatGPT backup bootstraps
     itself. `signin.gate` is what that run answers to instead — exit `2` and the
     credentials it needs — which is the division `gate`'s own docstring draws.
+
+    That escape is a **source account's** alone, which is what `account` tests
+    for. `signin.can_sign_in` reads `settings.source`, and the four commands that
+    need the *destination's* session name no account at all — their profile is
+    the workspace's and the destination is a Claude account however `--source` is
+    set (§75). Without this clause, `--source chatgpt --non-interactive import`
+    would turn their preflight off for a sign-in that could never happen.
     """
     from dataporter import signin  # ruff: ignore[import-outside-top-level] - `signin` imports this module
 
-    if settings.non_interactive and signin.can_sign_in(settings):
+    if settings.account is not None and settings.non_interactive and signin.can_sign_in(settings):
         return
     if never_signed_in(settings):
         raise AuthError(detail=signed_out_line(settings))

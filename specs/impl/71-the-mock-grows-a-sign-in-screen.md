@@ -30,7 +30,11 @@ by whether a browser opened at all. The rehearsal now walks both, in that order.
   from `docs/spike/claude-sign-in-screen-2026-09-18.html`: two `aria-hidden`
   `[data-client-attestation="hcaptcha-invisible"]` containers, one on the channel
   `send_magic_link`, and a form holding `[data-testid="email"]` and
-  `[data-testid="continue"]` **together**.
+  `[data-testid="continue"]` **together**. The two provider buttons beside them are not
+  signals and are not read — `70` rejected them for being a plausible "connect Google" row
+  on a signed-in settings page — but they are part of what the `sign-in form` row records
+  as observed on 2026-09-18, and a page that served only the two things the tool looks for
+  would be a weaker test than one that looks like the screen.
 - **`mock/src/claudemock/site.py`** — `Site.signed_out_in_place`, default `False`.
 - **`mock/src/claudemock/server.py`** — `SIGNED_OUT_SHAPE_PATH = "/__mock/signed-out-shape"`,
   a witness route taking `{"in_place": bool}`, and the `SignedOutError` handler branching on
@@ -40,7 +44,7 @@ by whether a browser opened at all. The rehearsal now walks both, in that order.
   mock does for it.
 - **`rehearsal/run.py`** — `tell_witness`, `witness_json`'s other half: the two routes a
   rehearsal asks rather than reads.
-- **`rehearsal/extraction.py`** — `lapse_the_session`, and four steps on the Claude half
+- **`rehearsal/extraction.py`** — `forget_the_session`, and four steps on the Claude half
   after `session status`:
 
   | Step | Exit | What it proves |
@@ -77,9 +81,10 @@ elements, or dropped the attestation, would let a rule that cannot tell a sign-i
 from an ordinary page pass a rehearsal — and the whole reason `70`'s rule is a conjunction
 is that a single signal is not enough.
 
-**The session lapses rather than never existing.** `lapse_the_session` sets the shape and
-*then* expires the sessions, so the browser still carries its cookie and the profile is
-still on disk. That is an **involuntary sign-out**, which is the state `70` is for; a
+**The session lapses rather than never existing.** `forget_the_session` sets the shape and
+*then* expires the sessions — two asks about two different things, which is why its
+argument is `answer_in_place` and not `in_place`. The browser still carries its cookie and
+the profile is still on disk. That is an **involuntary sign-out**, which is the state `70` is for; a
 profile that was never signed in never reaches a browser at all after `69`.
 
 **What the traces say, and why it is the better assertion.** The in-place step leaves a

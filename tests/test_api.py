@@ -29,6 +29,7 @@ from typing import Any
 import pytest
 
 import dataporter
+from conftest import signed_in
 from dataporter import Dataporter, api, console, sources
 from dataporter import extract as extracting
 from dataporter import extract_skills as skills_extracting
@@ -425,15 +426,9 @@ def test_the_four_extract_modes_are_four_methods() -> None:
 
 
 def has_a_session(*accounts: str) -> None:
-    """Give each account the profile a signed-in operator would have left (`69`).
-
-    The fake browser these tests put on the port stands in for one already
-    running, and a browser on the port means a profile on disk. Without it the
-    preflight refuses before either door is reached, which is the check working
-    rather than failing.
-    """
+    """Give each account the profile `69` asks for, through the suite's one spelling."""
     for name in accounts:
-        with_account(load_settings(), "claude", name).browser_profile_dir.mkdir(parents=True, exist_ok=True)
+        signed_in(with_account(load_settings(), "claude", name))
 
 
 @pytest.mark.slow

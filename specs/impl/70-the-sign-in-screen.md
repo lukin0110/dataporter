@@ -69,8 +69,12 @@ session were good, `request_export` polls a page with no button for the whole of
   ```
 
 - **`extract.py`** — `sign_in_to_source` passes `source.sign_in_selectors` to
-  `current_state`, and the ask sets `traced.exit_code = ExitCode.NOT_AUTHENTICATED` on the
-  path that raises `AuthError`, so a trace of this failure says how the run ended.
+  `current_state`, and `sign_in_or_record` wraps it so that the trace is told
+  `ExitCode.NOT_AUTHENTICATED` on the path that raises `AuthError`: `watched` records what
+  the body assigned, and a body that raises assigns nothing. **Both** commands that open a
+  source session inside a `watched` go through it — the ask, and
+  `extract_skills._collect` — because they fail here the same way and a trace of one that
+  said how its run ended while the other did not would be the odd one out.
 
 - **`CONTEXT.md`** — a new term under *Extraction and backup*:
 
@@ -165,10 +169,10 @@ already exists and is the fact `signed_out()` actually wants.
    measured it.*
 4. A source with no sign-in selectors — ChatGPT — has `sign_in_selectors == ()` and
    `sign_in_showing` is `False` on every page. `tests/test_sources.py`.
-5. `PageState` round-trips the new field through `08`'s JSON object, and the browser
-   helpers print it. `tests/test_browser_probe.py`.
-6. An ask that stops signed out leaves a trace whose `exit_code` is `3`.
-   `tests/test_trace.py`.
+5. `PageState` validates and defaults the new field — so `08`'s JSON object, which is this
+   model, carries it without anything else changing. `tests/test_browser_probe.py`.
+6. An ask that stops signed out leaves a trace whose last line is `end` with `exit: 3`.
+   `tests/test_ask.py::test_an_ask_that_stops_signed_out_says_so_in_its_trace`.
 7. `CONTEXT.md` holds the **Sign-in screen** term, and no other file in `specs/` or `src/`
    uses "sign-in surface" for it.
 8. `make check-all` passes, except the one pre-existing macOS-only Hermes environment test.

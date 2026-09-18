@@ -19,6 +19,7 @@ import pytest
 from pydantic import SecretStr
 from typer.testing import CliRunner
 
+from conftest import signed_in
 from dataporter import cli, extract, log, signin, store
 from dataporter.browser import export_page, helpers, launcher
 from dataporter.browser.cdp import CdpClient
@@ -80,7 +81,7 @@ def launches(monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome) -> list[str]:
 @pytest.fixture
 def settings(chrome: FakeChrome, tmp_path: Path) -> Settings:
     """One invocation, about one source account, pointed at the fake browser."""
-    signed_in = with_account(
+    built = with_account(
         Settings(
             workspace=tmp_path / "migration",
             accounts=AccountsSettings(dir=tmp_path / "accounts"),
@@ -91,10 +92,7 @@ def settings(chrome: FakeChrome, tmp_path: Path) -> Settings:
         "claude",
         ACCOUNT,
     )
-    # The account has a session (`69`): these tests are about what happens
-    # inside one, and the preflight is what stops a command without one.
-    signed_in.browser_profile_dir.mkdir(parents=True, exist_ok=True)
-    return signed_in
+    return signed_in(built)
 
 
 def expected_block(asked_at: str) -> str:

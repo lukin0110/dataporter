@@ -355,18 +355,23 @@ PAGE_STATE_JS = page_state_js()
 every caller but the extraction's probe, and the answer they all had before `70`."""
 
 
-def page_view_js(expect: Sequence[str] = (), sign_in: Sequence[str] = ()) -> str:
-    """State and last message in one evaluate, so a poll sees one moment."""
+def page_view_js(expect: Sequence[str] = ()) -> str:
+    """State and last message in one evaluate, so a poll sees one moment.
+
+    No sign-in selectors: `08`'s poll asks about a chat rather than about whether
+    the account is signed out, and `_STATE_OBJECT` needs the const to exist
+    either way. `page_state_js` is the one builder a caller names them to (`70`).
+    """
     return expression(
         PAGE_VIEW_TAG,
         _expect_const(expect)
-        + _sign_in_const(sign_in)
+        + _sign_in_const(())
         + f"  return Object.assign({{}}, {_STATE_OBJECT}, "
         + f"{{last_message: {_LAST_MESSAGE_OBJECT}}});",
     )
 
 
-def page_report_js(expect: Sequence[str] = (), expect_title: str | None = None, sign_in: Sequence[str] = ()) -> str:
+def page_report_js(expect: Sequence[str] = (), expect_title: str | None = None) -> str:
     """`page_view`, plus every message and the title (`17`).
 
     Still one evaluate, for the reason `page_view` is one: a verification that
@@ -376,7 +381,7 @@ def page_report_js(expect: Sequence[str] = (), expect_title: str | None = None, 
     return expression(
         PAGE_REPORT_TAG,
         _expect_const(expect)
-        + _sign_in_const(sign_in)
+        + _sign_in_const(())
         + f"  const expectTitle = {json.dumps(expect_title)};\n"
         + f"  return Object.assign({{}}, {_STATE_OBJECT}, {{\n"
         + f"    last_message: {_LAST_MESSAGE_OBJECT},\n"
