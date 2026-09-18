@@ -44,12 +44,18 @@ error taxonomy and an exit-code convention. No migration behaviour.
   dataporter setup
   dataporter doctor
   dataporter logout --account LABEL [--source SRC]
+  dataporter extract-skills --account LABEL [--source SRC] [--stamp STAMP]
   dataporter session status --account LABEL [--source SRC]
   dataporter browser probe | paste | attach | await-response | close-extra-tabs
   ```
 
   Global options, before the subcommand: `--workspace PATH`, `--verbose` / `-v`,
   `--quiet` / `-q`, `--version`.
+
+  *Amended by [`66`](66-extract-skills.md):* `extract-skills` is that slice's, and is the
+  first hyphenated top-level name — the two hyphenated names above it are subcommands of
+  `browser`. `extract` is unchanged: the two commands share a destination and nothing else
+  (brief 09 §88).
 
   *Amended by [`20`](20-pilot.md):* `followup` and `judge` are that slice's, and are the
   only two commands this list did not fix in advance. They are here because the surface

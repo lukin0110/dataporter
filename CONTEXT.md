@@ -94,9 +94,19 @@ the tool reads without unpacking. An export is what the vendor produced; the arc
 the file it came as.
 _Avoid_: dump, bundle, the zip
 
+**Skill**:
+An instruction bundle a Claude account holds, authored in the account and served as a file
+the account can download. Distinct from the tool's own skills under
+`src/dataporter/skills/`, which are procedures Hermes performs: where both are in play, say
+**account skill** and **tool skill**. A Claude export does not carry them, which is why
+extracting them is its own command.
+_Avoid_: plugin, capability, prompt, agent skill
+
 **Extraction**:
-Asking a source for an account's export, fetching it from the link the vendor sends, and
-filing it as a snapshot. Changes nothing in the account beyond the ask.
+Obtaining an account's data from a source, by whatever route the vendor offers, and filing
+it as a snapshot. Asking for an export and fetching it from the link the vendor sends is
+one route; collecting the account's skills is another. Changes nothing in the account
+beyond the ask — and a skills extraction does not even ask.
 _Avoid_: scrape, crawl, pull, sync, download
 
 **Ask**:
@@ -207,8 +217,10 @@ _Avoid_: base URL, endpoint, address, target
 The set of URLs a helper will drive, on an origin. The migration surface is a new chat and
 a conversation on the destination's; the login surface adds the sign-in page, for the
 sign-in alone; the extraction surface is a source site's sign-in page — on every origin
-the sign-in passes through — and the page where its export is asked for, for the ask
-alone. Two surfaces on different origins are disjoint: neither admits the other's URLs.
+the sign-in passes through — the page where its export is asked for, for the ask alone,
+and, where a source has skills, the address each one is served from — never the page they
+are listed on, whose controls carry their names. Two surfaces on different origins are
+disjoint: neither admits the other's URLs.
 _Avoid_: allowlist, whitelist, scope
 
 **Scripted agent**:

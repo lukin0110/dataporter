@@ -146,6 +146,7 @@ interrupting, resuming, retrying failures, clearing a pause, reading the report.
 | `logout` | Sign out of a source account: remove its session, its open ask and its staged downloads, keeping its logs. `--source`, `--account` (required). |
 | `session status` | Whether a source account's profile is signed in. `--source`, `--account` (required). |
 | `extract` | Ask a source for an account's export, then file what comes back as a snapshot. `--source`, `--account`, `--link`, `--from`, `--abandon`, `--store`. |
+| `extract-skills` | Collect the skills the account wrote and file them into a snapshot beside the archive. An export does not carry them. `--source`, `--account`, `--stamp`. |
 | `snapshots` | What the store holds: source, account, stamp, conversations, state. `--json`. |
 | `inspect <export>` | What the export contains, and what is migratable. A snapshot works wherever an export does. |
 | `seeds <export>` | Write the migration seeds without touching a browser. |
@@ -187,6 +188,10 @@ dataporter extract --source claude --account old-personal --link 'https://…'
 
 # An archive you already have is filed the same way, with no ask behind it:
 dataporter extract --source claude --account old-personal --from ./data-2026-09-12.zip
+
+# 3. The export does not carry the skills the account wrote. Collect them into the same
+#    snapshot — no ask, no link, nothing clicked — or, without --stamp, into one of their own:
+dataporter extract-skills --source claude --account old-personal --stamp 2026-09-12T20-51-07Z
 
 dataporter snapshots                                           # what the store holds
 dataporter import ~/.dataporter/store/claude/old-personal/2026-09-12T20-51-07Z
@@ -332,11 +337,11 @@ Three places, all local, and each one is purged by deleting a directory:
 | `<export>` | Your export, opened read-only. The tool never writes to it. | Yours; keep it. |
 | `migration/` (the workspace, `--workspace` to move it) | `state.json`, `run.json`, `plan.json`, `report.json`, `seeds/` (the rendered transcripts), `attachments/`, `pilot/probes.json` (replies Claude wrote), `browser-profile/` (a signed-in Chrome profile) and `logs/`. | `rm -rf migration/` |
 | `~/.hermes/profiles/dataporter/` | Hermes's own session transcripts, which contain page snapshots and therefore conversation content. | `rm -rf ~/.hermes/profiles/dataporter/` — `setup` prints the path on every run. |
-| `~/.dataporter/store/` (`30`, `--store` to move it) | The snapshots `extract` files: one vendor archive each, and a manifest beside it. Holds conversations because that is what a backup is for. | `rm -rf ~/.dataporter/store/` — the tool never deletes from the store itself. |
+| `~/.dataporter/store/` (`30`, `--store` to move it) | The snapshots `extract` files: one vendor archive each, a manifest beside it, and — since `66` — the account's own skills under `skills/`, as the vendor served them. Holds conversations because that is what a backup is for. | `rm -rf ~/.dataporter/store/` — the tool never deletes from the store itself. |
 | `~/.dataporter/accounts/` (`[accounts] dir` to move it) | Per source account, and never a snapshot: the open ask and the run logs. | `rm -rf ~/.dataporter/accounts/` |
 
 Every command that drives a browser tab — `login`, `import`, `resume`, `verify`,
-`followup`, `doctor`, and `extract` when it asks — also leaves a **trace**,
+`followup`, `doctor`, `extract-skills`, and `extract` when it asks — also leaves a **trace**,
 `logs/trace-<ts>.jsonl` beside its run log: one line per helper call, with what the
 page showed in outline, so that a run against the real site can be read back and the
 mock claude.ai corrected against it (brief `04`). A trace carries paths, the labels of

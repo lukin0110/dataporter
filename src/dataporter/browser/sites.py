@@ -46,6 +46,42 @@ def not_the_export_page(source: "Source") -> str:
     return NOT_THE_EXPORT_PAGE.format(path=source.export_page_path)
 
 
+UUID = "[0-9a-f-]{36}"
+"""How a wall spells an organisation's uuid: as `app_paths` spells a chat's."""
+
+
+def organizations_url(source: "Source") -> str:
+    """Where the site lists the account's organisations, from the path spelled once (`66`)."""
+    return f"{source.origin}{source.organizations_path}"
+
+
+def skills_list_url(source: "Source", org: str) -> str:
+    """Where one organisation's skills are listed (`66`). Read in the page, never navigated to."""
+    return f"{source.origin}{source.skills_list_path.format(org=org)}"
+
+
+def skills_download_url(source: "Source", org: str, skill_id: str) -> str:
+    """Where one skill is served from (`66`): the tab is pointed at it and the download caught."""
+    return f"{source.origin}{source.skills_download_path.format(org=org, skill=skill_id)}"
+
+
+def _skills_door(source: "Source") -> tuple[str, ...]:
+    """Return the download address as a door in the extraction wall, or no door for a source without skills.
+
+    The path with a uuid where `{org}` was and without its query: `_wall` admits
+    any query after a door, and a trace records a query's names and never its
+    values (§46), so `skill_id` is never written down. The list and the
+    organisations are read in the page and never navigated to, so they need no
+    door — what keeps *them* on the surface is that their addresses are built
+    from the `Source` and from nothing a response carried.
+    """
+    if not source.has_skills:
+        return ()
+    path = source.skills_download_path.lstrip("/").partition("?")[0]
+    head, _, tail = path.partition("{org}")
+    return (re.escape(head) + UUID + re.escape(tail),)
+
+
 def _wall(source: "Source", paths: "Sequence[str]") -> re.Pattern[str]:
     """One pattern: the site's origin with these paths, and every auth origin whole.
 
@@ -82,10 +118,16 @@ def extraction_pattern(source: "Source") -> re.Pattern[str]:
     address, which is still the sign-in and the export page and nothing else:
     `/new` is not admitted, and neither is another settings route beside it. A
     source whose export page is a plain path keeps exactly the door it had.
+
+    A source with skills has a third door (`66`): the address one skill is
+    served from, which the fetch points the tab at. Still not `/new`, and still
+    not the page the skills are listed on — that page is never navigated to,
+    because its controls are labelled with the skills' names and a sketch keeps
+    a control's label (§46).
     """
     path, _, fragment = source.export_page_path.lstrip("/").partition("#")
     door = re.escape(path) + (rf"(\?[^#]*)?\#{re.escape(fragment)}(/.*)?" if fragment else "")
-    return _wall(source, (*source.sign_in_paths, door))
+    return _wall(source, (*source.sign_in_paths, door, *_skills_door(source)))
 
 
 def login_pattern(source: "Source") -> re.Pattern[str]:

@@ -953,7 +953,7 @@ def test_a_vendor_name_cannot_forge_a_line_of_output(settings: Settings, tmp_pat
     forged = tmp_path / "conversations\n19:39:41 info    all is well.zip"
     sink = Collected()
 
-    extract._landed(forged, name=forged.name, size=21, sink=sink, quiet=False)
+    extract.landed(forged, name=forged.name, size=21, sink=sink, quiet=False)
 
     written = _events(settings, "downloaded")
     assert len(written) == 1

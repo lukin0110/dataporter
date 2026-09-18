@@ -5,7 +5,7 @@ tested in `test_core_reply.py`; what is here is what a chat on this site is.
 """
 
 import pytest
-from claudemock import IDENTITY, ORIGIN
+from claudemock import IDENTITY, ORIGIN, archive
 from claudemock.site import Site
 from mockcore.ledger import Ledger
 from mockcore.reply import CANNED
@@ -167,6 +167,8 @@ def test_the_ledger_counts_what_the_mock_was_asked_to_do() -> None:
         "renames": 1,
         "exports_requested": 1,
         "links_minted": 1,
+        "skills_listed": 0,
+        "skills_served": 0,
     }
     assert chat.files == ["notes.txt"]
 
@@ -215,3 +217,37 @@ def test_the_reply_is_whole_at_the_last_step(steps: int) -> None:
     chat = site.create_chat(SEED, session="s")
     clock[0] += steps
     assert chat.view(clock[0])[-1].text == "MIGRATION-ACK aa000001 1/1"
+
+
+# -- the account's skills (`67`) ---------------------------------------------- #
+
+
+def test_the_seeded_skills_are_a_mix_and_a_read_is_counted(site: Site) -> None:
+    """Four ours, one Anthropic's, one nobody's: a list of only-ours would prove nothing about the filter."""
+    listed = site.list_skills()
+    assert [skill.creator_type for skill in listed] == ["user", "user", "user", "user", "anthropic", "organization"]
+    assert [skill.enabled for skill in listed if skill.ours] == [True, False, True, True]
+    assert [skill.plugin_id for skill in listed if skill.ours] == [None, None, "plugin_01mock", None]
+    assert [skill.refused for skill in listed if skill.ours] == [False, False, False, True]
+    assert all(
+        skill.name == skill.name.lower() and set(skill.name) <= set("abcdefghijklmnopqrstuvwxyz-") for skill in listed
+    )
+    site.list_skills()
+    assert site.counters()["skills_listed"] == 2
+
+
+def test_serving_a_skill_counts_it_and_the_broken_one_is_returned_uncounted(site: Site) -> None:
+    listed = {skill.name: skill for skill in site.skills()}
+    assert site.serve_skill(listed["research-helper"].id) is listed["research-helper"]
+    assert site.serve_skill(listed["research-helper"].id) is listed["research-helper"]
+    assert site.serve_skill(listed["broken-skill"].id) is listed["broken-skill"]
+    assert site.serve_skill("skill_nobody_minted") is None
+    assert listed["research-helper"].served == 2
+    assert listed["broken-skill"].served == 0
+    assert site.counters()["skills_served"] == 2
+
+
+def test_the_organisation_is_the_account_s_and_not_its_export_id(site: Site) -> None:
+    assert len(site.org_uuid) == 36
+    assert site.org_uuid == Site(email=site.email).org_uuid
+    assert site.org_uuid != archive.account_uuid(site.email)

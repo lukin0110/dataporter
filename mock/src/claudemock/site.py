@@ -20,6 +20,13 @@ address submitted mints a sign-in link instead of mailing one, remembered as
 pending against the browser that asked; redeeming that link in that browser
 signs it in, once. There is no password anywhere, because claude.ai has none.
 
+A fifth is `67`'s (the tool's brief `09`): the account has **skills** it wrote,
+beside the ones Anthropic ships with it, and the site lists them and serves each
+one as a file. The list is a mix on purpose — ours, ours and switched off, ours
+inside a plugin, ours and broken, Anthropic's, and one nobody's — because the
+tool's whole scope decision is a filter, and a list of only-ours would prove
+nothing about it.
+
 Nothing here is a claim about claude.ai. `uimap.py` says which row of the UI map
 each of these behaviours stands on.
 """
@@ -71,6 +78,70 @@ class SignInLink:
         """The part after `#`: the token, then the address, base64url without padding."""
         address = base64.urlsafe_b64encode(self.email.encode("utf-8")).decode("ascii").rstrip("=")
         return f"{self.token}:{address}"
+
+
+SKILL_OURS = "user"
+SKILL_ANTHROPIC = "anthropic"
+SKILL_NOBODYS = "organization"
+"""The `creator_type` values a skill carries. The first two are what the tool's
+`skill authorship` row read on 2026-09-18; the third is one the tool does not
+know, seeded so that a rehearsal can prove an unknown value is treated as not
+ours rather than as ours."""
+
+
+@dataclass
+class Skill:
+    """One skill the account holds (`67`): what the list says about it, and what happens when it is fetched.
+
+    `refused` is the one that will not come back — the download answers `500`
+    — so that the tool's gap (brief `09` §93) is exercised end to end rather
+    than by a fake being told to fail. `served` is how many times its file was
+    handed out, which the witness lists and a rehearsal reconciles.
+    """
+
+    id: str
+    name: str
+    creator_type: str
+    enabled: bool = True
+    plugin_id: str | None = None
+    refused: bool = False
+    served: int = 0
+
+    @property
+    def display_name(self) -> str:
+        return self.name.replace("-", " ").title()
+
+    @property
+    def description(self) -> str:
+        return f"The {self.name} skill, as the mock describes it."
+
+    @property
+    def filename(self) -> str:
+        """What the site names the file: `<name>.skill`, as the real page's anchor does."""
+        return f"{self.name}.skill"
+
+    @property
+    def ours(self) -> bool:
+        return self.creator_type == SKILL_OURS
+
+
+def seeded_skills() -> tuple[Skill, ...]:
+    """Return the mix every fresh site holds, in the order the list answers them.
+
+    Four the account wrote — one switched off, one inside a plugin, one that will
+    not come back — one of Anthropic's, and one with a `creator_type` the tool does
+    not know. The names are the mock's own and nobody's content.
+    """
+    return (
+        Skill(id="skill_01mockresearchhelper000", name="research-helper", creator_type=SKILL_OURS),
+        Skill(id="skill_01mockstandupnotes00000", name="standup-notes", creator_type=SKILL_OURS, enabled=False),
+        Skill(
+            id="skill_01mockpluginhelper0000", name="plugin-helper", creator_type=SKILL_OURS, plugin_id="plugin_01mock"
+        ),
+        Skill(id="skill_01mockbrokenskill00000", name="broken-skill", creator_type=SKILL_OURS, refused=True),
+        Skill(id="skill_01mockdocs000000000000", name="docs", creator_type=SKILL_ANTHROPIC),
+        Skill(id="skill_01mocksharedthing00000", name="shared-thing", creator_type=SKILL_NOBODYS),
+    )
 
 
 NEW_CHAT_TITLE = "New chat"
@@ -144,6 +215,9 @@ class Site:
         self._strays: set[str] = set()
         """Browsers that opened a link whose sign-in was not theirs (`link opened elsewhere`)."""
         self._exports = Exports(wall=wall)
+        self._skills: dict[str, Skill] = {skill.id: skill for skill in seeded_skills()}
+        """The account's skills (`67`), seeded rather than posted: a rehearsal
+        reads them, it never writes one."""
         self._lock = threading.Lock()
 
     # -- the clock ---------------------------------------------------------- #
@@ -319,6 +393,40 @@ class Site:
         is where the mock says the same.
         """
         return self._exports.spend(part_token)
+
+    # -- skills (`67`) -------------------------------------------------------- #
+
+    @property
+    def org_uuid(self) -> str:
+        """The one organisation's id, the same across restarts and distinct from the account's export id."""
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"org:{self.email}"))
+
+    def list_skills(self) -> Sequence[Skill]:
+        """Return every skill the account holds, ours or not, and count the read."""
+        self.ledger.count("skills_listed")
+        with self._lock:
+            return tuple(self._skills.values())
+
+    def serve_skill(self, skill_id: str) -> Skill | None:
+        """Return the skill a fetch asked for and count the serving; `None` for an id nobody listed.
+
+        A refused skill is returned and *not* counted: the server answers `500`
+        for it, and what the ledger counts is files that went out.
+        """
+        with self._lock:
+            skill = self._skills.get(skill_id)
+            if skill is None:
+                return None
+            if not skill.refused:
+                skill.served += 1
+        if not skill.refused:
+            self.ledger.count("skills_served")
+        return skill
+
+    def skills(self) -> Sequence[Skill]:
+        """Every skill, for the witness: what was listed, and how often each was served. Counts nothing."""
+        with self._lock:
+            return tuple(self._skills.values())
 
     def expire_sessions(self) -> int:
         """Forget every session, so the next request is one whose sign-in lapsed.

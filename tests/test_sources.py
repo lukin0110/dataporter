@@ -104,7 +104,8 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     """Two regular expressions, byte for byte, because a wall is easier to trust when it is one line long."""
     assert export_page.EXTRACTION_SURFACE.allowed.pattern == (
         r"^https://claude\.ai/(login(/.*)?|magic-link(/.*)?"
-        r"|new(\?[^#]*)?\#settings/data\-privacy\-controls(/.*)?)(\?.*)?$"
+        r"|new(\?[^#]*)?\#settings/data\-privacy\-controls(/.*)?"
+        r"|api/organizations/[0-9a-f-]{36}/skills/download\-dot\-skill\-file)(\?.*)?$"
     )
     assert login_form.LOGIN_SURFACE.allowed.pattern == (
         r"^https://claude\.ai/(login(/.*)?|magic-link(/.*)?|new|chat/[0-9a-f-]{36})(\?.*)?$"
@@ -122,6 +123,20 @@ def test_the_walls_are_the_ones_24_and_31_wrote() -> None:
     assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/other")
     # The export is a subtree: the panel, and the screen the button that asks is on.
     assert export_page.EXTRACTION_SURFACE.permits("https://claude.ai/new#settings/data-privacy-controls/export-data")
+    # `66`'s third door: the address one skill is served from, with its query —
+    # and only that. The list is read in the page and never navigated to, and
+    # the page the skills are listed on is not admitted at all (§46).
+    org = "ccbfbca0-c0b7-4421-835e-1dbaeacc6b29"
+    assert export_page.EXTRACTION_SURFACE.permits(
+        f"https://claude.ai/api/organizations/{org}/skills/download-dot-skill-file?skill_id=skill_01x"
+    )
+    assert not export_page.EXTRACTION_SURFACE.permits(f"https://claude.ai/api/organizations/{org}/skills/list-skills")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/api/organizations")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/customize/skills/mine")
+    assert not export_page.EXTRACTION_SURFACE.permits("https://claude.ai/customize/skills/discover")
+    assert not login_form.LOGIN_SURFACE.permits(
+        f"https://claude.ai/api/organizations/{org}/skills/download-dot-skill-file?skill_id=skill_01x"
+    )
     assert export_page.EXTRACTION_SURFACE.hosts == ("claude.ai",)
     assert login_form.LOGIN_SURFACE.hosts == ("claude.ai",)
 

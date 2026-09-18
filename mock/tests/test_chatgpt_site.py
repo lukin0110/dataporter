@@ -108,6 +108,8 @@ def test_the_ledger_counts_what_the_mock_was_asked_to_do() -> None:
         "renames": 1,
         "exports_requested": 1,
         "links_minted": 0,
+        "skills_listed": 0,
+        "skills_served": 0,
     }
     assert ledger.block().startswith("Mock chatgpt.com — ledger\n")
     assert chat.messages[0].files == (Upload("notes.txt", 12),)

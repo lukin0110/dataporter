@@ -115,6 +115,28 @@ is tuned in: an ask that under-claims wastes a minute, and an ask that
 over-claims sends a person to wait for an email nobody asked for.
 """
 
+ORGANIZATIONS_PATH = "/api/organizations"
+SKILLS_LIST_PATH = "/api/organizations/{org}/skills/list-skills"
+SKILLS_DOWNLOAD_PATH = "/api/organizations/{org}/skills/download-dot-skill-file?skill_id={skill}"
+"""The three addresses a skills extraction reads (`66`; the `skills list` and
+`skill download` rows of `docs/claude-ui-map.md`, read 2026-09-18 and still
+*unknown* there, for the reason the export page's rows are).
+
+The first two are read in the page: a same-origin `fetch` the browser makes,
+so the cookie never leaves it (ADR 0008, kept). The list answers
+`{"skills": [...]}` and the tool keeps five fields of each entry — `id`,
+`name`, `creator_type`, `enabled` and whether `backing_plugin_id` is set — and
+leaves the rest where it found them. The third is navigated to, once per skill,
+and answers the `.skill` file itself as `application/zip`: the page's own
+*Download* item fetches this and only presents the bytes as a blob, so the
+address is the source and the menu is not. `include_blocked` is a query the
+page adds and the tool does not: called without it, the same bytes came back.
+
+`list-skills` is what claude.ai's own app calls on sign-in —
+`docs/spike/traces/login-2026-09-15.jsonl:79` has it in a committed trace,
+path only — which is the one piece of it that is *observed*.
+"""
+
 EMAILED = "Claude will email a download link to the account's address."
 WHEN_IT_ARRIVES = "When it arrives:"
 COUNTS = "Conversations: {conversations}     Projects: {projects}     Memories: {memories}"
@@ -193,6 +215,9 @@ CLAUDE = Source(
     recognise=looks_like,
     read=read,
     sign_in_by_link=True,
+    organizations_path=ORGANIZATIONS_PATH,
+    skills_list_path=SKILLS_LIST_PATH,
+    skills_download_path=SKILLS_DOWNLOAD_PATH,
 )
 """Claude, as brief `03` built it and brief `07` corrected it: one host, an
 export served to the session, and a sign-in by an emailed link that no

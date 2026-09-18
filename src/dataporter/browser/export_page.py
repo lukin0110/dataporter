@@ -280,7 +280,7 @@ def request_export(
     """
     surface = sites.extraction_surface(source)
     deadline = time.monotonic() + settings.timeouts.ask_s
-    _bring_to_export_page(session, source, deadline=deadline, poll_s=poll_s)
+    bring_to_export_page(session, source, deadline=deadline, poll_s=poll_s)
     tab = helpers.chosen_tab(session.client, surface=surface)
     if isinstance(tab, helpers.Failure):
         raise BrowserError(detail=str(tab.error))
@@ -321,7 +321,7 @@ def request_export(
 def _await_button(page: Page, source: "Source", *, deadline: float, poll_s: float) -> ExportPageView:
     """Return the page once the export control is on it, or as it was at the deadline.
 
-    The navigation is not the arrival. `_bring_to_export_page` waits for the
+    The navigation is not the arrival. `bring_to_export_page` waits for the
     *URL* — the tab's `location.href` and then the target list — and claude.ai
     serves its export panel from a React app at a fragment of `/new` (§77), so
     the address is right long before anything is rendered at it. The only other
@@ -407,7 +407,7 @@ def _click(settings: Settings, page: Page, source: "Source", selector: str, acti
     return utcnow().replace(microsecond=0)
 
 
-def _bring_to_export_page(session: BrowserSession, source: "Source", *, deadline: float, poll_s: float) -> None:
+def bring_to_export_page(session: BrowserSession, source: "Source", *, deadline: float, poll_s: float) -> None:
     """Point the tab at the export page, and wait until it is showing it.
 
     The one CDP call the ask makes on a page outside the extraction surface, and

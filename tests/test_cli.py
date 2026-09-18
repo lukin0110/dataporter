@@ -25,6 +25,7 @@ COMMANDS: list[list[str]] = [
     ["seeds"],
     ["inspect"],
     ["extract"],
+    ["extract-skills"],
     ["snapshots"],
     ["status"],
     ["login"],
@@ -65,7 +66,10 @@ on a workspace nothing has been migrated or probed in; they are exercised in
 `test_extract.py` and `test_store.py`, where the store and the injected opener
 live. `extract` with no mode flag is the one thing in the surface that answers
 `69` again — deliberately, because the ask it holds the place for is `31`'s and a
-flag that chooses cannot be accepted and quietly ignored."""
+flag that chooses cannot be accepted and quietly ignored.
+
+`66` added `extract-skills`, the first hyphenated top-level name; it is exercised
+in `test_extract_skills.py`, where the fake tab that answers its two reads lives."""
 
 GLOBAL_OPTIONS = ["--workspace", "--verbose", "-v", "--quiet", "-q", "--version"]
 
@@ -122,6 +126,17 @@ def test_extract_help_carries_every_flag(runner: CliRunner) -> None:
     result = runner.invoke(cli.app, ["extract", "--help"], catch_exceptions=False)
     for flag in ("--source", "--account", "--link", "--from", "--abandon", "--store"):
         assert flag in result.stdout
+
+
+def test_extract_skills_help_carries_every_flag(runner: CliRunner) -> None:
+    """`66`: a required label, a source, a stamp and a store — and no literal default on any of them."""
+    result = runner.invoke(cli.app, ["extract-skills", "--help"], catch_exceptions=False)
+    for flag in ("--source", "--account", "--stamp", "--store"):
+        assert flag in result.stdout
+    signature = inspect.signature(cli.extract_skills)
+    assert signature.parameters["account"].default is inspect.Parameter.empty
+    assert signature.parameters["source"].default is None
+    assert signature.parameters["stamp"].default is None
 
 
 @pytest.mark.parametrize("command", [["login"], ["logout"], ["session", "status"]])

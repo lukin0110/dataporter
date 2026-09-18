@@ -209,6 +209,8 @@ Files accepted:                2
 Renames:                       8
 Exports requested:             1
 Sign-in links minted:          0
+Skill lists read:              0
+Skills served:                 0
 
 ```
 
@@ -216,7 +218,7 @@ This is the witness. The tool can tell a rehearsal from a real run since `65` �
 was given `--mock` — but it still only knows what it *tried* to do, so the mock
 remains the only party that can say what really happened on the other side of the
 wire — and a rehearsal record whose numbers do not reconcile with these is not a
-rehearsal (§25). The same seven counts for every site, under a heading that names
+rehearsal (§25). The same nine counts for every site, under a heading that names
 it, because two mocks running at once keep two ledgers; the seventh is a sign-in
 link minted where an email would go, which only the mock claude.ai does. The
 numbers are printed when the process is stopped, and served as JSON at
@@ -320,6 +322,16 @@ The behaviours both mocks have, and worth knowing before you read the code:
   [`docs/spike/traces/login-2026-09-15.jsonl`](../docs/spike/traces/login-2026-09-15.jsonl).
   Nothing the tool drives can ask for it, because an expiry is something that
   happens *to* a run.
+- **The account's own skills** (`67`). `GET /api/organizations` names one
+  organisation, `…/skills/list-skills` lists six skills in the vendor's shape — four
+  the account wrote (one switched off, one inside a plugin, one that will not come
+  back), one of Anthropic's, one with a `creator_type` the tool does not know — and
+  `…/skills/download-dot-skill-file?skill_id=…` serves each as a zip holding
+  `SKILL.md`, except the broken one, which answers `500`. No page: the tool reads
+  both addresses from the export page and navigates to the third, and the page the
+  real site lists skills on is never opened (the tool's `skills page` row says why).
+  `/__mock/skills.json` says how often each was served, and the ledger counts the
+  reads and the files.
 
 ### `chatgpt-mock`
 

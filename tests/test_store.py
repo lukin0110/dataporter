@@ -489,3 +489,188 @@ def test_a_snapshot_is_the_owners_to_read(tmp_path: Path) -> None:
     for name in store.SNAPSHOT_FILES:
         mode = (directory / name).stat().st_mode & 0o777
         assert mode == store.SNAPSHOT_MODE, name
+
+
+# --------------------------------------------------------------------------- #
+# A snapshot grows but never changes (`66`, ADR 0011)
+# --------------------------------------------------------------------------- #
+
+
+def staged(tmp_path: Path, name: str, body: bytes = b"PK\x03\x04 skill", **fields: Any) -> store.StagedSkill:
+    """Return one skill the fetch caught, hashed as `extract-skills` hashes it."""
+    path = tmp_path / f"{name}.staged"
+    path.write_bytes(body)
+    return store.StagedSkill(
+        name=name, filename=f"{name}.skill", path=path, sha256=_sha256(path), bytes=len(body), **fields
+    )
+
+
+def skills_filing(stamp: str, *skills: store.StagedSkill, account: str = "old-personal") -> store.SkillsFiling:
+    return store.SkillsFiling(source="claude", account=account, stamp=stamp, skills=skills)
+
+
+def test_skills_join_an_archive_and_the_archive_is_untouched(tmp_path: Path) -> None:
+    """The one write into a finished snapshot only adds: the archive's every byte and field stay."""
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, first = store.Store(root).file_archive(path, filing(path))
+    archive_before = (directory / store.ARCHIVE_NAME).read_bytes()
+
+    _, second = store.Store(root).file_skills(
+        skills_filing(
+            STAMP, staged(tmp_path, "research-helper"), staged(tmp_path, "standup-notes", enabled=False, plugin=True)
+        )
+    )
+
+    assert (directory / store.ARCHIVE_NAME).read_bytes() == archive_before
+    assert (second.archive, second.parts, second.export_fingerprint, second.origin, second.filed_at) == (
+        first.archive,
+        first.parts,
+        first.export_fingerprint,
+        first.origin,
+        first.filed_at,
+    )
+    assert [(skill.name, skill.filename, skill.enabled, skill.plugin) for skill in second.skills] == [
+        ("research-helper", "research-helper.skill", True, False),
+        ("standup-notes", "standup-notes.skill", False, True),
+    ]
+    assert (second.counts.conversations, second.counts.skills) == (127, 2)
+    assert (directory / "skills" / "research-helper.skill").read_bytes() == b"PK\x03\x04 skill"
+    assert store.read_manifest(directory / store.MANIFEST_NAME) == second
+    assert sorted(item.name for item in directory.iterdir()) == ["COMPLETE", "export.zip", "skills", "snapshot.json"]
+
+
+def test_a_stamp_with_no_archive_is_a_snapshot_of_the_skills_alone(tmp_path: Path) -> None:
+    """Brief `09` §91: a whole snapshot, and the listing counts what it holds rather than saying `0 conversations`."""
+    root = tmp_path / "store"
+
+    directory, snapshot = store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "one")))
+
+    assert (snapshot.origin, snapshot.archive, snapshot.export_fingerprint) == ("skills", store.Archive(), "")
+    assert (snapshot.counts.conversations, snapshot.counts.skills) == (0, 1)
+    assert sorted(item.name for item in directory.iterdir()) == ["COMPLETE", "skills", "snapshot.json"]
+    rows = store.Store(root).rows()
+    assert [(row.state, row.conversations, row.skills, row.unit) for row in rows] == [("complete", 0, 1, "skills")]
+    assert store.listing(rows) == "claude/old-personal   2026-09-12T20-51-07Z   1 skills   complete\n"
+
+
+def test_a_mixed_listing_aligns_the_units(tmp_path: Path) -> None:
+    """One archive, one skills-only snapshot: the numbers right-aligned, the units padded, the block otherwise §33's."""
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    store.Store(root).file_archive(path, filing(path))
+    store.Store(root).file_skills(
+        skills_filing("2026-10-01T03-00-00Z", staged(tmp_path, "one"), staged(tmp_path, "two"))
+    )
+
+    assert store.listing(store.Store(root).rows()) == (
+        "claude/old-personal   2026-09-12T20-51-07Z   127 conversations   complete\n"
+        "claude/old-personal   2026-10-01T03-00-00Z     2 skills          complete\n"
+    )
+
+
+def test_a_manifest_without_skills_reads_and_lists_as_it_did(tmp_path: Path) -> None:
+    """A manifest written before there were skills has no `skills` key, and its row says `None`, not zero."""
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, _ = store.Store(root).file_archive(path, filing(path))
+
+    assert "skills" not in json.loads((directory / store.MANIFEST_NAME).read_text())["counts"]
+    assert store.Store(root).rows()[0].skills is None
+
+
+def test_a_skill_already_filed_is_refused_before_anything_is_written(tmp_path: Path) -> None:
+    """Every target is checked first, so a refusal leaves the snapshot exactly as it was."""
+    root = tmp_path / "store"
+    directory, _ = store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+    before = {item.name: item.read_bytes() for item in directory.rglob("*") if item.is_file()}
+
+    with pytest.raises(StoreError) as raised:
+        store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "b"), staged(tmp_path, "a")))
+
+    assert str(raised.value) == f"snapshot already exists: {directory / 'skills' / 'a.skill'}"
+    assert {item.name: item.read_bytes() for item in directory.rglob("*") if item.is_file()} == before
+    assert not (directory / "skills" / "b.skill").exists()
+
+
+def test_an_unfinished_snapshot_takes_no_skills(tmp_path: Path) -> None:
+    """No marker is a snapshot somebody is still writing, and its manifest is not yet a promise."""
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, _ = store.Store(root).file_archive(path, filing(path))
+    (directory / store.COMPLETE_NAME).unlink()
+
+    with pytest.raises(StoreError) as raised:
+        store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    assert str(raised.value) == f"snapshot is unfinished, so nothing can be added to it: {directory}"
+    assert not (directory / "skills").exists()
+
+
+def test_the_marker_comes_down_for_the_append_and_goes_back_last(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reader never sees `COMPLETE` beside a manifest that does not yet name `skills/` (ADR 0011)."""
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, _ = store.Store(root).file_archive(path, filing(path))
+    seen: list[bool] = []
+    original = store._rewrite
+
+    def spying(target: Path, data: bytes) -> None:
+        seen.append((directory / store.COMPLETE_NAME).exists())
+        original(target, data)
+
+    monkeypatch.setattr(store, "_rewrite", spying)
+
+    store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    assert seen == [False]
+    assert (directory / store.COMPLETE_NAME).exists()
+
+
+def test_a_manifest_that_cannot_be_rewritten_or_a_marker_that_will_not_come_down_is_a_store_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two writes an append adds, each refused the way `_create`'s is."""
+    manifest = tmp_path / "snapshot.json"
+    manifest.write_bytes(b"{}")
+
+    def full(handle: int) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "fsync", full)
+    with pytest.raises(StoreError, match="No space left on device"):
+        store._rewrite(manifest, b"{}")
+
+    def stuck(self: Path, *, missing_ok: bool = False) -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(Path, "unlink", stuck)
+    with pytest.raises(StoreError, match="Operation not permitted"):
+        store._remove(tmp_path / "COMPLETE")
+
+
+def test_a_skills_directory_that_cannot_be_made_is_a_store_error(tmp_path: Path) -> None:
+    """A file where `skills/` has to go is the store refusing, not a traceback."""
+    root = tmp_path / "store"
+    path = archive(tmp_path)
+    directory, _ = store.Store(root).file_archive(path, filing(path))
+    (directory / store.SKILLS_DIRNAME).write_bytes(b"in the way")
+
+    with pytest.raises(StoreError, match="cannot write to the store"):
+        store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+
+def test_a_skill_whose_copy_does_not_match_stops_before_the_marker(tmp_path: Path) -> None:
+    """As an archive's copy is checked (`file_archive`), so is a skill's: the digest is of the bytes that landed."""
+    root = tmp_path / "store"
+    wrong = store.StagedSkill(
+        name="a", filename="a.skill", path=(tmp_path / "a.staged"), sha256="0" * 64, bytes=5, enabled=True
+    )
+    wrong.path.write_bytes(b"PK\x03\x04 skill")
+
+    with pytest.raises(FetchError, match="does not match"):
+        store.Store(root).file_skills(skills_filing(STAMP, wrong))
+
+    assert not (root / "claude" / "old-personal" / STAMP / store.COMPLETE_NAME).exists()

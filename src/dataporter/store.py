@@ -86,6 +86,12 @@ SNAPSHOT_FILES = (ARCHIVE_NAME, MANIFEST_NAME, COMPLETE_NAME)
 A snapshot of a vendor that served several files has those beside them, named as
 the vendor named them and listed in the manifest's `parts`."""
 
+SKILLS_DIRNAME = "skills"
+SKILL_SUFFIX = ".skill"
+"""Where a snapshot keeps the skills the account wrote, one file each, as the
+vendor served them (brief `09` §91, `66`). A snapshot may hold these and no
+archive: `extract-skills` with no `--stamp` files one of its own."""
+
 STAMP_FORMAT = "%Y-%m-%dT%H-%M-%SZ"
 """§33's stamp: UTC, to the second, with `-` where a time has `:`.
 
@@ -99,6 +105,7 @@ COPY_CHUNK = 1 << 20
 export is not read into memory to be filed."""
 
 SNAPSHOT_EXISTS = "snapshot already exists: {path}"
+SNAPSHOT_UNFINISHED = "snapshot is unfinished, so nothing can be added to it: {path}"
 STORE_UNWRITABLE = "cannot write to the store ({reason}): {path}"
 COPY_MISMATCH = "the copy in the store does not match what was downloaded; remove it and try again: {path}"
 WORKSPACE_IN_SNAPSHOT = "the workspace cannot be inside a snapshot: {path}"
@@ -119,13 +126,20 @@ on #43.)
 COLUMN_GAP = "   "
 """Three spaces between the columns of a `snapshots` row (§33's block)."""
 
+CONVERSATIONS_UNIT = "conversations"
+SKILLS_UNIT = "skills"
+"""What a row counts. A snapshot with an archive counts conversations, as §33's
+block does; one that holds skills and no archive counts those, because
+`0 conversations` would be true of it and say nothing (`66`)."""
+
 UNKNOWN_COUNT = "?"
 """The conversation count of a snapshot whose manifest could not be read."""
 
-Origin = Literal["ask", "link", "file"]
+Origin = Literal["ask", "link", "file", "skills"]
 """How a snapshot came to be: the tool asked for the export and fetched it, a
-person handed over a link with no ask on record, or a person handed over an
-archive they already had."""
+person handed over a link with no ask on record, a person handed over an
+archive they already had — or the tool read the account's skills into a
+snapshot with no archive in it (`66`)."""
 
 State = Literal["complete", "incomplete", "unreadable"]
 
@@ -200,6 +214,28 @@ class Counts(StoreModel):
     projects: int = 0
     memories: int = 0
     files: int | None = Field(default=None, exclude_if=lambda value: value is None)
+    skills: int | None = Field(default=None, exclude_if=lambda value: value is None)
+    """How many skills the snapshot holds (`66`), absent from a manifest that
+    holds none, for the reason `files` is absent from Claude's."""
+
+
+class SkillFile(StoreModel):
+    """One skill the account wrote, as it was filed (brief `09` §91, `66`).
+
+    A label and numbers (§38): the vendor's own `name`, which it constrains to
+    lowercase letters, digits and hyphens; the file it became; its size and
+    digest, as `Archive` keeps them; and two facts recorded and never filtered
+    on (§90) — whether the skill was switched on, and whether it sat in a
+    plugin. Not the display name and not the description: both are inside the
+    vendor's file beside this manifest, which is the copy that matters.
+    """
+
+    name: str
+    filename: str
+    bytes: int = 0
+    sha256: str = ""
+    enabled: bool = True
+    plugin: bool = False
 
 
 class Gap(StoreModel):
@@ -248,6 +284,11 @@ class Snapshot(StoreModel):
     """The SHA-256 of `conversations.json` — `Export.fingerprint`, the same
     number a workspace records for the archive given directly. That identity is
     what makes a snapshot and its archive the same migration (ADR 0005)."""
+    skills: list[SkillFile] = []
+    """The skills the account wrote, under `skills/` (`66`). The one list this
+    manifest is rewritten to extend: a snapshot grows but never changes
+    (ADR 0011), and `archive`, `parts` and `export_fingerprint` are never
+    touched by the write that extends it."""
     counts: Counts = Counts()
     gaps: list[Gap] = []
 
@@ -282,14 +323,24 @@ class SnapshotRow(StoreModel):
     conversations: int | None = None
     """`None` when the manifest could not be read. A zero would be a claim."""
     gaps: int = 0
+    skills: int | None = None
+    """How many skills the snapshot holds (`66`); `None` for one that holds no
+    `skills` key, which is every manifest written before there were any."""
 
     @property
     def label(self) -> str:
         return f"{self.source}/{self.account}"
 
     @property
+    def unit(self) -> str:
+        """What the count column counts: conversations, or skills for a snapshot with no archive."""
+        return SKILLS_UNIT if self.skills and not self.conversations else CONVERSATIONS_UNIT
+
+    @property
     def count(self) -> str:
-        return UNKNOWN_COUNT if self.conversations is None else f"{self.conversations}"
+        if self.conversations is None:
+            return UNKNOWN_COUNT
+        return f"{self.skills}" if self.unit == SKILLS_UNIT else f"{self.conversations}"
 
     @property
     def note(self) -> str:
@@ -331,6 +382,35 @@ class Filing:
     counts: Counts
     gaps: tuple[Gap, ...] = ()
     asked_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class StagedSkill:
+    """One skill the fetch caught, verified and ready to be filed (`66`).
+
+    `path` is where the browser put it under the account home; `sha256` is of
+    that file as `extract-skills` hashed it, and the copy is hashed again as it
+    is written, as an archive's is.
+    """
+
+    name: str
+    filename: str
+    path: Path
+    sha256: str
+    bytes: int
+    enabled: bool = True
+    plugin: bool = False
+
+
+@dataclass(frozen=True)
+class SkillsFiling:
+    """The skills to add to one snapshot, and what did not come back (§93)."""
+
+    source: str
+    account: str
+    stamp: str
+    skills: tuple[StagedSkill, ...]
+    gaps: tuple[Gap, ...] = ()
 
 
 class Store:
@@ -407,6 +487,114 @@ class Store:
         )
         return directory, snapshot
 
+    def file_skills(self, filing: SkillsFiling) -> tuple[Path, Snapshot]:
+        """Add the account's skills to a snapshot — one that exists, or one made for them.
+
+        The one write that reaches into a snapshot that is finished (ADR 0011),
+        and it only ever **adds**: every target is checked before a byte is
+        written, a file already there is `SNAPSHOT_EXISTS` and nothing happens,
+        and `export.zip`, `parts` and the fingerprint are read out of the
+        manifest and written back as they were. The manifest is the one file
+        rewritten, because a snapshot holding a file its manifest does not name
+        is what §32 exists to prevent.
+
+        The marker comes down first and goes back last. Between the two the
+        snapshot reads as *incomplete*, which is what it is: a reader that sees
+        `COMPLETE` beside a manifest that does not yet name `skills/` would be
+        told the snapshot is finished and be wrong. That is the same promise
+        `file_archive` keeps by writing the marker after the fsync, made twice.
+
+        A stamp that does not exist is created, and its manifest holds an empty
+        `archive`: a snapshot of the skills alone (brief `09` §91), which
+        `rows()` reads as complete rather than as unreadable.
+        """
+        directory = self.directory(filing.source, filing.account, filing.stamp)
+        skills_dir = directory / SKILLS_DIRNAME
+        existing = self._existing(directory)
+        for staged in filing.skills:
+            target = skills_dir / staged.filename
+            if target.exists():
+                raise StoreError(SNAPSHOT_EXISTS.format(path=target))
+        if existing is None:
+            self._make_directory(directory)
+        else:
+            _remove(directory / COMPLETE_NAME)
+        try:
+            skills_dir.mkdir(exist_ok=True)
+        except OSError as exc:
+            raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=skills_dir)) from exc
+        filed = []
+        for staged in filing.skills:
+            digest, written = _copy(staged.path, skills_dir / staged.filename)
+            if digest != staged.sha256:
+                raise FetchError(COPY_MISMATCH.format(path=skills_dir / staged.filename))
+            filed.append(
+                SkillFile(
+                    name=staged.name,
+                    filename=staged.filename,
+                    bytes=written,
+                    sha256=digest,
+                    enabled=staged.enabled,
+                    plugin=staged.plugin,
+                )
+            )
+        base = existing if existing is not None else self._skills_only(filing)
+        skills = [*base.skills, *filed]
+        snapshot = base.model_copy(
+            update={
+                "skills": skills,
+                "counts": base.counts.model_copy(update={"skills": len(skills)}),
+                "gaps": [*base.gaps, *filing.gaps],
+            }
+        )
+        data = (snapshot.model_dump_json(indent=2) + "\n").encode("utf-8")
+        if existing is None:
+            _create(directory / MANIFEST_NAME, data)
+        else:
+            _rewrite(directory / MANIFEST_NAME, data)
+        _fsync_directory(directory)
+        _create(directory / COMPLETE_NAME, b"")
+        _fsync_directory(directory)
+        _logger.info(
+            "skills filed",
+            extra={
+                "source": filing.source,
+                "account": filing.account,
+                "stamp": filing.stamp,
+                "skills": len(filed),
+                "gaps": sum(gap.count for gap in filing.gaps),
+                "appended": existing is not None,
+            },
+        )
+        return directory, snapshot
+
+    def _existing(self, directory: Path) -> Snapshot | None:
+        """Return the finished snapshot at `directory`, `None` for no directory, and a refusal for anything else.
+
+        A directory with no marker is a snapshot somebody is still writing, or one
+        that never finished, and either way not one to add to: what its manifest
+        names is not yet a promise. A directory with a marker and no readable
+        manifest is worse — nothing can be added to a description nobody can read.
+        """
+        if not directory.exists():
+            return None
+        snapshot = read_manifest(directory / MANIFEST_NAME)
+        if snapshot is None or not (directory / COMPLETE_NAME).exists():
+            raise StoreError(SNAPSHOT_UNFINISHED.format(path=directory))
+        return snapshot
+
+    @staticmethod
+    def _skills_only(filing: SkillsFiling) -> Snapshot:
+        """Return a manifest for a snapshot that holds skills and no archive (brief `09` §91)."""
+        return Snapshot(
+            source=filing.source,
+            account=filing.account,
+            stamp=filing.stamp,
+            origin="skills",
+            filed_at=datetime.now(UTC),
+            tool_version=tool_version(),
+        )
+
     def _make_directory(self, directory: Path) -> None:
         """Create the stamp directory, once. An existing one stops everything."""
         try:
@@ -465,6 +653,7 @@ class Store:
             state=COMPLETE,
             conversations=snapshot.counts.conversations,
             gaps=snapshot.gap_count,
+            skills=snapshot.counts.skills,
         )
 
 
@@ -496,6 +685,34 @@ def _create(path: Path, data: bytes) -> None:
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
+    except OSError as exc:
+        raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
+
+
+def _rewrite(path: Path, data: bytes) -> None:
+    """Replace what `path` holds, in place, and fsync it.
+
+    The one write in this module that touches a file already there, and the
+    manifest is the one file it is for (ADR 0011): a snapshot that grows has to
+    describe what it grew by. In place and not by a temp file and `os.replace`,
+    for the reason `_create` is not `state.write_atomically` — the layout may not
+    rename. What guards the window is the marker, which `file_skills` takes down
+    before this and puts back after.
+    """
+    try:
+        handle = os.open(path, os.O_WRONLY | os.O_TRUNC, SNAPSHOT_MODE)
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except OSError as exc:
+        raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
+
+
+def _remove(path: Path) -> None:
+    """Take a marker down. Only ever `COMPLETE`, and only for the length of an append."""
+    try:
+        path.unlink()
     except OSError as exc:
         raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
 
@@ -623,11 +840,12 @@ def listing(rows: Sequence[SnapshotRow]) -> str:
     labels = max(len(row.label) for row in rows)
     stamps = max(len(row.stamp) for row in rows)
     counts = max(len(row.count) for row in rows)
+    units = max(len(row.unit) for row in rows)
     return "".join(
         COLUMN_GAP.join((
             f"{row.label:<{labels}}",
             f"{row.stamp:<{stamps}}",
-            f"{row.count:>{counts}} conversations",
+            f"{row.count:>{counts}} {row.unit:<{units}}",
             row.note,
         ))
         + "\n"

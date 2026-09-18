@@ -2,7 +2,7 @@
 
 Two kinds of document live here, and they are not interchangeable.
 
-| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58, [`06`](06-chatgpt-extraction.md) §59–§71, [`07`](07-claude-sign-in.md) §72–§80, [`08`](08-signing-out.md) §81–§87 | [`impl/*.md`](impl/) |
+| | Briefs: [`01`](01-initial-brief.md) §1–§19, [`02`](02-claude-mock.md) §20–§28, [`03`](03-extraction-and-backup.md) §29–§40, [`04`](04-trace.md) §41–§51, [`05`](05-chatgpt-mock.md) §52–§58, [`06`](06-chatgpt-extraction.md) §59–§71, [`07`](07-claude-sign-in.md) §72–§80, [`08`](08-signing-out.md) §81–§87, [`09`](09-skills.md) §88–§95 | [`impl/*.md`](impl/) |
 | --- | --- | --- |
 | **Role** | Briefing | Implementation specs |
 | **Answers** | What are we building, and why | How it gets built, in what order |
@@ -13,14 +13,15 @@ Two kinds of document live here, and they are not interchangeable.
 | **Written by** | The person who wants the thing | The person building it |
 | **Examples** | Illustrative, but the output blocks in §9, §10 and §16 are golden strings, and so are brief `03`'s (§31, §33) and brief `06`'s (§60, §63); the blocks in brief `02` (§21, §23, §25) are illustrative; brief `04`'s trace block (§42) is illustrative in its values and normative in its keys and their order, and the slices hold the golden lines; the blocks in brief `05` (§54) are illustrative; brief `07`'s sign-in blocks and its link-sent line (§73) are golden, and so are brief `08`'s sign-out blocks (§82) | Normative |
 
-There are eight briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
+There are nine briefs: [`01-initial-brief.md`](01-initial-brief.md) (§1–§19),
 [`02-claude-mock.md`](02-claude-mock.md) (§20–§28),
 [`03-extraction-and-backup.md`](03-extraction-and-backup.md) (§29–§40),
 [`04-trace.md`](04-trace.md) (§41–§51),
 [`05-chatgpt-mock.md`](05-chatgpt-mock.md) (§52–§58),
 [`06-chatgpt-extraction.md`](06-chatgpt-extraction.md) (§59–§71) and
 [`07-claude-sign-in.md`](07-claude-sign-in.md) (§72–§80) and
-[`08-signing-out.md`](08-signing-out.md) (§81–§87). Section numbers
+[`08-signing-out.md`](08-signing-out.md) (§81–§87) and
+[`09-skills.md`](09-skills.md) (§88–§95). Section numbers
 continue across them,
 so `§N` names one section anywhere in the repository (a working rule, below). The words
 the briefs use are defined in [`CONTEXT.md`](../CONTEXT.md).
@@ -160,6 +161,13 @@ M14 — The mock catches up (brief 03 §40, brief 04 §49) — outside the gates
   64  The mock catches up with the account: the panel at its real address, the link as an
       index and its single-use parts, a session that can lapse, and the first traces cited
   65  `--mock`: one flag, one origin, no certificate — and ADR 0001 superseded
+
+M15 — Skills (brief 09, §88–§95) — outside the gates: it reads a source account and
+      changes nothing in it, and what it writes is a snapshot
+  66  `extract-skills`: the account's own skills, read without a click and filed beside
+      the archive
+  67  The mock grows skills: the list, the file, the gap — and the rehearsal that
+      reconciles them
 ```
 
 ## Dependencies
@@ -384,6 +392,8 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [63](impl/63-everything-but-the-logs.md) | Everything but the logs | §81–§86, §74 (amended), §35 (amended), §23 (amended) | Built |
 | [64](impl/64-the-mock-catches-up.md) | The mock catches up with the account | §40, §49, §21 (amended) | Built |
 | [65](impl/65-the-mock-is-reached-by-a-flag.md) | `--mock`: the tool talks to a local origin | §21 (amended), §22 (amended), §40 | Built |
+| [66](impl/66-extract-skills.md) | `extract-skills` | §88–§95, §32 (amended), §33 (amended), §36 (amended) | Built |
+| [67](impl/67-the-mock-grows-skills.md) | The mock grows skills | §90, §91, §93, §94 | Done |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -524,7 +534,7 @@ brief.
   `§N` stays one global identifier and every `Implements: §N` line keeps its meaning.
   `03` starts at §29 where `02` ends, `04` at §41 where `03` ends, `05` at §52 where
   `04` ends, `06` at §59 where `05` ends, `07` at §72 where `06` ends, `08` at §81 where
-  `07` ends, and a ninth starts at §88. Cite `§N`, never
+  `07` ends, `09` at §88 where `08` ends, and a tenth starts at §96. Cite `§N`, never
   `02§N`.
 
 ## Shared decisions
