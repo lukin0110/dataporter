@@ -353,10 +353,14 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     record claiming otherwise.
     """
     account = _account(settings)
-    # Before the run log, for `logout`'s reason (`69`): a refusal that opened no
-    # browser and touched no account should not leave a log saying it did.
-    browser_session.require_session(settings)
-    log.enable_run_log(settings.logs_dir)
+    # Both browserless refusals, in this order, and both before the run log.
+    #
+    # The open ask keeps the precedence step 1 of this docstring gives it: a
+    # person holding one wants to be told to fetch it or abandon it, which is a
+    # more useful answer than `not logged in` even when both are true. And both
+    # come before `enable_run_log` for `logout`'s reason (`69`) — a refusal that
+    # opened no browser and touched no account should leave no log saying it
+    # did, which matters most for a mistyped label.
     open_ask = read_ask(settings)
     if open_ask is not None:
         raise StoreError(
@@ -366,6 +370,8 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
                 asked_at=open_ask.asked_at.strftime(ASKED_AT_FORMAT),
             )
         )
+    browser_session.require_session(settings)
+    log.enable_run_log(settings.logs_dir)
     source = sources.of(settings)
     browser = launcher.launch(settings, sites.export_page_url(source))
     try:
@@ -709,7 +715,7 @@ def _download_manifest_and_parts(
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            sign_in_or_record(settings, browser, source, sink=sink, traced=traced, url=source.login_url)
             with tracing.redacting():
                 try:
                     manifest_path, parts = index_and_files(
@@ -805,7 +811,7 @@ def _download_through_session(
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            sign_in_to_source(settings, browser, source, sink=sink, url=source.login_url)
+            sign_in_or_record(settings, browser, source, sink=sink, traced=traced, url=source.login_url)
             with tracing.redacting():
                 try:
                     got = download.fetch(settings, browser, link, into=into, origins=source.origins)

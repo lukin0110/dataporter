@@ -12,7 +12,9 @@ was requested, and no browser at all when an ask is already open.
 """
 
 import json
+import shutil
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -762,3 +764,23 @@ def _trace_lines(settings: Settings) -> list[str]:
     traces = sorted((settings.logs_dir / "logs").glob("trace-*.jsonl"))
     assert traces, "the ask left no trace"
     return traces[-1].read_text(encoding="utf-8").splitlines()
+
+
+def test_an_open_ask_is_refused_before_the_missing_session_is(
+    settings: Settings, page: FakeExportPage, launches: list[str]
+) -> None:
+    """`69` kept step 1 of `ask`'s own order: the open ask speaks first.
+
+    Both refusals are browserless and both come before the run log, so the only
+    question is which is more useful to somebody holding both — and it is the
+    one that says there is an export already on its way.
+    """
+    store.Store(settings.store_dir)
+    extract.write_ask(settings, datetime.now(UTC))
+    shutil.rmtree(settings.browser_profile_dir)
+
+    with pytest.raises(StoreError) as raised:
+        extract.ask(settings)
+
+    assert "an ask is already open" in str(raised.value)
+    assert launches == []

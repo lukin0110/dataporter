@@ -35,17 +35,21 @@ session were good, `request_export` polls a page with no button for the whole of
   sign_in_showing: bool = False
   ```
 
-  computed in the page from selectors the caller passes in. `page_state_js`,
-  `page_view_js` and `page_report_js` take a `sign_in: Sequence[str] = ()`, which becomes
-  a `const signIn` beside `expect`; the state object answers
+  computed in the page from selectors the caller passes in. **`page_state_js` alone** takes
+  a `sign_in: Sequence[str] = ()`, which becomes a `const signIn` beside `expect`;
+  `page_view_js` and `page_report_js` inject the empty const, because `_STATE_OBJECT` needs
+  the name to exist and neither of their callers asks this question — `08`'s poll is about
+  a chat and `17`'s verification is about a transcript. So `sign_in_showing` is `False`
+  through those two by construction, which is the answer they had before this slice.
+  The state object answers
 
   ```js
   sign_in_showing: signIn.length > 0 && signIn.every((s) => document.querySelector(s) !== null),
   ```
 
   `querySelector` and not `visible`: both signals are present-but-invisible by design (see
-  Design notes). `probe`, `page_view` and `page_report` take the same keyword and default
-  to `()`, which is `False` — so every existing caller keeps the answer it had.
+  Design notes). `probe` takes the same keyword and defaults to `()`, which is `False` — so
+  every existing caller keeps the answer it had.
 
 - **`browser/session.py`** — `current_state(..., sign_in: Sequence[str] = ())`, passed
   through to `probe`.
@@ -71,10 +75,13 @@ session were good, `request_export` polls a page with no button for the whole of
 - **`extract.py`** — `sign_in_to_source` passes `source.sign_in_selectors` to
   `current_state`, and `sign_in_or_record` wraps it so that the trace is told
   `ExitCode.NOT_AUTHENTICATED` on the path that raises `AuthError`: `watched` records what
-  the body assigned, and a body that raises assigns nothing. **Both** commands that open a
-  source session inside a `watched` go through it — the ask, and
-  `extract_skills._collect` — because they fail here the same way and a trace of one that
-  said how its run ended while the other did not would be the odd one out.
+  the body assigned, `trace.opened` writes `ExitCode.INTERNAL` for a handle nobody
+  assigned, and a body that raises assigns nothing — so this failure's trace used to say
+  `70` while its command exited `3`. **All four** places that open a source session inside
+  a `watched` go through the wrapper: the ask, both fetch paths
+  (`_download_manifest_and_parts` and `_download_through_session`) and
+  `extract_skills._collect`. They fail here the same way, and a trace of one that said how
+  its run ended while the others did not would be the odd one out.
 
 - **`CONTEXT.md`** — a new term under *Extraction and backup*:
 

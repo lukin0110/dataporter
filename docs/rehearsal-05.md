@@ -36,18 +36,18 @@ to the archive while it lives, and every place the runner wrote one it wrote
 
 | Step | Exit | Seconds | Note |
 | --- | --- | --- | --- |
-| `login` | 0 | 9.2 |  |
+| `login` | 0 | 9 |  |
 | `login --link` | 0 | 1.1 |  |
 | `extract (ask 1)` | 0 | 1.1 |  |
 | `extract --link (fetch 1)` | 0 | 1.8 |  |
 | `extract-skills (into the first snapshot)` | 0 | 2.1 |  |
-| `extract-skills (again)` | 2 | 2.1 | refused: the files are already there |
+| `extract-skills (again)` | 2 | 2.2 | refused: the files are already there |
 | `extract-skills (a snapshot of its own)` | 0 | 2.2 |  |
-| `extract (ask 2)` | 0 | 1.1 |  |
-| `extract --link (fetch 2)` | 0 | 2 |  |
-| `session status` | 0 | 1 |  |
-| `extract (the sign-in screen, in place)` | 3 | 1.4 | refused: the site answered the export page with its sign-in screen |
-| `session status (signed out)` | 3 | 0.9 |  |
+| `extract (ask 2)` | 0 | 1 |  |
+| `extract --link (fetch 2)` | 0 | 1.8 |  |
+| `session status` | 0 | 0.8 |  |
+| `extract (the sign-in screen, in place)` | 3 | 1 | refused: the site answered the export page with its sign-in screen |
+| `session status (signed out)` | 3 | 0.8 |  |
 | `logout` | 0 | 0.3 |  |
 | `extract (no session at all)` | 3 | 0.3 | refused before a browser: `logout` took the profile away |
 | `snapshots` | 0 | 0.3 |  |
@@ -58,7 +58,7 @@ to the archive while it lives, and every place the runner wrote one it wrote
 | --- | --- | --- | --- | --- |
 | `login` | `traces/02-login.jsonl` | 13 | — | `hermes 1.0.0 (scripted agent)` |
 | `login --link` | `traces/01-login---link.jsonl` | 14 | — | `hermes 1.0.0 (scripted agent)` |
-| `extract (ask 1)` | `traces/03-extract--ask-1.jsonl` | 7 | — | `hermes 1.0.0 (scripted agent)` |
+| `extract (ask 1)` | `traces/03-extract--ask-1.jsonl` | 8 | — | `hermes 1.0.0 (scripted agent)` |
 | `extract --link (fetch 1)` | `traces/04-extract---link--fetch-1.jsonl` | 11 | — | `hermes 1.0.0 (scripted agent)` |
 | `extract-skills (into the first snapshot)` | `traces/05-extract-skills--into-the-first-snapshot.jsonl` | 23 | — | `hermes 1.0.0 (scripted agent)` |
 | `extract-skills (again)` | `traces/06-extract-skills--again.jsonl` | 23 | — | `hermes 1.0.0 (scripted agent)` |
@@ -77,7 +77,7 @@ to the archive while it lives, and every place the runner wrote one it wrote
 ```text
 Claude extraction — rehearsal
 
-Export requested 2026-09-18 14:44 UTC.
+Export requested 2026-09-18 15:00 UTC.
 Claude will email a download link to the account's address.
 When it arrives:
 
@@ -87,14 +87,14 @@ When it arrives:
 ```text
 downloaded  manifest.json  647.0 B
 downloaded  light_metadata-000.zip  245.0 B
-downloaded  conversations-000.zip  935.0 B
+downloaded  conversations-000.zip  937.0 B
 Claude extraction — rehearsal
 
 Downloaded 0.0 MB in 2s.
 Conversations: 3     Projects: 0     Memories: 0
 Gaps: 2 files the export does not carry
 
-Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T14-44-43Z
+Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T15-00-27Z
 ```
 
 ```text
@@ -107,7 +107,7 @@ Downloaded 3 skills in 2s.
 3 skills.
 Gaps: 1 skill could not be downloaded
 
-Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T14-44-43Z/skills
+Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T15-00-27Z/skills
 ```
 
 ```text
@@ -120,20 +120,20 @@ Downloaded 3 skills in 2s.
 3 skills.
 Gaps: 1 skill could not be downloaded
 
-Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T14-44-50Z/skills
+Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T15-00-33Z/skills
 ```
 
 ```text
 downloaded  manifest.json  647.0 B
 downloaded  light_metadata-000.zip  245.0 B
-downloaded  conversations-000.zip  935.0 B
+downloaded  conversations-000.zip  937.0 B
 Claude extraction — rehearsal
 
 Downloaded 0.0 MB in 2s.
 Conversations: 3     Projects: 0     Memories: 0
 Gaps: 2 files the export does not carry
 
-Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T14-44-53Z
+Snapshot: /tmp/r5/store/claude/rehearsal/2026-09-18T15-00-36Z
 ```
 
 ```text
@@ -167,7 +167,7 @@ Skills served:                 9
 | both asks are taken and print the block | 2/2 asks | pass | *measured on 2026-09-18* |
 | the mock minted one link per ask | 2 links listed, exports requested: 2 | pass | *measured on 2026-09-18* |
 | both fetches file a complete snapshot | 2/2 fetches, 2 complete snapshots | pass | *measured on 2026-09-18* |
-| the second stamp sorts after the first | 2026-09-18T14-44-43Z < 2026-09-18T14-44-53Z | pass | *measured on 2026-09-18* |
+| the second stamp sorts after the first | 2026-09-18T15-00-27Z < 2026-09-18T15-00-36Z | pass | *measured on 2026-09-18* |
 | ledger: conversations == chats created | [3, 3] == 3 (seeded 3) | pass | *measured on 2026-09-18* |
 | ledger: the gap is the files the mock accepted, none of them carried | gaps [2, 2] == 1 × 2, files carried [None, None] | pass | *measured on 2026-09-18* |
 | the first snapshot is unchanged by the second | archive and manifest hashes equal | pass | *measured on 2026-09-18* |
@@ -199,10 +199,10 @@ Skills served:                 9
 
 | Step | Exit | Seconds | Note |
 | --- | --- | --- | --- |
-| `login` | 0 | 2.6 |  |
+| `login` | 0 | 2 |  |
 | `extract (ask 1)` | 0 | 1 |  |
 | `extract --link (fetch 1)` | 0 | 1.3 |  |
-| `extract (ask 2)` | 0 | 1.1 |  |
+| `extract (ask 2)` | 0 | 1.2 |  |
 | `extract --link (fetch 2)` | 0 | 1.4 |  |
 | `session status` | 0 | 0.8 |  |
 | `logout` | 0 | 0.3 |  |
@@ -212,7 +212,7 @@ Skills served:                 9
 
 | Step | Trace | Lines | Certificate | Agent |
 | --- | --- | --- | --- | --- |
-| `login` | `traces/01-login.jsonl` | 25 | — | `hermes 1.0.0 (scripted agent)` |
+| `login` | `traces/01-login.jsonl` | 24 | — | `hermes 1.0.0 (scripted agent)` |
 | `extract (ask 1)` | `traces/02-extract--ask-1.jsonl` | 7 | — | `hermes 1.0.0 (scripted agent)` |
 | `extract --link (fetch 1)` | `traces/03-extract---link--fetch-1.jsonl` | 5 | — | `hermes 1.0.0 (scripted agent)` |
 | `extract (ask 2)` | `traces/04-extract--ask-2.jsonl` | 7 | — | `hermes 1.0.0 (scripted agent)` |
@@ -226,7 +226,7 @@ Skills served:                 9
 ```text
 ChatGPT extraction — rehearsal
 
-Export requested 2026-09-18 14:45 UTC.
+Export requested 2026-09-18 15:00 UTC.
 ChatGPT will email or text a download link to the account's address.
 It can take up to 7 days. When it arrives:
 
@@ -241,7 +241,7 @@ Downloaded 0.0 MB in 1s.
 Conversations: 3     Files: 0
 Gaps: 1 file the export does not carry
 
-Snapshot: /tmp/r5/store/chatgpt/rehearsal/2026-09-18T14-45-02Z
+Snapshot: /tmp/r5/store/chatgpt/rehearsal/2026-09-18T15-00-44Z
 ```
 
 ```text
@@ -252,7 +252,7 @@ Downloaded 0.0 MB in 1s.
 Conversations: 3     Files: 0
 Gaps: 1 file the export does not carry
 
-Snapshot: /tmp/r5/store/chatgpt/rehearsal/2026-09-18T14-45-05Z
+Snapshot: /tmp/r5/store/chatgpt/rehearsal/2026-09-18T15-00-47Z
 ```
 
 
@@ -278,7 +278,7 @@ Skills served:                 0
 | both asks are taken and print the block | 2/2 asks | pass | *measured on 2026-09-18* |
 | the mock minted one link per ask | 2 links listed, exports requested: 2 | pass | *measured on 2026-09-18* |
 | both fetches file a complete snapshot | 2/2 fetches, 2 complete snapshots | pass | *measured on 2026-09-18* |
-| the second stamp sorts after the first | 2026-09-18T14-45-02Z < 2026-09-18T14-45-05Z | pass | *measured on 2026-09-18* |
+| the second stamp sorts after the first | 2026-09-18T15-00-44Z < 2026-09-18T15-00-47Z | pass | *measured on 2026-09-18* |
 | ledger: conversations == chats created | [3, 3] == 3 (seeded 3) | pass | *measured on 2026-09-18* |
 | ledger: the gap is the files the mock accepted, none of them carried | gaps [1, 1] == 1 × 1, files carried [0, 0] | pass | *measured on 2026-09-18* |
 | the first snapshot is unchanged by the second | archive and manifest hashes equal | pass | *measured on 2026-09-18* |
@@ -286,7 +286,7 @@ Skills served:                 0
 | the link is in no file the run left | none | pass | *measured on 2026-09-18* |
 | one trace per step that drove a tab, each naming the source | [1, 1, 1, 1, 1] for 5 steps | pass | *measured on 2026-09-18* |
 | ledger: sign-ins == the seeding's + the tool's | 2 == 1 + 1 (password steps) | pass | *measured on 2026-09-18* |
-| the sign-in crossed to the auth origin | /log-in seen 11x | pass | *measured on 2026-09-18* |
+| the sign-in crossed to the auth origin | /log-in seen 10x | pass | *measured on 2026-09-18* |
 
 
 **Verdict:** passed. *measured on 2026-09-18*
