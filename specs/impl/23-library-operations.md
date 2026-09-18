@@ -4,8 +4,12 @@
 **Implements:** nothing in the brief — tooling, like `22`. §8–§10 fix the command surface
 and this slice leaves every command, flag and golden string where they were.
 **Depends on:** every slice that is `Done`
-**Enables:** [24](24-non-interactive.md), and any Python caller
-**Status:** Done
+**Enables:** [24](24-non-interactive.md), [68](68-the-facade.md), and any Python caller
+**Status:** Done. *Amended by [`68`](68-the-facade.md): "the words moved with the code",
+below, gives a re-export as the reason the operations are reached where they live, and the
+package docstring said the same. `68` names one class, `Dataporter`, at the top level. It is
+not a re-export of an operation — no function in the table below gained a second spelling —
+but the rule as written did not distinguish the two, and now does.*
 
 ## Goal
 
