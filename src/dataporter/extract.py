@@ -353,6 +353,9 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     record claiming otherwise.
     """
     account = _account(settings)
+    # Before the run log, for `logout`'s reason (`69`): a refusal that opened no
+    # browser and touched no account should not leave a log saying it did.
+    browser_session.require_session(settings)
     log.enable_run_log(settings.logs_dir)
     open_ask = read_ask(settings)
     if open_ask is not None:
@@ -509,6 +512,12 @@ def fetch(
     started = clock()
     home = _account_home(settings)
     source = sources.of(settings)
+    if source.link_serves_manifest or source.fetch_needs_session:
+        # Only where the download goes through the session (`69`). A source whose
+        # link `urllib` may follow needs no session, and refusing that fetch for
+        # want of one would be a refusal about nothing. Both sources require one
+        # today; the condition is written for the day one does not.
+        browser_session.require_session(settings)
     log.enable_run_log(settings.logs_dir)
     if not links.is_followable(link, source.origins):
         raise FetchError(links.not_followable(source.origins))

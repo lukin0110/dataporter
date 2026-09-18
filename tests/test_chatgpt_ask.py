@@ -73,7 +73,7 @@ def launches(monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome) -> list[str]:
 def make_settings(
     chrome: FakeChrome, tmp_path: Path, *, non_interactive: bool = True, credentials: bool = True
 ) -> Settings:
-    return with_account(
+    signed_in = with_account(
         Settings(
             workspace=tmp_path / "migration",
             non_interactive=non_interactive,
@@ -87,6 +87,10 @@ def make_settings(
         "chatgpt",
         ACCOUNT,
     )
+    # The account has a session (`69`): these tests are about what happens
+    # inside one, and the preflight is what stops a command without one.
+    signed_in.browser_profile_dir.mkdir(parents=True, exist_ok=True)
+    return signed_in
 
 
 @pytest.fixture

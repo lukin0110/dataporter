@@ -587,6 +587,10 @@ def verify_all(
     if not wanted:
         return VerifyOutcome(found=(), exit_code=ExitCode.NOTHING_TO_DO)
 
+    # After the "nothing to do" answer and before the lock (`69`): sending
+    # somebody to `login` for work that does not exist is a worse answer than
+    # exit `4`, and a run that cannot open a session should not take the lock.
+    browser_session.require_session(settings)
     lock = state.WorkspaceLock(settings.workspace)
     lock.acquire()
     found: list[tuple[str, Verification]] = []

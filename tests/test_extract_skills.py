@@ -81,7 +81,7 @@ def launches(monkeypatch: pytest.MonkeyPatch, chrome: FakeChrome) -> list[str]:
 
 
 def make_settings(port: int, tmp_path: Path, *, headless: bool | None = None, idle_s: float = 1.0) -> Settings:
-    return with_account(
+    signed_in = with_account(
         Settings(
             workspace=tmp_path / "migration",
             accounts=AccountsSettings(dir=tmp_path / "accounts"),
@@ -93,6 +93,10 @@ def make_settings(port: int, tmp_path: Path, *, headless: bool | None = None, id
         "claude",
         ACCOUNT,
     )
+    # The account has a session (`69`): these tests are about what happens
+    # inside one, and the preflight is what stops a command without one.
+    signed_in.browser_profile_dir.mkdir(parents=True, exist_ok=True)
+    return signed_in
 
 
 @pytest.fixture

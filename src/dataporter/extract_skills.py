@@ -44,6 +44,7 @@ from orval import pretty_duration
 from dataporter import extract as extracting
 from dataporter import log, sources, store
 from dataporter.browser import download, export_page, helpers, launcher, sites
+from dataporter.browser import session as browser_session
 from dataporter.browser import skills as reading
 from dataporter.browser import watch as watching
 from dataporter.config import TMP_DIRNAME, Settings
@@ -154,6 +155,9 @@ def extract_skills_command(
     source = sources.of(settings)
     if not source.has_skills:
         raise UsageError(NO_SKILLS_SOURCE.format(name=source.display_name))
+    # After the source refusal and before the run log (`69`): a source with no
+    # skills to read is the wrong command whether or not anybody is signed in.
+    browser_session.require_session(settings)
     log.enable_run_log(settings.logs_dir)
     into = settings.accounts_dir / settings.source / account / TMP_DIRNAME
     into.mkdir(parents=True, exist_ok=True)

@@ -865,6 +865,9 @@ def test_a_manifest_fetch_names_the_archive_and_every_part(
         return manifest, [metadata, conversations]
 
     monkeypatch.setattr(extract, "_download_manifest_and_parts", fake)
+    # A manifest fetch downloads through the source session, so `69`'s preflight
+    # asks for one before the stub is ever reached.
+    settings.browser_profile_dir.mkdir(parents=True, exist_ok=True)
 
     outcome = extract.fetch(settings, LINK, sink=Collected())
 

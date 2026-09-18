@@ -183,6 +183,17 @@ def test_extract_abandon_is_the_same_through_the_library(
     assert (outcome.exit_code, sink.stdout, sink.stderr) == (code, out, err)
 
 
+def has_a_session(tmp_path: Path, *accounts: str) -> None:
+    """Give each account the profile a signed-in operator would have left (`69`).
+
+    The fake browser `fake_launch` puts on the port stands in for one already
+    running, and a browser on the port means a profile on disk. Without it the
+    preflight refuses before either door is reached.
+    """
+    for name in accounts:
+        (tmp_path / "accounts" / "claude" / name / "browser-profile").mkdir(parents=True, exist_ok=True)
+
+
 @pytest.mark.slow
 def test_extract_the_ask_is_the_same_through_the_library(
     runner: CliRunner,
@@ -200,6 +211,7 @@ def test_extract_the_ask_is_the_same_through_the_library(
     with browser(page) as chrome:
         monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
         settings = ask_settings(tmp_path, chrome.port, "library")
+        has_a_session(tmp_path, "library", "cli")
         fake_launch(monkeypatch, chrome.port)
         sink = console.Collected()
         outcome = extracting.ask(settings, sink=sink)
@@ -230,6 +242,7 @@ def test_extract_skills_is_the_same_through_the_library(
     with skills_browser(page) as chrome:
         monkeypatch.setenv("DATAPORTER_ACCOUNTS__DIR", str(tmp_path / "accounts"))
         settings = with_store_dir(ask_settings(tmp_path, chrome.port, "library"), tmp_path / "store-library")
+        has_a_session(tmp_path, "library", "cli")
         fake_launch(monkeypatch, chrome.port)
         sink = console.Collected()
         outcome = skills_extracting.extract_skills_command(settings, skills_extracting.SkillsRequest(), sink=sink)
