@@ -545,9 +545,9 @@ class Store:
             result = self._append(directory, filing, existing=self._existing(directory))
         except BaseException:
             # The append did not complete: release the lock best-effort and let
-            # the append's own error stand — a failure to release now would
-            # only mask the reason the operator needs.
-            lock.unlink(missing_ok=True)
+            # the append's own error stand — so a failure to release now, which
+            # `_drop` swallows, cannot replace the reason the operator needs.
+            _drop(lock)
             raise
         # The append completed and the snapshot is `COMPLETE` on disk. Releasing
         # the lock is the last write, and a failure to make it is raised rather
@@ -779,6 +779,10 @@ def _release_append(path: Path) -> None:
     append's result, and a lock silently left behind refused every later append
     for good. A lock already gone is fine — nothing to release — but a release
     that cannot be made is a `StoreError` naming it.
+
+    Only the *success* path raises: there the append is whole and a stranded
+    lock is the one thing left to report. On the failure path `_drop` swallows
+    instead, so the append's own error is what reaches the operator.
     """
     try:
         path.unlink()
@@ -786,6 +790,23 @@ def _release_append(path: Path) -> None:
         return
     except OSError as exc:
         raise StoreError(STORE_UNWRITABLE.format(reason=exc.strerror or exc, path=path)) from exc
+
+
+def _drop(path: Path) -> None:
+    """Release the append lock without ever raising: the failure path's cleanup (`66`).
+
+    Best-effort means best-effort. If removing `APPENDING` fails while the
+    append is already unwinding, raising here would replace the append's own
+    error with a cleanup error the operator can do less with — the mistake the
+    unguarded `unlink` on this path made. A lock left behind is logged and will
+    refuse the next append with `another extract-skills is adding to this
+    snapshot`, which names the stray file to clear. (Raised by Copilot in review
+    on #64.)
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        _logger.warning("append lock not released", extra={"reason": exc.strerror or str(exc)})
 
 
 def _take_down(path: Path) -> None:

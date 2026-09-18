@@ -785,6 +785,34 @@ def test_a_release_that_fails_is_a_store_error_not_a_masked_result(
     assert store.Store(root).rows()[0].state == "complete"
 
 
+def test_a_cleanup_failure_on_the_error_path_keeps_the_append_s_own_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The append raised, and dropping the lock raised too: the append's error stands, and the failure is logged.
+
+    Best-effort cleanup that itself raised used to replace the reason the
+    operator needs. (Raised by Copilot in review on #64.)
+    """
+    root = tmp_path / "store"
+    directory, _ = store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+    real_unlink = Path.unlink
+
+    def stubborn(self: Path, *, missing_ok: bool = False) -> None:
+        if self.name == store.APPENDING_NAME:
+            raise OSError(13, "Permission denied")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", stubborn)
+    # The append refuses the duplicate skill (its own error), and the lock will
+    # not come off — the drop swallows that, so the refusal is what propagates.
+    with pytest.raises(store.StoreError, match="already exists"):
+        store.Store(root).file_skills(skills_filing(STAMP, staged(tmp_path, "a")))
+
+    monkeypatch.undo()
+    assert (directory / store.APPENDING_NAME).exists(), "the lock the drop could not remove is left behind"
+    assert (directory / store.COMPLETE_NAME).exists()
+
+
 def test_a_lock_left_behind_refuses_the_next_append_and_touches_nothing(tmp_path: Path) -> None:
     """A crash mid-append leaves `APPENDING`; the next append is refused, and the marker is not touched."""
     root = tmp_path / "store"
