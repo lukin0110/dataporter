@@ -20,7 +20,7 @@ the acceptance criterion that matters most — an ask is two clicks and nothing
 else went into the page.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -125,12 +125,26 @@ class FakeExportPage:
     dialogs: list[dict[str, Any]] = field(default_factory=list)
     """JavaScript dialog events to push before the next reply."""
 
-    def state(self) -> dict[str, Any]:
+    sign_in_signals: tuple[str, ...] = ()
+    """Which of the caller's sign-in selectors match here (`70`).
+
+    A tuple and not a boolean, because the rule is a conjunction and the case
+    worth a test is the one where *one* of the two matches: a page that answered
+    a single yes/no could not tell "a sign-in screen" from "something on the page
+    happens to look a bit like one". Empty is every page that is not one.
+    """
+
+    def state(self, sign_in: Sequence[str]) -> dict[str, Any]:
         """Return what `07`'s probe makes of this page.
 
         No composer, whatever the stage: a settings page has none, which is the
         whole reason `export_page.signed_out` reads the URL instead. The one page
         here that does have one is where a finished sign-in lands.
+
+        `sign_in` is read out of the expression rather than assumed (`70`), so a
+        test of the sign-in screen is also a test that the source's selectors
+        reached the page at all. Every one of them must match, and none means
+        `False` — which is `_STATE_OBJECT`'s rule, kept here in Python.
         """
         self.state_reads += 1
         if self.signs_in_after is not None and self.state_reads >= self.signs_in_after:
@@ -142,6 +156,7 @@ class FakeExportPage:
             "generating": False,
             "send_enabled": False,
             "dom_dialogs": 1 if self.stage is Stage.CONFIRM else 0,
+            "sign_in_showing": bool(sign_in) and all(item in self.sign_in_signals for item in sign_in),
         }
 
     def view(self) -> dict[str, Any]:
@@ -186,7 +201,7 @@ class FakeExportPage:
         answers: list[tuple[str, Callable[[], Any]]] = [
             (export_page.EXPORT_PAGE_TAG, self.view),
             (export_page.CLICK_TAG, lambda: self.click(js_const(expression, "selector"))),
-            (probe.PAGE_STATE_TAG, self.state),
+            (probe.PAGE_STATE_TAG, lambda: self.state(js_const(expression, "signIn"))),
             (sketching.SELECTORS_TAG, lambda: dict.fromkeys(js_const(expression, "table"), 0)),
         ]
         for tag, answer in answers:

@@ -216,7 +216,7 @@ def _collect(
         with watching.watched(
             settings, command=COMMAND, flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            extracting.sign_in_to_source(settings, browser, source, sink=sink)
+            extracting.sign_in_or_record(settings, browser, source, sink=sink, traced=traced)
             org, listed = _read(settings, browser, source)
             ours = [item for item in listed if item.ours]
             staged, missing = _fetch_each(

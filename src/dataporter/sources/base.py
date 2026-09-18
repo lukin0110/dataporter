@@ -196,6 +196,22 @@ class Source:
         return (self.origin, *self.auth_origins)
 
     @property
+    def sign_in_selectors(self) -> tuple[str, ...]:
+        """What a **sign-in screen** looks like on this site, if anybody has looked (`70`).
+
+        Every one of them must match for the screen to be recognised, so the
+        order is only the order they are read in. Empty for a source whose
+        signed-out pages nobody has read — ChatGPT — and empty is `False`
+        rather than "always signed out": a guessed selector is a claim, and
+        `signed_out_at_root` is how that source answers the question meanwhile.
+        """
+        return tuple(
+            value
+            for name in ("SIGN_IN_ATTESTATION_SELECTOR", "SIGN_IN_FORM_SELECTOR")
+            if (value := self.selectors.get(name))
+        )
+
+    @property
     def has_skills(self) -> bool:
         """Whether this source has skills a person wrote, and all three addresses to read them by.
 

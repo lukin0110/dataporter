@@ -310,6 +310,7 @@ def test_page_state_carries_no_content_fields() -> None:
         "dialogs",
         "conversation_id",
         "tab_count",
+        "sign_in_showing",
     }
 
 
@@ -445,3 +446,27 @@ def test_live_dialog_page(live: tuple[launcher.BrowserSession, PageServer]) -> N
     state = visit(session, server.url("/settings/profile"))
     assert state.dialogs == ("dom",)
     assert state.kind is PageKind.OTHER
+
+
+def test_a_caller_that_names_no_sign_in_screen_reads_false() -> None:
+    """`70`: the default keeps every caller's answer as it was.
+
+    `logged_in` is deliberately not derived from the new field — on a sign-in
+    screen the composer is absent, so it is already `False` for everybody who
+    reads it, and deriving it would change the meaning of a field recorded in
+    every trace and printed by `08`.
+    """
+    state = PageState.model_validate({
+        "url": "https://claude.ai/new",
+        "kind": "new_chat",
+        "logged_in": False,
+        "composer_present": False,
+        "composer_chars": 0,
+        "generating": False,
+        "send_enabled": False,
+        "dialogs": (),
+        "conversation_id": None,
+        "tab_count": 1,
+    })
+    assert state.sign_in_showing is False
+    assert "signIn = []" in PAGE_STATE_JS

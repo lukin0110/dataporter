@@ -174,6 +174,7 @@ def current_state(
     *,
     settle_s: float = SETTLE_S,
     origins: Sequence[str],
+    sign_in: Sequence[str] = (),
 ) -> PageState:
     """Probe the site's tab, opening one if there is not one yet.
 
@@ -187,11 +188,15 @@ def current_state(
     the page's JavaScript, so the probe's own `Runtime.evaluate` times out and
     the caller learns something is wrong — and `12`, which holds one connection
     open for a whole conversation, sees the events themselves.
+
+    `sign_in` is what a **sign-in screen** looks like on this site (`70`), which
+    only the source knows. Nothing here interprets it; it rides the evaluate the
+    probe was making anyway, and a caller that names none gets `False`.
     """
     page = open_claude_tab(session, url, origins=origins)
     try:
         settled(page, timeout_s=settle_s)
-        return probe(page, tab_count=max(len(tabs_on(session.client, origins)), 1))
+        return probe(page, tab_count=max(len(tabs_on(session.client, origins)), 1), sign_in=sign_in)
     finally:
         page.close()
 

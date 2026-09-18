@@ -372,7 +372,7 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
         with watching.watched(
             settings, command="extract", flags=flags, site=sites.extraction_site(source), browser=browser
         ) as traced:
-            sign_in_to_source(settings, browser, source, sink=sink)
+            sign_in_or_record(settings, browser, source, sink=sink, traced=traced)
             result = export_page.request_export(settings, browser, source=source)
             traced.exit_code = ExitCode.OK if result.requested and result.pressed_at is not None else ExitCode.FAILED
     finally:
@@ -392,6 +392,29 @@ def ask(settings: Settings, *, sink: Sink = DISCARD, flags: Sequence[str] = ()) 
     _logger.info("ask recorded", extra={"source": settings.source, "account": account})
     sink.block(ask_block(written))
     return ExtractOutcome()
+
+
+def sign_in_or_record(
+    settings: Settings,
+    browser: "BrowserSession",
+    source: "Source",
+    *,
+    sink: Sink,
+    traced: "tracing.Opened",
+    url: str | None = None,
+) -> None:
+    """`sign_in_to_source`, with the trace told how the run ended if it ended here (`70`).
+
+    `watched` writes the exit code the body assigned it, and a body that raises
+    assigns nothing — so a trace of the one failure `70` exists to report would
+    be the only trace that does not say how its run ended. Two commands open a
+    source session inside a `watched`, so the pair is spelled once, here.
+    """
+    try:
+        sign_in_to_source(settings, browser, source, sink=sink, url=url)
+    except AuthError:
+        traced.exit_code = ExitCode.NOT_AUTHENTICATED
+        raise
 
 
 def sign_in_to_source(
@@ -415,7 +438,7 @@ def sign_in_to_source(
     needed them.
     """
     url = sites.export_page_url(source) if url is None else url
-    state = browser_session.current_state(browser, url, origins=source.origins)
+    state = browser_session.current_state(browser, url, origins=source.origins, sign_in=source.sign_in_selectors)
     if not export_page.signed_out(state, source):
         return
     if source.sign_in_by_link:
