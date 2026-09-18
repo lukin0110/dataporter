@@ -202,27 +202,40 @@ def half_for(tmp_path: Path, mock: extraction.Mock = extraction.CHATGPT, **chang
         "extract (ask 2)",
         "extract --link (fetch 2)",
         "session status",
+        # `71`: the two refusals, in the order a person meets them. Only for a
+        # source that signs in by link, because only Claude's screens have been
+        # read — the protocol adds them under the same condition.
+        *(["extract (the sign-in screen, in place)", "session status (signed out)"] if mock.link_signin else []),
         "logout",
+        *(["extract (no session at all)"] if mock.link_signin else []),
         "snapshots",
     ]
     driving = (
         {"login", "extract (ask 1)", "extract (ask 2)"}
         | ({"extract --link (fetch 1)", "extract --link (fetch 2)"} if mock.session_bound else set())
-        | ({"login --link"} if mock.link_signin else set())
+        | ({"login --link", "extract (the sign-in screen, in place)"} if mock.link_signin else set())
         | (set(extraction.SKILLS_STEPS) if mock.has_skills else set())
     )
     traces = settings.root / "traces"
     traces.mkdir(parents=True, exist_ok=True)
     steps: list[running.Outcome] = []
+    signed_out = f"error: not logged in — run: dataporter --mock login --source {mock.source} --account rehearsal\n"
     for position, name in enumerate(names, 1):
         refused = name == "extract-skills (again)"
+        # `69` and `70` both end exit `3` with the same line; what tells them
+        # apart in the record is whether a trace was left at all.
+        stopped = name.startswith(("extract (the sign-in screen", "extract (no session", "session status (signed out"))
         outcome = running.Outcome(
             name=name,
             argv=(name,),
-            exit_code=2 if refused else 0,
+            exit_code=3 if stopped else (2 if refused else 0),
             seconds=1.0,
             stdout=_stdout_for(name, mock, heading),
-            stderr="error: snapshot already exists: …/skills/research-helper.skill\n" if refused else "",
+            stderr=(
+                signed_out
+                if stopped and name.startswith("extract")
+                else ("error: snapshot already exists: …/skills/research-helper.skill\n" if refused else "")
+            ),
         )
         if name in driving:
             outcome.trace = _trace_for(position, name, mock, traces).relative_to(settings.root)
@@ -324,7 +337,8 @@ def test_the_claude_half_counts_each_file_twice_and_needs_no_crossing(tmp_path: 
     half = half_for(tmp_path, extraction.CLAUDE)
     checks = extraction.criteria(half, store=tmp_path / "store")
     assert [item.name for item in checks if not item.passed] == []
-    assert len(checks) == 21
+    # 21 before `71`, which adds the three refusal criteria to the Claude half alone.
+    assert len(checks) == 24
     gap = next(item for item in checks if item.name.startswith("ledger: the gap"))
     assert gap.detail == "gaps [2, 2] == 1 × 2, files carried [0, 0]"
 

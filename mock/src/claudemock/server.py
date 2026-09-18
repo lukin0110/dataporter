@@ -91,6 +91,10 @@ ORGANIZATIONS_PATH = "/api/organizations"
 SKILLS_LIST_PATH = "/api/organizations/{org}/skills/list-skills"
 SKILL_DOWNLOAD_PATH = "/api/organizations/{org}/skills/download-dot-skill-file"
 SKILLS_JSON_PATH = "/__mock/skills.json"
+SIGNED_OUT_SHAPE_PATH = "/__mock/signed-out-shape"
+"""Where a run asks for the other signed-out shape (`71`): the sign-in screen
+rendered in place of the page, rather than the two redirects. Behind no session,
+like every witness route — the operator speaking to the mock, not the tool."""
 """The three addresses a skills extraction reads (`67`; the tool's `skills list`
 and `skill download` rows), re-typed rather than imported (ADR 0003), and the
 witness that lists what was served. All three site routes want the session, as
@@ -111,6 +115,12 @@ class MessageIn(BaseModel):
 
 class TitleIn(BaseModel):
     title: str = ""
+
+
+class ShapeIn(BaseModel):
+    """Which signed-out shape the mock answers with (`71`)."""
+
+    in_place: bool = False
 
 
 def skill_json(skill: Skill) -> dict[str, Any]:
@@ -200,7 +210,18 @@ def create_app(  # ruff: ignore[complex-structure, too-many-statements] - one ro
         lapsed take the same two hops, because the site cannot tell them apart
         either — it has a token it does not know, or no token at all.
         """
+        if site.signed_out_in_place:
+            # The other row (`sign-in screen in place`, `70`): no redirect at
+            # all, `200` at the address that was asked for, and only the markup
+            # saying the account is not signed in.
+            return HTMLResponse(pages.sign_in_screen())
         return redirect(INVOLUNTARY_LOGOUT.format(path=quote(request.url.path)))
+
+    @app.post(SIGNED_OUT_SHAPE_PATH)
+    def signed_out_shape(shape: ShapeIn) -> dict[str, bool]:
+        """Choose which of the two signed-out shapes this mock answers with (`71`)."""
+        site.signed_out_in_place = shape.in_place
+        return {"in_place": site.signed_out_in_place}
 
     @app.get(LOGOUT_PATH)
     def logout_page(return_to: Annotated[str, Query(alias="returnTo")] = "/new") -> Response:

@@ -95,6 +95,24 @@ def witness_json(host: str, port: int, path: str) -> Any:
         return json.loads(answer.read().decode("utf-8"))
 
 
+def tell_witness(host: str, port: int, path: str, payload: Mapping[str, Any]) -> Any:
+    """POST to one of the mock's witness routes and return what it answered (`71`).
+
+    `witness_json`'s other half. Two routes are asked rather than read —
+    `expire-session` and `signed-out-shape` — and both are the operator speaking
+    to the mock about what it should do next, never the tool driving it.
+    """
+    url = f"http://{host}:{port}{path}"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(dict(payload)).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=30) as answer:  # ruff: ignore[suspicious-url-open-usage] - as above
+        return json.loads(answer.read().decode("utf-8"))
+
+
 def ledger(host: str, port: int) -> dict[str, int]:
     """Return the mock's count, now."""
     loaded = witness_json(host, port, LEDGER_PATH)

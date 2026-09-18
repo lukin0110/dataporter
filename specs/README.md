@@ -420,7 +420,8 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [67](impl/67-the-mock-grows-skills.md) | The mock grows skills | §90, §91, §93, §94 | Done |
 | [68](impl/68-the-facade.md) | The facade | — tooling | Done |
 | [69](impl/69-the-preflight.md) | The preflight: no session, no browser | §8, §35, §86 | Done |
-| [70](impl/70-the-sign-in-screen.md) | The sign-in screen, at the address that was asked for | §35, §36, §77 | Built |
+| [70](impl/70-the-sign-in-screen.md) | The sign-in screen, at the address that was asked for | §35, §36, §77 | Done |
+| [71](impl/71-the-mock-grows-a-sign-in-screen.md) | The mock grows a sign-in screen | §21, §35, §36 | Done |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real

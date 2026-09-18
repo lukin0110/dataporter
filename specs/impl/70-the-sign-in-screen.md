@@ -5,8 +5,8 @@
 [brief 07](../07-claude-sign-in.md) §77
 **Depends on:** [07](07-browser-session.md), [31](31-source-session-and-ask.md),
 [51](51-export-page-address.md), [62](62-waiting-for-the-export-panel.md)
-**Enables:** [71](71-the-mock-grows-a-sign-in-screen.md)
-**Status:** Built
+**Enables:** [71](71-the-mock-grows-a-sign-in-screen.md), which turned this `Done`
+**Status:** Done
 
 ## Goal
 
@@ -157,11 +157,12 @@ already exists and is the fact `signed_out()` actually wants.
    pressing anything. `tests/test_ask.py`.
 2. The same page missing **either** signal: `sign_in_showing` is `False`, `signed_out` is
    `False`, and the ask goes on to press the button exactly as it does today.
-3. The literal markup of
-   `docs/spike/claude-sign-in-screen-2026-09-18.html`, served to a real Chrome in the live
-   tier, answers `sign_in_showing: true`; the same page with the `send_magic_link`
-   container removed answers `false`. *unverified until `71`* — the live tier covers the
-   fixture, the mock covers the shipped tool.
+3. The same markup, served to a **real Chrome** and met by the **shipped tool**: the ask
+   exits `3`, names the remedy, and leaves a two-line trace — a header and an end, no move
+   and no sketch, because it pressed nothing. *Measured on 2026-09-18 against the mock
+   claude.ai, Chrome/153.0.8010.48; the record is*
+   [`docs/rehearsal-05.md`](../../docs/rehearsal-05.md)*, and `71` is the slice that
+   measured it.*
 4. A source with no sign-in selectors — ChatGPT — has `sign_in_selectors == ()` and
    `sign_in_showing` is `False` on every page. `tests/test_sources.py`.
 5. `PageState` round-trips the new field through `08`'s JSON object, and the browser

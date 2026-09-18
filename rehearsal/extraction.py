@@ -49,6 +49,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dataporter import PROGRAM_NAME
 from rehearsal import run as running
 from rehearsal.hermes import write_executable
 
@@ -71,6 +72,11 @@ SIGN_IN_LINKS_JSON_PATH = "/__mock/sign-in-links.json"
 LINK_MARK = "<link>"
 
 SKILLS_JSON_PATH = "/__mock/skills.json"
+EXPIRE_PATH = "/__mock/expire-session"
+SIGNED_OUT_SHAPE_PATH = "/__mock/signed-out-shape"
+"""The two routes `71`'s steps ask of the mock: forget every session, and answer
+a signed-out request with the sign-in screen in place rather than a redirect.
+The operator speaking to the mock, never the tool."""
 SKILL_GAP = "skill_not_downloaded"
 BYTES_GAP = "bytes_not_in_export"
 """The witness that says what the mock listed and served, and the two gap kinds
@@ -292,6 +298,19 @@ def skills_witness(settings: running.Settings) -> list[dict[str, Any]]:
     return [dict(item) for item in loaded]
 
 
+def lapse_the_session(settings: running.Settings, *, in_place: bool) -> None:
+    """Make the mock forget every session, in the shape `71` wants to see (`70`).
+
+    Two asks, in this order: the shape first, so that the very next request is
+    answered the new way, then the sessions thrown away. What the browser holds
+    is unchanged — it still carries the cookie and the profile is still on disk —
+    so what follows is an **involuntary sign-out**, not an account that was never
+    signed in. That is the difference between `70`'s half of this and `69`'s.
+    """
+    running.tell_witness(settings.host, settings.port, SIGNED_OUT_SHAPE_PATH, {"in_place": in_place})
+    running.tell_witness(settings.host, settings.port, EXPIRE_PATH, {})
+
+
 def links(settings: running.Settings) -> list[str]:
     """Return every link the mock has minted, oldest first: the listing that stands in for the inbox."""
     loaded = running.witness_json(settings.host, settings.port, EXPORTS_JSON_PATH)
@@ -458,7 +477,30 @@ def protocol(
     counted = running.ledger(settings.host, settings.port)
     skills = skills_witness(settings) if mock.has_skills else []
     runner.run("session status", "session", "status", *source)
+    if mock.link_signin:
+        # `70` and `69`, in the order a person meets them. First the session
+        # lapses while the profile stays: the site answers the export page with
+        # its sign-in screen at that page's own address, and the ask has to read
+        # the markup because the URL says nothing. Then `logout` takes the
+        # profile away, and the next ask never opens a browser at all.
+        lapse_the_session(settings, in_place=True)
+        blocks["signed out in place"] = runner.run(
+            "extract (the sign-in screen, in place)",
+            "extract",
+            *source,
+            deliberate=True,
+            note="refused: the site answered the export page with its sign-in screen",
+        ).stderr
+        runner.run("session status (signed out)", "session", "status", *source, deliberate=True)
     runner.run("logout", "logout", *source)
+    if mock.link_signin:
+        blocks["no session at all"] = runner.run(
+            "extract (no session at all)",
+            "extract",
+            *source,
+            deliberate=True,
+            note="refused before a browser: `logout` took the profile away",
+        ).stderr
     return Half(
         mock=mock,
         settings=settings,
@@ -671,11 +713,41 @@ def criteria(half: Half, *, store: Path) -> list[running.Criterion]:  # ruff: ig
     ]
     if mock.link_signin:
         saw_it = bool(login and running.LINK_SENT_LINE in login.stdout)
+        in_place = by_name.get("extract (the sign-in screen, in place)")
+        no_profile = by_name.get("extract (no session at all)")
+        clicked = (
+            len([line for line in trace_lines(settings.root, in_place) if line.get("helper") == "click"])
+            if in_place
+            else -1
+        )
+        # `--mock` and all: a remedy that dropped the flag would send a person
+        # from a mock run to the real site, which is why `_command` puts it first.
+        remedy = f"not logged in — run: {PROGRAM_NAME} --mock login --source {mock.source} --account {ACCOUNT}"
         checks += [
             running.Criterion(
                 "login saw the link sent and said so",
                 saw_it,
                 "the line is in its stdout" if saw_it else "the line is not in its stdout",
+            ),
+            running.Criterion(
+                "a sign-in screen at the export page is exit 3 and the remedy (`70`)",
+                in_place is not None and in_place.exit_code == 3 and remedy in in_place.stderr,
+                f"exit {in_place.exit_code if in_place else '-'}, "
+                + ("the remedy is named" if in_place and remedy in in_place.stderr else "the remedy is not named"),
+            ),
+            running.Criterion(
+                "it never pressed anything: one trace, and no click in it (`70`)",
+                in_place is not None and in_place.traces == 1 and clicked == 0,
+                f"{in_place.traces if in_place else 0} trace(s), {clicked} clicks",
+            ),
+            running.Criterion(
+                "no session at all is exit 3 and no trace, because no browser opened (`69`)",
+                no_profile is not None
+                and no_profile.exit_code == 3
+                and no_profile.traces == 0
+                and remedy in no_profile.stderr,
+                f"exit {no_profile.exit_code if no_profile else '-'}, "
+                f"{no_profile.traces if no_profile else '-'} traces",
             ),
             running.Criterion(
                 "ledger: sign-in links minted == the seeding's + the tool's",
