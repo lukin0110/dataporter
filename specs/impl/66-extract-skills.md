@@ -61,8 +61,9 @@ nothing in the source account. The mock's side of it, and the rehearsal, are [`6
   `probe.expression`'s — no prelude, since nothing here touches an element — and
   `Page.evaluate` already awaits the promise.
 - **New `Source` fields**, beside `export_page_path`: `organizations_path`,
-  `skills_list_path` and `skills_download_path`, with `Source.has_skills` true when the
-  last two are set. Claude's, from the reading in
+  `skills_list_path` and `skills_download_path`, with `Source.has_skills` true when all
+  three are set — the organisations read comes first, so its address is as required as the
+  other two. Claude's, from the reading in
   [`claude-ui-map.md`](../../docs/claude-ui-map.md):
 
   ```python
@@ -130,10 +131,11 @@ nothing in the source account. The mock's side of it, and the rehearsal, are [`6
   `store.SKILL_GAP` (`skill_not_downloaded`), with a count and the reason an operator reads
   — `1 skill could not be downloaded`. The stop reason `download.fetch` gave — refused,
   stalled, cancelled — goes to the run log and not into the manifest, which §38 keeps to
-  labels and numbers. The run still exits `0`. An append **replaces** a prior run's skill
-  gaps rather than stacking them, so a second run that lands the skill clears the gap
-  (§93's "a second run fixes"); an archive's `bytes_not_in_export` gap is another kind and
-  is kept. Failing `org_js` or `list_js` is a `BrowserError`, nothing is
+  labels and numbers. The run still exits `0`. A snapshot that keeps a skill gap is complete
+  about it (§32): a same-stamp rerun is refused (a filed skill is `SNAPSHOT_EXISTS`, the
+  criterion below), so a gap is cleared by a **fresh** run — `extract-skills` with no
+  `--stamp` files a new snapshot with the skills as they now are — not by an in-place
+  retry into the old one. The kind is `store.SKILL_GAP`. Failing `org_js` or `list_js` is a `BrowserError`, nothing is
   filed, and the exit code is the one that read failed with.
 - **The blocks** (§94), golden:
 
