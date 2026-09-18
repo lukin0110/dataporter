@@ -4,8 +4,10 @@
 **Implements:** nothing in the brief — tooling, like `22` and `23`. §8–§10 fix the command
 surface and this slice leaves every command, flag, message and exit code where they were.
 **Depends on:** [23](23-library-operations.md)
-**Enables:** any host project that has `hermes` on its `PATH`
-**Status:** Done
+**Enables:** any host project that has `hermes` on its `PATH`, and [68](68-the-facade.md)
+**Status:** Done. *Amended by [`68`](68-the-facade.md): a host project imports `Dataporter`
+from the top level for the five commands it reaches for. Everything else is still reached at
+the module that holds it.*
 
 ## Goal
 

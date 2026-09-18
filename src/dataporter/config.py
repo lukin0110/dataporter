@@ -967,12 +967,23 @@ def with_account(settings: Settings, source: str | None, account: str) -> Settin
     label under `LABEL_PATTERN` and `claude/../..` is not a legal source, which
     is what keeps `<store>/<source>/<account>/` inside the store.
     """
-    effective = settings.source if source is None else source
-    if not SOURCE_PATTERN.match(effective) or effective not in _sources():
-        raise ConfigError(NO_SUCH_SOURCE.format(token=effective))
+    effective = validate_source(settings.source if source is None else source)
     if not LABEL_PATTERN.match(account) or set(account) <= {"."}:
         raise ConfigError(BAD_LABEL.format(token=account))
     return settings.model_copy(update={"source": effective, "account": account})
+
+
+def validate_source(source: str) -> str:
+    """Return `source` if a source by that name exists, else raise `ConfigError`.
+
+    Split out of `with_account` for `68`: the facade holds a source across
+    several calls and checks it when it is given, so that a typo raises on the
+    line that names it rather than inside the first extraction. One
+    implementation, so the two doors refuse the same tokens with the same words.
+    """
+    if not SOURCE_PATTERN.match(source) or source not in _sources():
+        raise ConfigError(NO_SUCH_SOURCE.format(token=source))
+    return source
 
 
 def _sources() -> tuple[str, ...]:
@@ -1111,7 +1122,7 @@ def _auth_overrides(*, email: str | None, password_file: Path | None) -> dict[st
     return auth
 
 
-def _mock_overrides(workspace: Path | None) -> dict[str, Any]:
+def mock_overrides(workspace: Path | None) -> dict[str, Any]:
     """Return what `--mock` sets besides itself (`65`).
 
     Only when typed, as `--non-interactive` is: the init source is the flag's one
@@ -1121,6 +1132,11 @@ def _mock_overrides(workspace: Path | None) -> dict[str, Any]:
     The workspace moves with the flag, and only its *default*: an explicit
     `--workspace` or `DATAPORTER_WORKSPACE` still wins, as it does for every
     other path `--mock` redirects.
+
+    Public since `68`: the facade builds `Settings` without `load_settings`, and
+    a `Dataporter(mock=True)` that wrote to `./migration` would put a rehearsal's
+    state where a real run reads it — which is the one thing ADR 0010 exists to
+    stop. One rule, called from both doors.
     """
     overrides: dict[str, Any] = {"mock": True}
     if workspace is None and _workspace_from_env() is None:
@@ -1158,7 +1174,7 @@ def load_settings(
     if non_interactive:
         overrides["non_interactive"] = True
     if mock:
-        overrides |= _mock_overrides(workspace)
+        overrides |= mock_overrides(workspace)
     auth = _auth_overrides(email=email, password_file=password_file)
     if auth:
         overrides["auth"] = auth
@@ -1174,6 +1190,45 @@ def load_settings(
         raise ConfigError(f"invalid configuration: {exc}") from exc
     finally:
         _config_file.reset(token)
+
+
+def settings_without_config_file(
+    *,
+    workspace: Path | None = None,
+    non_interactive: bool = False,
+    mock: bool = False,
+) -> Settings:
+    """Build `Settings` from these values and the environment, reading no file (`68`).
+
+    `load_settings` minus one source. The contextvar `settings_customise_sources`
+    reads is left unset, so no `config.toml` is discovered and none is read; the
+    environment still fills in whatever nobody named here, because `init` comes
+    before it in the ladder and cannot be outranked by it.
+
+    That is the facade's door. A library is imported into somebody else's
+    process, in somebody else's working directory, and a `./migration/config.toml`
+    found there was written for an operator's shell rather than for this call —
+    so it is not silently obeyed. A caller who *wants* the operator's file says
+    so, by name, through `Dataporter.from_config`.
+
+    `mock` moves the default workspace here as it does there: the rule is
+    `mock_overrides`, called from both, because a `Dataporter(mock=True)` writing
+    to `./migration` would leave a rehearsal's state where a real run reads it.
+
+    Raises `ConfigError` for a value no `Settings` would accept, with the same
+    words `load_settings` uses for the same failure.
+    """
+    overrides: dict[str, Any] = {} if workspace is None else {"workspace": workspace}
+    if non_interactive:
+        overrides["non_interactive"] = True
+    if mock:
+        overrides |= mock_overrides(workspace)
+    try:
+        return Settings(**overrides)
+    except ValidationError as exc:
+        raise ConfigError(f"invalid configuration: {_describe(exc)}") from exc
+    except SettingsError as exc:
+        raise ConfigError(f"invalid configuration: {exc}") from exc
 
 
 def _first_line(path: Path) -> str:

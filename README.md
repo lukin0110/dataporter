@@ -279,6 +279,63 @@ the details.
 
 ## From another project
 
+### Five commands, one object
+
+`Dataporter` (`68`) is the short way in. It covers the five commands a host project
+reaches for — signing in and out of a source account, asking for and filing an export, the
+skills an export leaves out, and checking the environment — and it holds the configuration
+those calls would otherwise repeat:
+
+```python
+from pathlib import Path
+
+from dataporter import Dataporter
+
+dp = Dataporter(store=Path("~/backups").expanduser())
+
+dp.login("work")                        # blocks: a window opens, you sign in
+dp.ask("work")                          # ask Claude for the export; the link is emailed
+dp.fetch("work", "https://…")           # file what the link serves as a snapshot
+dp.extract_skills("work")               # the skills an export does not carry
+```
+
+| Method | What it does |
+| --- | --- |
+| `login(account=None)` | Open the sign-in page in the account's own profile and **block** until it is signed in. No account means the destination. |
+| `spend_link(link)` | Spend a sign-in link in the window a blocked `login` is holding. Run it from another process. |
+| `logout(account)` | Remove the account's session, its open ask and its staged downloads. Keeps the logs. |
+| `ask(account)` | Ask the vendor for the export. One ask is open per account, and the answer arrives by email, possibly hours later. |
+| `fetch(account, link)` | Download what the emailed link serves and file it as a snapshot. |
+| `file(account, path)` | File an archive you already have, with no ask behind it. |
+| `abandon(account)` | Give up the open ask, so another can be made. |
+| `extract_skills(account, stamp=None)` | Collect the skills the account wrote. `stamp` files them beside an existing snapshot. |
+| `doctor()` | Check Hermes, Chrome, the profile and the pacing. `exit_code` is `6` when a check failed. |
+
+Every method takes `source=` to name the vendor (`claude` unless you say otherwise) and
+`sink=` to say where the lines go. Each returns the same frozen outcome the command line
+acts on, with an `exit_code` and the facts the command printed. Five things are worth
+knowing before the first call:
+
+- **Pass `workspace=` or `store=` if the defaults are wrong for you.** They are `./migration`
+  and `~/.dataporter/store`, relative to whatever process is calling.
+- **No `config.toml` is read.** The constructor configures itself from what you hand it, and
+  the environment fills in what you do not. `Dataporter.from_config(…)` is the door to the
+  ladder the command line uses, for a host running on a machine somebody set up for the CLI.
+- **Nothing prints.** Pass `sink=console.Collected()` to read the lines back, or
+  `console.Terminal()` to let them through. Run logs are still written under the workspace
+  or the account home, because the operations write them.
+- **Errors raise, results return.** An outcome's `exit_code` carries "nothing to do" or "not
+  signed in"; anything an operator could fix is an `errors.MigrationError` subclass, or
+  `errors.UsageError` for a contradiction in what was asked.
+- **`login` waits for a person, and cannot be made not to.** Claude signs in by emailed link
+  behind a bot check (ADR 0008), so the call blocks with the window open until `spend_link`
+  spends the link from another process. Unattended sign-in to Claude is refused, by design.
+
+`import`, `resume`, `seeds`, `inspect`, `verify`, `report` and the rest have no method
+here. They are reached the way everything was reached before `68`, which is next.
+
+### Every command, where it lives
+
 Everything the CLI does is a library call (`23`). Each command's body is a function in the
 module that owns it — `importer.import_command`, `browser.session.login`,
 `verify.verify_all` — that takes `Settings`, writes its lines to a `console.Sink` and
@@ -302,10 +359,12 @@ print(sink.stdout, outcome.exit_code)
 ```
 
 The operations table in [`specs/impl/23-library-operations.md`](specs/impl/23-library-operations.md)
-is the API: one row per command, naming the function, its options and the outcome it
+is the full API: one row per command, naming the function, its options and the outcome it
 returns. They are reached where they live rather than re-exported from the top level,
-because a re-export is a second spelling of where a thing lives. The package ships
-`py.typed`, so a host project's type checker reads the real signatures instead of `Any`.
+because a re-export is a second spelling of where a thing lives. `Dataporter` is the one
+name at the top, and it is a class holding configuration rather than an operation under a
+second name. The package ships `py.typed`, so a host project's type checker reads the real
+signatures instead of `Any`.
 
 Four things are worth knowing before the first call:
 

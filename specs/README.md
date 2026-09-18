@@ -102,6 +102,7 @@ Tooling — no milestone, may land at any time
   23  Library operations: every command's body in the module that owns it, the CLI an interface
   25  Distribution: metadata, `py.typed`, a licence, and a wheel proven outside the checkout
   59  Hermes's configuration: asked for a key at a time, never read off its screen
+  68  The facade: five commands, one object, for a project that installed the package
 
 M6 — Operability
   24  Non-interactive mode: credentials, an agentic sign-in, headless Chrome, never a keypress
@@ -304,6 +305,17 @@ is the slice that brings two.
 corrections the tool already had, and `65` is the tool learning a flag so that catching up
 costs an address instead of a certificate.
 
+`68` is tooling and adds no behaviour: it is one object over the five commands a host
+project reaches for, so that installing the package is an import and a call rather than a
+reading of `23`'s operations table. It depends on `23` for the operations, `25` for the
+package being importable at all, and on `30`, `31`, `63` and `66` for the commands it
+covers — `30` because the store is what its `ask`, `fetch` and `file` write into.
+
+```text
+23, 25, 30, 31, 63, 66 ─> 68
+          (68 amends `23`'s no-re-export rule and `25`'s bullet above)
+```
+
 `13` and `14` were drawn in series and are not: `13` is what the tool retries on its
 own, `14` is what it asks a person to clear, and `13`'s own table hands `needs_human`
 straight to `14`. Both need `12` and nothing else, and both were built against it
@@ -394,6 +406,7 @@ completion looks in the DOM. `10` answers those and updates `11`–`17` before t
 | [65](impl/65-the-mock-is-reached-by-a-flag.md) | `--mock`: the tool talks to a local origin | §21 (amended), §22 (amended), §40 | Built |
 | [66](impl/66-extract-skills.md) | `extract-skills` | §88–§95, §32 (amended), §33 (amended), §36 (amended) | Built |
 | [67](impl/67-the-mock-grows-skills.md) | The mock grows skills | §90, §91, §93, §94 | Done |
+| [68](impl/68-the-facade.md) | The facade | — tooling | Done |
 
 `Built` is the value between `In progress` and `Done`: the slice's code is in and its
 tests pass, and the acceptance criteria that need a real Hermes, a real Chrome or a real
@@ -424,9 +437,9 @@ Every section §2–§19 of the first brief is claimed by at least one slice. §
 and is claimed by all of them. Of the second brief, §21–§27 are claimed by `26`–`29`;
 §20 is that brief's goal and is claimed by all four, and §28 is its list of what is
 deliberately left — a section no slice should claim until one of its items is built.
-`22`, `23`, `25` and `59` claim none: they are the slices that exist because of how the repo
-is worked on and how it is consumed rather than because of what the brief asks for, and they
-are outside the milestone gates for the same reason. `59` is `Built` rather than `Done`
+`22`, `23`, `25`, `59` and `68` claim none: they are the slices that exist because of how the
+repo is worked on and how it is consumed rather than because of what the brief asks for, and
+they are outside the milestone gates for the same reason. `59` is `Built` rather than `Done`
 because what would finish it is a `setup` and a `doctor` against a real Hermes reported by
 somebody other than its author; the reading it corrects has been exercised against one
 (v0.21.2, 2026-09-14), which is more than `09` ever had.
@@ -575,7 +588,11 @@ Assumptions, not brief requirements. Change them here and the slices follow.
   it from a git URL or a path — there is no PyPI release, because publishing is
   deliberately a later slice — and gets the command, `python -m dataporter`, and the `23`
   operations as a typed library (`py.typed` ships; the operations are reached where they
-  live and are never re-exported). The version lives in `dataporter.__version__` and the
+  live and are never re-exported). `68` adds one name at the top level beside them:
+  `Dataporter`, a facade over the five commands a host project reaches for, which holds
+  the settings those calls would otherwise repeat and returns the operations' own
+  outcomes. It is a class rather than a re-exported operation, which is the distinction
+  the rule in brackets now carries. The version lives in `dataporter.__version__` and the
   wheel's metadata is derived from it. `typer` stays a required dependency so a bare
   install yields a working command. Hermes is neither imported by the package nor a
   dependency of it: a host project only has to have `hermes` on the `PATH` its process
